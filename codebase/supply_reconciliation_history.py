@@ -5,6 +5,8 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pandas as pd
+
 from codebase.supply_reconciliation_config import *  # noqa: F401,F403
 from codebase.utilities.workflow_utils import _resolve
 
@@ -388,6 +390,64 @@ def _lookup_runtime_primary_addition(
         )
         value += float(_sra._CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS.get(key, 0.0))
     return max(value, 0.0)
+
+
+def trim_convergence_csv_to_pass(
+    pass_number: int,
+    csv_path: Path | None = None,
+) -> None:
+    """Remove convergence rows where pass_count exceeds pass_number.
+
+    After rolling back reconciliation passes, call this to strip the stale
+    convergence rows that no longer correspond to active passes.
+
+    Parameters
+    ----------
+    pass_number : int
+        Rows with pass_count <= pass_number are retained; the rest are dropped.
+        Passing 0 removes all data rows (leaves the header only).
+    csv_path : Path or None
+        Path to the CSV.  Defaults to
+        RESULTS_RUNTIME_DIR / "capacity_unmet_convergence.csv".
+    """
+    if csv_path is None:
+        csv_path = _resolve(RESULTS_RUNTIME_DIR) / "capacity_unmet_convergence.csv"
+    path = _resolve(csv_path)
+    if not path.exists():
+        return
+    df = pd.read_csv(path)
+    before = len(df)
+    df = df[df["pass_count"] <= pass_number]
+    after = len(df)
+    df.to_csv(path, index=False)
+    print(
+        f"[CONVERGENCE] Trimmed {before - after} row(s) with pass_count > {pass_number} "
+        f"({after} row(s) remain). Written to {path}."
+    )
+
+
+def clear_convergence_csv(
+    csv_path: Path | None = None,
+) -> None:
+    """Truncate the convergence CSV to its header row only.
+
+    Use this when starting a fresh reconciliation run and you want to clear
+    all previous convergence history.
+
+    Parameters
+    ----------
+    csv_path : Path or None
+        Path to the CSV.  Defaults to
+        RESULTS_RUNTIME_DIR / "capacity_unmet_convergence.csv".
+    """
+    if csv_path is None:
+        csv_path = _resolve(RESULTS_RUNTIME_DIR) / "capacity_unmet_convergence.csv"
+    path = _resolve(csv_path)
+    if not path.exists():
+        return
+    df = pd.read_csv(path, nrows=0)
+    df.to_csv(path, index=False)
+    print(f"[CONVERGENCE] Cleared all data rows from {path} (header retained).")
 
 
 def _lookup_runtime_export_adjustment(
