@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 
 from codebase.functions import supply_assets
+from codebase.functions import supply_data_pipeline
 
 
 def test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup(monkeypatch) -> None:
@@ -147,3 +148,34 @@ def test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup(monkeypat
     assert supply_assets.SUPPLY_PROJECTION_LOOKUP == projection_lookup
     assert set(ninth_data["economy"]) == {"20_USA", "00_APEC"}
     assert set(esto_data["economy"]) == {"20_USA", "00_APEC"}
+
+
+def test_supply_data_pipeline_wrapper_preserves_five_tuple_and_updates_lookup(
+    monkeypatch,
+) -> None:
+    expected_assets = ("dataset_map", "sector_config", "code_map", "ninth", "esto")
+    expected_lookup = {"lookup": "value"}
+
+    monkeypatch.setattr(supply_data_pipeline, "ensure_repo_root", lambda: None)
+
+    def fake_prepare_supply_assets(
+        economies,
+        aggregate_economy_label,
+        save_subtotal_labeled,
+        subtotal_output_path,
+        return_projection_lookup,
+    ):
+        assert economies == ["20_USA"]
+        assert return_projection_lookup is True
+        return expected_assets, expected_lookup
+
+    monkeypatch.setattr(
+        supply_data_pipeline.supply_assets_module,
+        "prepare_supply_assets",
+        fake_prepare_supply_assets,
+    )
+
+    assets = supply_data_pipeline.prepare_supply_assets(economies=["20_USA"])
+
+    assert assets == expected_assets
+    assert supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP == expected_lookup

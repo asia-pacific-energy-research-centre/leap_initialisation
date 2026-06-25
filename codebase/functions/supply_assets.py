@@ -4,6 +4,14 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
+# Ensure the repository root is importable for scripts executed from any location.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+try:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+except Exception as exc:
+    print(f"Failed to add repo root to sys.path: {exc}")
+
 from codebase.utilities import workflow_common
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions.esto_data_utils import (
@@ -26,14 +34,6 @@ from codebase.functions.supply_config_builder import (
     build_supply_sector_config,
     load_code_to_name_mapping,
 )
-
-# Ensure the repository root is importable for scripts executed from any location.
-REPO_ROOT = Path(__file__).resolve().parents[2]
-try:
-    if str(REPO_ROOT) not in sys.path:
-        sys.path.insert(0, str(REPO_ROOT))
-except Exception as exc:
-    print(f"Failed to add repo root to sys.path: {exc}")
 
 
 #%%
