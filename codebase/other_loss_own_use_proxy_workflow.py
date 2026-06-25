@@ -20,8 +20,11 @@ from collections.abc import Mapping, Sequence
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+try:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+except Exception as exc:
+    print(f"Failed to add repo root to sys.path: {exc}")
 
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.configuration.config import BASE_YEAR

@@ -12,7 +12,6 @@ or imported independently from the broader transformation workbook.
 # Most user-editable settings live in `codebase/workflow_config.py`.
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from typing import Iterable, Sequence
@@ -20,11 +19,11 @@ from typing import Iterable, Sequence
 import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CURRENT_DIR = Path.cwd()
-if CURRENT_DIR != REPO_ROOT:
-    os.chdir(REPO_ROOT)
-if str(CURRENT_DIR) not in sys.path:
-    sys.path.insert(0, str(CURRENT_DIR))
+try:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+except Exception as exc:
+    print(f"Failed to add repo root to sys.path: {exc}")
 
 from codebase.functions import transformation_analysis_utils as core
 from codebase.configuration import workflow_config as workflow_cfg

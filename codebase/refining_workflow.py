@@ -17,10 +17,12 @@ import pandas as pd
 
 from codebase.utilities.master_config import config_table_exists, read_config_table
 
-# Allow repo root on sys.path so code imports resolve without install
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if REPO_ROOT.exists() and str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+try:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+except Exception as exc:
+    print(f"Failed to add repo root to sys.path: {exc}")
 
 from codebase.configuration.config import (
     BRANCH_DEMAND_CATEGORY,

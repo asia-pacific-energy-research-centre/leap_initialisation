@@ -26,8 +26,11 @@ from openpyxl import load_workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+try:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+except Exception as exc:
+    print(f"Failed to add repo root to sys.path: {exc}")
 
 from codebase.utilities.leap_balance_export_resolver import resolve_balance_export_workbook  # noqa: E402
 from codebase.utilities.energy_balance_template_extractor import (  # noqa: E402

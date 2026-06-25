@@ -28,7 +28,6 @@ Most user-editable settings live in `codebase/workflow_config.py`.
 """
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from collections.abc import Mapping, Sequence
@@ -37,13 +36,12 @@ import pandas as pd
 
 from codebase.utilities.master_config import config_table_exists, read_config_table
 
-# Allow the repository root to be importable regardless of the working directory.
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CURRENT_DIR = Path.cwd()
-if CURRENT_DIR != REPO_ROOT:
-    os.chdir(REPO_ROOT)
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+try:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+except Exception as exc:
+    print(f"Failed to add repo root to sys.path: {exc}")
 
 from codebase.configuration.config import (
     BRANCH_DEMAND_CATEGORY,
