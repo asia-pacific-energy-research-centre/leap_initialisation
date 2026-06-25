@@ -24,7 +24,6 @@ except Exception as exc:
     print(f"Failed to add repo root to sys.path: {exc}")
 
 from codebase.utilities import workflow_common
-from codebase.utilities import fuel_catalog_preflight
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions.esto_data_utils import (
     try_debug_breakpoint,
@@ -38,13 +37,6 @@ from codebase.functions.esto_data_utils import (
     add_all_economy_total,
     build_dataset_map,
     resolve_dataset,
-)
-from codebase.functions.analysis_input_write_dispatcher import (
-    dispatch_analysis_input_write,
-)
-from codebase.functions.leap_core import (
-    connect_to_leap,
-    fill_branches_from_export_file,
 )
 from codebase.utilities.esto_reference_loader import (
     apply_esto_subtotal_mapping as apply_matt_subtotal_mapping,
@@ -118,6 +110,9 @@ from codebase.functions.supply_export_io import (
     get_available_scenarios,
     get_supply_fuels_from_export,
     locate_supply_export,
+    run_branch_fill,
+    run_supply_leap_import,
+    _print_supply_missing_both_primary_secondary_summary,
 )
 #%%
 
@@ -739,157 +734,6 @@ def run_supply_pipeline(
         )
         export_paths = [path for _, path in exports]
     return export_paths
-
-
-def run_branch_fill(
-    L,
-    export_path: Path,
-    scenario: str,
-    region: str,
-    handle_current_accounts: bool,
-    raise_on_missing_branch: bool = True,
-) -> None:
-    """Load data into supply branches from the export workbook."""
-    try:
-        outcome = fill_branches_from_export_file(
-            L,
-            export_path,
-            sheet_name=SHEET_NAME,
-            scenario=scenario,
-            region=region,
-            RAISE_ERROR_ON_FAILED_SET=raise_on_missing_branch,
-            SET_UNITS=True,
-            HANDLE_CURRENT_ACCOUNTS_TOO=handle_current_accounts,
-            RUN_FUEL_CATALOG_PREFLIGHT=False,
-        )
-        print(f"[INFO] Supply branch fill result: {outcome}")
-        _print_supply_missing_both_primary_secondary_summary(outcome)
-    except Exception as exc:
-        print(f"[ERROR] Supply branch fill failed: {exc}")
-        try_debug_breakpoint()
-        raise
-
-
-def _print_supply_missing_both_primary_secondary_summary(outcome: dict | None) -> None:
-    """Print fuels that failed in all attempted Resources roots during branch fill."""
-    if not isinstance(outcome, dict):
-        return
-
-    def _extract_root_and_fuel(branch_path: str | None) -> tuple[str | None, str | None]:
-        parts = [part.strip() for part in str(branch_path or "").split("\\") if part and str(part).strip()]
-        if len(parts) < 3:
-            return None, None
-        if parts[0].lower() != "resources":
-            return None, None
-        root = parts[1].strip()
-        if root.lower() not in {"primary", "secondary"}:
-            return None, None
-        fuel = parts[2].strip()
-        if not fuel:
-            return None, None
-        return root.title(), fuel
-
-    success_roots_by_fuel: dict[str, set[str]] = {}
-    failed_roots_by_fuel: dict[str, set[str]] = {}
-
-    for branch_path, variable in outcome.get("success", []) or []:
-        var_name = str(variable or "").strip().lower()
-        if var_name not in {"imports", "exports"}:
-            continue
-        root, fuel = _extract_root_and_fuel(branch_path)
-        if not root or not fuel:
-            continue
-        success_roots_by_fuel.setdefault(fuel, set()).add(root)
-
-    for branch_path, variable in outcome.get("failed", []) or []:
-        var_name = str(variable or "").strip().lower()
-        if var_name not in {"imports", "exports"}:
-            continue
-        root, fuel = _extract_root_and_fuel(branch_path)
-        if not root or not fuel:
-            continue
-        failed_roots_by_fuel.setdefault(fuel, set()).add(root)
-
-    fuels_missing_all_attempted: list[str] = []
-    for fuel, failed_roots in sorted(failed_roots_by_fuel.items()):
-        if success_roots_by_fuel.get(fuel):
-            continue
-        if failed_roots:
-            fuels_missing_all_attempted.append(
-                f"{fuel} (attempted: {', '.join(sorted(failed_roots))})"
-            )
-
-    if fuels_missing_all_attempted:
-        print(
-            "[WARN] Supply fuels not found in attempted Resources root(s) "
-            f"({len(fuels_missing_all_attempted)}): {', '.join(fuels_missing_all_attempted)}"
-        )
-    else:
-        print(
-            "[INFO] Supply branch lookup summary: no fuels were missing in their "
-            "attempted Resources root(s)."
-        )
-
-
-def run_supply_leap_import(
-    export_directory: Path = EXPORT_DIR,
-    filename: str | None = EXPORT_FILE_NAME,
-    scenario_to_run: str = SCENARIO_TO_RUN,
-    region: str = EXPORT_REGION,
-    handle_current_accounts: bool = HANDLE_CURRENT_ACCOUNTS_TOO,
-    fill_branches: bool = FILL_BRANCHES_FROM_EXPORT_FILE,
-) -> Path:
-    """Locate the supply export and optionally fill the matching LEAP branches."""
-    export_path = locate_supply_export(export_directory, filename)
-    declared_scenarios = extract_export_metadata(export_path)
-    available_scenarios = get_available_scenarios(export_path)
-    print(
-        f"[INFO] Preparing supply import from '{export_path.name}', declared scenarios "
-        f"{declared_scenarios}, available scenarios {available_scenarios}."
-    )
-    if scenario_to_run not in available_scenarios:
-        raise ValueError(
-            f"Desired scenario '{scenario_to_run}' not present; available: {available_scenarios}"
-        )
-    ensure_region_in_export(export_path, region)
-
-    dispatch_result = dispatch_analysis_input_write(
-        export_path=export_path,
-        sheet_name=SHEET_NAME,
-        scenario=scenario_to_run,
-        region=region,
-        context_label="supply_data_pipeline.run_supply_leap_import",
-    )
-    if dispatch_result.get("mode") == "workbook":
-        return export_path
-
-    L = connect_to_leap()
-    if L is None:
-        raise RuntimeError("Failed to connect to LEAP.")
-    fuel_catalog_preflight.run_fuel_catalog_preflight(
-        export_path=export_path,
-        sheet_name=SHEET_NAME,
-        scenario=scenario_to_run,
-        context="supply_data_pipeline.run_supply_leap_import",
-        leap_app=L,
-    )
-
-    if fill_branches:
-        print(
-            "[INFO] Supply branches under Resources auto-create when their fuels "
-            "are first used in Transformation/Demand and can be skipped until LEAP "
-            "creates them."
-        )
-        ensure_supply_fuels_from_export(L, export_path)
-        run_branch_fill(
-            L,
-            export_path,
-            scenario_to_run,
-            region,
-            handle_current_accounts,
-            raise_on_missing_branch=False,
-        )
-    return export_path
 
 
 if __name__ == "__main__":
