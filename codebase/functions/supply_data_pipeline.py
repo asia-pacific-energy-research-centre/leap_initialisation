@@ -186,7 +186,7 @@ EXPORT_OUTPUT_DIR = Path(
 )
 EXPORT_FILENAME_TEMPLATE = "supply_leap_imports_{economy}_{scenarios}.xlsx"
 EXPORT_FILENAME_REGEX = re.compile(
-    r"supply_leap_imports_(?P<economy>[^_]+)_(?P<scenarios>.+)\.xlsx",
+    r"supply_leap_imports_(?P<body>.+)\.xlsx",
     re.IGNORECASE,
 )
 EXPORT_MODEL_NAME = "USA transport supply imports"

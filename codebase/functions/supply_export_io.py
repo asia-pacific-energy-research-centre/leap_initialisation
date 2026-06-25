@@ -25,7 +25,7 @@ FILL_BRANCHES_FROM_EXPORT_FILE = workflow_cfg.SUPPLY_FILL_BRANCHES_FROM_EXPORT_F
 HANDLE_CURRENT_ACCOUNTS_TOO = workflow_cfg.SUPPLY_HANDLE_CURRENT_ACCOUNTS_TOO
 SHEET_NAME = workflow_cfg.SUPPLY_SHEET_NAME
 EXPORT_FILENAME_REGEX = re.compile(
-    r"supply_leap_imports_(?P<economy>[^_]+)_(?P<scenarios>.+)\.xlsx",
+    r"supply_leap_imports_(?P<body>.+)\.xlsx",
     re.IGNORECASE,
 )
 
@@ -71,9 +71,19 @@ def extract_export_metadata(export_path: Path) -> list[str]:
         raise ValueError(
             f"Supply export filename '{export_path.name}' does not match the expected pattern."
         )
-    tokens = [tok for tok in match.group("scenarios").split("_") if tok]
+    body_tokens = [tok for tok in match.group("body").split("_") if tok]
+    scenario_tokens: list[str] = []
+    for token in reversed(body_tokens):
+        if _match_scenario_token(token.replace("-", " ").strip()) is None:
+            break
+        scenario_tokens.append(token)
+    scenario_tokens.reverse()
+    if not scenario_tokens:
+        raise ValueError(
+            f"Supply export filename '{export_path.name}' does not contain recognized scenario tokens."
+        )
     normalized = []
-    for token in tokens:
+    for token in scenario_tokens:
         label = token.replace("-", " ").strip()
         scenario_name = _match_scenario_token(label)
         normalized.append(scenario_name or label)
