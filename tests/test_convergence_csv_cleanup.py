@@ -6,8 +6,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+import json
+
 from codebase.supply_reconciliation_history import (
     clear_convergence_csv,
+    rollback_last_capacity_unmet_pass,
     trim_convergence_csv_to_pass,
 )
 
@@ -92,3 +95,35 @@ def test_clear_no_op_when_file_missing(tmp_path):
     missing = tmp_path / "does_not_exist.csv"
     clear_convergence_csv(csv_path=missing)
     assert not missing.exists()
+
+
+def test_rollback_also_trims_convergence_csv(tmp_path):
+    state = {
+        "passes": ["pass1", "pass2", "pass3"],
+        "pass_deltas": [
+            {"pass_index": 1, "mode": "balanced", "timestamp_utc": "2026-01-01T00:00:00+00:00",
+             "capacity_additions": {}, "output_additions": {}, "primary_additions": {},
+             "export_adjustments": {}, "pre_pass_signatures": {}},
+            {"pass_index": 2, "mode": "balanced", "timestamp_utc": "2026-01-02T00:00:00+00:00",
+             "capacity_additions": {}, "output_additions": {}, "primary_additions": {},
+             "export_adjustments": {}, "pre_pass_signatures": {}},
+            {"pass_index": 3, "mode": "balanced", "timestamp_utc": "2026-01-03T00:00:00+00:00",
+             "capacity_additions": {}, "output_additions": {}, "primary_additions": {},
+             "export_adjustments": {}, "pre_pass_signatures": {}},
+        ],
+        "cumulative_capacity_additions": {},
+        "cumulative_output_additions": {},
+        "cumulative_primary_additions": {},
+        "cumulative_export_adjustments": {},
+        "last_results_signatures": {},
+    }
+    state_path = tmp_path / "state.json"
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    csv_path = tmp_path / "convergence.csv"
+    _make_csv(csv_path, [1, 2, 3])
+
+    rollback_last_capacity_unmet_pass(state_path=state_path, convergence_csv_path=csv_path)
+
+    df = pd.read_csv(csv_path)
+    assert list(df["pass_count"]) == [1, 2]

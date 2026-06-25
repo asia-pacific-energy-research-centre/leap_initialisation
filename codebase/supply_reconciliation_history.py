@@ -75,6 +75,7 @@ def _capacity_unmet_default_state() -> dict[str, object]:
 
 def rollback_last_capacity_unmet_pass(
     state_path: Path | str = CAPACITY_UNMET_STATE_PATH,
+    convergence_csv_path: Path | None = None,
 ) -> dict[str, object]:
     """Remove the most recent iterative pass and undo its cumulative additions.
 
@@ -167,6 +168,7 @@ def rollback_last_capacity_unmet_pass(
         f"(mode={delta.get('mode', '?')}, timestamp={delta.get('timestamp_utc', '?')}). "
         f"State written to {path}."
     )
+    trim_convergence_csv_to_pass(pass_number=len(state["passes"]), csv_path=convergence_csv_path)
     return state
 
 
