@@ -46,6 +46,7 @@ from codebase.functions.ninth_projection_mapping import (
     build_projection_lookup,
     normalize_economy_key,
 )
+from codebase.functions import supply_assets as supply_assets_module
 from codebase.functions.supply_branch_classification import (
     ESTO_PRODUCT_CLASSIFICATION,
     SECONDARY_ESTO_PRODUCT_EXACT,
@@ -328,91 +329,31 @@ def prepare_supply_assets(
     save_subtotal_labeled: bool = SAVE_ESTO_SUBTOTAL_LABELED,
     subtotal_output_path: str = ESTO_SUBTOTAL_LABELED_OUTPUT_PATH,
 ):
-    """Load the supply datasets and build the required mappings."""
+    """Compatibility wrapper for loading supply datasets and mappings."""
     ensure_repo_root()
-    sector_config = build_supply_sector_config(
-        CODE_TO_NAME_PATHS,
-        exclude_prefixes=EXCLUDED_ESTO_PREFIXES,
-    )
-    code_to_name_mapping = (
-        load_code_to_name_mapping(CODE_TO_NAME_PATHS) if USE_CODE_TO_NAME_MAPPING else {}
-    )
-    if code_to_name_mapping:
-        sector_config = apply_code_to_name_mapping(
-            sector_config, code_to_name_mapping
-        )
+    supply_assets_module.ESTO_DATA_PATH = ESTO_DATA_PATH
+    supply_assets_module.NINTH_DATA_PATH = NINTH_DATA_PATH
+    supply_assets_module.SUBTOTAL_MAPPING_PATH = SUBTOTAL_MAPPING_PATH
+    supply_assets_module.NINTH_TO_ESTO_MAPPING_PATH = NINTH_TO_ESTO_MAPPING_PATH
+    supply_assets_module.CODE_TO_NAME_PATHS = CODE_TO_NAME_PATHS
+    supply_assets_module.BASE_YEAR = BASE_YEAR
+    supply_assets_module.PROJECTION_YEAR_RANGE = PROJECTION_YEAR_RANGE
+    supply_assets_module.REFERENCE_CACHE_DIR = REFERENCE_CACHE_DIR
+    supply_assets_module.USE_CODE_TO_NAME_MAPPING = USE_CODE_TO_NAME_MAPPING
+    supply_assets_module.EXCLUDED_ESTO_PREFIXES = EXCLUDED_ESTO_PREFIXES
+    supply_assets_module.SAVE_PROJECTION_DIAGNOSTICS = SAVE_PROJECTION_DIAGNOSTICS
+    supply_assets_module.PROJECTION_DIAGNOSTICS_PATH = PROJECTION_DIAGNOSTICS_PATH
 
-    workflow_common.archive_config_dir_once_per_day()
-    esto_data_raw, ninth_data_raw = load_augmented_reference_tables(
-        esto_path=ESTO_DATA_PATH,
-        ninth_path=NINTH_DATA_PATH,
-        subtotal_mapping_path=SUBTOTAL_MAPPING_PATH,
-        synthetic_rules_path=CONFIG_DIR / "synthetic_reference_rows.csv",
-        cache_dir=REFERENCE_CACHE_DIR,
-        apply_esto_subtotal_map=True,
-        filter_esto_subtotals_flag=False,
-        filter_ninth_subtotals_flag=False,
-    )
-    print(
-        f"Loaded ESTO data (augmented): {esto_data_raw.shape[0]} rows, {esto_data_raw.shape[1]} columns"
-    )
-    print(
-        f"Loaded 9th data (augmented): {ninth_data_raw.shape[0]} rows, {ninth_data_raw.shape[1]} columns"
-    )
-    ninth_data_raw, ninth_year_cols = normalize_year_columns(ninth_data_raw)
-    esto_data_raw, esto_year_cols = normalize_year_columns(esto_data_raw)
-
-    ninth_data = filter_reference_scenario(ninth_data_raw, "9th data")
-    if "subtotal_results" in ninth_data.columns:
-        ninth_data = ninth_data[ninth_data["subtotal_results"] == False].copy()
-    esto_data_with_subtotals = apply_matt_subtotal_mapping(
-        esto_data_raw, SUBTOTAL_MAPPING_PATH
-    )
-    # if save_subtotal_labeled:
-    #     save_subtotal_labeled_data(
-    #         esto_data_with_subtotals,
-    #         subtotal_output_path,
-    #         "ESTO (Matt) data",
-    #     )
-    esto_data = filter_matt_subtotals(esto_data_with_subtotals)
-
-    economy_list = workflow_common.normalize_economies(economies or ECONOMIES_TO_ANALYZE)
-    should_aggregate, aggregate_label, _ = workflow_common.resolve_aggregate_economy(
-        economy_list,
-        aggregate_label=aggregate_economy_label or ALL_ECONOMY_LABEL,
-    )
-    if should_aggregate:
-        ninth_data = add_all_economy_total(
-            ninth_data, ninth_year_cols, aggregate_label
-        )
-        esto_data = add_all_economy_total(
-            esto_data, esto_year_cols, aggregate_label
-        )
-
-    projection_df, projection_diagnostics = build_esto_projection_table(
-        ninth_data=ninth_data,
-        esto_data=esto_data,
-        mapping_path=NINTH_TO_ESTO_MAPPING_PATH,
-        base_year=BASE_YEAR,
-        projection_years=PROJECTION_YEAR_RANGE,
+    assets, projection_lookup = supply_assets_module.prepare_supply_assets(
+        economies=economies,
+        aggregate_economy_label=aggregate_economy_label,
+        save_subtotal_labeled=save_subtotal_labeled,
+        subtotal_output_path=subtotal_output_path,
+        return_projection_lookup=True,
     )
     global SUPPLY_PROJECTION_LOOKUP
-    SUPPLY_PROJECTION_LOOKUP = build_projection_lookup(projection_df)
-    if SAVE_PROJECTION_DIAGNOSTICS and projection_diagnostics is not None:
-        if not projection_diagnostics.empty:
-            PROJECTION_DIAGNOSTICS_PATH.parent.mkdir(parents=True, exist_ok=True)
-            projection_diagnostics.to_csv(PROJECTION_DIAGNOSTICS_PATH, index=False)
-            print(f"Saved projection fallback report to {PROJECTION_DIAGNOSTICS_PATH}")
-
-    dataset_map = build_dataset_map(
-        esto_data,
-        esto_year_cols,
-        ninth_data,
-        ninth_year_cols,
-        esto_data_raw,
-        esto_year_cols,
-    )
-    return dataset_map, sector_config, code_to_name_mapping, ninth_data, esto_data
+    SUPPLY_PROJECTION_LOOKUP = projection_lookup
+    return assets
 
 
 def generate_supply_exports(
