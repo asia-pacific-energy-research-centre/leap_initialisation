@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "leap-initialisation"
+version = "0.1.0"
+description = "LEAP area initialisation workflows, including supply reconciliation."
+authors = [{ name = "LEAP Team" }]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas",
+    "openpyxl",
+    "matplotlib",
+    "pywin32 ; platform_system == 'Windows'",
+]
+
+[project.urls]
+Homepage = "https://example.com/leap-initialisation"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["codebase*"]
