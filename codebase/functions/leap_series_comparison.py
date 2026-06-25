@@ -77,6 +77,7 @@ class ComparisonRunConfig:
     projection_start_year: int = 2023
     projection_end_year: int = 2060
     output_dir: str | Path = Path("outputs") / "series_comparison"
+    esto_data_path_for_ninth: Path | None = None
 
 
 @dataclass
@@ -327,9 +328,10 @@ def _load_esto_data(
     return df
 
 
-def _load_ninth_data(ninth_data_path: Path) -> pd.DataFrame:
+def _load_ninth_data(ninth_data_path: Path, esto_path: Path | None = None) -> pd.DataFrame:
+    _esto_path = esto_path if esto_path is not None else Path("data/00APEC_2025_low_with_subtotals.csv")
     _, df = load_augmented_reference_tables(
-        esto_path=Path("data/00APEC_2025_low_with_subtotals.csv"),
+        esto_path=_esto_path,
         ninth_path=ninth_data_path,
         synthetic_rules_path=Path("config/synthetic_reference_rows.csv"),
         cache_dir=Path("data/.cache/leap_series_comparison_reference_tables"),
@@ -836,7 +838,7 @@ def run_leap_series_comparison(config: ComparisonRunConfig) -> ComparisonArtifac
 
     economy_key = normalize_economy_key(config.economy)
     esto_df = _load_esto_data(esto_data_path, subtotal_mapping_path)
-    ninth_df = _load_ninth_data(ninth_data_path)
+    ninth_df = _load_ninth_data(ninth_data_path, esto_path=getattr(config, "esto_data_path_for_ninth", None))
     mapping_pairs_df = _load_mapping_pairs(ninth_to_esto_mapping_path)
     reference_long_df = _build_reference_long(
         economy_key=economy_key,

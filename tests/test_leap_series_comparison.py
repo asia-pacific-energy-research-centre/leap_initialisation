@@ -108,6 +108,7 @@ def _build_config(
         projection_start_year=2023,
         projection_end_year=2024,
         output_dir=tmp_path / output_name,
+        esto_data_path_for_ninth=reference_inputs["esto_path"],
     )
 
 
