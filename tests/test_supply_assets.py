@@ -156,8 +156,6 @@ def test_supply_data_pipeline_wrapper_preserves_five_tuple_and_updates_lookup(
     expected_assets = ("dataset_map", "sector_config", "code_map", "ninth", "esto")
     expected_lookup = {"lookup": "value"}
 
-    monkeypatch.setattr(supply_data_pipeline, "ensure_repo_root", lambda: None)
-
     def fake_prepare_supply_assets(
         economies,
         aggregate_economy_label,

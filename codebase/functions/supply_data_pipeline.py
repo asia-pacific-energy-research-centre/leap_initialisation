@@ -7,7 +7,6 @@
 # - For each fuel, selects import/export rows based on flow labels.
 # - Uses 2022 ESTO base-year values plus 9th projections for 2023+.
 # - Prints import/export totals for each fuel and economy.
-import os
 import sys
 from pathlib import Path
 from typing import Iterable
@@ -167,15 +166,6 @@ SUPPLY_PROJECTION_LOOKUP = None
 ######### FUNCTIONS #########
 
 
-def ensure_repo_root():
-    """Move to repo root if running from the scrapbook folder."""
-    try:
-        if os.getcwd().endswith("scrapbook"):
-            os.chdir("../../")
-    except Exception as exc:
-        print(f"Failed to set repo root: {exc}")
-        try_debug_breakpoint()
-        raise
 
 
 
@@ -259,7 +249,6 @@ def prepare_supply_assets(
     subtotal_output_path: str = ESTO_SUBTOTAL_LABELED_OUTPUT_PATH,
 ):
     """Compatibility wrapper for loading supply datasets and mappings."""
-    ensure_repo_root()
     supply_assets_module.ESTO_DATA_PATH = ESTO_DATA_PATH
     supply_assets_module.NINTH_DATA_PATH = NINTH_DATA_PATH
     supply_assets_module.SUBTOTAL_MAPPING_PATH = SUBTOTAL_MAPPING_PATH

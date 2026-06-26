@@ -57,11 +57,11 @@ from codebase.utilities.leap_balance_export_resolver import (
 ENERGY_SOURCE_CONFIG = workflow_cfg.get_energy_source_config()
 ESTO_DATA_PATH = ENERGY_SOURCE_CONFIG.esto_base_table_path
 NINTH_DATA_PATH = ENERGY_SOURCE_CONFIG.ninth_projection_table_path
-ESTO_SUBTOTAL_MAPPING_PATH = Path("config/ESTO_subtotal_mapping.xlsx")
-LEAP_MAPPINGS_PATH = Path("config/leap_mappings.xlsx")
+ESTO_SUBTOTAL_MAPPING_PATH = REPO_ROOT / "config" / "ESTO_subtotal_mapping.xlsx"
+LEAP_MAPPINGS_PATH = REPO_ROOT / "config" / "leap_mappings.xlsx"
 OUTPUT_FUEL_VALIDATION_ESTO_PATHS = [
-    Path("data/00APEC_2025_low_with_subtotals.csv"),
-    Path("data/00APEC_2024_low_with_subtotals.csv"),
+    REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv",
+    REPO_ROOT / "data" / "00APEC_2024_low_with_subtotals.csv",
 ]
 
 
@@ -95,7 +95,7 @@ EXPORT_FILENAME_TEMPLATE = str(
 # ScenarioID, and RegionID to generated rows. Rows that don't match are
 # dropped with a [WARN] (branch not yet in LEAP / export key is stale).
 # Refresh data/full model export.xlsx from LEAP to include new branches.
-EXPORT_KEY_WORKBOOK_PATH = Path("data/full model export.xlsx")
+EXPORT_KEY_WORKBOOK_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 EXPORT_KEY_WORKBOOK_SHEET = "Export"
 
 # Demand branch root. Generated paths are:
@@ -115,7 +115,7 @@ PROXY_ACTIVITY_SOURCE_MODE = "esto_ninth"
 #   that file.
 # - Leave it as None to auto-resolve from the selected economy,
 #   LEAP_BALANCE_SCENARIO, and LEAP_BALANCE_DATE_ID.
-LEAP_BALANCE_EXPORTS_ROOT = Path("data/leap balances exports")
+LEAP_BALANCE_EXPORTS_ROOT = REPO_ROOT / "data" / "leap balances exports"
 
 # Scenario/date filters for auto-resolving a LEAP balance workbook when the
 # explicit workbook path is None. Scenario examples: "Target", "Reference".
