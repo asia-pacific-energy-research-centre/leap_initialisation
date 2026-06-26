@@ -69,6 +69,12 @@ INTENSITY_VARIABLE_NAME = "Final Energy Intensity"
 ACTIVITY_VARIABLE_NAME = "Activity Level"
 ACTIVITY_UNITS = "Unspecified Unit"
 LEAP_SCENARIOS = ["Current Accounts", "Reference", "Target"]
+
+# ── Sector-branch mode ────────────────────────────────────────────────────────
+# When True, branches are written as Demand\All demand aggregated\{SectorLabel}\{fuel_name}
+# instead of the flat Demand\All demand aggregated\{fuel_name}.
+# Disabled by default; enable when LEAP has per-sector sub-branches set up.
+USE_SECTOR_BRANCHES = False
 # Maps LEAP scenario names to the 'scenarios' column values in the merged CSV
 SCENARIO_CSV_MAP: dict[str, str] = {
     "Current Accounts": "reference",
@@ -199,6 +205,18 @@ FULL_MODEL_EXPORT_SHEET = "Export"
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+_SECTOR_LEAP_LABELS: dict[str, str] = {
+    "04_international_marine_bunkers":              "International Marine Bunkers",
+    "05_international_aviation_bunkers":            "International Aviation Bunkers",
+    "10_01_own_use":                               "Own Use",
+    "10_02_transmission_and_distribution_losses":  "Transmission and Distribution Losses",
+    "10_losses_and_own_use":                       "Losses and Own Use",
+    "14_industry_sector":                          "Industry",
+    "15_transport_sector":                         "Transport",
+    "16_other_sector":                             "Other Sector",
+    "17_nonenergy_use":                            "Non-Energy Use",
+}
 
 _SECTOR_SHORT_CODES: dict[str, str] = {
     # top-level sectors
@@ -338,6 +356,19 @@ def _esto_flow_is_excluded(flow: object, excluded_codes: set[str]) -> bool:
     return False
 
 
+def _esto_flow_to_sector(flow: str) -> str:
+    """Map an ESTO flow code (dot-notation prefix) to a top-level sector key."""
+    if flow.startswith("04"):    return "04_international_marine_bunkers"
+    if flow.startswith("05"):    return "05_international_aviation_bunkers"
+    if flow.startswith("10.01"): return "10_01_own_use"
+    if flow.startswith("10.02"): return "10_02_transmission_and_distribution_losses"
+    if flow.startswith("14"):    return "14_industry_sector"
+    if flow.startswith("15"):    return "15_transport_sector"
+    if flow.startswith("16"):    return "16_other_sector"
+    if flow.startswith("17"):    return "17_nonenergy_use"
+    return "other"
+
+
 def _load_demand_csv(
     path: Path = PROJECTION_DATA_PATH,
     economy: str | None = None,
@@ -407,6 +438,7 @@ def _extract_base_year(
     base_year: int = BASE_YEAR,
     exclude_own_use_td_losses: bool = False,
     excluded_sectors: list[str] | None = None,
+    use_sector_branches: bool = False,
 ) -> pd.DataFrame:
     """
     Filter configured ESTO base-year demand rows. Returns long DataFrame:
@@ -455,6 +487,9 @@ def _extract_base_year(
     filtered["year"] = int(base_year)
     filtered["value"] = pd.to_numeric(filtered[base_col], errors="coerce").abs().fillna(0.0)
 
+    if use_sector_branches:
+        filtered["sector"] = filtered["flows"].apply(_esto_flow_to_sector)
+        return filtered[["economy", "sector", "fuel_code", "year", "value"]].copy()
     return filtered[["economy", "fuel_code", "year", "value"]].copy()
 
 
@@ -464,6 +499,7 @@ def _extract_projection_years(
     final_year: int = PROJECTION_END_YEAR,
     exclude_own_use_td_losses: bool = False,
     excluded_sectors: list[str] | None = None,
+    use_sector_branches: bool = False,
 ) -> pd.DataFrame:
     """
     Filter to ninth projection rows (>=2023, subtotal_results=False).
@@ -500,15 +536,25 @@ def _extract_projection_years(
         return pd.DataFrame(columns=["economy", "fuel_code", "year", "value"])
 
     filtered["fuel_code"] = _resolve_fuel_code(filtered["fuels"], filtered["subfuels"])
-    long = filtered[["economy", "fuel_code", *year_cols]].melt(
-        id_vars=["economy", "fuel_code"],
+    if use_sector_branches:
+        filtered = filtered.copy()
+        filtered["sector"] = filtered["sectors"]
+        id_vars = ["economy", "sector", "fuel_code"]
+        select_cols = ["economy", "sector", "fuel_code", *year_cols]
+    else:
+        id_vars = ["economy", "fuel_code"]
+        select_cols = ["economy", "fuel_code", *year_cols]
+    long = filtered[select_cols].melt(
+        id_vars=id_vars,
         value_vars=year_cols,
         var_name="year",
         value_name="value",
     )
     long["year"] = pd.to_numeric(long["year"], errors="coerce").astype("Int64")
     long["value"] = pd.to_numeric(long["value"], errors="coerce").abs().fillna(0.0)
-    return long[["economy", "fuel_code", "year", "value"]].copy()
+    out_cols = (["economy", "sector", "fuel_code", "year", "value"] if use_sector_branches
+                else ["economy", "fuel_code", "year", "value"])
+    return long[out_cols].copy()
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
@@ -523,12 +569,15 @@ def build_aggregated_demand(
     fuel_mappings_path: Path = FUEL_MAPPINGS_PATH,
     exclude_own_use_td_losses: bool = False,
     excluded_sectors: list[str] | None = None,
+    use_sector_branches: bool = False,
 ) -> pd.DataFrame:
     """
     Build aggregated demand by LEAP fuel for one economy and scenario.
 
     Returns DataFrame with columns:
         economy, scenario, leap_fuel_name, year, value  (value in PJ, positive)
+    When use_sector_branches=True, also includes a 'sector' column with the
+    top-level demand sector key (e.g. '14_industry_sector').
 
     ESTO base-year products and ninth projection fuels not found in the active
     canonical mapping sheets are dropped with a warning.
@@ -554,17 +603,16 @@ def build_aggregated_demand(
         esto_df["economy"] = economy_label
         ninth_df["economy"] = economy_label
 
+    group_cols = ["economy", "sector", "fuel_code", "year"] if use_sector_branches else ["economy", "fuel_code", "year"]
+
     base_rows = _extract_base_year(
         esto_df,
         base_year=base_year,
         exclude_own_use_td_losses=exclude_own_use_td_losses,
         excluded_sectors=excluded_sectors,
+        use_sector_branches=use_sector_branches,
     )
-    base_agg = (
-        base_rows
-        .groupby(["economy", "fuel_code", "year"], as_index=False)["value"]
-        .sum(min_count=1)
-    )
+    base_agg = base_rows.groupby(group_cols, as_index=False)["value"].sum(min_count=1)
     base_agg["value"] = base_agg["value"].fillna(0.0)
 
     if scenario == "Current Accounts":
@@ -577,12 +625,9 @@ def build_aggregated_demand(
             final_year=final_year,
             exclude_own_use_td_losses=exclude_own_use_td_losses,
             excluded_sectors=excluded_sectors,
+            use_sector_branches=use_sector_branches,
         )
-        proj_agg = (
-            proj_rows
-            .groupby(["economy", "fuel_code", "year"], as_index=False)["value"]
-            .sum(min_count=1)
-        )
+        proj_agg = proj_rows.groupby(group_cols, as_index=False)["value"].sum(min_count=1)
         proj_agg["value"] = proj_agg["value"].fillna(0.0)
         combined = pd.concat([base_agg, proj_agg], ignore_index=True)
 
@@ -602,15 +647,18 @@ def build_aggregated_demand(
     combined = combined[combined["leap_fuel_name"].notna()].copy()
 
     # Aggregate many-to-one fuel mappings
-    result = combined.groupby(
-        ["economy", "leap_fuel_name", "year"], as_index=False
-    )["value"].sum(min_count=1)
+    agg_cols = (["economy", "sector", "leap_fuel_name", "year"] if use_sector_branches
+                else ["economy", "leap_fuel_name", "year"])
+    result = combined.groupby(agg_cols, as_index=False)["value"].sum(min_count=1)
     result["value"] = result["value"].fillna(0.0)
     result["scenario"] = scenario
 
+    out_cols = (["economy", "scenario", "sector", "leap_fuel_name", "year", "value"]
+                if use_sector_branches
+                else ["economy", "scenario", "leap_fuel_name", "year", "value"])
     return (
-        result[["economy", "scenario", "leap_fuel_name", "year", "value"]]
-        .sort_values(["economy", "scenario", "leap_fuel_name", "year"])
+        result[out_cols]
+        .sort_values(out_cols[:-1])
         .reset_index(drop=True)
     )
 
@@ -625,6 +673,7 @@ def build_aggregated_demand_all_scenarios(
     fuel_mappings_path: Path = FUEL_MAPPINGS_PATH,
     exclude_own_use_td_losses: bool = False,
     excluded_sectors: list[str] | None = None,
+    use_sector_branches: bool = False,
 ) -> pd.DataFrame:
     """Build aggregated demand for all LEAP scenarios and return combined DataFrame."""
     parts = [
@@ -638,6 +687,7 @@ def build_aggregated_demand_all_scenarios(
             fuel_mappings_path=fuel_mappings_path,
             exclude_own_use_td_losses=exclude_own_use_td_losses,
             excluded_sectors=excluded_sectors,
+            use_sector_branches=use_sector_branches,
         )
         for s in scenarios
     ]
@@ -758,6 +808,7 @@ def save_aggregated_demand_as_leap_workbook(
     exclude_own_use_td_losses: bool = False,
     id_lookup_path: Path | str | None = None,
     excluded_sectors: list[str] | None = None,
+    use_sector_branches: bool = False,
 ) -> Path | None:
     """
     Build aggregated demand and save as a LEAP-importable workbook (LEAP + FOR_VIEWING sheets).
@@ -784,13 +835,25 @@ def save_aggregated_demand_as_leap_workbook(
         fuel_mappings_path=fuel_mappings_path,
         exclude_own_use_td_losses=exclude_own_use_td_losses,
         excluded_sectors=excluded_sectors,
+        use_sector_branches=use_sector_branches,
     )
     if demand.empty:
         print("[INFO] save_aggregated_demand_as_leap_workbook: no demand data — workbook not written.")
         return None
 
+    has_sector = use_sector_branches and "sector" in demand.columns
+    group_keys = (["sector", "leap_fuel_name", "scenario"] if has_sector
+                  else ["leap_fuel_name", "scenario"])
+
     rows = []
-    for (fuel_name, scenario), grp in demand.groupby(["leap_fuel_name", "scenario"], sort=True):
+    for group_key, grp in demand.groupby(group_keys, sort=True):
+        if has_sector:
+            sector_key, fuel_name, scenario = group_key
+            sector_label = _SECTOR_LEAP_LABELS.get(sector_key, sector_key)
+            branch = f"{DEMAND_BRANCH_ROOT}\\{sector_label}\\{fuel_name}"
+        else:
+            fuel_name, scenario = group_key
+            branch = f"{DEMAND_BRANCH_ROOT}\\{fuel_name}"
         grp = grp.sort_values("year")
         year_val = list(zip(grp["year"].astype(int), grp["value"].astype(float)))
         if scenario == "Current Accounts":
@@ -802,7 +865,6 @@ def save_aggregated_demand_as_leap_workbook(
                 tokens.append(str(yr))
                 tokens.append(f"{val:.6g}")
             expr = "Data(" + ", ".join(tokens) + ")"
-        branch = f"{DEMAND_BRANCH_ROOT}\\{fuel_name}"
         if USE_INTENSITY_ACTIVITY_MODE:
             rows.append({
                 "Branch Path": branch,
@@ -1060,21 +1122,33 @@ def save_to_leap_export(
     output_path: Path,
     region: str = DEFAULT_EXPORT_REGION,
     branch_root: str = DEMAND_BRANCH_ROOT,
+    use_sector_branches: bool = False,
 ) -> None:
     """
     Write aggregated demand to a LEAP-importable Excel workbook.
 
     demand_df must have columns: economy, scenario, leap_fuel_name, year, value.
+    When use_sector_branches=True, demand_df must also have a 'sector' column and
+    branches are written as {branch_root}\\{SectorLabel}\\{fuel_name}.
     Produces one row per (fuel, scenario) in the LEAP export format.
     """
     if demand_df is None or demand_df.empty:
         print("[WARN] save_to_leap_export called with empty DataFrame — nothing written.")
         return
 
+    has_sector = use_sector_branches and "sector" in demand_df.columns
+    group_keys = (["sector", "leap_fuel_name", "scenario"] if has_sector
+                  else ["leap_fuel_name", "scenario"])
+
     rows = []
-    for (fuel_name, scenario), grp in demand_df.groupby(
-        ["leap_fuel_name", "scenario"], sort=True
-    ):
+    for group_key, grp in demand_df.groupby(group_keys, sort=True):
+        if has_sector:
+            sector_key, fuel_name, scenario = group_key
+            sector_label = _SECTOR_LEAP_LABELS.get(sector_key, sector_key)
+            branch = f"{branch_root}\\{sector_label}\\{fuel_name}"
+        else:
+            fuel_name, scenario = group_key
+            branch = f"{branch_root}\\{fuel_name}"
         grp = grp.sort_values("year")
         year_val = list(zip(grp["year"].astype(int), grp["value"].astype(float)))
 
@@ -1083,8 +1157,6 @@ def save_to_leap_export(
             expr = f"{base_vals[0][1]:.6g}" if base_vals else "0"
         else:
             expr = _data_expression(year_val)
-
-        branch = f"{branch_root}\\{fuel_name}"
         if USE_INTENSITY_ACTIVITY_MODE:
             rows.append({
                 "Branch Path": branch,
@@ -1159,6 +1231,7 @@ def main(
     final_year: int = PROJECTION_END_YEAR,
     output_dir: Path | None = None,
     excluded_sectors: list[str] | None = None,
+    use_sector_branches: bool = USE_SECTOR_BRANCHES,
 ) -> None:
     """
     Run the aggregated demand workflow for one economy and save to Excel.
@@ -1168,6 +1241,9 @@ def main(
     If excluded_sectors is provided (e.g. ["14_industry_sector", "16_01_buildings"]),
     those sector/sub1sector codes are omitted from the aggregation and the output
     filename will include a suffix such as "_no_industry_buildings".
+    If use_sector_branches=True, branches are written as
+    Demand\\All demand aggregated\\{SectorLabel}\\{fuel_name} instead of the flat
+    per-fuel path.
     """
     if economy is None:
         economies = list(getattr(workflow_cfg, "GLOBAL_ECONOMIES", ["20_USA"]))
@@ -1190,6 +1266,7 @@ def main(
         esto_data_path=ESTO_BASE_DATA_PATH,
         fuel_mappings_path=FUEL_MAPPINGS_PATH,
         excluded_sectors=excluded_sectors,
+        use_sector_branches=use_sector_branches,
     )
 
     fuels_found = sorted(demand["leap_fuel_name"].unique())
@@ -1197,16 +1274,19 @@ def main(
 
     if excluded_sectors:
         print(f"[INFO] Excluded sectors: {excluded_sectors}")
+    if use_sector_branches:
+        print(f"[INFO] Sector-branch mode: branches will include sector sub-level.")
 
     scenario_token = "_".join(
         "".join(c for c in s if c.isalnum()) for s in use_scenarios
     )
     econ_token = "".join(c for c in economy if c.isalnum() or c == "_")
     exclusion_suffix = _sector_exclusion_suffix(excluded_sectors)
-    filename = f"aggregated_demand_{econ_token}_{scenario_token}{exclusion_suffix}.xlsx"
+    sector_suffix = "_by_sector" if use_sector_branches else ""
+    filename = f"aggregated_demand_{econ_token}_{scenario_token}{exclusion_suffix}{sector_suffix}.xlsx"
     output_path = out_dir / filename
 
-    save_to_leap_export(demand, output_path=output_path)
+    save_to_leap_export(demand, output_path=output_path, use_sector_branches=use_sector_branches)
     print(f"[INFO] Done.")
 
 
