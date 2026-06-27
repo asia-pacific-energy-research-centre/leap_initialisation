@@ -69,6 +69,86 @@ LEAP import workbooks.
   - `supply_reconciliation_workflow.py` also uses it for verification and for
     supply root classification.
 
+#### Maintaining `full model export.xlsx`
+
+This workbook is the canonical snapshot of the LEAP model structure used by
+initialisation. It is a routing and schema reference, not the source of the
+initialisation values. Generated expressions are written by the workflows;
+the export tells those workflows which LEAP branch and variable each value can
+be written to.
+
+The workflow uses the workbook to:
+
+- match `Branch Path`, `Variable`, `Scenario`, and `Region` to `BranchID`,
+  `VariableID`, `ScenarioID`, and `RegionID`;
+- validate that generated branch paths exist in the current LEAP model;
+- copy or check `Scale`, `Units`, and `Per...` metadata;
+- discover Resources fuels and their `Primary`/`Secondary` roots;
+- discover transformation modules, processes, and their `Output Fuels`,
+  `Feedstock Fuels`, and `Auxiliary Fuels` leaves;
+- derive the transformation reset and zeroing scope; and
+- validate completed baseline-seed workbooks before import.
+
+Refresh the workbook from the canonical LEAP area whenever model structure or
+internal IDs may have changed. This includes adding, deleting, renaming,
+moving, or deleting and recreating a branch; changing a transformation module,
+process, or fuel leaf; moving a Resources fuel between `Primary` and
+`Secondary`; changing an available variable; changing scenarios; or switching
+to a different LEAP area/template. Deleting and recreating a visibly identical
+branch still requires a refresh because its internal `BranchID` may change.
+
+A refresh is not normally required for numerical changes only, such as new
+ESTO/9th values, recalculated LEAP results, changed projection expressions, or
+a mapping edit that does not change the LEAP branch structure.
+
+The refreshed Analysis-view export must retain:
+
+- filename `data/full model export.xlsx`;
+- sheet name `Export`;
+- the two LEAP preamble rows and the header on Excel row 3;
+- all branches and variables used by initialisation;
+- Current Accounts, Reference, and Target scenarios;
+- all four ID columns, readable key columns, metadata columns, and hierarchy
+  level columns.
+
+Archive the previous workbook before replacement. After replacing it, rerun
+ID/path validation, duplicate-key checks, metadata checks, reset-scope checks,
+share-total checks, and the baseline-seed comparison against the previous
+accepted output. The exact LEAP menu sequence and export selections still need
+to be captured as part of the modeller-facing LEAP export guide.
+
+#### ID integrity and `-1` values
+
+The readable logical key for an import instruction is:
+
+```text
+Branch Path + Variable + Scenario + Region
+```
+
+The corresponding ID tuple routes the instruction inside LEAP:
+
+```text
+BranchID + VariableID + ScenarioID + RegionID
+```
+
+IDs are specific to the LEAP model and must not be guessed or copied from an
+unrelated area. The workflows use `-1` when no valid lookup is available.
+For ordinary Resources, Transformation, and Demand branch rows, a final `-1`
+means the row cannot be relied on to import.
+
+A nonzero row with any unresolved required ID is actionable because an
+intended value may be skipped. A zero-valued `-1` row is not automatically
+safe: it can still be intended to clear an existing LEAP value. Treat it as a
+no-op only when the branch is deliberately absent or the row is otherwise
+proved irrelevant. System-level rows exported by LEAP can legitimately have a
+missing `BranchID`; they are not precedents for generated model-branch rows.
+
+Every final logical key should occur once. Identical duplicates are redundant;
+duplicates with different expressions are invalid until their source and
+intended value are resolved. Do not sum physical duplicate rows when checking
+shares. First resolve duplicate keys and ID validity, then check Output Share,
+Process Share, and Feedstock Fuel Share across the valid sibling leaves.
+
 - `industry export.xlsx`
   - LEAP import/export template for industry demand branches.
   - Used by `codebase/industry_workflow.py` and as the template for

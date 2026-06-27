@@ -62,6 +62,37 @@ After each LEAP recalculation, compare production, transformation inputs/outputs
 
 - 2026-06-27: Recorded the balancing rules documented in the workflow guide.
 
+## CROSS-001: Full-model export and LEAP import ID integrity
+
+**Status:** Confirmed
+**Owner:** leap_initialisation
+**Type:** Operational invariant
+**Affected areas:** `data/full model export.xlsx`; baseline-seed generation and validation; transformation reset scope; supply root classification; `leap_mappings` LEAP hierarchy maintenance
+
+### Situation
+
+Generated workbooks address LEAP through readable keys and model-specific IDs. A stale full-model export can leave a real branch unmatched, attach stale IDs, omit new fuel leaves from reset scope, or misrepresent the LEAP hierarchy used by mapping maintenance. Duplicate logical keys can also conceal conflicting expressions, especially when one copy has valid IDs and another has `-1` sentinels.
+
+### Options
+
+- Treat branch names alone as sufficient and tolerate unresolved IDs.
+- Reject only nonzero rows with `BranchID=-1`.
+- Require a current structural export, unique logical keys, and valid required IDs for final import rows, with explicit review of any proven no-op exception.
+
+### Current rule
+
+Use `data/full model export.xlsx` as the canonical LEAP structure and ID reference. Refresh it after any branch, variable, scenario, Resources-root, process, or fuel-leaf structural change, including deletion and recreation of a branch with the same name. Numerical changes alone do not require refresh.
+
+The logical key `Branch Path + Variable + Scenario + Region` must be unique in a final import workbook. Conflicting duplicates are invalid until resolved. A `-1` sentinel is acceptable only in an intermediate row or an explicitly reviewed no-op that will not be relied on for import. Nonzero missing-ID rows are errors; zero-valued missing-ID rows must also be reviewed when they are intended to reset existing values. Validate all required ID columns, not only `BranchID`.
+
+### Validation
+
+After refreshing the export, compare its branch paths and IDs with the archived version; rebuild catalog/reset scope; run unknown-path, metadata, duplicate-key, and missing-ID checks; validate share totals after duplicate resolution; and compare new baseline seeds with the last accepted set. The detailed lifecycle and required export contents are documented in `data/README.md`.
+
+### History
+
+- 2026-06-27: Recorded the full-model export lifecycle, ID sentinel rules, duplicate-key requirement, and cross-repository mapping dependency after reviewing the June 2026 USA baseline backup.
+
 ## End-to-end run report
 
 Append a dated subsection after each end-to-end run. Report:
