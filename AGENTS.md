@@ -28,6 +28,7 @@ Key dependency: `leap_mappings` (`C:\Users\Work\github\leap_mappings`) is the ca
 Active documentation being developed:
 
 - `docs/supply_reconciliation_workflow_guide.md` — guide to the supply reconciliation workflow and the broader initialisation context.
+- `docs/special_rules_and_design_decisions.md` — human-selected rules, provisional assumptions, and unresolved semantic decisions found during end-to-end runs.
 
 ## When editing draw.io diagrams
 
