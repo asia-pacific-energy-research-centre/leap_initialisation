@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 import json
 from pathlib import Path
 import re
@@ -18,6 +19,10 @@ from typing import Iterable
 import pandas as pd
 
 from codebase.functions.leap_expressions import parse_expression
+from codebase.functions.baseline_seed_validation import (
+    resolve_logical_duplicates,
+    validate_seed_rows,
+)
 
 
 # --- Stable configuration ---
@@ -30,6 +35,15 @@ SHARE_VARIABLES = {
     "Output Share",
     "Process Share",
     "Feedstock Fuel Share",
+}
+DIFFERENCE_CLASSIFICATIONS = {
+    "intentional_improvement",
+    "expected_formatting_or_structure",
+    "regression",
+    "inherited_reference_defect",
+    "unresolved_modelling_decision",
+    "equivalent_semantics",
+    "not_comparable",
 }
 SEED_FILE_PATTERN = "leap_import_baseline_seed_*.xlsx"
 ECONOMY_PATTERN = re.compile(r"leap_import_baseline_seed_(\d{2}_[A-Za-z]+)_")
@@ -44,6 +58,9 @@ class ComparisonOutputs:
     expression_differences_csv: Path
     duplicate_keys_csv: Path
     share_sum_checks_csv: Path
+    rule_findings_csv: Path
+    rule_summary_csv: Path
+    file_provenance_csv: Path
 
 
 def _resolve(path: str | Path) -> Path:
@@ -358,6 +375,7 @@ def compare_seed_tables(
                 {
                     **common,
                     "status": status,
+                    "difference_classification": "not_comparable",
                     "changed_columns": "",
                     "expression_changed": pd.NA,
                     "reference_row": _row_snapshot(row, "reference__", reference_present),
@@ -405,6 +423,7 @@ def compare_seed_tables(
                 {
                     **common,
                     "status": status,
+                    "difference_classification": "unresolved_modelling_decision",
                     "changed_columns": "|".join(changed_columns),
                     "metadata_changes": json.dumps(metadata_changes, ensure_ascii=False, sort_keys=True),
                     "expression_changed": not expression_same,
@@ -452,7 +471,8 @@ def build_share_sum_checks(
     tolerance: float,
 ) -> pd.DataFrame:
     """Audit sibling Output, Process, and Feedstock Fuel shares against 100."""
-    share_rows = data[data["Variable"].map(_text).isin(SHARE_VARIABLES)].copy()
+    resolved_rows, duplicate_groups = resolve_logical_duplicates(data)
+    share_rows = resolved_rows[resolved_rows["Variable"].map(_text).isin(SHARE_VARIABLES)].copy()
     if share_rows.empty:
         return pd.DataFrame()
 
@@ -460,22 +480,27 @@ def build_share_sum_checks(
         lambda row: _share_group_path(row["Branch Path"], _text(row["Variable"])), axis=1
     )
     group_columns = ["share_group_path", "Variable", "Scenario", "Region"]
+    duplicate_counts: dict[tuple[str, str, str, str], tuple[int, int]] = {}
+    if not duplicate_groups.empty:
+        duplicate_work = duplicate_groups.copy()
+        duplicate_work["share_group_path"] = duplicate_work.apply(
+            lambda row: _share_group_path(row.get("Branch Path"), _text(row.get("Variable"))),
+            axis=1,
+        )
+        for duplicate_key, duplicate_group in duplicate_work.groupby(group_columns, dropna=False, sort=False):
+            normalized_key = tuple(_normalized_cell(value) for value in duplicate_key)
+            blocking_count = int(duplicate_group["blocking"].fillna(False).sum())
+            duplicate_counts[normalized_key] = (len(duplicate_group), blocking_count)
     results: list[dict[str, object]] = []
 
     for group_key, group in share_rows.groupby(group_columns, dropna=False, sort=True):
         path, variable, scenario, region = group_key
-        logical_groups = list(group.groupby(LOGICAL_KEY_COLUMNS, dropna=False, sort=True))
         all_years: set[int] = set()
         parsed_rows: list[tuple[str, object, int]] = []
-        ambiguous_keys = 0
         empty_keys = 0
         unknown_keys = 0
 
-        for _, logical_group in logical_groups:
-            signatures = {_expression_signature(value) for value in logical_group["Expression"]}
-            if len(signatures) > 1:
-                ambiguous_keys += 1
-            chosen = logical_group.sort_values("source_excel_row").iloc[-1]
+        for _, chosen in group.iterrows():
             mode, payload = parse_expression(chosen["Expression"])
             if mode == "series" and isinstance(payload, dict):
                 all_years.update(int(year) for year in payload)
@@ -499,10 +524,18 @@ def build_share_sum_checks(
 
             share_sum = sum(values) if values else pd.NA
             delta = float(share_sum) - 100.0 if values else pd.NA
-            if ambiguous_keys or unknown_keys:
-                status = "review_ambiguous_expression"
+            normalized_group_key = tuple(
+                _normalized_cell(value) for value in (path, variable, scenario, region)
+            )
+            duplicate_count, blocking_duplicate_count = duplicate_counts.get(normalized_group_key, (0, 0))
+            if unknown_keys:
+                status = "review_unparseable_expression"
             elif missing_value_count:
                 status = "review_missing_share_value"
+            elif blocking_duplicate_count:
+                status = "blocked_by_conflicting_duplicate"
+            elif abs(float(share_sum)) <= tolerance and variable in {"Output Share", "Process Share"}:
+                status = "inactive_all_zero"
             elif abs(float(delta)) <= tolerance:
                 status = "pass"
             else:
@@ -519,10 +552,10 @@ def build_share_sum_checks(
                     "year": year,
                     "share_sum": share_sum,
                     "difference_from_100": delta,
-                    "share_leaf_count": len(logical_groups),
+                    "share_leaf_count": len(group),
                     "evaluated_leaf_count": len(values),
-                    "duplicate_logical_key_count": sum(len(item) > 1 for _, item in logical_groups),
-                    "ambiguous_logical_key_count": ambiguous_keys,
+                    "duplicate_logical_key_count": duplicate_count,
+                    "blocking_duplicate_logical_key_count": blocking_duplicate_count,
                     "empty_expression_count": empty_keys,
                     "unknown_expression_count": unknown_keys,
                     "status": status,
@@ -531,20 +564,64 @@ def build_share_sum_checks(
     return pd.DataFrame(results)
 
 
+def _file_provenance(
+    path: Path,
+    data: pd.DataFrame,
+    *,
+    economy: str,
+    source: str,
+) -> dict[str, object]:
+    stat = path.stat()
+    scenarios = sorted({_text(value) for value in data.get("Scenario", []) if _text(value)})
+    return {
+        "economy": economy,
+        "source": source,
+        "source_path": str(path.resolve()),
+        "filename": path.name,
+        "modified_at": datetime.fromtimestamp(stat.st_mtime).astimezone().isoformat(),
+        "size_bytes": stat.st_size,
+        "scenarios_present": "|".join(scenarios),
+    }
+
+
+def _source_workflow_attribution(branch_path: object) -> str:
+    """Return a conservative producer attribution for rule diagnostics."""
+    path = _text(branch_path).lower()
+    if path.startswith("resources\\"):
+        return "supply_workflow"
+    if path.startswith("demand\\all demand aggregated\\"):
+        return "aggregated_demand_workflow"
+    if path.startswith("demand\\other loss and own use\\"):
+        return "other_loss_own_use_proxy_workflow"
+    if path.startswith("transformation\\") and "interim" in path:
+        return "electricity_heat_interim_workflow"
+    if path.startswith("transformation\\oil refin"):
+        return "refining_workflow"
+    if path.startswith("transformation\\"):
+        return "transformation_or_transfers_workflow"
+    return "unattributed"
+
+
 def run_baseline_seed_comparison(
-    reference_dir: str | Path,
+    reference_dir: str | Path | None,
     candidate_dir: str | Path,
     output_dir: str | Path,
     *,
     economies: Iterable[str] | None = None,
     numeric_tolerance: float = 1e-9,
     share_tolerance: float = 1e-6,
+    required_years: Iterable[int] | None = None,
+    required_scenarios: Iterable[str] | None = None,
+    template_path: str | Path | None = REPO_ROOT / "data" / "full model export.xlsx",
+    validate_reference: bool = False,
+    validation_exceptions: Iterable[dict[str, object]] | None = None,
 ) -> ComparisonOutputs:
-    """Compare every economy available in either directory and write CSV diagnostics."""
-    reference_files = discover_seed_files(reference_dir)
+    """Validate candidates and optionally compare them with any reference snapshot."""
+    reference_files = discover_seed_files(reference_dir) if reference_dir is not None else {}
     candidate_files = discover_seed_files(candidate_dir)
     output_path = _resolve(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
+    resolved_template_path = _resolve(template_path) if template_path is not None else None
 
     inventory_rows: list[dict[str, object]] = []
     summary_rows: list[dict[str, object]] = []
@@ -552,6 +629,8 @@ def run_baseline_seed_comparison(
     expression_difference_frames: list[pd.DataFrame] = []
     duplicate_rows: list[dict[str, object]] = []
     share_frames: list[pd.DataFrame] = []
+    rule_frames: list[pd.DataFrame] = []
+    provenance_rows: list[dict[str, object]] = []
 
     requested_economies = {str(economy).strip().upper() for economy in economies or []}
     available_economies = set(reference_files) | set(candidate_files)
@@ -579,14 +658,54 @@ def run_baseline_seed_comparison(
                 "candidate_file": str(candidate_file or ""),
             }
         )
-        if reference_file is None or candidate_file is None:
-            continue
+        candidate_data = read_seed_workbook(candidate_file) if candidate_file is not None else None
+        reference_data = read_seed_workbook(reference_file) if reference_file is not None else None
+        if candidate_data is not None:
+            provenance_rows.append(_file_provenance(candidate_file, candidate_data, economy=economy, source="candidate"))
+            candidate_validation = validate_seed_rows(
+                candidate_data,
+                template_path=resolved_template_path,
+                required_years=required_years,
+                required_scenarios=required_scenarios,
+                share_tolerance=share_tolerance,
+                exceptions=validation_exceptions,
+            )
+            if not candidate_validation.findings.empty:
+                candidate_findings = candidate_validation.findings.copy()
+                candidate_findings["source_workflow"] = candidate_findings.get(
+                    "Branch Path", pd.Series("", index=candidate_findings.index)
+                ).map(_source_workflow_attribution)
+                candidate_findings.insert(0, "file", str(candidate_file))
+                candidate_findings.insert(0, "source", "candidate")
+                candidate_findings.insert(0, "economy", economy)
+                rule_frames.append(candidate_findings)
+            duplicate_rows.extend(_duplicate_key_rows(candidate_data, economy, "candidate", candidate_file))
+            share_frames.append(build_share_sum_checks(candidate_data, economy=economy, source="candidate", file_path=candidate_file, tolerance=share_tolerance))
+        if reference_data is not None:
+            provenance_rows.append(_file_provenance(reference_file, reference_data, economy=economy, source="reference"))
+            duplicate_rows.extend(_duplicate_key_rows(reference_data, economy, "reference", reference_file))
+            share_frames.append(build_share_sum_checks(reference_data, economy=economy, source="reference", file_path=reference_file, tolerance=share_tolerance))
+            if validate_reference:
+                reference_validation = validate_seed_rows(
+                    reference_data,
+                    template_path=resolved_template_path,
+                    required_years=required_years,
+                    required_scenarios=required_scenarios,
+                    share_tolerance=share_tolerance,
+                    exceptions=validation_exceptions,
+                )
+                if not reference_validation.findings.empty:
+                    reference_findings = reference_validation.findings.copy()
+                    reference_findings["source_workflow"] = reference_findings.get(
+                        "Branch Path", pd.Series("", index=reference_findings.index)
+                    ).map(_source_workflow_attribution)
+                    reference_findings.insert(0, "file", str(reference_file))
+                    reference_findings.insert(0, "source", "reference")
+                    reference_findings.insert(0, "economy", economy)
+                    rule_frames.append(reference_findings)
 
-        reference_data = read_seed_workbook(reference_file)
-        if reference_file.resolve() == candidate_file.resolve():
-            candidate_data = reference_data.copy()
-        else:
-            candidate_data = read_seed_workbook(candidate_file)
+        if reference_data is None or candidate_data is None:
+            continue
         row_diff, expression_diff, summary = compare_seed_tables(
             reference_data,
             candidate_data,
@@ -601,27 +720,6 @@ def run_baseline_seed_comparison(
         if not expression_diff.empty:
             expression_difference_frames.append(expression_diff)
 
-        duplicate_rows.extend(_duplicate_key_rows(reference_data, economy, "reference", reference_file))
-        duplicate_rows.extend(_duplicate_key_rows(candidate_data, economy, "candidate", candidate_file))
-        share_frames.append(
-            build_share_sum_checks(
-                reference_data,
-                economy=economy,
-                source="reference",
-                file_path=reference_file,
-                tolerance=share_tolerance,
-            )
-        )
-        share_frames.append(
-            build_share_sum_checks(
-                candidate_data,
-                economy=economy,
-                source="candidate",
-                file_path=candidate_file,
-                tolerance=share_tolerance,
-            )
-        )
-
     paths = ComparisonOutputs(
         output_dir=output_path,
         file_inventory_csv=output_path / "file_inventory.csv",
@@ -630,6 +728,9 @@ def run_baseline_seed_comparison(
         expression_differences_csv=output_path / "expression_differences.csv",
         duplicate_keys_csv=output_path / "duplicate_keys.csv",
         share_sum_checks_csv=output_path / "share_sum_checks.csv",
+        rule_findings_csv=output_path / "rule_findings.csv",
+        rule_summary_csv=output_path / "rule_summary.csv",
+        file_provenance_csv=output_path / "file_provenance.csv",
     )
     pd.DataFrame(inventory_rows).to_csv(paths.file_inventory_csv, index=False)
     pd.DataFrame(summary_rows).to_csv(paths.summary_csv, index=False)
@@ -638,6 +739,22 @@ def run_baseline_seed_comparison(
     pd.DataFrame(duplicate_rows).to_csv(paths.duplicate_keys_csv, index=False)
     nonempty_share_frames = [frame for frame in share_frames if not frame.empty]
     pd.concat(nonempty_share_frames, ignore_index=True).to_csv(paths.share_sum_checks_csv, index=False) if nonempty_share_frames else pd.DataFrame().to_csv(paths.share_sum_checks_csv, index=False)
+    all_rule_findings = pd.concat(rule_frames, ignore_index=True) if rule_frames else pd.DataFrame()
+    all_rule_findings.to_csv(paths.rule_findings_csv, index=False)
+    if all_rule_findings.empty:
+        pd.DataFrame().to_csv(paths.rule_summary_csv, index=False)
+    else:
+        rule_summary = (
+            all_rule_findings.groupby(
+                ["economy", "source", "rule_id", "severity", "blocking", "status"],
+                dropna=False,
+                as_index=False,
+            )
+            .size()
+            .rename(columns={"size": "finding_count"})
+        )
+        rule_summary.to_csv(paths.rule_summary_csv, index=False)
+    pd.DataFrame(provenance_rows).to_csv(paths.file_provenance_csv, index=False)
     return paths
 
 

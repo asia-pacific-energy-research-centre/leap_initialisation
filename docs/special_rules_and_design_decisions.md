@@ -83,15 +83,49 @@ Generated workbooks address LEAP through readable keys and model-specific IDs. A
 
 Use `data/full model export.xlsx` as the canonical LEAP structure and ID reference. Refresh it after any branch, variable, scenario, Resources-root, process, or fuel-leaf structural change, including deletion and recreation of a branch with the same name. Numerical changes alone do not require refresh.
 
-The logical key `Branch Path + Variable + Scenario + Region` must be unique in a final import workbook. Conflicting duplicates are invalid until resolved. A `-1` sentinel is acceptable only in an intermediate row or an explicitly reviewed no-op that will not be relied on for import. Nonzero missing-ID rows are errors; zero-valued missing-ID rows must also be reviewed when they are intended to reset existing values. Validate all required ID columns, not only `BranchID`.
+The logical key `Branch Path + Variable + Scenario + Region` must be unique in a final import workbook. Exact duplicates can be removed deterministically. For conflicting duplicates, a sole row with all four valid IDs is selected only to support diagnostics; the physical duplicate group still blocks final import until corrected. Multiple valid-ID conflicts and possible insufficient-key cases are never resolved from workbook row order. Duplicate resolution must precede share validation.
+
+A `-1` sentinel is acceptable only in an intermediate row or an explicitly reviewed no-op that will not be relied on for import. Nonzero missing-ID rows are errors; zero-valued missing-ID rows must also be reviewed when they are intended to reset existing values. Validate all required ID columns, not only `BranchID`.
 
 ### Validation
 
-After refreshing the export, compare its branch paths and IDs with the archived version; rebuild catalog/reset scope; run unknown-path, metadata, duplicate-key, and missing-ID checks; validate share totals after duplicate resolution; and compare new baseline seeds with the last accepted set. The detailed lifecycle and required export contents are documented in `data/README.md`.
+After refreshing the export, compare its branch paths and IDs with the archived version; rebuild catalog/reset scope; run unknown-path, metadata, duplicate-key, and missing-ID checks; validate share totals after duplicate resolution; and compare new baseline seeds with the last accepted set. Rules `SEED-001` through `SEED-005` and `SEED-011` automate the import-integrity checks. The detailed lifecycle and required export contents are documented in `data/README.md`.
 
 ### History
 
+- 2026-06-27: Defined order-independent duplicate classification and required duplicate resolution before share validation.
 - 2026-06-27: Recorded the full-model export lifecycle, ID sentinel rules, duplicate-key requirement, and cross-repository mapping dependency after reviewing the June 2026 USA baseline backup.
+
+## INIT-003: Share group invariants
+
+**Status:** Confirmed
+**Owner:** leap_initialisation
+**Type:** Baseline seed validation
+**Affected areas:** transformation workbook generation; `codebase/functions/baseline_seed_validation.py`; `codebase/baseline_seed_comparison_workflow.py`
+
+### Situation
+
+LEAP Output Share, Process Share, and Feedstock Fuel Share rows allocate one parent quantity across sibling branches. Duplicate physical rows, missing expressions, or a fallback applied at the wrong hierarchy can make the apparent sum invalid or can double-count an otherwise valid allocation.
+
+### Options
+
+- Sum every physical workbook row, which double-counts duplicate logical keys.
+- Select the last workbook row, which makes results depend on row order and may select a `-1` sentinel row.
+- Resolve duplicate logical keys deterministically, then validate each parent, variable, economy/region, scenario, and year group.
+
+### Current rule
+
+Use the third option. Active Output Share, Process Share, and Feedstock Fuel Share groups must sum to 100% within tolerance after duplicate resolution. All-zero Output Share and Process Share groups are reported as inactive information until their zero-activity fallback is decided. Feedstock Fuel Share cannot use an all-zero inactive exception because current LEAP imports require an anchor fuel for a process.
+
+Missing or unparseable share expressions and conflicting duplicate groups block import. A one-leaf active group must therefore be 100%. The validator does not infer required scenarios or years from a reference workbook; callers provide those windows explicitly.
+
+### Validation
+
+Run rules `SEED-006`, `SEED-007`, and `SEED-008`. Review duplicate findings first, then share findings calculated from the resolved rows. Focused tests cover valid and invalid sums, inactive groups, and the June USA Heat plant interim duplicate.
+
+### History
+
+- 2026-06-27: Confirmed the three share-group invariants and separated them from unresolved zero-activity and fallback-fuel choices.
 
 ## End-to-end run report
 

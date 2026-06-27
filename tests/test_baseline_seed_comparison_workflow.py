@@ -7,6 +7,11 @@ import pandas as pd
 from codebase.baseline_seed_comparison_workflow import (
     build_share_sum_checks,
     compare_seed_tables,
+    read_seed_workbook,
+)
+from codebase.functions.baseline_seed_validation import (
+    resolve_logical_duplicates,
+    validate_seed_rows,
 )
 
 
@@ -131,5 +136,117 @@ def test_share_sum_check_flags_conflicting_duplicate_key() -> None:
         tolerance=1e-9,
     )
 
-    assert checks["status"].tolist() == ["review_ambiguous_expression"]
-    assert checks["ambiguous_logical_key_count"].tolist() == [1]
+    assert checks["status"].tolist() == ["blocked_by_conflicting_duplicate"]
+    assert checks["share_sum"].tolist() == [100.0]
+    assert checks["blocking_duplicate_logical_key_count"].tolist() == [1]
+
+
+def test_duplicate_resolution_prefers_only_valid_id_row_without_row_order() -> None:
+    branch = "Transformation\\Heat plant interim\\Processes\\Heat plant interim"
+    rows = [
+        _row(branch, "Process Share", "Data(2022,0)", branch_id=-1),
+        _row(branch, "Process Share", "Data(2022,100)", branch_id=2450),
+        _row(branch, "Process Share", "Data(2022,100)", branch_id=-1),
+    ]
+    rows[0]["VariableID"] = rows[0]["ScenarioID"] = -1
+    rows[2]["VariableID"] = rows[2]["ScenarioID"] = -1
+    data = _with_excel_rows(rows).sample(frac=1, random_state=7)
+
+    resolved, duplicates = resolve_logical_duplicates(data)
+
+    assert resolved["BranchID"].tolist() == [2450]
+    assert resolved["Expression"].tolist() == ["Data(2022,100)"]
+    assert duplicates["classification"].tolist() == ["conflicting_expression_one_valid_id_row"]
+    assert duplicates["blocking"].tolist() == [True]
+
+
+def test_duplicate_classification_exact_and_multiple_valid_rows() -> None:
+    exact = _with_excel_rows([
+        _row("Resources\\Gas", "Imports", "0", branch_id=1),
+        _row("Resources\\Gas", "Imports", "0", branch_id=1),
+    ])
+    _, exact_groups = resolve_logical_duplicates(exact)
+    assert exact_groups["classification"].item() == "exact_duplicate_same_ids_and_expression"
+    assert not exact_groups["blocking"].item()
+
+    conflicting = _with_excel_rows([
+        _row("Resources\\Gas", "Imports", "1", branch_id=1),
+        _row("Resources\\Gas", "Imports", "2", branch_id=2),
+    ])
+    _, conflicting_groups = resolve_logical_duplicates(conflicting)
+    assert conflicting_groups["classification"].item() == "conflicting_expression_multiple_valid_id_rows"
+    assert conflicting_groups["blocking"].item()
+
+
+def test_validator_checks_all_ids_and_distinguishes_zero_reset() -> None:
+    rows = [
+        _row("Resources\\Gas", "Imports", "Data(2022,5)"),
+        _row("Resources\\Coal", "Imports", "Data(2022,0)"),
+    ]
+    rows[0]["VariableID"] = -1
+    rows[1]["ScenarioID"] = -1
+    result = validate_seed_rows(_with_excel_rows(rows))
+
+    assert len(result.findings[result.findings["rule_id"] == "SEED-003"]) == 2
+    assert len(result.findings[result.findings["rule_id"] == "SEED-004"]) == 1
+    zero_findings = result.findings[result.findings["rule_id"] == "SEED-005"]
+    assert len(zero_findings) == 1
+    assert not zero_findings["blocking"].item()
+
+
+def test_validator_handles_inactive_shares_and_configured_coverage() -> None:
+    rows = [
+        _row("Transformation\\Plant\\Processes\\A", "Process Share", "Data(2022,0, 2023,0)"),
+        _row("Transformation\\Plant\\Processes\\B", "Process Share", "Data(2022,0, 2023,0)"),
+    ]
+    result = validate_seed_rows(
+        _with_excel_rows(rows),
+        required_years=[2022, 2023, 2024],
+        required_scenarios=["Reference", "Target"],
+    )
+
+    process_findings = result.findings[result.findings["rule_id"] == "SEED-007"]
+    assert set(process_findings["status"]) == {"info"}
+    assert len(result.findings[result.findings["rule_id"] == "SEED-009"]) == 2
+    assert len(result.findings[result.findings["rule_id"] == "SEED-010"]) == 2
+
+
+def test_validator_branch_existence_and_explicit_exception(tmp_path: Path) -> None:
+    template_path = tmp_path / "template.xlsx"
+    template = pd.DataFrame([_row("Resources\\Gas", "Imports", "0")])
+    with pd.ExcelWriter(template_path, engine="openpyxl") as writer:
+        template.to_excel(writer, sheet_name="Export", index=False, startrow=2)
+    candidate = _with_excel_rows([_row("Resources\\Unknown", "Imports", "0")])
+
+    result = validate_seed_rows(candidate, template_path=template_path)
+    assert result.findings[result.findings["rule_id"] == "SEED-011"]["blocking"].item()
+
+    excepted = validate_seed_rows(
+        candidate,
+        template_path=template_path,
+        exceptions=[{"rule_id": "SEED-011", "Branch Path": "Resources\\Unknown"}],
+    )
+    finding = excepted.findings[excepted.findings["rule_id"] == "SEED-011"].iloc[0]
+    assert finding["status"] == "excepted"
+    assert not finding["blocking"]
+
+
+def test_june_usa_fixture_heat_interim_duplicate_is_resolved_to_valid_row() -> None:
+    fixture_dir = Path("data/backup_tgt_ref_ca_20260625")
+    files = sorted(fixture_dir.glob("leap_import_baseline_seed_20_USA_*.xlsx"))
+    if not files:
+        return
+    data = read_seed_workbook(files[0])
+    branch = "Transformation\\Heat plant interim\\Processes\\Heat plant interim"
+    focused = data[
+        data["Branch Path"].eq(branch)
+        & data["Variable"].eq("Process Share")
+        & data["Scenario"].eq("Current Accounts")
+    ]
+
+    resolved, duplicates = resolve_logical_duplicates(focused)
+
+    assert len(focused) == 3
+    assert resolved["BranchID"].tolist() == [2450]
+    assert resolved["Expression"].tolist() == ["Data(2022,100.0)"]
+    assert duplicates["classification"].tolist() == ["conflicting_expression_one_valid_id_row"]
