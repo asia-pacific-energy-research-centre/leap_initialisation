@@ -11,15 +11,15 @@ Modules and source codes covered
 --------------------------------
 Electricity interim  (mono output: electricity)
   ESTO: 09.01.01 Electricity plants, 09.02.01 Electricity plants
-  9th:  09_01_electricity_plants
+  9th signed input/output rows: 09_01_electricity_plants
 
 CHP interim  (dual output: electricity + heat)
   ESTO: 09.01.02 CHP plants, 09.02.02 CHP plants
-  9th:  09_02_chp_plants
+  9th signed input/output rows: 09_02_chp_plants
 
 Heat plant interim  (mono output: heat)
   ESTO: 09.01.03 Heat plants, 09.02.03 Heat plants
-  9th:  09_x_heat_plants
+  9th signed input/output rows: 09_x_heat_plants
 
 Data sources:
 - core.esto_data for historical/base-year rows, filtered away from ESTO subtotals.
@@ -104,6 +104,37 @@ INTERIM_MODULES: dict[str, dict] = {
         ],
     },
 }
+
+APPROVED_POWER_INTERIM_SUB1SECTORS = frozenset(
+    {
+        "09_01_electricity_plants",
+        "09_02_chp_plants",
+        "09_x_heat_plants",
+    }
+)
+FORBIDDEN_POWER_INTERIM_SUB1SECTORS = frozenset(
+    {
+        "18_01_electricity_plants",
+        "18_02_chp_plants",
+        "19_01_chp_plants",
+        "19_02_heat_plants",
+    }
+)
+
+
+def validate_power_interim_sub1sectors(sub1sectors: Iterable[str]) -> list[str]:
+    """Return validated 9th transformation sectors or reject unsafe sources."""
+    selected = [str(value).strip() for value in sub1sectors]
+    forbidden = sorted(set(selected) & FORBIDDEN_POWER_INTERIM_SUB1SECTORS)
+    unknown = sorted(set(selected) - APPROVED_POWER_INTERIM_SUB1SECTORS)
+    if forbidden or unknown:
+        details = []
+        if forbidden:
+            details.append(f"forbidden source-role sectors={forbidden}")
+        if unknown:
+            details.append(f"unapproved sectors={unknown}")
+        raise ValueError("Invalid interim power sector selection: " + "; ".join(details))
+    return selected
 
 ALL_POWER_SUB1SECTORS: list[str] = [
     code
@@ -360,6 +391,10 @@ def _safe_power_interim_display_label(label: object) -> str:
     # so they write to the real LEAP branch rather than being suppressed.
     if resolved in ("Solar", "Unallocated Solar"):
         return "Solar nonspecified"
+    # The LEAP template currently contains this historical spelling. Use the
+    # template label so computed and zero-fill rows address the same branch.
+    if resolved == "Black liquor":
+        return "Black liqour"
     return resolved
 
 
@@ -369,6 +404,7 @@ def _select_module_rows(
     sub1sectors: list[str],
 ) -> pd.DataFrame:
     """Return non-subtotal 9th-data rows matching sub1sector codes for one economy."""
+    sub1sectors = validate_power_interim_sub1sectors(sub1sectors)
     if "sub1sectors" not in data.columns or "economy" not in data.columns:
         return data.iloc[0:0]
     # Economy codes may include underscores; normalize before comparing.
@@ -1048,6 +1084,30 @@ def build_interim_branch_catalog(
                 fuel_name,
             ])
             catalog_rows.append({"fuel_group": "Feedstock Fuels", "branch_path": branch_path})
+
+    # Include every template feedstock leaf, even if no current economy has data
+    # for it. These explicit zero rows clear stale LEAP values after a patch.
+    template_df = pd.read_excel(
+        POWER_INTERIM_REFERENCE_WORKBOOK_PATH,
+        sheet_name=POWER_INTERIM_REFERENCE_SHEET_NAME,
+        header=2,
+        dtype=str,
+    ).fillna("")
+    existing_paths = {str(row["branch_path"]) for row in catalog_rows}
+    for branch_path in template_df["Branch Path"].astype(str):
+        if not any(
+            branch_path.startswith(
+                f"Transformation\\{module_name}\\Processes\\{module_name}\\Feedstock Fuels\\"
+            )
+            for module_name in INTERIM_MODULES
+        ):
+            continue
+        if branch_path in existing_paths:
+            continue
+        catalog_rows.append(
+            {"fuel_group": "Feedstock Fuels", "branch_path": branch_path}
+        )
+        existing_paths.add(branch_path)
 
     if not catalog_rows:
         return pd.DataFrame(columns=["fuel_group", "branch_path"])
