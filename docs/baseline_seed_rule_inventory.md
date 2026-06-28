@@ -65,13 +65,13 @@ not permanent API references.
 | SEED-C005 | All four IDs are required on final import rows. | A `-1`, blank, or non-numeric ID is missing. | `supply_reconciliation_workflow.py:13261-13288` blocked only nonzero `BranchID=-1`; `functions/patch_baseline_seeds.py:726-727` defaulted IDs. | Rules SEED-003 to SEED-005; all-ID test | `confirmed_rule` (CROSS-001) |
 | SEED-C006 | A nonzero or unparseable expression with any missing ID blocks import. | Constants and all `Data`/`Interp` values are inspected. | `supply_reconciliation_workflow.py:12381-12410,13261-13288` | SEED-004 | `confirmed_rule` |
 | SEED-C007 | A zero missing-ID row can be intended as a reset, but cannot be assumed harmless because it will not address the LEAP object. | Applies to constant zero, empty, and all-zero series. | Legacy code assumed LEAP skipped `-1` rows. | SEED-003 blocks required-ID failure; SEED-005 labels reset intent for review. | `confirmed_rule`; exact exception policy remains unresolved |
-| SEED-C008 | Active Output Share siblings under one Output Fuels parent sum to exactly 100%. | Per economy/region/scenario/year. Positive output is normalized; zero years use a fallback. | `transformation_analysis_utils.py:3034-3170`, especially `_build_output_share_lookup` and `_normalize_output_shares_for_export`. | SEED-006 and share tests | `confirmed_rule` |
-| SEED-C009 | Output Share values are non-negative and rounded residual is assigned deterministically. | Legacy zero-data order: carry the prior nonzero profile, else first sorted fuel gets 100%. | `transformation_analysis_utils.py:2998-3031,3084-3170` | Current `transformation_record_builder.py:1169-1350` retains the pattern. | Normalization is `confirmed_rule`; fallback identity is `unresolved_modelling_decision` |
-| SEED-C010 | Active Process Share siblings under one Processes parent sum to 100%. | Per economy/region/scenario/year; activity is output first, then feedstock plus losses. | `transformation_analysis_utils.py:2922-2997` | SEED-007; current builder uses the same activity basis. | `confirmed_rule` |
-| SEED-C011 | Zero-activity Process Share behaviour. | Legacy equal-split all processes; current generic builder leaves all zero; supply-specific code makes a single process 100%. | Legacy `transformation_analysis_utils.py:2984-2997`; current `transformation_record_builder.py:1175-1188`; `supply_leap_io.py:380-430`. | Validator treats an all-zero Output/Process group as inactive information. | `unresolved_modelling_decision` |
-| SEED-C012 | Feedstock Fuel Share siblings under each process sum to 100%. | Per economy/region/scenario/year; input 0–1 is converted to percent and negatives clipped. | `transformation_analysis_utils.py:2284-2401,2404-2472` | SEED-008; current `transformation_record_builder.py:419-660` | `confirmed_rule` |
-| SEED-C013 | Missing feedstock years copy the nearest nonzero profile, preferring a future year on equal distance. If no profile exists, one label is anchored at 100%. | Full configured scenario year window. | `transformation_analysis_utils.py:2284-2401` | Current `transformation_record_builder.py:475-567` | `unresolved_modelling_decision` (the 100% invariant is confirmed; which fuel receives fallback is not) |
-| SEED-C014 | Feedstock catalog reset rows are measure- and process-scoped so one workflow does not erase another workflow's values. | All exported scenarios and configured years; unwritten branches are zero, with one feedstock anchor where LEAP requires it. | `transformation_analysis_utils.py:3721-4056`; comments explicitly preserve other researchers' data. | Current `transformation_record_builder.py:1914-2180` | `confirmed_rule` |
+| SEED-C008 | Output Share groups contain every canonical Output Fuels sibling and sum to exactly 100%. Unused siblings are explicit zero rows. | Per economy/region/scenario/year. Positive output is normalized whether its source total is below or above 100%; an isolated zero year uses the nearest genuine profile. | `transformation_analysis_utils.py:3034-3170`, especially `_build_output_share_lookup` and `_normalize_output_shares_for_export`. | SEED-006 and share tests; INIT-003 | `confirmed_rule` |
+| SEED-C009 | Output Share values are non-negative and rounded residual is assigned deterministically. A synthetic 100% anchor is considered only when no configured year has genuine sibling values and normally only when relevant Exogenous Capacity is explicitly zero. | Full configured scenario window; fallback exceptions require producer configuration. | `transformation_analysis_utils.py:2998-3031,3084-3170` | Current `transformation_record_builder.py:1169-1350` is incomplete because it does not enforce canonical completeness or the capacity condition. | Normalization and fallback constraints are `confirmed_rule`; fallback identity remains an `implementation_detail` |
+| SEED-C010 | Process Share groups contain every canonical Processes sibling and sum to 100%. Unused siblings are explicit zero rows. | Per economy/region/scenario/year; activity is output first, then feedstock plus losses. | `transformation_analysis_utils.py:2922-2997` | SEED-007; INIT-003 | `confirmed_rule` |
+| SEED-C011 | A wholly synthetic Process Share profile is permitted only when no configured year has genuine sibling activity and normally only when relevant Exogenous Capacity is explicitly zero. | Legacy equal-split, current all-zero, and supply-specific single-anchor behaviours must be replaced by the common rule. | Legacy `transformation_analysis_utils.py:2984-2997`; current `transformation_record_builder.py:1175-1188`; `supply_leap_io.py:380-430`. | Current implementation is incomplete. | `confirmed_rule`; fallback identity is an `implementation_detail` |
+| SEED-C012 | Feedstock Fuel Share groups contain every canonical Feedstock Fuels sibling and sum to 100%. Unused siblings are explicit zero rows. | Per economy/region/scenario/year; input 0–1 is converted to percent and negatives clipped. | `transformation_analysis_utils.py:2284-2401,2404-2472` | SEED-008; INIT-003 | `confirmed_rule` |
+| SEED-C013 | Missing feedstock years copy the nearest nonzero profile. A synthetic anchor is considered only when no configured year has a genuine profile and normally only when the owning process's Exogenous Capacity is explicitly zero. | Full configured scenario year window. | `transformation_analysis_utils.py:2284-2401` | Current `transformation_record_builder.py:475-567` is incomplete because its first-label anchor is not capacity-gated. | `confirmed_rule`; fallback identity is an `implementation_detail` |
+| SEED-C014 | Canonical sibling reset rows are measure- and ownership-scoped so one workflow does not erase another workflow's values. Every unused canonical sibling in an owned Output Share, Process Share, or Feedstock Fuel Share group is written as zero. | All exported scenarios and configured years. | `transformation_analysis_utils.py:3721-4056`; comments explicitly preserve other researchers' data. | Current `transformation_record_builder.py:1914-2180` only partially implements this rule. | `confirmed_rule` |
 | SEED-C015 | Auxiliary Fuel Use is derived from absolute losses/own-use relative to output, with zero-safe handling. | Scenario profiles inherit their source data window. | `transformation_analysis_utils.py:1157-1215,2070-2100`; balance sign convention in global instructions. | `transformation_series_utils.py:99-143` | `confirmed_rule` for sign/ratio; source-boundary choices are existing design decisions under INIT-002 |
 | SEED-C016 | Process Efficiency is exported as percent, converting ratio-scale inputs. | Configured scenario window. | `transformation_analysis_utils.py:2475-2515,3458-3477` | Current transformation record builder. | `confirmed_rule` |
 | SEED-C017 | A series expression must cover its configured scenario year window; constants apply across years. | Required years are caller configuration, not inferred from a backup. | `resolve_scenario_year_range` at legacy lines 2245-2265 and expression builders at 3564-3615. | SEED-009 | `confirmed_rule`; exact windows are configuration |
@@ -86,6 +86,7 @@ not permanent API references.
 | SEED-C026 | Transfers use configured process relationships and transformation share/zero-fill builders. | Current Accounts handling is explicitly configurable. | `transfers_workflow.py:1754+`; `configuration/workflow_config.py:240-252`. | Current transfers workflow and shared transformation functions. | `implementation_detail`; mapping semantics remain owned by `leap_mappings` |
 | SEED-C027 | `Minimum Share of Production` exists in the model but is not a sibling allocation that must sum to 100%. | Constraint semantics, not an allocation group. | Present in `data/full model export.xlsx`; absent from the June USA seed. | Deliberately excluded from `SHARE_VARIABLE_RULE_IDS`. | `implementation_detail` |
 | SEED-C028 | Workbook metadata (`Units`, `Scale`, `Per...`) and LEAP preamble are preserved from templates. | All rows/scenarios. | Legacy Excel writers and `AGENTS_LEAP_EXPORT.md`. | Comparator metadata differences and existing workbook writers. | `confirmed_rule` |
+| SEED-C029 | Interim electricity, CHP, and heat calculations use only their corresponding `09_*` transformation sectors. Positive signed values are outputs and negative signed values are inputs. All `18_*` and `19_*` values are prohibited. | Electricity: `09_01_electricity_plants`; CHP: `09_02_chp_plants`; heat: `09_x_heat_plants`. | Confirmed modeller decision; INIT-004. | `electricity_heat_interim_workflow.py` requires correction and deny-list tests. | `confirmed_rule` |
 
 ## Duplicate handling
 
@@ -125,31 +126,18 @@ blocking status, and reason.
 
 ## Unresolved modelling decisions
 
-1. **Zero-activity Process Share.** Choose equal allocation (legacy generic
-   builder), all-zero inactive allocation (current generic builder), or a
-   single deterministic 100% anchor. Equal shares keep totals valid but create
-   arbitrary activity allocation; all-zero may be acceptable only when LEAP
-   truly treats the module as inactive. Modeller question: what must LEAP
-   receive for a multi-process module with no activity in a year?
-2. **Output Share fallback fuel.** The first sorted fuel gets 100% before any
-   nonzero observation; later gaps carry the last nonzero profile. This is
-   deterministic but not necessarily meaningful. Modeller question: should the
-   fallback be configured by module, use nearest activity, or leave the module
-   inactive?
-3. **Feedstock fallback fuel/profile.** Legacy/current logic uses the nearest
-   valid profile, then a deterministic first-label anchor. The June USA Heat
-   plant interim valid-ID rows allocate the Current Accounts feedstock anchor
-   to lignite while a conflicting `-1` row allocates Other bituminous coal.
-   Modeller question: is the anchor a LEAP import workaround or an intended
-   physical allocation, and which fuel should receive it?
-4. **Zero missing-ID reset exceptions.** CROSS-001 requires review, but no
+1. **Synthetic share-anchor identity.** Nearest genuine profile reuse and the
+   zero-capacity constraint are confirmed. When a wholly synthetic group is
+   permitted, the owning producer still needs a deterministic configured rule
+   for which canonical sibling receives 100%; workbook order must never decide.
+2. **Zero missing-ID reset exceptions.** CROSS-001 requires review, but no
    approved no-op exception register exists. Modeller question: should any
    final workbook retain such rows, or must every reset row resolve to a real
    LEAP ID?
-5. **Canonical scenario windows.** Workflows differ in Current Accounts and
+3. **Canonical scenario windows.** Workflows differ in Current Accounts and
    projection coverage. Modeller question: define required years for Current
    Accounts, Reference, and Target for each baseline-seed producer.
-6. **Refining capacity heuristic.** Legacy code derives Exogenous Capacity from
+4. **Refining capacity heuristic.** Legacy code derives Exogenous Capacity from
    Historical Production. Modeller question: retain this as policy or replace
    it with a capacity-data source?
 

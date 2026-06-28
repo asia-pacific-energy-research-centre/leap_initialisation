@@ -115,42 +115,86 @@ LEAP Output Share, Process Share, and Feedstock Fuel Share rows allocate one par
 
 ### Current rule
 
-Use the third option. Active Output Share, Process Share, and Feedstock Fuel Share groups must sum to 100% within tolerance after duplicate resolution. All-zero Output Share and Process Share groups are reported as inactive information until their zero-activity fallback is decided. Feedstock Fuel Share cannot use an all-zero inactive exception because current LEAP imports require an anchor fuel for a process.
+Use the third option. Every Output Share, Process Share, and Feedstock Fuel
+Share group owned and written by a producer must contain the complete set of
+canonical sibling rows from `data/full model export.xlsx`. Write an explicit
+zero for every unused canonical sibling for every applicable scenario and
+year; this applies to each of the three share measures, not only Output Share.
+The template supplies the sibling structure and canonical IDs, while ESTO or
+9th Outlook data supplies the genuine values.
+
+After duplicate resolution, normalize genuine non-negative sibling values to
+exactly 100% whether their source total is below or above 100%. An isolated
+all-zero year copies the nearest genuine profile from the same group. Only when
+the group has no genuine sibling values in any configured year may a synthetic
+100% anchor be considered, and it should normally be used only when the
+relevant Exogenous Capacity is explicitly zero. Any exception to the
+zero-capacity condition must be documented in producer configuration.
 
 Missing or unparseable share expressions and conflicting duplicate groups block import. A one-leaf active group must therefore be 100%. The validator does not infer required scenarios or years from a reference workbook; callers provide those windows explicitly.
 
 ### Validation
 
-Run rules `SEED-006`, `SEED-007`, and `SEED-008`. Review duplicate findings first, then share findings calculated from the resolved rows. Focused tests cover valid and invalid sums, inactive groups, and the June USA Heat plant interim duplicate.
+Run rules `SEED-006`, `SEED-007`, and `SEED-008`. Review duplicate findings
+first, then compare the resolved group with the canonical sibling set before
+checking its annual totals. Validation must reject an omitted canonical
+sibling, a missing explicit zero, a partial-group patch, or a fallback applied
+without the required capacity evidence.
 
 ### History
 
 - 2026-06-27: Confirmed the three share-group invariants and separated them from unresolved zero-activity and fallback-fuel choices.
+- 2026-06-28: Required complete canonical sibling groups with explicit zero rows for unused siblings across every generated share measure; confirmed normalization above or below 100%, nearest-profile reuse for isolated zero years, and the zero-capacity constraint on wholly synthetic groups.
 
 ## INIT-004: Do not use 9th Outlook power-output sectors in interim power calculations
 
 **Status:** Confirmed
 **Owner:** leap_initialisation
-**Type:** Source-data unit boundary
+**Type:** Source-data role boundary
 **Affected areas:** `codebase/electricity_heat_interim_workflow.py`; electricity, CHP, and heat interim input selection; interim Output Share and efficiency generation
 
 ### Situation
 
-The 9th Outlook sector codes `18_01_electricity_plants`, `18_02_chp_plants`, `19_01_chp_plants`, and `19_02_heat_plants` are output-accounting rows measured in GWh. The interim power workflow operates on PJ energy-balance inputs. Mixing these rows into the `09_*` input filters creates a unit mismatch and can incorrectly turn GWh outputs into PJ inputs, Output Share evidence, or process-efficiency inputs.
+The interim electricity, CHP, and heat calculations use signed energy-balance
+values from their corresponding `09_*` transformation sectors. Within those
+rows, positive values are outputs and negative values are inputs. The separate
+`18_*` electricity-output and `19_*` heat-output accounting sectors are not
+inputs to this workflow and must not be introduced as alternative output
+evidence.
 
 ### Current rule
 
-Never use any `18_*` electricity-output or `19_*` heat-output sector in electricity interim, CHP interim, or heat plant interim calculations. In particular, `18_02_chp_plants` and `19_01_chp_plants` must not be used to derive CHP inputs or CHP Output Shares. The permitted 9th Outlook input sectors are `09_01_electricity_plants`, `09_02_chp_plants`, and `09_x_heat_plants` for their corresponding interim modules.
+Never use any `18_*` electricity-output or `19_*` heat-output sector in
+electricity interim, CHP interim, or heat plant interim calculations. This is
+an absolute source-selection prohibition, not merely a warning about units.
 
-If an interim Output Share group is missing, do not fill it from the `18_*` or `19_*` rows and do not invent a fallback profile. Use a separately approved PJ-compatible source or leave the existing LEAP profile unchanged pending modelling review.
+Use only these 9th Outlook sectors for their corresponding modules:
+
+- Electricity interim: `09_01_electricity_plants`;
+- CHP interim: `09_02_chp_plants`;
+- Heat plant interim: `09_x_heat_plants`.
+
+For each selected `09_*` row, positive signed values produce output values and
+Output Shares; negative signed values produce feedstock inputs and Feedstock
+Fuel Shares. Efficiency and capacity calculations must use the same permitted
+`09_*` source rows according to their established formulas.
+
+If an interim Output Share group is missing, do not fill it from the `18_*` or
+`19_*` rows. Apply the canonical share-group rules in INIT-003 to the signed
+`09_*` values and the full-model template.
 
 ### Validation
 
-Maintain an explicit deny-list for the four GWh output sectors and test that every configured interim `sub1sectors` filter is disjoint from it. A missing CHP Output Share group is not evidence that the GWh output rows should be introduced.
+Maintain a reusable deny-list for
+`18_01_electricity_plants`, `18_02_chp_plants`, `19_01_chp_plants`, and
+`19_02_heat_plants`. Test that every configured interim source-sector filter is
+disjoint from it. Also test that positive and negative values from each allowed
+`09_*` sector are routed to outputs and inputs respectively. A missing Output
+Share group is not evidence that an `18_*` or `19_*` row should be introduced.
 
 ### History
 
-- 2026-06-28: Confirmed that `18_02_chp_plants` and `19_01_chp_plants` are GWh output rows and corrected the earlier proposal to use them for CHP interim generation.
+- 2026-06-28: Confirmed that all `18_*` and `19_*` values are prohibited in interim power calculations and that signed `09_*` rows supply both outputs and inputs.
 
 ## INIT-005: Defer baseline-seed validation failure until the full viable run completes
 
