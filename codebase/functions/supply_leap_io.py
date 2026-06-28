@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Mapping
 
 import pandas as pd
 from openpyxl.styles import Font, PatternFill
@@ -46,6 +46,12 @@ from codebase.mappings.canonical_mapping import (
     load_sheet_map,
 )
 from codebase.functions import supply_data_pipeline, leap_api, patch_baseline_seeds
+from codebase.functions.baseline_seed_validation import (
+    BaselineSeedValidationError,
+    SOURCE_FILE_COLUMN,
+    SOURCE_WORKFLOW_COLUMN,
+    prepare_seed_rows_for_write,
+)
 from codebase.functions.analysis_input_write_dispatcher import get_analysis_input_write_mode
 from codebase import (
     electricity_heat_interim_workflow,
@@ -761,6 +767,7 @@ def _read_workbook_sheet_with_header_detection(
 def _merge_workbook_sheets(
     workbook_paths: Iterable[Path | str],
     sheet_name: str,
+    source_workflow_by_path: Mapping[str, str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Merge multiple LEAP-style sheets into one standardized table."""
     source_paths = [Path(item) for item in workbook_paths if item and Path(item).exists()]
@@ -770,21 +777,25 @@ def _merge_workbook_sheets(
         source_paths[0],
         sheet_name=sheet_name,
     )
+    first_path = source_paths[0]
+    first_data[SOURCE_FILE_COLUMN] = str(first_path)
+    first_data[SOURCE_WORKFLOW_COLUMN] = (source_workflow_by_path or {}).get(
+        str(first_path.resolve()), "unattributed"
+    )
     ordered_columns = list(first_data.columns)
     merged = [first_data]
     for path in source_paths[1:]:
         _, data, _ = _read_workbook_sheet_with_header_detection(path, sheet_name=sheet_name)
+        data[SOURCE_FILE_COLUMN] = str(path)
+        data[SOURCE_WORKFLOW_COLUMN] = (source_workflow_by_path or {}).get(
+            str(path.resolve()), "unattributed"
+        )
         for col in data.columns:
             if col not in ordered_columns:
                 ordered_columns.append(col)
         merged.append(data)
     normalized = [frame.reindex(columns=ordered_columns) for frame in merged]
     merged_data = pd.concat(normalized, ignore_index=True, sort=False)
-    dedupe_cols = [col for col in ["Branch Path", "Variable", "Scenario", "Region"] if col in merged_data.columns]
-    if dedupe_cols:
-        merged_data = merged_data.drop_duplicates(subset=dedupe_cols, keep="last")
-    else:
-        merged_data = merged_data.drop_duplicates(keep="last")
     if "Branch Path" in merged_data.columns and "Variable" in merged_data.columns:
         merged_data = merged_data.sort_values(["Branch Path", "Variable"]).reset_index(drop=True)
     return preamble, merged_data
@@ -831,14 +842,32 @@ def save_combined_supply_transformation_export(
     scenarios: Iterable[str] | None = None,
 ) -> Path | None:
     """Save a single workbook that combines supply + transformation + transfers rows."""
-    paths = [Path(item) for item in [*supply_export_paths, *transformation_export_paths, *transfer_export_paths] if Path(item).exists()]
+    supply_paths = [Path(item) for item in supply_export_paths if Path(item).exists()]
+    transformation_paths = [
+        Path(item) for item in transformation_export_paths if Path(item).exists()
+    ]
+    transfer_paths = [Path(item) for item in transfer_export_paths if Path(item).exists()]
+    paths = [*supply_paths, *transformation_paths, *transfer_paths]
     if not paths:
         return None
+    source_workflow_by_path = {
+        **{str(path.resolve()): "supply_workflow" for path in supply_paths},
+        **{str(path.resolve()): (
+            "electricity_heat_interim_workflow"
+            if "electricity_heat_interim" in path.name.lower()
+            else "transformation_workflow"
+        ) for path in transformation_paths},
+        **{str(path.resolve()): "transfers_workflow" for path in transfer_paths},
+    }
     leap_preamble, leap_data = _merge_workbook_sheets(paths, "LEAP")
     if leap_data.empty:
         return None
     leap_data = _drop_wide_year_columns(leap_data)
-    viewing_preamble, viewing_data = _merge_workbook_sheets(paths, "FOR_VIEWING")
+    viewing_preamble, viewing_data = _merge_workbook_sheets(
+        paths,
+        "FOR_VIEWING",
+        source_workflow_by_path=source_workflow_by_path,
+    )
     if viewing_data.empty:
         viewing_preamble = leap_preamble.copy()
         viewing_data = leap_data.copy()
@@ -850,6 +879,69 @@ def save_combined_supply_transformation_export(
     output_path = _resolve(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     combined_path = output_path / filename
+
+    # Re-read LEAP with producer attribution because it is used by blocking
+    # diagnostics and must not depend on filename/order inference later.
+    leap_preamble, leap_data = _merge_workbook_sheets(
+        paths,
+        "LEAP",
+        source_workflow_by_path=source_workflow_by_path,
+    )
+    leap_data = _drop_wide_year_columns(leap_data)
+    branch_paths = leap_data["Branch Path"].fillna("").astype(str)
+    documented_exclusion_mask = branch_paths.map(
+        lambda path: path.split("\\")[-1] in patch_baseline_seeds.VALIDATION_IGNORE_FUEL_NAMES
+        or any(
+            path.startswith(prefix)
+            for prefix in patch_baseline_seeds.VALIDATION_IGNORE_PREFIXES
+        )
+    )
+    diagnostics_dir = output_path / "supporting_files" / "baseline_seed_validation"
+    diagnostic_stem = combined_path.stem
+    diagnostics_dir.mkdir(parents=True, exist_ok=True)
+    leap_data[documented_exclusion_mask].to_csv(
+        diagnostics_dir / f"{diagnostic_stem}_documented_exclusions.csv",
+        index=False,
+    )
+    leap_data = leap_data[~documented_exclusion_mask].copy()
+
+    required_years_by_scenario: dict[str, list[int]] = {}
+    scenario_list = [str(item) for item in (scenarios or []) if str(item).strip()]
+    for scenario in scenario_list:
+        scenario_config = transformation_workflow.core.get_scenario_export_config(
+            scenario,
+            default_base_year=transformation_workflow.core.EXPORT_BASE_YEAR,
+            default_final_year=transformation_workflow.core.EXPORT_FINAL_YEAR,
+        )
+        start_year, end_year = transformation_workflow.core.resolve_scenario_year_range(
+            transformation_workflow.core.EXPORT_BASE_YEAR,
+            transformation_workflow.core.EXPORT_FINAL_YEAR,
+            scenario_config,
+        )
+        if scenario.strip().lower() not in {"current account", "current accounts"}:
+            start_year = max(int(start_year), int(supply_data_pipeline.PROJECTION_START_YEAR))
+        required_years_by_scenario[scenario] = list(range(int(start_year), int(end_year) + 1))
+    required_scenarios_by_source = {
+        source: scenario_list
+        for source in set(source_workflow_by_path.values())
+        if scenario_list
+    }
+    validation = prepare_seed_rows_for_write(
+        leap_data,
+        template_path=_resolve(RESULTS_VERIFICATION_EXPORT_PATH),
+        diagnostics_dir=diagnostics_dir,
+        diagnostic_stem=diagnostic_stem,
+        required_years_by_scenario=required_years_by_scenario,
+        required_scenarios_by_source=required_scenarios_by_source,
+    )
+    leap_data = validation.resolved_rows.drop(
+        columns=[SOURCE_WORKFLOW_COLUMN, SOURCE_FILE_COLUMN, "source_excel_row"],
+        errors="ignore",
+    )
+    # The import-shaped LEAP sheet is authoritative. Mirroring it here keeps
+    # FOR_VIEWING free of physical duplicates and invalid IDs as well.
+    viewing_data = leap_data.copy()
+    viewing_preamble = leap_preamble.copy()
 
     with pd.ExcelWriter(combined_path, engine="openpyxl", mode="w") as writer:
         leap_preamble.to_excel(writer, sheet_name="LEAP", index=False, header=False)
@@ -1384,14 +1476,18 @@ def write_per_economy_combined_workbooks(
     output_dir: Path | str = OUTPUT_DIR,
     id_lookup_path: Path | str | None = None,
     excluded_sectors: list[str] | None = None,
+    source_workbooks_by_workflow: Mapping[str, Iterable[Path | str]] | None = None,
+    required_years_by_scenario: Mapping[str, Iterable[int]] | None = None,
+    required_scenarios_by_source: Mapping[str, Iterable[str]] | None = None,
 ) -> list[Path]:
     """
     For each economy, combine supply_leap_imports_{econ}_*.xlsx and
     aggregated_demand_{econ}.xlsx into a single per-economy LEAP import workbook
     (leap_import_{econ}.xlsx) in output_dir.
 
-    IDs (BranchID/VariableID/ScenarioID) are merged from id_lookup_path when provided.
-    RegionID is always 1. Region is set to the economy-specific name from APEC_ECONOMY_REGION_MAP.
+    Final IDs and branch existence are resolved from ``id_lookup_path`` and
+    validated before any workbook is written. When current-run source paths are
+    supplied, stale directory matches are not read.
 
     excluded_sectors must match the value passed to
     build_aggregated_demand_workbooks_for_results_supply so that the filename
@@ -1406,6 +1502,8 @@ def write_per_economy_combined_workbooks(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     id_lookup_resolved = Path(id_lookup_path) if id_lookup_path is not None else None
+    if id_lookup_resolved is None:
+        id_lookup_resolved = _resolve(RESULTS_VERIFICATION_EXPORT_PATH)
     branch_to_id: dict[str, int] = {}
     variable_to_id: dict[str, int] = {}
     scenario_to_id: dict[str, int] = {}
@@ -1445,46 +1543,79 @@ def write_per_economy_combined_workbooks(
     economy_list = workflow_common.normalize_economies(economies)
     run_stamp = datetime.now().strftime("%Y%m%d")
     written: list[Path] = []
+    prepared_workbooks: list[tuple[str, pd.DataFrame, Path]] = []
+    validation_results: list[tuple[str, object]] = []
     reference_df = _load_reference_export_data()
+
+    def _producer_for_row(configured_source: str, branch_path: object) -> str:
+        path = str(branch_path or "").strip().lower()
+        if configured_source == "transformation_workflow" and path.startswith(
+            "transformation\\oil refin"
+        ):
+            return "refining_workflow"
+        return configured_source
+
+    def _current_source_frames(econ_token: str) -> list[pd.DataFrame]:
+        current_frames: list[pd.DataFrame] = []
+        for source_workflow, configured_paths in (source_workbooks_by_workflow or {}).items():
+            for configured_path in configured_paths:
+                path = Path(configured_path)
+                if not path.exists() or econ_token.lower() not in path.name.lower():
+                    continue
+                try:
+                    data, _ = _read_leap_data(path)
+                except Exception as exc:
+                    print(f"[WARN] Failed reading {path.name}: {exc}")
+                    continue
+                data[SOURCE_WORKFLOW_COLUMN] = data["Branch Path"].map(
+                    lambda branch: _producer_for_row(str(source_workflow), branch)
+                )
+                data[SOURCE_FILE_COLUMN] = str(path)
+                current_frames.append(data)
+        return current_frames
 
     for economy in economy_list:
         econ_token = workflow_common.format_filename_segment(economy) or economy
         region = get_region_for_economy(economy)
-        frames: list[pd.DataFrame] = []
+        frames: list[pd.DataFrame] = _current_source_frames(econ_token)
 
-        # Use combined supply+transformation workbook when available (already includes
-        # supply, transformation, and transfer rows); otherwise stack each separately.
-        combined_st_files = sorted(
-            supply_dir.glob(f"combined_supply_transformation_leap_imports_{econ_token}_*.xlsx")
-        )
-        if combined_st_files:
-            for cf in combined_st_files:
-                try:
-                    data, _ = _read_leap_data(cf)
-                    frames.append(data)
-                except Exception as exc:
-                    print(f"[WARN] Failed reading {cf.name}: {exc}")
-        else:
-            for prefix in (
-                f"supply_leap_imports_{econ_token}_",
-                f"transformation_leap_imports_{econ_token}_",
-                f"transfer_leap_imports_{econ_token}_",
-            ):
-                for sf in sorted(supply_dir.glob(f"{prefix}*.xlsx")):
+        if source_workbooks_by_workflow is None:
+            # Compatibility fallback for notebook callers that have not supplied
+            # current-run paths. Select only the newest combined workbook and
+            # newest aggregated-demand workbook, rather than stacking stale runs.
+            combined_st_files = sorted(
+                supply_dir.glob(f"combined_supply_transformation_leap_imports_{econ_token}_*.xlsx"),
+                key=lambda path: (path.stat().st_mtime_ns, path.name),
+            )
+            if combined_st_files:
+                for sf in combined_st_files[-1:]:
                     try:
                         data, _ = _read_leap_data(sf)
+                        data[SOURCE_WORKFLOW_COLUMN] = data["Branch Path"].map(
+                            lambda branch: _producer_for_row(
+                                "supply_workflow"
+                                if str(branch).lower().startswith("resources\\")
+                                else "transformation_workflow",
+                                branch,
+                            )
+                        )
+                        data[SOURCE_FILE_COLUMN] = str(sf)
                         frames.append(data)
                     except Exception as exc:
                         print(f"[WARN] Failed reading {sf.name}: {exc}")
-
-        exclusion_suffix = _sector_exclusion_suffix(excluded_sectors)
-        agg_candidates = sorted(agg_dir.glob(f"aggregated_demand_{econ_token}*{exclusion_suffix}.xlsx"))
-        for agg_path in agg_candidates:
-            try:
-                data, _ = _read_leap_data(agg_path)
-                frames.append(data)
-            except Exception as exc:
-                print(f"[WARN] Failed reading {agg_path.name}: {exc}")
+            exclusion_suffix = _sector_exclusion_suffix(excluded_sectors)
+            agg_candidates = sorted(
+                agg_dir.glob(f"aggregated_demand_{econ_token}*{exclusion_suffix}.xlsx"),
+                key=lambda path: (path.stat().st_mtime_ns, path.name),
+            )
+            for agg_path in agg_candidates[-1:]:
+                try:
+                    data, _ = _read_leap_data(agg_path)
+                    data[SOURCE_WORKFLOW_COLUMN] = "aggregated_demand_workflow"
+                    data[SOURCE_FILE_COLUMN] = str(agg_path)
+                    frames.append(data)
+                except Exception as exc:
+                    print(f"[WARN] Failed reading {agg_path.name}: {exc}")
 
         if not frames:
             print(f"[INFO] No data to combine for economy={economy}, skipping.")
@@ -1496,7 +1627,43 @@ def write_per_economy_combined_workbooks(
         combined = combined.drop(
             columns=["BranchID", "VariableID", "ScenarioID", "RegionID"], errors="ignore"
         )
-        combined = _ensure_ids(combined, region)
+        if "Region" in combined.columns:
+            combined["Region"] = region
+
+        branch_paths = combined["Branch Path"].fillna("").astype(str)
+        aggregate_fuel_mask = branch_paths.map(
+            lambda path: path.split("\\")[-1] in patch_baseline_seeds.VALIDATION_IGNORE_FUEL_NAMES
+        )
+        absent_prefix_mask = branch_paths.map(
+            lambda path: any(
+                path.startswith(prefix)
+                for prefix in patch_baseline_seeds.VALIDATION_IGNORE_PREFIXES
+            )
+        )
+        excluded_rows = combined[aggregate_fuel_mask | absent_prefix_mask].copy()
+        diagnostics_dir = out_dir / "supporting_files" / "baseline_seed_validation"
+        diagnostics_dir.mkdir(parents=True, exist_ok=True)
+        diagnostic_stem = f"baseline_seed_{econ_token}_{run_stamp}"
+        excluded_rows.to_csv(
+            diagnostics_dir / f"{diagnostic_stem}_documented_exclusions.csv",
+            index=False,
+        )
+        combined = combined[~(aggregate_fuel_mask | absent_prefix_mask)].copy()
+
+        validation = prepare_seed_rows_for_write(
+            combined,
+            template_path=id_lookup_resolved,
+            diagnostics_dir=diagnostics_dir,
+            diagnostic_stem=diagnostic_stem,
+            required_years_by_scenario=required_years_by_scenario,
+            required_scenarios_by_source=required_scenarios_by_source,
+            raise_on_blocking=False,
+        )
+        validation_results.append((econ_token, validation))
+        combined = validation.resolved_rows.drop(
+            columns=[SOURCE_WORKFLOW_COLUMN, SOURCE_FILE_COLUMN, "source_excel_row"],
+            errors="ignore",
+        )
 
         # Enforce column order: IDs → metadata → Expression → year cols → Level cols
         _meta = ["BranchID", "VariableID", "ScenarioID", "RegionID",
@@ -1532,16 +1699,47 @@ def write_per_economy_combined_workbooks(
         ], ignore_index=True)
 
         out_path = out_dir / f"leap_import_baseline_seed_{econ_token}_{run_stamp}.xlsx"
+        prepared_workbooks.append((econ_token, full_df, out_path))
+
+    diagnostics_dir = out_dir / "supporting_files" / "baseline_seed_validation"
+    diagnostics_dir.mkdir(parents=True, exist_ok=True)
+    consolidated_frames: list[pd.DataFrame] = []
+    for econ_token, validation in validation_results:
+        if validation.findings.empty:
+            continue
+        frame = validation.findings.copy()
+        frame.insert(0, "economy", econ_token)
+        consolidated_frames.append(frame)
+    consolidated = (
+        pd.concat(consolidated_frames, ignore_index=True, sort=False)
+        if consolidated_frames
+        else pd.DataFrame()
+    )
+    consolidated_path = diagnostics_dir / f"baseline_seed_{run_stamp}_consolidated_rule_findings.csv"
+    consolidated.to_csv(consolidated_path, index=False)
+    blocking = consolidated[
+        consolidated.get("blocking", pd.Series(False, index=consolidated.index)).fillna(False)
+    ] if not consolidated.empty else pd.DataFrame()
+    if not blocking.empty:
+        counts = blocking.groupby(["economy", "rule_id"], dropna=False).size()
+        summary = ", ".join(
+            f"{economy}/{rule_id}={count}"
+            for (economy, rule_id), count in counts.items()
+        )
+        raise BaselineSeedValidationError(
+            "No baseline-seed workbooks were written because consolidated "
+            f"blocking findings remain ({summary}). Diagnostics: {consolidated_path}"
+        )
+
+    for econ_token, full_df, out_path in prepared_workbooks:
         for existing in out_dir.glob(f"leap_import_baseline_seed_{econ_token}_*.xlsx"):
             archive_dir = out_dir / "archive"
             archive_dir.mkdir(parents=True, exist_ok=True)
             shutil.move(str(existing), str(archive_dir / existing.name))
-
         with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
             full_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
             full_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
-
-        print(f"[INFO] Wrote {len(combined)} rows for economy={economy} -> {out_path.name} (stamp={run_stamp})")
+        print(f"[INFO] Wrote baseline seed for economy={econ_token} -> {out_path.name} (stamp={run_stamp})")
         written.append(out_path)
 
     return written
