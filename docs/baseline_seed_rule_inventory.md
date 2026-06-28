@@ -107,6 +107,22 @@ Year and scenario checks are opt-in configuration. A caller supplies required
 years and scenarios appropriate to the workflow. This avoids using the June
 backup's Current Accounts/Reference/Target layout as an implicit standard.
 
+## Deferred validation and reporting
+
+Baseline-seed production is expensive, so ordinary validation violations must
+not stop the run at the first failing producer, economy, or rule. Independently
+runnable producer and validation stages continue while accumulating findings.
+After all viable stages have run, the system writes consolidated diagnostics
+and only then raises a summary exception and blocks final import-workbook
+creation or replacement.
+
+An unexpected fatal error may stop processing when safe continuation is not
+possible, but all findings accumulated up to that point must be written before
+the error is re-raised. Deferring an exception never permits invalid rows to
+reach a final LEAP import workbook. Diagnostics must identify the source
+workflow, logical key, scenario and year where applicable, rule ID, severity,
+blocking status, and reason.
+
 ## Unresolved modelling decisions
 
 1. **Zero-activity Process Share.** Choose equal allocation (legacy generic

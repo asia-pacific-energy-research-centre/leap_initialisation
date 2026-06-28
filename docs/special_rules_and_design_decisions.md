@@ -152,6 +152,45 @@ Maintain an explicit deny-list for the four GWh output sectors and test that eve
 
 - 2026-06-28: Confirmed that `18_02_chp_plants` and `19_01_chp_plants` are GWh output rows and corrected the earlier proposal to use them for CHP interim generation.
 
+## INIT-005: Defer baseline-seed validation failure until the full viable run completes
+
+**Status:** Confirmed
+**Owner:** leap_initialisation
+**Type:** Operational invariant
+**Affected areas:** baseline-seed producer orchestration; final workbook writers; validation diagnostics; end-to-end run reporting
+
+### Situation
+
+Baseline-seed production takes long enough that failing on the first ordinary
+validation violation wastes the remaining run and hides failures in later
+producers or economies. Validation still has to prevent an invalid candidate
+from replacing or becoming a final LEAP import workbook.
+
+### Current rule
+
+Do not fail fast on ordinary validation violations. Run every independently
+runnable producer and validation stage, accumulate findings, write consolidated
+diagnostics after the complete viable run, and then raise one summary exception
+if blocking findings remain. Do not create or replace a final import workbook
+when blocking findings exist.
+
+If an unexpected fatal error makes safe continuation impossible, write all
+findings collected so far before re-raising it. Deferring failure does not turn
+a blocking finding into a warning and does not permit invalid rows to reach a
+final workbook.
+
+### Validation
+
+Diagnostics identify the source workflow, logical key, scenario and year where
+applicable, rule ID, severity, blocking status, and reason. Tests must prove
+that failures from multiple independently runnable stages are retained, reports
+exist before the summary exception is raised, fatal errors preserve partial
+diagnostics, and no invalid final workbook is written or substituted.
+
+### History
+
+- 2026-06-28: Confirmed deferred, consolidated reporting for long-running baseline-seed production.
+
 ## End-to-end run report
 
 Append a dated subsection after each end-to-end run. Report:
