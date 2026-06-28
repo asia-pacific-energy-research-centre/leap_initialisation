@@ -111,6 +111,12 @@ RULE_SPECS = {
         "error", True,
         "docs/special_rules_and_design_decisions.md#cross-001-full-model-export-and-leap-import-id-integrity",
     ),
+    "SEED-012": RuleSpec(
+        "SEED-012", "Every configured producer supplies rows for each requested economy.",
+        "producer/economy coverage", "error", True,
+        "docs/baseline_seed_rule_inventory.md#coverage-validation",
+        branch_grouping=(SOURCE_WORKFLOW_COLUMN, "economy"),
+    ),
 }
 
 
@@ -813,6 +819,32 @@ def _exception_matches(finding: dict[str, object], exception: dict[str, object])
     )
 
 
+def validate_exception_records(
+    exceptions: Iterable[dict[str, object]] | None,
+) -> list[dict[str, object]]:
+    """Validate explicit, narrowly scoped rule exceptions."""
+    records = [dict(record) for record in exceptions or []]
+    allowed_scope_fields = {
+        *LOGICAL_KEY_COLUMNS,
+        SOURCE_WORKFLOW_COLUMN,
+        SOURCE_FILE_COLUMN,
+        "year",
+    }
+    for index, record in enumerate(records):
+        if not _text(record.get("rule_id")):
+            raise ValueError(f"Validation exception {index} is missing rule_id.")
+        scoped_fields = [
+            field for field in allowed_scope_fields if _text(record.get(field))
+        ]
+        if not scoped_fields:
+            raise ValueError(
+                f"Validation exception {index} must include at least one measure/key "
+                "field: Variable, Branch Path, Scenario, Region, source_workflow, "
+                "source_file, or year."
+            )
+    return records
+
+
 def validate_seed_rows(
     data: pd.DataFrame,
     *,
@@ -955,7 +987,7 @@ def validate_seed_rows(
                     **_row_context(row),
                 ))
 
-    exception_rows = list(exceptions or [])
+    exception_rows = validate_exception_records(exceptions)
     for finding in findings:
         matching = [exception for exception in exception_rows if _exception_matches(finding, exception)]
         if matching:
@@ -1067,6 +1099,7 @@ __all__ = [
     "load_template_rows",
     "prepare_seed_rows_for_write",
     "resolve_logical_duplicates",
+    "validate_exception_records",
     "validate_seed_rows",
 ]
 

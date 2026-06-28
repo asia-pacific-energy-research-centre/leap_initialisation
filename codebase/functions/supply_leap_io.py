@@ -1479,6 +1479,9 @@ def write_per_economy_combined_workbooks(
     source_workbooks_by_workflow: Mapping[str, Iterable[Path | str]] | None = None,
     required_years_by_scenario: Mapping[str, Iterable[int]] | None = None,
     required_scenarios_by_source: Mapping[str, Iterable[str]] | None = None,
+    validation_base_year: int = workflow_cfg.BASELINE_SEED_VALIDATION_BASE_YEAR,
+    validation_final_year: int = workflow_cfg.BASELINE_SEED_VALIDATION_FINAL_YEAR,
+    validation_exceptions: Iterable[dict[str, object]] | None = None,
 ) -> list[Path]:
     """
     For each economy, combine supply_leap_imports_{econ}_*.xlsx and
@@ -1500,6 +1503,18 @@ def write_per_economy_combined_workbooks(
     agg_dir = _resolve(aggregated_demand_dir)
     out_dir = _resolve(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    coverage_start = int(validation_base_year)
+    coverage_end = int(validation_final_year)
+    if coverage_end < coverage_start:
+        raise ValueError(
+            f"Baseline-seed validation_final_year ({coverage_end}) precedes "
+            f"validation_base_year ({coverage_start})."
+        )
+    configured_exceptions = list(
+        workflow_cfg.BASELINE_SEED_VALIDATION_EXCEPTIONS
+        if validation_exceptions is None
+        else validation_exceptions
+    )
 
     id_lookup_resolved = Path(id_lookup_path) if id_lookup_path is not None else None
     if id_lookup_resolved is None:
@@ -1545,6 +1560,7 @@ def write_per_economy_combined_workbooks(
     written: list[Path] = []
     prepared_workbooks: list[tuple[str, pd.DataFrame, Path]] = []
     validation_results: list[tuple[str, object]] = []
+    producer_coverage_findings: list[dict[str, object]] = []
     reference_df = _load_reference_export_data()
 
     def _producer_for_row(configured_source: str, branch_path: object) -> str:
@@ -1555,12 +1571,16 @@ def write_per_economy_combined_workbooks(
             return "refining_workflow"
         return configured_source
 
-    def _current_source_frames(econ_token: str) -> list[pd.DataFrame]:
+    def _current_source_frames(econ_token: str) -> tuple[list[pd.DataFrame], set[str]]:
         current_frames: list[pd.DataFrame] = []
+        found_sources: set[str] = set()
         for source_workflow, configured_paths in (source_workbooks_by_workflow or {}).items():
             for configured_path in configured_paths:
                 path = Path(configured_path)
-                if not path.exists() or econ_token.lower() not in path.name.lower():
+                is_global_source = str(source_workflow) == "demand_zeroing_workflow"
+                if not path.exists() or (
+                    not is_global_source and econ_token.lower() not in path.name.lower()
+                ):
                     continue
                 try:
                     data, _ = _read_leap_data(path)
@@ -1572,12 +1592,29 @@ def write_per_economy_combined_workbooks(
                 )
                 data[SOURCE_FILE_COLUMN] = str(path)
                 current_frames.append(data)
-        return current_frames
+                found_sources.add(str(source_workflow))
+        return current_frames, found_sources
 
     for economy in economy_list:
         econ_token = workflow_common.format_filename_segment(economy) or economy
         region = get_region_for_economy(economy)
-        frames: list[pd.DataFrame] = _current_source_frames(econ_token)
+        frames, found_sources = _current_source_frames(econ_token)
+
+        if source_workbooks_by_workflow is not None:
+            missing_sources = sorted(set(source_workbooks_by_workflow) - found_sources)
+            for source_workflow in missing_sources:
+                producer_coverage_findings.append({
+                    "economy": econ_token,
+                    "rule_id": "SEED-012",
+                    "description": "Every configured producer supplies rows for each requested economy.",
+                    "severity": "error",
+                    "blocking": True,
+                    "status": "fail",
+                    "message": "Configured producer has no readable source workbook for this economy.",
+                    "evidence": source_workflow,
+                    SOURCE_WORKFLOW_COLUMN: source_workflow,
+                    SOURCE_FILE_COLUMN: "",
+                })
 
         if source_workbooks_by_workflow is None:
             # Compatibility fallback for notebook callers that have not supplied
@@ -1650,13 +1687,30 @@ def write_per_economy_combined_workbooks(
         )
         combined = combined[~(aggregate_fuel_mask | absent_prefix_mask)].copy()
 
+        present_scenarios = sorted({
+            str(value).strip()
+            for value in combined.get("Scenario", pd.Series(dtype=object))
+            if str(value).strip()
+        })
+        coverage_years_by_scenario = workflow_cfg.get_baseline_seed_validation_years(
+            present_scenarios,
+            base_year=coverage_start,
+            final_year=coverage_end,
+        )
+        if required_years_by_scenario is not None:
+            coverage_years_by_scenario.update({
+                str(scenario): sorted({int(year) for year in years})
+                for scenario, years in required_years_by_scenario.items()
+            })
+
         validation = prepare_seed_rows_for_write(
             combined,
             template_path=id_lookup_resolved,
             diagnostics_dir=diagnostics_dir,
             diagnostic_stem=diagnostic_stem,
-            required_years_by_scenario=required_years_by_scenario,
+            required_years_by_scenario=coverage_years_by_scenario,
             required_scenarios_by_source=required_scenarios_by_source,
+            exceptions=configured_exceptions,
             raise_on_blocking=False,
         )
         validation_results.append((econ_token, validation))
@@ -1704,6 +1758,8 @@ def write_per_economy_combined_workbooks(
     diagnostics_dir = out_dir / "supporting_files" / "baseline_seed_validation"
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
     consolidated_frames: list[pd.DataFrame] = []
+    if producer_coverage_findings:
+        consolidated_frames.append(pd.DataFrame(producer_coverage_findings))
     for econ_token, validation in validation_results:
         if validation.findings.empty:
             continue

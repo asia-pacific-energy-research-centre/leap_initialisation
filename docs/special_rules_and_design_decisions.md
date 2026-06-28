@@ -91,10 +91,17 @@ A `-1` sentinel is acceptable only in an intermediate row or an explicitly revie
 
 After refreshing the export, compare its branch paths and IDs with the archived version; rebuild catalog/reset scope; run unknown-path, metadata, duplicate-key, and missing-ID checks; validate share totals after duplicate resolution; and compare new baseline seeds with the last accepted set. Rules `SEED-001` through `SEED-005` and `SEED-011` automate the import-integrity checks. The detailed lifecycle and required export contents are documented in `data/README.md`.
 
+Missing-ID rows remain blocking by default, including zero resets. The final
+writer accepts an optional exact-match exception list for a specifically
+reviewed rule and measure/logical key. Broad rule-only exceptions are invalid,
+and no production missing-ID exception is currently configured. An exception
+does not make a `-1` row effective in LEAP.
+
 ### History
 
 - 2026-06-27: Defined order-independent duplicate classification and required duplicate resolution before share validation.
 - 2026-06-27: Recorded the full-model export lifecycle, ID sentinel rules, duplicate-key requirement, and cross-repository mapping dependency after reviewing the June 2026 USA baseline backup.
+- 2026-06-28: Added a narrow rule-and-key exception mechanism for explicitly reviewed findings; missing-ID zero resets continue to block by default.
 
 ## INIT-003: Share group invariants
 
@@ -240,6 +247,29 @@ diagnostics, and no invalid final workbook is written or substituted.
 
 - 2026-06-28: Confirmed deferred, consolidated reporting for long-running baseline-seed production.
 - 2026-06-28: Final baseline-seed writing now validates every requested economy first, writes consolidated findings, and performs no archive or final-write action when any economy remains blocking.
+
+## INIT-006: Baseline-seed scenario windows and refining capacity policy
+
+**Status:** Confirmed
+**Owner:** leap_initialisation
+**Type:** Production configuration
+**Affected areas:** final baseline-seed coverage validation; refining initialisation
+
+### Current rule
+
+Use configurable base year 2022 and final year 2060. Current Accounts is the
+base-year snapshot and must cover 2022. Reference and Target are projection
+scenarios and must cover 2023 through 2060. Configuration is centralized in
+`workflow_config.py`.
+
+Retain the refining capacity heuristic: copy each refining process/scenario's
+Historical Production values to Exogenous Capacity and use `Gigajoules/Year`
+with `Million` scale. This policy can be disabled explicitly for testing or a
+future modelling decision, but is enabled for production.
+
+### History
+
+- 2026-06-28: Confirmed 2022 base year, 2060 final year, and retention of the refining Historical Production capacity heuristic.
 
 ## End-to-end run report
 

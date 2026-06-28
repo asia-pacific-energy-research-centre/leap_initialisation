@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from codebase.baseline_seed_comparison_workflow import (
     build_share_sum_checks,
@@ -195,6 +196,30 @@ def test_validator_checks_all_ids_and_distinguishes_zero_reset() -> None:
     zero_findings = result.findings[result.findings["rule_id"] == "SEED-005"]
     assert len(zero_findings) == 1
     assert not zero_findings["blocking"].item()
+
+
+def test_missing_id_zero_exception_requires_rule_and_key_scope() -> None:
+    row = _row("Resources\\Coal", "Imports", "Data(2022,0)")
+    row["VariableID"] = -1
+    result = validate_seed_rows(
+        _with_excel_rows([row]),
+        exceptions=[{
+            "exception_id": "TEST-ZERO-RESET",
+            "rule_id": "SEED-003",
+            "Variable": "Imports",
+            "Branch Path": "Resources\\Coal",
+            "reason": "Explicit test-only reset exception.",
+        }],
+    )
+    missing_id = result.findings[result.findings["rule_id"].eq("SEED-003")].iloc[0]
+    assert missing_id["status"] == "excepted"
+    assert not missing_id["blocking"]
+
+    with pytest.raises(ValueError, match="measure/key"):
+        validate_seed_rows(
+            _with_excel_rows([row]),
+            exceptions=[{"rule_id": "SEED-003"}],
+        )
 
 
 def test_validator_handles_inactive_shares_and_configured_coverage() -> None:

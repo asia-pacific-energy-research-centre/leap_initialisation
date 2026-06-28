@@ -28,6 +28,7 @@ from codebase.configuration.config import (
     BRANCH_DEMAND_CATEGORY,
     BRANCH_DEMAND_TECHNOLOGY,
 )
+from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions.leap_core import (
     fill_branches_from_export_file,
     create_branches_from_export_file,
@@ -281,6 +282,10 @@ def _apply_transformation_capacity_logic_to_refining_export(
     (Million Gigajoules/Year).  Refining starts from a hand-maintained export
     workbook, so this normalizes those process rows before branch fill/import.
     """
+    if not workflow_cfg.REFINING_USE_HISTORICAL_PRODUCTION_CAPACITY_HEURISTIC:
+        print("[INFO] Refining Historical Production capacity heuristic is disabled.")
+        return
+
     header_rows, data, columns = read_export_sheet(export_filename, export_sheet_name)
     required = {"Branch Path", "Variable", "Scenario"}
     missing = required.difference(data.columns)

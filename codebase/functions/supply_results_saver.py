@@ -3191,6 +3191,25 @@ def run_results_linked_transformation_supply_workflow(
         )
         timer.lap("run LEAP import")
 
+    baseline_seed_years_by_scenario = workflow_cfg.get_baseline_seed_validation_years(
+        export_scenario_list
+    )
+
+    baseline_seed_sources = {
+        "supply_workflow": [path for _, path in export_paths],
+        "transformation_workflow": transformation_export_paths,
+        "transfers_workflow": transfer_export_paths,
+        "electricity_heat_interim_workflow": electricity_heat_interim_paths,
+        "other_loss_own_use_proxy_workflow": other_loss_own_use_proxy_paths,
+        "aggregated_demand_workflow": aggregated_demand_workbook_paths,
+        "demand_zeroing_workflow": demand_zeroing_paths,
+    }
+    baseline_seed_sources = {
+        source: paths for source, paths in baseline_seed_sources.items() if paths
+    }
+    baseline_seed_required_scenarios = {
+        source: list(export_scenario_list) for source in baseline_seed_sources
+    }
 
     write_per_economy_combined_workbooks(
         economies=economy_list,
@@ -3199,6 +3218,9 @@ def run_results_linked_transformation_supply_workflow(
         output_dir=OUTPUT_DIR,
         id_lookup_path=AGGREGATED_DEMAND_ID_LOOKUP_PATH,
         excluded_sectors=AGGREGATED_DEMAND_EXCLUDED_SECTORS,
+        source_workbooks_by_workflow=baseline_seed_sources,
+        required_years_by_scenario=baseline_seed_years_by_scenario,
+        required_scenarios_by_source=baseline_seed_required_scenarios,
     )
     timer.lap("write per-economy combined workbooks")
 

@@ -77,7 +77,7 @@ Before supply reconciliation can begin, the LEAP area must be populated with ini
 | Script | What it produces |
 |---|---|
 | `aggregated_demand_workflow.py` | The `Demand\All demand aggregated` placeholder branch. Aggregates expected demand across all sectors (using 9th Outlook projections as a proxy) into a single branch used while individual demand sector models are still being developed. Can be configured to exclude sectors that have already been modelled. |
-| `electricity_heat_interim_workflow.py` | The interim `Electricity and Heat` placeholder branch under Demand. Provides a rough estimate of power-sector fuel consumption before the full electricity generation model is available, so the wider area behaves more like a complete energy system. |
+| `electricity_heat_interim_workflow.py` | Interim electricity, CHP, and heat transformation modules. Uses only signed `09_*` transformation rows: positive values supply outputs and negative values supply feedstocks. `18_*`/`19_*` accounting sectors are prohibited. |
 | `other_loss_own_use_proxy_workflow.py` | The `Demand\Other losses and own use` branches. Captures own-use and losses associated with supply processes and transformation modules that cannot be assigned to a specific transformation module's auxiliary fuel use. |
 | `refining_workflow.py` | Refining transformation data — input/output relationships, process efficiency, and exogenous capacity for the refining module — drawn from ESTO historical relationships and 9th Outlook projections. |
 | `supply_workflow.py` | Supply and resources data — domestic production (`Maximum Production`), imports, and exports for primary and secondary fuels — drawn from ESTO and 9th Outlook baselines. |
@@ -85,6 +85,22 @@ Before supply reconciliation can begin, the LEAP area must be populated with ini
 | `transfers_workflow.py` | Transfers data for the upstream liquids, refinery and blending, and transfers unallocated modules. |
 
 `supply_reconciliation_workflow.py` then uses the outputs of `supply_workflow.py` and `transformation_workflow.py` as its baseline reference and iteratively adjusts them based on LEAP results. The other scripts (`aggregated_demand_workflow.py`, `electricity_heat_interim_workflow.py`, `other_loss_own_use_proxy_workflow.py`) are run once at initialisation and are not part of the reconciliation loop.
+
+The final baseline seed combines the current run's supply, transformation
+(including oil refining), transfers, interim electricity/CHP/heat,
+loss/own-use proxy, aggregated-demand, and demand-zeroing workbooks. Every
+configured producer must supply a readable workbook for each requested
+economy. The writer validates all economies before replacing any final seed.
+Default scenario coverage is Current Accounts 2022 and Reference/Target
+2023–2060; both endpoints are configurable in `workflow_config.py`.
+
+Production-readiness dependency: some supporting producers still use the
+legacy `leap_mappings.xlsx`/`master_config.xlsx` inputs. They can reproduce the
+current legacy mapping basis, but migration to
+`leap_mappings/config/outlook_mappings_master.xlsx` waits on mapping pipeline
+task M2 and initialisation refactor Phase 3. Treat that migration plus a clean
+non-importing `20_USA` qualification run as the final gates before declaring
+the baseline seed fully canonical.
 
 ## 1. Why this workflow exists
 

@@ -45,6 +45,48 @@ GLOBAL_REGION = "United States"
 GLOBAL_EXPORT_OUTPUT_DIR = STANDALONE_LEAP_EXPORTS_ROOT
 GLOBAL_AGGREGATE_ECONOMY_LABEL = _resolve_global_aggregate(GLOBAL_ECONOMIES)
 
+# Final baseline-seed validation coverage. These are deliberately independent
+# of projection-only producer windows: final imports must explicitly cover the
+# complete configured model horizon for every represented scenario.
+BASELINE_SEED_VALIDATION_BASE_YEAR = 2022
+BASELINE_SEED_VALIDATION_FINAL_YEAR = 2060
+# Exceptions are off by default. Each entry must name a rule_id and at least
+# one logical-key/provenance field such as Variable, Branch Path, or Scenario.
+BASELINE_SEED_VALIDATION_EXCEPTIONS: list[dict[str, object]] = []
+
+# Retained modelling decision: refining Exogenous Capacity follows Historical
+# Production, using the existing unit conversion metadata in refining_workflow.
+REFINING_USE_HISTORICAL_PRODUCTION_CAPACITY_HEURISTIC = True
+
+
+def get_baseline_seed_validation_years(
+    scenarios,
+    *,
+    base_year: int | None = None,
+    final_year: int | None = None,
+) -> dict[str, list[int]]:
+    """Return Current Accounts base-year and projection scenario windows."""
+    resolved_base = int(
+        BASELINE_SEED_VALIDATION_BASE_YEAR if base_year is None else base_year
+    )
+    resolved_final = int(
+        BASELINE_SEED_VALIDATION_FINAL_YEAR if final_year is None else final_year
+    )
+    if resolved_final < resolved_base:
+        raise ValueError(
+            f"Baseline-seed final year {resolved_final} precedes base year {resolved_base}."
+        )
+    result: dict[str, list[int]] = {}
+    for scenario in scenarios:
+        name = str(scenario).strip()
+        if not name:
+            continue
+        if name.lower() in {"current account", "current accounts"}:
+            result[name] = [resolved_base]
+        else:
+            result[name] = list(range(resolved_base + 1, resolved_final + 1))
+    return result
+
 
 @dataclass(frozen=True)
 class EnergySourceConfig:
