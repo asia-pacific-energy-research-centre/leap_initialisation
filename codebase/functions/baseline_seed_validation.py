@@ -439,6 +439,18 @@ def complete_canonical_share_groups(
     group_columns = ["__parent", "Variable", "Scenario", "Region"]
     for key, group in shares.groupby(group_columns, dropna=False, sort=True):
         group_path, variable, scenario, region = map(_text, key)
+        group_context = {
+            "Branch Path": group_path,
+            "Variable": variable,
+            "Scenario": scenario,
+            "Region": region,
+            SOURCE_WORKFLOW_COLUMN: "|".join(sorted({
+                _text(value) for value in group.get(SOURCE_WORKFLOW_COLUMN, pd.Series(dtype=object)) if _text(value)
+            })),
+            SOURCE_FILE_COLUMN: "|".join(sorted({
+                _text(value) for value in group.get(SOURCE_FILE_COLUMN, pd.Series(dtype=object)) if _text(value)
+            })),
+        }
         years = sorted({int(year) for year in required_years_by_scenario.get(scenario, [])})
         if not years:
             continue
@@ -451,7 +463,7 @@ def complete_canonical_share_groups(
             diagnostics.append(_finding(
                 SHARE_VARIABLE_RULE_IDS[variable], "fail",
                 "Canonical share group is absent from the full-model export.",
-                evidence=group_path, **{"Branch Path": group_path, "Variable": variable, "Scenario": scenario, "Region": region},
+                evidence=group_path, **group_context,
             ))
             continue
 
@@ -478,7 +490,7 @@ def complete_canonical_share_groups(
                 SHARE_VARIABLE_RULE_IDS[variable], "info",
                 "Added explicit zero for unused canonical sibling.",
                 evidence=_text(template_row["Branch Path"]),
-                **{"Branch Path": group_path, "Variable": variable, "Scenario": scenario, "Region": region},
+                **group_context,
             ))
 
         all_rows = (
@@ -496,7 +508,7 @@ def complete_canonical_share_groups(
                     SHARE_VARIABLE_RULE_IDS[variable], "fail",
                     "Share expression is missing or unparseable before canonical completion.",
                     evidence=_text(row.get("Expression")),
-                    **{"Branch Path": path, "Variable": variable, "Scenario": scenario, "Region": region},
+                    **{**group_context, "Branch Path": path},
                 ))
                 parsed = {}
             elif any(value < -tolerance for value in parsed.values()):
@@ -504,7 +516,7 @@ def complete_canonical_share_groups(
                     SHARE_VARIABLE_RULE_IDS[variable], "fail",
                     "Share expression contains a negative value.",
                     evidence=_text(row.get("Expression")),
-                    **{"Branch Path": path, "Variable": variable, "Scenario": scenario, "Region": region},
+                    **{**group_context, "Branch Path": path},
                 ))
             parsed_by_path[path] = parsed
         for year in years:
@@ -522,7 +534,7 @@ def complete_canonical_share_groups(
                     SHARE_VARIABLE_RULE_IDS[variable], "info",
                     "Normalized genuine canonical sibling values to 100 percent.",
                     evidence=f"year={year}; original_sum={total:.12g}",
-                    **{"Branch Path": group_path, "Variable": variable, "Scenario": scenario, "Region": region},
+                    **group_context,
                 ))
         genuine_years = sorted(profiles)
         if genuine_years:
@@ -535,7 +547,7 @@ def complete_canonical_share_groups(
                     SHARE_VARIABLE_RULE_IDS[variable], "info",
                     "Reused nearest genuine normalized share profile.",
                     evidence=f"year={year}; source_year={nearest}",
-                    **{"Branch Path": group_path, "Variable": variable, "Scenario": scenario, "Region": region},
+                    **group_context,
                 ))
         else:
             allowed, capacity_evidence = _zero_capacity_is_explicit(
@@ -552,14 +564,14 @@ def complete_canonical_share_groups(
                     SHARE_VARIABLE_RULE_IDS[variable], "info",
                     "Generated deterministic synthetic share anchor for an explicitly zero-capacity group.",
                     evidence=f"anchor={anchor}; {capacity_evidence}",
-                    **{"Branch Path": group_path, "Variable": variable, "Scenario": scenario, "Region": region},
+                    **group_context,
                 ))
             else:
                 diagnostics.append(_finding(
                     SHARE_VARIABLE_RULE_IDS[variable], "fail",
                     "Synthetic share fallback is blocked without explicit zero capacity.",
                     evidence=capacity_evidence,
-                    **{"Branch Path": group_path, "Variable": variable, "Scenario": scenario, "Region": region},
+                    **group_context,
                 ))
                 continue
 
@@ -627,6 +639,11 @@ def _validate_shares(data: pd.DataFrame, *, tolerance: float) -> list[dict[str, 
                     for value in group.get(SOURCE_WORKFLOW_COLUMN, pd.Series(dtype=object))
                     if _text(value)
                 })),
+                SOURCE_FILE_COLUMN: "|".join(sorted({
+                    _text(value)
+                    for value in group.get(SOURCE_FILE_COLUMN, pd.Series(dtype=object))
+                    if _text(value)
+                })),
             }
             if unknown_rows or missing:
                 findings.append(_finding(rule_id, "fail", "Share group contains missing or unparseable values.", evidence=f"missing={missing}; unparseable={unknown_rows}", **context))
@@ -669,6 +686,11 @@ def _validate_canonical_share_completeness(
             SOURCE_WORKFLOW_COLUMN: "|".join(sorted({
                 _text(value)
                 for value in group.get(SOURCE_WORKFLOW_COLUMN, pd.Series(dtype=object))
+                if _text(value)
+            })),
+            SOURCE_FILE_COLUMN: "|".join(sorted({
+                _text(value)
+                for value in group.get(SOURCE_FILE_COLUMN, pd.Series(dtype=object))
                 if _text(value)
             })),
         }
