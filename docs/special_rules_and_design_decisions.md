@@ -130,6 +130,9 @@ the group has no genuine sibling values in any configured year may a synthetic
 100% anchor be considered, and it should normally be used only when the
 relevant Exogenous Capacity is explicitly zero. Any exception to the
 zero-capacity condition must be documented in producer configuration.
+When no producer-specific fallback is configured, select the alphabetically
+first canonical branch path. This is deterministic and must not depend on
+workbook row order. No capacity exception is currently approved.
 
 Missing or unparseable share expressions and conflicting duplicate groups block import. A one-leaf active group must therefore be 100%. The validator does not infer required scenarios or years from a reference workbook; callers provide those windows explicitly.
 
@@ -145,6 +148,7 @@ without the required capacity evidence.
 
 - 2026-06-27: Confirmed the three share-group invariants and separated them from unresolved zero-activity and fallback-fuel choices.
 - 2026-06-28: Required complete canonical sibling groups with explicit zero rows for unused siblings across every generated share measure; confirmed normalization above or below 100%, nearest-profile reuse for isolated zero years, and the zero-capacity constraint on wholly synthetic groups.
+- 2026-06-28: Implemented template-driven completion for Output, Process, and Feedstock shares; deterministic alphabetical fallback is permitted only with explicit zero capacity, and partial share-group patches block.
 
 ## INIT-004: Do not use 9th Outlook power-output sectors in interim power calculations
 
@@ -195,6 +199,7 @@ Share group is not evidence that an `18_*` or `19_*` row should be introduced.
 ### History
 
 - 2026-06-28: Confirmed that all `18_*` and `19_*` values are prohibited in interim power calculations and that signed `09_*` rows supply both outputs and inputs.
+- 2026-06-28: Added an enforced source-sector allow/deny boundary and signed-row regression coverage.
 
 ## INIT-005: Defer baseline-seed validation failure until the full viable run completes
 
@@ -234,6 +239,7 @@ diagnostics, and no invalid final workbook is written or substituted.
 ### History
 
 - 2026-06-28: Confirmed deferred, consolidated reporting for long-running baseline-seed production.
+- 2026-06-28: Final baseline-seed writing now validates every requested economy first, writes consolidated findings, and performs no archive or final-write action when any economy remains blocking.
 
 ## End-to-end run report
 
