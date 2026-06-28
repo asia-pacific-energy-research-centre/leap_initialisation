@@ -127,6 +127,31 @@ Run rules `SEED-006`, `SEED-007`, and `SEED-008`. Review duplicate findings firs
 
 - 2026-06-27: Confirmed the three share-group invariants and separated them from unresolved zero-activity and fallback-fuel choices.
 
+## INIT-004: Do not use 9th Outlook power-output sectors in interim power calculations
+
+**Status:** Confirmed
+**Owner:** leap_initialisation
+**Type:** Source-data unit boundary
+**Affected areas:** `codebase/electricity_heat_interim_workflow.py`; electricity, CHP, and heat interim input selection; interim Output Share and efficiency generation
+
+### Situation
+
+The 9th Outlook sector codes `18_01_electricity_plants`, `18_02_chp_plants`, `19_01_chp_plants`, and `19_02_heat_plants` are output-accounting rows measured in GWh. The interim power workflow operates on PJ energy-balance inputs. Mixing these rows into the `09_*` input filters creates a unit mismatch and can incorrectly turn GWh outputs into PJ inputs, Output Share evidence, or process-efficiency inputs.
+
+### Current rule
+
+Never use any `18_*` electricity-output or `19_*` heat-output sector in electricity interim, CHP interim, or heat plant interim calculations. In particular, `18_02_chp_plants` and `19_01_chp_plants` must not be used to derive CHP inputs or CHP Output Shares. The permitted 9th Outlook input sectors are `09_01_electricity_plants`, `09_02_chp_plants`, and `09_x_heat_plants` for their corresponding interim modules.
+
+If an interim Output Share group is missing, do not fill it from the `18_*` or `19_*` rows and do not invent a fallback profile. Use a separately approved PJ-compatible source or leave the existing LEAP profile unchanged pending modelling review.
+
+### Validation
+
+Maintain an explicit deny-list for the four GWh output sectors and test that every configured interim `sub1sectors` filter is disjoint from it. A missing CHP Output Share group is not evidence that the GWh output rows should be introduced.
+
+### History
+
+- 2026-06-28: Confirmed that `18_02_chp_plants` and `19_01_chp_plants` are GWh output rows and corrected the earlier proposal to use them for CHP interim generation.
+
 ## End-to-end run report
 
 Append a dated subsection after each end-to-end run. Report:
