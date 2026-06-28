@@ -10,6 +10,9 @@ from codebase.baseline_seed_comparison_workflow import (
     read_seed_workbook,
 )
 from codebase.functions.baseline_seed_validation import (
+    BaselineSeedValidationError,
+    enrich_seed_ids_from_template,
+    prepare_seed_rows_for_write,
     resolve_logical_duplicates,
     validate_seed_rows,
 )
@@ -206,7 +209,7 @@ def test_validator_handles_inactive_shares_and_configured_coverage() -> None:
     )
 
     process_findings = result.findings[result.findings["rule_id"] == "SEED-007"]
-    assert set(process_findings["status"]) == {"info"}
+    assert set(process_findings["status"]) == {"fail"}
     assert len(result.findings[result.findings["rule_id"] == "SEED-009"]) == 2
     assert len(result.findings[result.findings["rule_id"] == "SEED-010"]) == 2
 
@@ -250,3 +253,123 @@ def test_june_usa_fixture_heat_interim_duplicate_is_resolved_to_valid_row() -> N
     assert resolved["BranchID"].tolist() == [2450]
     assert resolved["Expression"].tolist() == ["Data(2022,100.0)"]
     assert duplicates["classification"].tolist() == ["conflicting_expression_one_valid_id_row"]
+
+
+def _write_template(path: Path, rows: list[dict[str, object]]) -> None:
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        pd.DataFrame(rows).to_excel(writer, sheet_name="Export", index=False, startrow=2)
+
+
+def test_production_preparation_enriches_all_ids_and_collapses_exact_duplicates(
+    tmp_path: Path,
+) -> None:
+    branch = "Transformation\\Heat plant interim\\Processes\\Heat plant interim"
+    template_path = tmp_path / "template.xlsx"
+    template_row = _row(branch, "Process Share", "")
+    template_row.update({"BranchID": 2450, "VariableID": 418, "ScenarioID": 2, "RegionID": 1})
+    _write_template(template_path, [template_row])
+
+    rows = [
+        _row(branch, "Process Share", "Data(2023,100)", branch_id=-1),
+        _row(branch, "Process Share", "Data(2023, 100.0)", branch_id=2450),
+    ]
+    for row in rows:
+        row.update({"VariableID": -1, "ScenarioID": -1, "RegionID": -1})
+    result = prepare_seed_rows_for_write(
+        _with_excel_rows(rows).sample(frac=1, random_state=3),
+        template_path=template_path,
+        diagnostics_dir=tmp_path / "diagnostics",
+        diagnostic_stem="heat",
+        required_years_by_scenario={"Reference": [2023]},
+    )
+
+    assert len(result.resolved_rows) == 1
+    assert result.resolved_rows[["BranchID", "VariableID", "ScenarioID", "RegionID"]].iloc[0].tolist() == [2450, 418, 2, 1]
+    assert result.duplicate_groups["classification"].tolist() == [
+        "exact_duplicate_same_ids_and_expression"
+    ]
+
+
+def test_zero_reset_is_enriched_with_real_ids(tmp_path: Path) -> None:
+    branch = "Resources\\Primary\\Gas"
+    template_path = tmp_path / "template.xlsx"
+    template_row = _row(branch, "Imports", "")
+    template_row.update({"BranchID": 20, "VariableID": 30, "ScenarioID": 2, "RegionID": 1})
+    _write_template(template_path, [template_row])
+    candidate = _with_excel_rows([_row(branch, "Imports", "Data(2023,0)", branch_id=-1)])
+
+    enriched = enrich_seed_ids_from_template(candidate, template_path)
+    result = validate_seed_rows(enriched, template_path=template_path)
+
+    assert enriched[["BranchID", "VariableID", "ScenarioID", "RegionID"]].iloc[0].tolist() == [20, 30, 2, 1]
+    assert result.findings.empty
+
+
+def test_share_validation_uses_resolved_rows_not_duplicate_physical_rows() -> None:
+    gas = _row(
+        "Transformation\\Plant\\Output Fuels\\Gas",
+        "Output Share",
+        "Data(2023,40)",
+    )
+    oil = _row(
+        "Transformation\\Plant\\Output Fuels\\Oil",
+        "Output Share",
+        "Data(2023,60)",
+    )
+    result = validate_seed_rows(
+        _with_excel_rows([gas, dict(gas), oil]),
+        allow_exact_duplicate_resolution=True,
+    )
+
+    share_findings = result.findings[result.findings["rule_id"] == "SEED-006"]
+    assert share_findings["status"].tolist() == ["pass"]
+    assert share_findings["evidence"].tolist() == ["sum=100"]
+
+
+def test_scenario_specific_year_and_source_coverage_block_when_incomplete() -> None:
+    row = _row("Resources\\Primary\\Gas", "Imports", "Data(2023,1)")
+    row["source_workflow"] = "supply_workflow"
+    result = validate_seed_rows(
+        _with_excel_rows([row]),
+        required_years_by_scenario={"Reference": [2023, 2024]},
+        required_scenarios_by_source={
+            "supply_workflow": ["Reference", "Target"]
+        },
+    )
+
+    assert result.findings[result.findings["rule_id"] == "SEED-009"]["blocking"].all()
+    assert result.findings[result.findings["rule_id"] == "SEED-010"]["blocking"].all()
+
+
+def test_conflicting_valid_rows_write_diagnostics_before_raising(tmp_path: Path) -> None:
+    branch = "Resources\\Primary\\Gas"
+    template_path = tmp_path / "template.xlsx"
+    template_row = _row(branch, "Imports", "")
+    _write_template(template_path, [template_row])
+    candidate = _with_excel_rows([
+        _row(branch, "Imports", "Data(2023,1)"),
+        _row(branch, "Imports", "Data(2023,2)"),
+    ])
+    diagnostics_dir = tmp_path / "diagnostics"
+
+    try:
+        prepare_seed_rows_for_write(
+            candidate,
+            template_path=template_path,
+            diagnostics_dir=diagnostics_dir,
+            diagnostic_stem="conflict",
+        )
+    except BaselineSeedValidationError:
+        pass
+    else:
+        raise AssertionError("Conflicting valid rows must block workbook preparation")
+
+    findings_path = diagnostics_dir / "conflict_rule_findings.csv"
+    duplicates_path = diagnostics_dir / "conflict_duplicate_groups.csv"
+    assert findings_path.exists()
+    assert duplicates_path.exists()
+    duplicates = pd.read_csv(duplicates_path)
+    assert duplicates["blocking"].tolist() == [True]
+
+
+#%%

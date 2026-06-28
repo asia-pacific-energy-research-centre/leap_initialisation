@@ -59,12 +59,75 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from codebase.functions.baseline_seed_validation import (
+    SOURCE_WORKFLOW_COLUMN,
+    prepare_seed_rows_for_write,
+    resolve_logical_duplicates,
+    load_template_rows,
+)
+
 BASELINE_SEED_DIR = REPO_ROOT / "outputs" / "leap_exports" / "supply_reconciliation"
 WORKBOOKS_DIR = BASELINE_SEED_DIR / "workbooks"
 ARCHIVE_DIR = BASELINE_SEED_DIR / "archive"
 FULL_MODEL_EXPORT_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 
 _ECON_RE = re.compile(r"\d{2}_[A-Z]{2,3}")
+
+
+def _deduplicate_rows_safely(df: pd.DataFrame) -> pd.DataFrame:
+    """Deduplicate logical keys without choosing between genuine expressions."""
+    resolved, duplicate_groups = resolve_logical_duplicates(df)
+    conflicts = (
+        duplicate_groups[duplicate_groups["blocking"].fillna(False)]
+        if "blocking" in duplicate_groups.columns
+        else duplicate_groups.iloc[0:0]
+    )
+    if not conflicts.empty:
+        preview = "; ".join(
+            " | ".join(str(row.get(column, "")) for column in (
+                "Branch Path", "Variable", "Scenario", "Region"
+            ))
+            for _, row in conflicts.head(5).iterrows()
+        )
+        raise ValueError(
+            "Conflicting duplicate expressions require owning-module "
+            f"regeneration; refusing to guess: {preview}"
+        )
+    return resolved
+
+
+def _assert_atomic_canonical_share_groups(
+    data: pd.DataFrame,
+    template_path: Path = FULL_MODEL_EXPORT_PATH,
+) -> None:
+    """Reject patches that represent only part of a canonical share group."""
+    share_variables = {"Output Share", "Process Share", "Feedstock Fuel Share"}
+    shares = data[data.get("Variable", pd.Series("", index=data.index)).astype(str).str.strip().isin(share_variables)].copy()
+    if shares.empty:
+        return
+    template = load_template_rows(template_path)
+    template = template[template["Variable"].astype(str).str.strip().isin(share_variables)].copy()
+    shares["__parent"] = shares["Branch Path"].astype(str).str.rsplit("\\", n=1).str[0]
+    template["__parent"] = template["Branch Path"].astype(str).str.rsplit("\\", n=1).str[0]
+    failures: list[str] = []
+    for key, group in shares.groupby(["__parent", "Variable", "Scenario", "Region"], dropna=False, sort=True):
+        parent, variable, scenario, _region = (str(value).strip() for value in key)
+        expected_rows = template[
+            template["__parent"].astype(str).str.strip().str.lower().eq(parent.lower())
+            & template["Variable"].astype(str).str.strip().str.lower().eq(variable.lower())
+            & template["Scenario"].astype(str).str.strip().str.lower().eq(scenario.lower())
+        ]
+        expected = {str(value).strip().lower() for value in expected_rows["Branch Path"]}
+        present = {str(value).strip().lower() for value in group["Branch Path"]}
+        if not expected or present != expected:
+            failures.append(
+                f"{parent} | {variable} | {scenario}: "
+                f"missing={sorted(expected - present)}; extra={sorted(present - expected)}"
+            )
+    if failures:
+        raise ValueError(
+            "Partial canonical share-group patch is forbidden: " + "; ".join(failures[:10])
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +321,8 @@ def _build_id_lookup(
             return None
 
     branch: dict[str, int] = {}
-    variable: dict[str, int] = {}
+    branch_lower: dict[str, int] = {}
+    variable: dict[tuple[str, str], int] = {}
     scenario: dict[str, int] = {}
     region: dict[str, int] = {}
 
@@ -268,12 +332,14 @@ def _build_id_lookup(
             v = _int_id(row.get("BranchID"))
             if v is not None:
                 branch[bp] = v
+                branch_lower[bp.lower()] = v
 
         var = str(row.get("Variable", "") or "").strip()
-        if var and var not in variable:
+        variable_key = (bp.lower(), var)
+        if bp and var and variable_key not in variable:
             v = _int_id(row.get("VariableID"))
             if v is not None:
-                variable[var] = v
+                variable[variable_key] = v
 
         scen = str(row.get("Scenario", "") or "").strip()
         if scen and scen not in scenario:
@@ -289,6 +355,7 @@ def _build_id_lookup(
 
     _TEMPLATE_ID_LOOKUP_CACHE = {
         "branch": branch,
+        "branch_lower": branch_lower,
         "variable": variable,
         "scenario": scenario,
         "region": region,
@@ -297,20 +364,16 @@ def _build_id_lookup(
 
 
 def _fill_ids_from_template(df: pd.DataFrame, lookup: dict[str, dict]) -> None:
-    """Fill ID columns in-place using template lookups; fall back to -1 where unknown."""
-    mapping = {
-        "BranchID": ("Branch Path", lookup["branch"], -1),
-        "VariableID": ("Variable", lookup["variable"], -1),
-        "ScenarioID": ("Scenario", lookup["scenario"], -1),
-        "RegionID": ("Region", lookup["region"], 1),
-    }
-    for id_col, (key_col, lut, default) in mapping.items():
-        if id_col not in df.columns:
-            continue
-        if key_col in df.columns:
-            df[id_col] = df[key_col].astype(str).map(lut).fillna(default).astype(int)
-        else:
-            df[id_col] = default
+    """Fill IDs using branch-specific template keys."""
+    branch_text = df.get("Branch Path", pd.Series("", index=df.index)).astype(str).str.strip()
+    variable_text = df.get("Variable", pd.Series("", index=df.index)).astype(str).str.strip()
+    scenario_text = df.get("Scenario", pd.Series("", index=df.index)).astype(str).str.strip()
+    region_text = df.get("Region", pd.Series("", index=df.index)).astype(str).str.strip()
+    df["BranchID"] = branch_text.str.lower().map(lookup["branch_lower"]).fillna(-1).astype(int)
+    variable_keys = pd.Series(list(zip(branch_text.str.lower(), variable_text)), index=df.index)
+    df["VariableID"] = variable_keys.map(lookup["variable"]).fillna(-1).astype(int)
+    df["ScenarioID"] = scenario_text.map(lookup["scenario"]).fillna(-1).astype(int)
+    df["RegionID"] = region_text.map(lookup["region"]).fillna(1).astype(int)
 
 
 def _load_template_valid_ids(
@@ -339,6 +402,7 @@ def validate_seed_files(
         return 0
 
     valid = _load_template_valid_ids(template_path)
+    id_lookup = _build_id_lookup(template_path)
     valid_paths = valid["Branch Path"]
     # Case-insensitive lookup: lowercase key → canonical path from template.
     # LEAP branch names sometimes differ only in capitalisation from what the
@@ -377,6 +441,15 @@ def validate_seed_files(
             # Use canonical path for ID column checks.
             bp = canonical_bp
 
+            variable = str(row.get("Variable", "") or "").strip()
+            scenario = str(row.get("Scenario", "") or "").strip()
+            region = str(row.get("Region", "") or "").strip()
+            expected_ids = {
+                "BranchID": id_lookup["branch_lower"].get(bp.lower()),
+                "VariableID": id_lookup["variable"].get((bp.lower(), variable)),
+                "ScenarioID": id_lookup["scenario"].get(scenario),
+                "RegionID": id_lookup["region"].get(region, 1),
+            }
             for col in _ID_COLS:
                 if col not in data.columns:
                     continue
@@ -384,8 +457,11 @@ def validate_seed_files(
                     val = int(float(row[col]))
                 except (TypeError, ValueError):
                     continue
-                if val != -1 and val not in valid[col]:
-                    bad_rows.append(f"  bad {col}={val} on: {bp}")
+                expected = expected_ids.get(col)
+                if expected is not None and val != int(expected):
+                    bad_rows.append(
+                        f"  bad {col}={val}, expected {int(expected)} on: {bp}"
+                    )
 
         if bad_rows:
             print(f"\n[INVALID] {seed_path.name} — {len(bad_rows)} issue(s):")
@@ -434,8 +510,7 @@ def _collect_from_workbooks(cfg: ModuleConfig,
     result: dict[str, pd.DataFrame] = {}
     for tok, frames in by_econ.items():
         df = pd.concat(frames, ignore_index=True)
-        key_cols = [c for c in ("Branch Path", "Variable", "Scenario") if c in df.columns]
-        result[tok] = df.drop_duplicates(subset=key_cols, keep="last")
+        result[tok] = _deduplicate_rows_safely(df)
     return result
 
 
@@ -626,7 +701,13 @@ def _derive_prefixes(df: pd.DataFrame, bp_col: str = "Branch Path") -> list[str]
     return sorted(prefixes)
 
 
-def _patch_one(seed_path: Path, new_df: pd.DataFrame, prefixes: list[str]) -> None:
+def _patch_one(
+    seed_path: Path,
+    new_df: pd.DataFrame,
+    prefixes: list[str],
+    source_workflow: str = "patch_baseline_seeds",
+) -> None:
+    _assert_atomic_canonical_share_groups(new_df, FULL_MODEL_EXPORT_PATH)
     raw = pd.read_excel(seed_path, sheet_name="LEAP", header=None)
     _, data = _find_header_row(raw)
 
@@ -666,21 +747,48 @@ def _patch_one(seed_path: Path, new_df: pd.DataFrame, prefixes: list[str]) -> No
     if ignore_mask.any():
         new_aligned = new_aligned[~ignore_mask].copy()
 
-    # Deduplicate rows that differ only in branch-path capitalisation.
-    # This happens when the catalog (build_aux_fuel_zero_rows) writes a zero-fill
-    # row using the template's casing (e.g. "Natural Gas") and the analysis log
-    # writer also emits a computed row using map_code_label casing (e.g. "Natural gas").
-    # Keep the LAST occurrence — the analysis log row — which has the actual computed
-    # values and the preferred lowercase-g casing.  The catalog zero-fill row is discarded.
-    dedup_key_cols = [c for c in (bp_col, "Variable", "Scenario") if c in new_aligned.columns]
-    if dedup_key_cols:
-        new_aligned = new_aligned.copy()
-        new_aligned["_bp_lower"] = new_aligned[bp_col].astype(str).str.lower()
-        lower_key_cols = ["_bp_lower"] + [c for c in dedup_key_cols if c != bp_col]
-        new_aligned = new_aligned.drop_duplicates(subset=lower_key_cols, keep="last")
-        new_aligned = new_aligned.drop(columns=["_bp_lower"])
-
+    cleaned[SOURCE_WORKFLOW_COLUMN] = "retained_baseline_seed_rows"
+    new_aligned[SOURCE_WORKFLOW_COLUMN] = source_workflow
     combined = pd.concat([cleaned, new_aligned], ignore_index=True)
+
+    branch_paths = combined[bp_col].fillna("").astype(str)
+    documented_exclusion_mask = branch_paths.map(
+        lambda path: path.split("\\")[-1] in VALIDATION_IGNORE_FUEL_NAMES
+        or any(path.startswith(prefix) for prefix in VALIDATION_IGNORE_PREFIXES)
+    )
+    diagnostics_dir = seed_path.parent / "supporting_files" / "baseline_seed_validation"
+    diagnostic_stem = f"{seed_path.stem}_patch_{source_workflow}"
+    diagnostics_dir.mkdir(parents=True, exist_ok=True)
+    combined[documented_exclusion_mask].to_csv(
+        diagnostics_dir / f"{diagnostic_stem}_documented_exclusions.csv",
+        index=False,
+    )
+    combined = combined[~documented_exclusion_mask].copy()
+
+    from codebase.functions import transformation_record_builder as record_builder
+
+    required_years_by_scenario: dict[str, list[int]] = {}
+    for scenario in sorted({str(value).strip() for value in combined["Scenario"] if str(value).strip()}):
+        scenario_config = record_builder.get_scenario_export_config(scenario)
+        start_year, end_year = record_builder.resolve_scenario_year_range(
+            record_builder.EXPORT_BASE_YEAR,
+            record_builder.EXPORT_FINAL_YEAR,
+            scenario_config,
+        )
+        if scenario.lower() not in {"current account", "current accounts"}:
+            start_year = max(int(start_year), int(record_builder.EXPORT_BASE_YEAR) + 1)
+        required_years_by_scenario[scenario] = list(range(int(start_year), int(end_year) + 1))
+
+    validation = prepare_seed_rows_for_write(
+        combined,
+        template_path=FULL_MODEL_EXPORT_PATH,
+        diagnostics_dir=diagnostics_dir,
+        diagnostic_stem=diagnostic_stem,
+        required_years_by_scenario=required_years_by_scenario,
+    )
+    combined = validation.resolved_rows.drop(
+        columns=[SOURCE_WORKFLOW_COLUMN], errors="ignore"
+    )
 
     cols = list(combined.columns)
     preamble = {c: pd.NA for c in cols}
@@ -769,7 +877,7 @@ def run_patch(
             continue
         print(f"  [{tok}] {seed_path.name}")
         try:
-            _patch_one(seed_path, new_df, cfg.strip_prefixes)
+            _patch_one(seed_path, new_df, cfg.strip_prefixes, source_workflow=module)
         except PermissionError:
             print(f"  [{tok}] SKIPPED — file is locked (close it in Excel and re-run for this economy).")
             failed.append(tok)

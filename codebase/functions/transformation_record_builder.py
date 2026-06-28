@@ -512,9 +512,7 @@ def normalize_feedstock_shares_for_export(feedstock_shares, base_year, final_yea
                 fallback_distribution.values()
             )
         else:
-            anchor_label = labels[0]
             fallback_distribution = {label: 0.0 for label in labels}
-            fallback_distribution[anchor_label] = 100.0
 
         # Build explicit normalized profiles for years that have a valid total.
         positive_profiles = {}
@@ -1215,7 +1213,7 @@ def _normalize_share_percentages(raw_share_by_label, rounding_decimals=6):
 
 
 def _normalize_output_shares_for_export(output_shares, base_year, final_year):
-    """Return output share maps with every year summing to 100%."""
+    """Normalize genuine shares and fill gaps from the nearest genuine profile."""
     try:
         if not output_shares:
             return {}
@@ -1225,9 +1223,8 @@ def _normalize_output_shares_for_export(output_shares, base_year, final_year):
 
         years = list(range(int(base_year), int(final_year) + 1))
         normalized = {label: {} for label in labels}
-        first_label = labels[0]
         value_tolerance = 1e-12
-
+        raw_by_year = {}
         for year in years:
             raw_by_label = {}
             for label in labels:
@@ -1240,19 +1237,32 @@ def _normalize_output_shares_for_export(output_shares, base_year, final_year):
                 if raw_value is None or pd.isna(raw_value):
                     raw_value = 0.0
                 raw_by_label[label] = max(float(raw_value), 0.0)
+            raw_by_year[year] = raw_by_label
 
+        genuine_profiles = {}
+        for year, raw_by_label in raw_by_year.items():
             year_total = sum(raw_by_label.values())
             if year_total > value_tolerance:
-                share_by_label = _normalize_share_percentages(
+                genuine_profiles[year] = _normalize_share_percentages(
                     {
                         label: raw_by_label[label] * 100.0 / year_total
                         for label in labels
                     }
                 )
-            else:
-                share_by_label = {label: 0.0 for label in labels}
-                share_by_label[first_label] = 100.0
 
+        # Preserve an explicit zero profile so the final canonical-group layer
+        # can capacity-gate any synthetic fallback and emit every sibling.
+        if not genuine_profiles:
+            return {
+                label: {year: 0.0 for year in years}
+                for label in labels
+            }
+
+        for year in years:
+            share_by_label = genuine_profiles.get(year)
+            if share_by_label is None:
+                nearest_year = min(genuine_profiles, key=lambda candidate: (abs(candidate - year), candidate))
+                share_by_label = genuine_profiles[nearest_year]
             for label in labels:
                 normalized[label][year] = float(share_by_label.get(label, 0.0))
 
@@ -1301,27 +1311,34 @@ def _build_output_share_lookup(
                 continue
             economy, sector_title = sector_key
             sector_bucket = lookup.setdefault((economy, sector_title), {})
-            last_nonzero_share = None
+            raw_by_year = {}
             for year in years:
-                fuel_totals = {
+                raw_by_year[year] = {
                     fuel_label: float(
                         output_totals.get((economy, sector_title, fuel_label, int(year)), 0.0)
                     )
                     for fuel_label in fuel_labels
                 }
+            genuine_profiles = {}
+            for year, fuel_totals in raw_by_year.items():
                 sector_total = float(sum(fuel_totals.values()))
                 if sector_total > value_tolerance:
                     raw_shares = {
                         fuel_label: (fuel_totals[fuel_label] / sector_total) * 100.0
                         for fuel_label in fuel_labels
                     }
-                    share_by_label = _normalize_share_percentages(raw_shares)
-                    last_nonzero_share = dict(share_by_label)
-                elif last_nonzero_share is not None:
-                    share_by_label = dict(last_nonzero_share)
-                else:
-                    share_by_label = {fuel_label: 0.0 for fuel_label in fuel_labels}
-                    share_by_label[fuel_labels[0]] = 100.0
+                    genuine_profiles[year] = _normalize_share_percentages(raw_shares)
+            if not genuine_profiles:
+                for fuel_label in fuel_labels:
+                    sector_bucket[fuel_label] = {
+                        int(year): 0.0 for year in years
+                    }
+                continue
+            for year in years:
+                share_by_label = genuine_profiles.get(year)
+                if share_by_label is None:
+                    nearest_year = min(genuine_profiles, key=lambda candidate: (abs(candidate - year), candidate))
+                    share_by_label = genuine_profiles[nearest_year]
                 for fuel_label in fuel_labels:
                     sector_bucket.setdefault(fuel_label, {})[int(year)] = float(
                         share_by_label.get(fuel_label, 0.0)
@@ -1978,7 +1995,23 @@ def build_aux_fuel_zero_rows(
         ))
 
     zero_rows = []
-    years = list(range(int(base_year), int(final_year) + 1))
+
+    def _years_for_scenario(scenario_name):
+        scenario_config = get_scenario_export_config(
+            scenario_name,
+            default_base_year=base_year,
+            default_final_year=final_year,
+        )
+        scenario_start, scenario_end = resolve_scenario_year_range(
+            base_year,
+            final_year,
+            scenario_config,
+        )
+        scenario_text = str(scenario_name or "").strip().lower()
+        if scenario_text not in {"current accounts", "current account"}:
+            scenario_start = max(int(scenario_start), int(base_year) + 1)
+        return list(range(int(scenario_start), int(scenario_end) + 1))
+
     for group, (measure, units, scale, per) in fuel_group_spec.items():
         # Only operate on processes where we actually wrote this specific measure.
         # This prevents zeroing feedstock branches for sectors where we only wrote
@@ -2008,6 +2041,7 @@ def build_aux_fuel_zero_rows(
                 written_prefixes_by_scenario.setdefault(ex_sc, set()).add(ex_prefix)
 
         for scenario in scenarios:
+            years = _years_for_scenario(scenario)
             # process_prefix → list of (branch_path, is_already_set) — for feedstock grouping
             process_branch_map: dict[str, list[tuple[str, bool]]] = {}
 
@@ -2090,6 +2124,7 @@ def build_aux_fuel_zero_rows(
             tier1_prefixes = allowed_prefixes_by_measure.get(measure, set())
             is_feedstock = measure == "Feedstock Fuel Share"
             for scenario in scenarios:
+                years = _years_for_scenario(scenario)
                 # For feedstock, group by process prefix so we can anchor the first branch
                 # at 100.0.  For non-feedstock, collect directly for zeroing.
                 tier2_process_map: dict[str, list[str]] = {}
@@ -2198,6 +2233,7 @@ def build_aux_fuel_zero_rows(
         ]
         for process_prefix in sorted(tier2_ext_process_prefixes):
             for scenario in scenarios:
+                years = _years_for_scenario(scenario)
                 for p_measure, p_units, p_scale, p_per in process_level_spec:
                     if (p_measure, scenario, process_prefix) not in existing:
                         for year in years:
@@ -2221,6 +2257,7 @@ def build_aux_fuel_zero_rows(
         ]
         for of_path in sorted(tier2_ext_output_fuel_paths):
             for scenario in scenarios:
+                years = _years_for_scenario(scenario)
                 for of_measure, of_units, of_scale, of_per in output_fuel_measure_spec:
                     if (of_measure, scenario, of_path) not in existing:
                         for year in years:
@@ -2255,6 +2292,7 @@ def build_aux_fuel_zero_rows(
             full_branch_catalog_df["fuel_group"].astype(str).str.strip() == "Output Fuels"
         ]
         for scenario in scenarios:
+            years = _years_for_scenario(scenario)
             for _, catalog_row in output_fuels_catalog.iterrows():
                 bp = str(catalog_row.get("branch_path", "")).strip()
                 if not bp:
