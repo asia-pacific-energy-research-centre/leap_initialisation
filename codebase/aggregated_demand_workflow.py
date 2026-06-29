@@ -269,6 +269,64 @@ def _sector_exclusion_suffix(excluded_sectors: list[str] | None) -> str:
     return ("_no_" + "_".join(sorted(parts))) if parts else ""
 
 
+def resolve_active_branch_excluded_sectors(
+    active_branches: list[str] | None,
+    sector_map: dict[str, list[str]],
+    base_excluded: list[str] | None = None,
+) -> list[str] | None:
+    """
+    Compute the effective excluded_sectors list by merging manually specified
+    exclusions with ESTO sectors implied by active detailed demand branches.
+
+    Subtraction values come from 9th Outlook / ESTO source data — not from
+    detailed LEAP branch result values.  This means the aggregated placeholder
+    is always reduced by the source-data amount for the given sector, regardless
+    of how the detailed LEAP branch evolves in future years.
+
+    Deduplication: if both 'Freight road' and 'Passenger road' are active,
+    15_02_road is added only once because both map to the same ESTO sector.
+
+    Parameters
+    ----------
+    active_branches:
+        LEAP demand group names whose detailed branches have been inserted into
+        LEAP.  Matched against sector_map keys.  None or [] means no active
+        branches — only base_excluded (if any) is returned.
+    sector_map:
+        Maps LEAP demand group names → lists of ESTO sector/sub1sector codes.
+        Use LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP from supply_reconciliation_config.
+    base_excluded:
+        Manually configured exclusion codes (e.g. AGGREGATED_DEMAND_EXCLUDED_SECTORS).
+        These are always included regardless of active_branches.
+
+    Returns
+    -------
+    list[str] | None
+        Combined, deduplicated exclusion list in insertion order, or None when
+        the result is empty (so callers can test truthiness directly).
+    """
+    seen: set[str] = set()
+    effective: list[str] = []
+    for code in (base_excluded or []):
+        if code not in seen:
+            seen.add(code)
+            effective.append(code)
+    for branch in (active_branches or []):
+        if branch not in sector_map:
+            import warnings
+            warnings.warn(
+                f"resolve_active_branch_excluded_sectors: '{branch}' not found in "
+                f"sector_map — no ESTO sectors excluded for this group.",
+                UserWarning,
+                stacklevel=2,
+            )
+        for code in sector_map.get(branch, []):
+            if code not in seen:
+                seen.add(code)
+                effective.append(code)
+    return effective if effective else None
+
+
 def load_fuel_mapping(
     path: Path = FUEL_MAPPINGS_PATH,
     sheet: str = FUEL_NINTH_SHEET,
@@ -702,7 +760,9 @@ def build_aggregated_demand_as_dummy(
     data_path: Path = PROJECTION_DATA_PATH,
     esto_data_path: Path = ESTO_BASE_DATA_PATH,
     fuel_mappings_path: Path = FUEL_MAPPINGS_PATH,
+    exclude_own_use_td_losses: bool = False,
     excluded_sectors: list[str] | None = None,
+    use_sector_branches: bool = False,
 ) -> pd.DataFrame:
     """
     Return aggregated demand data in the format expected by load_results_demand_table
@@ -710,6 +770,15 @@ def build_aggregated_demand_as_dummy(
 
     Returns DataFrame with columns:
         economy, scenario, esto_product, year, demand_value, demand_source
+
+    The output is always fuel-level totals (no sector column) because the
+    reconciliation needs total demand per product regardless of whether the LEAP
+    workbook uses sector-split branches.  use_sector_branches is forwarded to
+    build_aggregated_demand_all_scenarios() so that excluded_sectors are applied
+    consistently with how the LEAP workbook is generated.
+    exclude_own_use_td_losses is forwarded as well so the internal dummy-demand
+    table stays aligned with the LEAP workbook when own-use and T&D losses are
+    being handled by the separate proxy workflow.
 
     Fuel names are mapped back to esto_product codes via fuel_product_final_proposed.
     Rows where no esto_product mapping exists are dropped.
@@ -723,7 +792,9 @@ def build_aggregated_demand_as_dummy(
         data_path=data_path,
         esto_data_path=esto_data_path,
         fuel_mappings_path=fuel_mappings_path,
+        exclude_own_use_td_losses=exclude_own_use_td_losses,
         excluded_sectors=excluded_sectors,
+        use_sector_branches=use_sector_branches,
     )
     if long.empty:
         return pd.DataFrame(

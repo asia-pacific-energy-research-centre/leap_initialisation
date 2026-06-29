@@ -670,6 +670,41 @@ def _apply_aggregated_demand_scenario_multipliers(demand: pd.DataFrame) -> pd.Da
     return out
 
 
+def _infer_active_demand_branch_groups(sector_table: pd.DataFrame) -> list[str]:
+    """
+    Infer which detailed demand branch groups are present from LEAP demand rows.
+
+    This uses the LEAP comparison output as the source of truth for which demand
+    branches are currently active.  It intentionally does not inspect detailed
+    LEAP result values to derive subtraction amounts; those still come from the
+    ESTO / 9th aggregated source data.
+    """
+    if sector_table is None or sector_table.empty:
+        return []
+    if "sheet" not in sector_table.columns:
+        return []
+
+    aliases = {
+        "freight road": "Freight road",
+        "passenger road": "Passenger road",
+        "transport non-road": "Transport non-road",
+        "industry": "Industry",
+        "industry sector": "Industry",
+        "other sector": "Other sector",
+        "buildings": "Buildings",
+    }
+
+    active: list[str] = []
+    for raw_value in sector_table["sheet"].dropna().astype(str):
+        key = str(raw_value).strip()
+        if not key:
+            continue
+        normalized = aliases.get(key.lower(), key)
+        if normalized in LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP and normalized not in active:
+            active.append(normalized)
+    return active
+
+
 def load_results_demand_table(
     comparison_long_path: Path | str = COMPARISON_LONG_PATH,
     mapping_status_path: Path | str = MAPPING_STATUS_PATH,
@@ -699,7 +734,39 @@ def load_results_demand_table(
             ESTO_BASE_DATA_PATH,
             PROJECTION_DATA_PATH,
             LEAP_SCENARIOS,
+            USE_SECTOR_BRANCHES,
+            resolve_active_branch_excluded_sectors,
         )
+
+        sector_table = load_results_sector_demand_table(
+            comparison_long_path=comparison_long_path,
+            mapping_status_path=mapping_status_path,
+            source_priority=source_priority,
+            comparison_long_df=comparison_long_df,
+            mapping_status_df=mapping_status_df,
+        )
+        inferred_active_branches = _infer_active_demand_branch_groups(sector_table)
+        if inferred_active_branches:
+            active_branches = inferred_active_branches
+            print(
+                "[INFO] Aggregated demand dummy: inferred active demand branches "
+                f"from LEAP results = {active_branches}"
+            )
+        else:
+            active_branches = list(DETAILED_DEMAND_BRANCHES_ACTIVE or [])
+            if active_branches:
+                print(
+                    "[INFO] Aggregated demand dummy: using configured active demand "
+                    f"branches = {active_branches}"
+                )
+
+        effective_excluded = resolve_active_branch_excluded_sectors(
+            active_branches=active_branches,
+            sector_map=LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
+            base_excluded=AGGREGATED_DEMAND_EXCLUDED_SECTORS,
+        )
+        if effective_excluded:
+            print(f"[INFO] Aggregated demand dummy: effective excluded sectors = {effective_excluded}")
 
         is_aggregate = len(economies) == 1 and _is_aggregate_economy(economies[0])
         if is_aggregate:
@@ -712,6 +779,9 @@ def load_results_demand_table(
                 final_year=FINAL_YEAR,
                 data_path=PROJECTION_DATA_PATH,
                 esto_data_path=ESTO_BASE_DATA_PATH,
+                exclude_own_use_td_losses=bool(AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES),
+                excluded_sectors=effective_excluded,
+                use_sector_branches=USE_SECTOR_BRANCHES,
             )
         else:
             # Multiple individual economies: build each separately (no cross-economy aggregation)
@@ -724,6 +794,9 @@ def load_results_demand_table(
                     final_year=FINAL_YEAR,
                     data_path=PROJECTION_DATA_PATH,
                     esto_data_path=ESTO_BASE_DATA_PATH,
+                    exclude_own_use_td_losses=bool(AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES),
+                    excluded_sectors=effective_excluded,
+                    use_sector_branches=USE_SECTOR_BRANCHES,
                 )
                 for econ in economies
             ]
