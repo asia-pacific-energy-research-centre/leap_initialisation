@@ -260,7 +260,7 @@ LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH = (
 USE_RESULTS_VERIFICATION_EXPORT_SOURCE = True
 RESULTS_VERIFICATION_EXPORT_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 RESULTS_VERIFICATION_EXPORT_SHEET = "Export"
-AGGREGATED_DEMAND_ID_LOOKUP_PATH = REPO_ROOT / "data" / "international area full export.xlsx"
+AGGREGATED_DEMAND_ID_LOOKUP_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 
 # Backward-compatible aliases used by existing catalog helpers.
 USE_FULL_MODEL_EXPORT_CATALOG_SOURCE = USE_RESULTS_VERIFICATION_EXPORT_SOURCE
@@ -888,6 +888,48 @@ AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES = True
 #   16_02_agriculture_and_fishing    16_05_nonspecified_others
 # Example: ["15_transport_sector"]  or  ["15_02_road", "15_03_rail"]
 AGGREGATED_DEMAND_EXCLUDED_SECTORS: list[str] | None = None
+
+# Maps LEAP demand branch group names to the ESTO sector/sub1sector codes they
+# represent in the 9th Outlook / ESTO source data.  When a group is listed in
+# DETAILED_DEMAND_BRANCHES_ACTIVE the corresponding ESTO sectors are excluded from
+# the aggregated demand placeholder to prevent double-counting.
+#
+# Subtraction source: 9th Outlook / ESTO source data — NOT detailed LEAP branch
+# result values.  This keeps the placeholder independent of how the detailed LEAP
+# branch evolves in future years relative to the 9th projection baseline.
+#
+# Road deduplication: Freight road and Passenger road both map to 15_02_road.
+# resolve_active_branch_excluded_sectors() deduplicates automatically, so the road
+# sector is excluded only once even when both LEAP branches are active.
+#
+# Buildings note: 16_01_buildings covers all buildings sub2sectors (16.01.01
+# Commercial and public services, 16.01.02 Residential, etc.).
+# Other sector note: ESTO does not separate agriculture (16.02.03) and fishing
+# (16.02.04) at sub1sector level — both fall under 16_02_agriculture_and_fishing.
+LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP: dict[str, list[str]] = {
+    "Freight road":       ["15_02_road"],
+    "Passenger road":     ["15_02_road"],
+    "Transport non-road": [
+        "15_01_domestic_air_transport",
+        "15_03_rail",
+        "15_04_domestic_navigation",
+        "15_05_pipeline_transport",
+        "15_06_nonspecified_transport",
+        "04_international_marine_bunkers",
+        "05_international_aviation_bunkers",
+    ],
+    "Industry":           ["14_industry_sector"],
+    "Other sector":       ["16_02_agriculture_and_fishing", "16_05_nonspecified_others"],
+    "Buildings":          ["16_01_buildings"],
+}
+
+# LEAP demand group names whose detailed branches are currently active in LEAP.
+# The ESTO sectors from LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP for each active group
+# are excluded from the aggregated demand placeholder so the 9th Outlook source-
+# data amounts for those sectors are not double-counted alongside the detailed
+# LEAP branches.  Set to None or [] when no detailed branches have been inserted.
+# Example: ["Industry", "Buildings"]
+DETAILED_DEMAND_BRANCHES_ACTIVE: list[str] | None = None
 
 # Optional per-scenario demand multipliers applied after aggregation.
 # Structure: {scenario_name: {esto_product: multiplier}} where "_all" applies

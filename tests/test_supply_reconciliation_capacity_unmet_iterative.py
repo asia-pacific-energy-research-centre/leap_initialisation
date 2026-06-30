@@ -279,6 +279,8 @@ def test_results_supply_runner_builds_other_loss_proxy_paths(
     monkeypatch.setattr(workflow, "save_transformation_exports_with_split_targets", lambda *args, **kwargs: [tmp_path / "transformation.xlsx"])
     monkeypatch.setattr(workflow, "save_transfer_exports_with_supply_overrides", lambda *args, **kwargs: [tmp_path / "transfer.xlsx"])
     monkeypatch.setattr(workflow, "save_combined_supply_transformation_export", lambda **kwargs: combined_path)
+    monkeypatch.setattr(workflow, "build_aggregated_demand_workbooks_for_results_supply", lambda **kwargs: [])
+    monkeypatch.setattr(workflow, "write_per_economy_combined_workbooks", lambda **kwargs: None)
 
     def _fake_build_other_loss(**kwargs):
         captured.update(kwargs)

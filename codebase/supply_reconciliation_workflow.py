@@ -400,6 +400,8 @@ def _sync_results_saver_overrides() -> None:
         "save_transfer_exports_with_supply_overrides",
         "save_combined_supply_transformation_export",
         "build_other_loss_own_use_proxy_workbooks_for_results_supply",
+        "build_aggregated_demand_workbooks_for_results_supply",
+        "write_per_economy_combined_workbooks",
         "supply_data_pipeline",
         "RUN_OTHER_LOSS_OWN_USE_PROXY",
         "OTHER_LOSS_OWN_USE_PROXY_STAGE",

@@ -2644,6 +2644,7 @@ def run_results_linked_transformation_supply_workflow(
         export_scenario_list = expanded
     balance_scenario_list = _filter_balance_scenarios(scenario_list)
     economy_list = workflow_common.normalize_economies(economies or ECONOMIES)
+    timer.set_metadata(economies=economy_list, scenarios=export_scenario_list)
     _print_reset_mode_reminder(
         run_economies=economy_list,
         run_scenarios=export_scenario_list,
@@ -2936,6 +2937,17 @@ def run_results_linked_transformation_supply_workflow(
     combined_export_path: Path | None = None
     _economy_export_errors: list[tuple[str, Exception]] = []
 
+    # Compute the effective excluded sectors once: manually configured exclusions merged
+    # with ESTO sectors implied by active detailed demand branches.  The same list is
+    # used for both the aggregated demand workbook filename (so write and combine steps
+    # agree on the path) and the internal dummy demand table in load_results_demand_table.
+    from codebase.aggregated_demand_workflow import resolve_active_branch_excluded_sectors as _resolve_excl
+    _effective_agg_demand_excluded: list[str] | None = _resolve_excl(
+        active_branches=DETAILED_DEMAND_BRANCHES_ACTIVE,
+        sector_map=LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
+        base_excluded=AGGREGATED_DEMAND_EXCLUDED_SECTORS,
+    )
+
     def _run_one_economy(economy: str) -> dict:
         """Generate all export workbooks for one economy and return collected paths."""
         if SKIP_ECONOMIES_WITH_EXISTING_EXPORTS:
@@ -3039,7 +3051,7 @@ def run_results_linked_transformation_supply_workflow(
                 scenarios=export_scenario_list,
                 output_dir=EXPORT_OUTPUT_DIR,
                 region=LEAP_IMPORT_REGION,
-                excluded_sectors=AGGREGATED_DEMAND_EXCLUDED_SECTORS,
+                excluded_sectors=_effective_agg_demand_excluded,
             )
         print(f"[INFO] [{economy}] all exports complete.")
         return {
@@ -3217,7 +3229,7 @@ def run_results_linked_transformation_supply_workflow(
         aggregated_demand_dir=EXPORT_OUTPUT_DIR,
         output_dir=OUTPUT_DIR,
         id_lookup_path=AGGREGATED_DEMAND_ID_LOOKUP_PATH,
-        excluded_sectors=AGGREGATED_DEMAND_EXCLUDED_SECTORS,
+        excluded_sectors=_effective_agg_demand_excluded,
         source_workbooks_by_workflow=baseline_seed_sources,
         required_years_by_scenario=baseline_seed_years_by_scenario,
         required_scenarios_by_source=baseline_seed_required_scenarios,

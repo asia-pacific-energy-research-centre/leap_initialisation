@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 import time
 import zipfile
@@ -23,6 +24,55 @@ from codebase.utilities import fuel_catalog_preflight
 
 AGGREGATE_ECONOMY_LABELS = {"00_APEC", "ALL_ECONOMIES", "ALL"}
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+_TIMING_HISTORY_KEEP = 20
+
+
+def _detect_git_commit(repo_root: Path) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short=7", "HEAD"],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.stdout.strip() if result.returncode == 0 else "nocommit"
+    except Exception:
+        return "nocommit"
+
+
+def _encode_history_stem(
+    stem: str,
+    started_at: datetime,
+    n_economies: int | None,
+    n_scenarios: int | None,
+    run_type: str,
+    commit: str,
+) -> str:
+    stamp = started_at.strftime("%Y%m%d_%H%M%S")
+    econ_seg = f"e{n_economies}" if n_economies is not None else "eX"
+    scen_seg = f"s{n_scenarios}" if n_scenarios is not None else "sX"
+    return f"{stem}_{stamp}_{econ_seg}_{scen_seg}_{run_type}_{commit}"
+
+
+def _parse_history_filename(filename: str) -> dict:
+    """Parse metadata encoded in a history filename."""
+    stem = filename[:-4] if filename.endswith(".csv") else filename
+    pattern = r"^(.+)_(\d{8})_(\d{6})_(e\d+|eX)_(s\d+|sX)_([^_]+)_([a-f0-9]{7}|nocommit)$"
+    m = re.match(pattern, stem)
+    if not m:
+        return {}
+    econ_seg, scen_seg = m.group(4), m.group(5)
+    return {
+        "base_stem": m.group(1),
+        "started_at": f"{m.group(2)}_{m.group(3)}",
+        "n_economies": int(econ_seg[1:]) if econ_seg != "eX" else None,
+        "n_scenarios": int(scen_seg[1:]) if scen_seg != "sX" else None,
+        "run_type": m.group(6),
+        "commit": m.group(7),
+    }
 
 
 def format_duration(seconds: float) -> str:
@@ -52,6 +102,25 @@ class WorkflowTimer:
         self._start_perf = time.perf_counter()
         self._last_perf = self._start_perf
         self._records: list[dict[str, object]] = []
+        self._commit: str = _detect_git_commit(REPO_ROOT)
+        self._n_economies: int | None = None
+        self._n_scenarios: int | None = None
+        self._run_type: str = "full"
+
+    def set_metadata(
+        self,
+        *,
+        economies: list | None = None,
+        scenarios: list | None = None,
+        run_type: str | None = None,
+    ) -> None:
+        """Record economy/scenario counts and run type for history filtering."""
+        if economies is not None:
+            self._n_economies = len(list(economies))
+        if scenarios is not None:
+            self._n_scenarios = len(list(scenarios))
+        if run_type is not None:
+            self._run_type = str(run_type)
 
     @property
     def records(self) -> list[dict[str, object]]:
@@ -116,10 +185,105 @@ class WorkflowTimer:
             return None
         output_path = Path(path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        pd.DataFrame(self._records).to_csv(output_path, index=False)
+        df = pd.DataFrame(self._records)
+        df.to_csv(output_path, index=False)
+        history_dir = output_path.parent / "history"
+        history_dir.mkdir(parents=True, exist_ok=True)
+        history_stem = _encode_history_stem(
+            output_path.stem, self.started_at,
+            self._n_economies, self._n_scenarios,
+            self._run_type, self._commit,
+        )
+        history_path = history_dir / f"{history_stem}{output_path.suffix}"
+        df.to_csv(history_path, index=False)
+        old_files = sorted(history_dir.glob(f"{output_path.stem}_*{output_path.suffix}"))
+        for old_file in old_files[:-_TIMING_HISTORY_KEEP]:
+            try:
+                old_file.unlink()
+            except Exception:
+                pass
         if self.print_each:
             print(f"[TIMING] {self.workflow_name} timing written to {output_path}")
         return output_path
+
+
+def load_history_summary(
+    path: Path | str,
+    *,
+    n_economies: int | None = None,
+    n_scenarios: int | None = None,
+    run_type: str = "full",
+    current_commit: str | None = None,
+) -> pd.DataFrame | None:
+    """
+    Average past timing runs from the history folder, with outlier removal.
+
+    Filters to runs matching ``run_type``, ``n_economies``, and ``n_scenarios``.
+    If any history file exists for the current git commit it restricts to those
+    runs only, ignoring older commits (so a major refactor starts a fresh baseline).
+    Per-stage IQR outlier removal is applied before averaging (needs >=4 runs).
+
+    Returns a DataFrame with columns: stage, stage_order, avg_duration_seconds,
+    avg_duration_formatted, n_runs.  Returns None if no matching history exists.
+
+    To reset timing expectations after a commit that heavily changes runtime,
+    delete files from the ``history/`` subdirectory next to the timing CSV.
+    """
+    path = Path(path)
+    history_dir = path.parent / "history"
+    if not history_dir.exists():
+        return None
+    if current_commit is None:
+        current_commit = _detect_git_commit(REPO_ROOT)
+    all_files = sorted(history_dir.glob(f"{path.stem}_*.csv"))
+    candidates: list[tuple[Path, dict]] = []
+    for f in all_files:
+        meta = _parse_history_filename(f.name)
+        if not meta:
+            continue
+        if meta.get("run_type") != run_type:
+            continue
+        if n_economies is not None and meta.get("n_economies") != n_economies:
+            continue
+        if n_scenarios is not None and meta.get("n_scenarios") != n_scenarios:
+            continue
+        candidates.append((f, meta))
+    if not candidates:
+        return None
+    if current_commit and current_commit != "nocommit":
+        commit_matches = [(f, m) for f, m in candidates if m.get("commit") == current_commit]
+        if commit_matches:
+            candidates = commit_matches
+    dfs: list[pd.DataFrame] = []
+    for f, meta in candidates:
+        try:
+            df = pd.read_csv(f)
+            df["_commit"] = meta.get("commit", "")
+            dfs.append(df)
+        except Exception:
+            continue
+    if not dfs:
+        return None
+    combined = pd.concat(dfs, ignore_index=True)
+    combined = combined[(combined["stage"] != "total") & (combined["status"] == "success")]
+    rows: list[dict] = []
+    for (stage, order), group in combined.groupby(["stage", "stage_order"]):
+        durations = group["duration_seconds"].dropna()
+        if len(durations) >= 4:
+            q1, q3 = durations.quantile(0.25), durations.quantile(0.75)
+            iqr = q3 - q1
+            durations = durations[(durations >= q1 - 1.5 * iqr) & (durations <= q3 + 1.5 * iqr)]
+        avg = float(durations.mean())
+        rows.append({
+            "stage_order": int(order),
+            "stage": stage,
+            "avg_duration_seconds": round(avg, 1),
+            "avg_duration_formatted": format_duration(avg),
+            "n_runs": len(durations),
+        })
+    if not rows:
+        return None
+    return pd.DataFrame(rows).sort_values("stage_order").reset_index(drop=True)
 
 
 def emit_completion_beep(

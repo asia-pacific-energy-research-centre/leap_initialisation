@@ -18,6 +18,8 @@
 outputs/dashboards/
 outputs/leap_exports/
 outputs/balance_tables/
+# Ad-hoc analysis artifacts
+outputs/hydro_fuel_mapping_candidates/
 # Pandas CSV cache (regenerated automatically)
 data/.cache/
 !config/analysis_input_field_mappings.xlsx

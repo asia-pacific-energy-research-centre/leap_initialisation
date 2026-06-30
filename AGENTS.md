@@ -34,6 +34,31 @@ Active documentation being developed:
 
 - See `AGENTS_DRAWIO.md` for draw.io-specific requirements.
 
+## Workflow Timing History
+
+`WorkflowTimer.write_csv()` writes both a current-run CSV and a timestamped copy
+in a `history/` subfolder next to the main timing CSV. History filenames encode:
+
+```text
+workflow_stage_timings_YYYYMMDD_HHMMSS_e{n_economies}_s{n_scenarios}_{run_type}_{commit7}.csv
+```
+
+`load_history_summary(path, n_economies=N, n_scenarios=N)` averages history runs:
+
+- Filters by matching economy count, scenario count, and `run_type` (`"full"` vs `"preflight"`)
+- Prefers runs from the current git commit if any exist
+- Removes per-stage outliers via IQR before averaging (requires ≥4 runs per stage)
+- Preflight runs (`preflight_compressed_projection/`) are already isolated in a separate history directory and excluded automatically when querying the full-run history path
+
+**Resetting timing expectations after a commit that changes runtime significantly:**
+Delete files from the `history/` subdirectory next to the timing CSV. For `supply_reconciliation`:
+
+```text
+outputs/leap_exports/supply_reconciliation/supporting_files/runtime/history/
+```
+
+Deleting individual files is fine — just leave at least one to preserve a baseline, or delete all to start fresh. The next successful run will seed the new history.
+
 ## Small guide for humans
 
 - Put instructions here that you want Codex to follow every time it edits this repo.

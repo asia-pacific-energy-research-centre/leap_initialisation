@@ -1259,6 +1259,7 @@ def build_aggregated_demand_workbooks_for_results_supply(
         FUEL_MAPPINGS_PATH,
         BASE_YEAR,
         PROJECTION_END_YEAR,
+        USE_SECTOR_BRANCHES,
     )
 
     economy_list = workflow_common.normalize_economies(economies)
@@ -1290,6 +1291,7 @@ def build_aggregated_demand_workbooks_for_results_supply(
             exclude_own_use_td_losses=bool(AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES),
             id_lookup_path=AGGREGATED_DEMAND_ID_LOOKUP_PATH,
             excluded_sectors=excluded_sectors,
+            use_sector_branches=USE_SECTOR_BRANCHES,
         )
         if result is not None:
             paths.append(result)
