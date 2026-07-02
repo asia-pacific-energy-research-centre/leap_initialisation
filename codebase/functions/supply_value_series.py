@@ -5,6 +5,7 @@ import pandas as pd
 
 from codebase.functions.esto_data_utils import (
     _match_code_prefix,
+    _match_code_prefix_mask,
     sum_years,
     try_debug_breakpoint,
 )
@@ -92,24 +93,20 @@ def select_fuel_rows(
                 matched = df[mapped_products.eq(fuel_name)]
                 if not matched.empty:
                     return matched
-            return df[df["products"].apply(lambda value: _match_code_prefix(value, fuel_label_esto))]
+            return df[_match_code_prefix_mask(df["products"], fuel_label_esto)]
         if "subfuels" in df.columns:
-            matched_subfuels = df[
-                df["subfuels"].apply(lambda value: _match_code_prefix(value, fuel_code_ninth))
-            ]
+            matched_subfuels = df[_match_code_prefix_mask(df["subfuels"], fuel_code_ninth)]
             if not matched_subfuels.empty:
                 return matched_subfuels
             # Some 9th rows carry the canonical fuel code in `fuels` with `subfuels=x`
             # (for example electricity exports). Fall back to fuels in that case.
             if "fuels" in df.columns:
-                matched_fuels = df[
-                    df["fuels"].apply(lambda value: _match_code_prefix(value, fuel_code_ninth))
-                ]
+                matched_fuels = df[_match_code_prefix_mask(df["fuels"], fuel_code_ninth)]
                 if not matched_fuels.empty:
                     return matched_fuels
             return matched_subfuels
         if "fuels" in df.columns:
-            return df[df["fuels"].apply(lambda value: _match_code_prefix(value, fuel_code_ninth))]
+            return df[_match_code_prefix_mask(df["fuels"], fuel_code_ninth)]
         return df.iloc[0:0]
     except Exception as exc:
         print(f"Failed to select fuel rows: {exc}")

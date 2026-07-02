@@ -193,6 +193,73 @@ This means the workflow is mainly trying to answer:
 
 > If LEAP is importing more than expected, where should extra domestic production or transformation output be added so the balance is closer to the intended supply pathway?
 
+## 4b. Module and production growth caps (upper limits)
+
+When the allocator adds output to close a positive import gap, two configuration
+dicts in `codebase/supply_reconciliation_config.py` cap how far each lever may
+grow:
+
+- `CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS` — the ceiling on transformation
+  module growth (`Exogenous Capacity`).
+- `CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS` — the ceiling on primary production
+  growth (`Maximum Production`).
+
+Both are keyed `economy -> scenario ("reference" | "target") -> {name: cap}`. The
+`reference` and `target` sub-dicts are independent on purpose: they govern
+different 9th Outlook scenarios, so their ceilings are free to diverge (today
+they happen to hold the same policy, but nothing requires that).
+
+Caps are written with self-documenting sentinels rather than raw numbers:
+
+| Sentinel | Effect |
+| --- | --- |
+| `KEEP_EXOGENOUS_CAP_SAME_AS_BASE_YEAR_ENERGY_OUTPUT` | Lock at base-year (ESTO baseline) output — no growth. |
+| `KEEP_PRODUCTION_AT_BASE_YEAR` | Lock production at the base-year constrained level. |
+| `INCREASE_BY_PCT(p)` / `INCREASE_PRODUCTION_BY_PCT(p)` | Allow up to `p`% above base year. |
+| `DECREASE_BY_PCT(p)` / `DECREASE_PRODUCTION_BY_PCT(p)` | Cap at `(1 - p/100)` of base year. |
+| `DECREASE_TO_ZERO` / `DECREASE_PRODUCTION_TO_ZERO` | No headroom at all. |
+| `SET_CAP_TO(v)` / `SET_PRODUCTION_CAP_TO(v)` | Explicit numeric ceiling. |
+| `UNLIMITED` / `UNLIMITED_PRODUCTION` | No cap (same effect as omitting the entry). |
+
+Resolution semantics that matter when reading results:
+
+- A module/product **absent** from the dict, or set to `UNLIMITED`, has **no
+  cap** — it can grow without limit to absorb a gap. An economy that is not a
+  key in the dict is therefore fully unconstrained.
+- Because `UNLIMITED` == absent, the functional content of a block is only its
+  *non-unlimited* entries. `CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS` is currently
+  a scaffold of `UNLIMITED_PRODUCTION` entries (a no-op that lists which products
+  *could* be capped later); the real constraint today lives in the module dict.
+
+### Fixed-technology modules locked at base-year output
+
+The following legacy / fixed-technology transformation modules are locked at
+base-year output (`KEEP_EXOGENOUS_CAP_SAME_AS_BASE_YEAR_ENERGY_OUTPUT`), so the
+gap-filler may not expand them to close a shortfall — a residual gap spills to
+the next lever (imports fallback) instead:
+
+- Blast furnaces
+- BKB and PB plants
+- Charcoal processing
+- Coke ovens
+- Gas works plants
+- Liquefaction coal to oil
+- Natural gas blending plants
+- Non-specified transformation
+- Patent fuel plants
+- Petrochemical industry
+- Refinery and blending transfers
+- Transfers unallocated
+- Upstream liquids transfers
+
+All other modules are allowed to grow freely (`UNLIMITED`). See decision
+`INIT-007` in `docs/special_rules_and_design_decisions.md` for why these modules
+are locked and the policy for applying the lock across all economies.
+
+Note: LEAP uses no hyphens in module names. Config keys must match exactly —
+`"Non specified transformation"` (no hyphen) is the correct key; a hyphenated
+variant will never match and silently acts as dead code.
+
 ## 5. Main LEAP variables affected
 
 The workflow supports the same control variables used in the modeller guide.

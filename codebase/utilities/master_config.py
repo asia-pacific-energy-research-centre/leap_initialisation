@@ -7,6 +7,8 @@ import pandas as pd
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MASTER_CONFIG_PATH = REPO_ROOT / "config" / "master_config.xlsx"
+LEAP_MAPPINGS_REPO_ROOT = REPO_ROOT.parent / "leap_mappings"
+OUTLOOK_MAPPINGS_MASTER_PATH = LEAP_MAPPINGS_REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
 
 LEGACY_FILE_DEFAULT_SHEETS = {
     "ESTO_subtotal_mapping.xlsx": "ESTO_subtotal_mapping",

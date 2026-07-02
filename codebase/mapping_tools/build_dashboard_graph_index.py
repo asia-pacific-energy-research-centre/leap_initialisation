@@ -504,19 +504,23 @@ GRAPH_FLOW_PRODUCT_INDEX_PATH = GRAPH_INDEX_DIR / "dashboard_graph_flow_product_
 RUN_BUILD_GRAPH_INDEX = True
 
 #%%
-try:
-    if RUN_BUILD_GRAPH_INDEX:
-        build_dashboard_graph_index(
-            template_json_path=TEMPLATE_JSON_PATH,
-            output_template_path=OUTPUT_TEMPLATE_PATH,
-            graph_index_path=GRAPH_INDEX_PATH,
-            graph_flow_index_path=GRAPH_FLOW_INDEX_PATH,
-            graph_product_index_path=GRAPH_PRODUCT_INDEX_PATH,
-            graph_flow_product_index_path=GRAPH_FLOW_PRODUCT_INDEX_PATH,
-        )
-except Exception as exc:
-    print("Dashboard graph-index build failed.")
-    print(f"Error: {exc}")
-    raise
+# Guarded so importing this module (e.g. by tooling/tests) does not run the
+# build pipeline, which reads template files that may not exist.  Run the script
+# directly to build the graph index.
+if __name__ == "__main__":
+    try:
+        if RUN_BUILD_GRAPH_INDEX:
+            build_dashboard_graph_index(
+                template_json_path=TEMPLATE_JSON_PATH,
+                output_template_path=OUTPUT_TEMPLATE_PATH,
+                graph_index_path=GRAPH_INDEX_PATH,
+                graph_flow_index_path=GRAPH_FLOW_INDEX_PATH,
+                graph_product_index_path=GRAPH_PRODUCT_INDEX_PATH,
+                graph_flow_product_index_path=GRAPH_FLOW_PRODUCT_INDEX_PATH,
+            )
+    except Exception as exc:
+        print("Dashboard graph-index build failed.")
+        print(f"Error: {exc}")
+        raise
 
 #%%

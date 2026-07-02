@@ -27,6 +27,7 @@ except Exception as exc:
     print(f"Failed to add repo root to sys.path: {exc}")
 
 from codebase.configuration import workflow_config as workflow_cfg
+from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
 from codebase.configuration.config import BASE_YEAR
 from codebase.functions.analysis_input_write_dispatcher import dispatch_analysis_input_write
 from codebase.functions.leap_core import (
@@ -113,7 +114,7 @@ ENERGY_SOURCE_CONFIG = workflow_cfg.get_energy_source_config()
 ESTO_DATA_PATH = ENERGY_SOURCE_CONFIG.esto_base_table_path
 NINTH_DATA_PATH = ENERGY_SOURCE_CONFIG.ninth_projection_table_path
 ESTO_SUBTOTAL_MAPPING_PATH = REPO_ROOT / "config" / "ESTO_subtotal_mapping.xlsx"
-LEAP_MAPPINGS_PATH = REPO_ROOT / "config" / "leap_mappings.xlsx"
+LEAP_MAPPINGS_PATH = OUTLOOK_MAPPINGS_MASTER_PATH
 OUTPUT_FUEL_VALIDATION_ESTO_PATHS = [
     REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv",
     REPO_ROOT / "data" / "00APEC_2024_low_with_subtotals.csv",

@@ -7,6 +7,7 @@ or directly from this module.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Sequence
 
@@ -50,6 +51,26 @@ DEFAULT_FEEDSTOCK_UNITS = "Share"
 DEFAULT_FEEDSTOCK_SCALE = "%"
 DEFAULT_AUXILIARY_UNITS = "Petajoule"
 DEFAULT_AUXILIARY_PER = "Petajoule"
+
+# Transformation flow codes intentionally NOT represented in LEAP yet, so they
+# are skipped from transformation record naming/export.  These carry no ESTO
+# energy (e.g. 09.10 Biofuels processing is confirmed zero in ESTO) and have no
+# leap_display_name in the mappings workbook, so dropping them is safe and avoids
+# a "Missing code-to-name mapping" error on their code labels.
+EXCLUDED_TRANSFORMATION_FLOW_CODES = frozenset({
+    "09.03 Heat pumps",
+    "09.10 Biofuels processing",
+})
+
+
+def _is_excluded_transformation_record(record) -> bool:
+    """Return True for records whose sector/process is an excluded (not-in-LEAP)
+    transformation flow code — see EXCLUDED_TRANSFORMATION_FLOW_CODES."""
+    for key in ("sector_title", "process_name"):
+        value = " ".join(str((record or {}).get(key) or "").split())
+        if value in EXCLUDED_TRANSFORMATION_FLOW_CODES:
+            return True
+    return False
 
 
 def get_scenario_export_config(scenario, default_base_year=None, default_final_year=None):
@@ -110,7 +131,7 @@ def resolve_label_name(label, code_to_name_mapping, context_label=""):
             return label
         if isinstance(label, float) and pd.isna(label):
             return label
-        text = str(label).strip()
+        text = " ".join(str(label).split())
         if text == "":
             return text
         if not is_code_like_label(text):
@@ -119,6 +140,22 @@ def resolve_label_name(label, code_to_name_mapping, context_label=""):
             return code_to_name_mapping[text]
         if text in code_to_name_mapping.values():
             return text
+        # Handle combined "code name" labels (e.g. "07.15 Paraffin waxes") by looking up the code prefix
+        segments = _extract_numeric_segments(text)
+        if segments:
+            code_prefix = ".".join(segments)
+            if code_prefix != text and code_prefix in code_to_name_mapping:
+                return code_to_name_mapping[code_prefix]
+        # For underscore-format ninth sector/fuel codes not yet in the mapping,
+        # auto-generate a readable name by stripping the numeric prefix and
+        # converting underscores to spaces (e.g. 09_06_02_liquefaction_regasification_plants
+        # → "Liquefaction regasification plants").
+        if "_" in text and segments:
+            numeric_prefix = "_".join(segments)  # e.g. "09_06_02"
+            if text.startswith(numeric_prefix + "_"):
+                remainder = text[len(numeric_prefix) + 1:]
+                if remainder:
+                    return remainder.replace("_", " ").capitalize()
         context_text = f" ({context_label})" if context_label else ""
         raise ValueError(f"Missing code-to-name mapping for label: {text}{context_text}")
     except Exception as exc:
@@ -1120,6 +1157,8 @@ def _build_process_share_lookup(
         process_sets = {}
         process_activity = {}
         for record in process_records or []:
+            if _is_excluded_transformation_record(record):
+                continue
             economy = str(record.get("economy") or "").strip()
             sector_title = map_code_label(record.get("sector_title"), code_to_name_mapping)
             process_name = map_code_label(record.get("process_name"), code_to_name_mapping)
@@ -1286,6 +1325,8 @@ def _build_output_share_lookup(
         output_totals = {}
         value_tolerance = 1e-12
         for record in process_records or []:
+            if _is_excluded_transformation_record(record):
+                continue
             economy = str(record.get("economy") or "").strip()
             sector_title = map_code_label(record.get("sector_title"), code_to_name_mapping)
             if not economy or not sector_title:
@@ -1401,6 +1442,8 @@ def build_transformation_log_rows(
             scenario_config,
         )
         for record in process_records:
+            if _is_excluded_transformation_record(record):
+                continue
             economy = str(record.get("economy") or "").strip()
             sector_title = map_code_label(record.get("sector_title"), code_to_name_mapping)
             process_name = map_code_label(record.get("process_name"), code_to_name_mapping)

@@ -50,6 +50,12 @@ import time
 from pathlib import Path
 from typing import Iterable
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+try:
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
+except Exception as exc:
+    print(f"Failed to add repo root to sys.path: {exc}")
 
 # Sentinel types, _resolve_module_cap_rule, and all workflow config constants
 # are defined in supply_reconciliation_config.py.  Import everything from there
@@ -62,13 +68,6 @@ from codebase.supply_reconciliation_config import (  # private names excluded by
 
 import pandas as pd
 from openpyxl.styles import Font, PatternFill
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-try:
-    if str(REPO_ROOT) not in sys.path:
-        sys.path.insert(0, str(REPO_ROOT))
-except Exception as exc:
-    print(f"Failed to add repo root to sys.path: {exc}")
 
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.utilities.master_config import (
@@ -558,7 +557,7 @@ ECONOMIES = ["01_AUS", "02_BD", "03_CDA", "04_CHL", "05_PRC", "06_HKC", "07_INA"
 # 06_KHC still needs to be run in this script. the area hasnt been prepared yet. do that alongside eveyrhting in here thats not in the power imported list above: , "02_BD", "03_CDA", "04_CHL", "05_PRC", "06_HKC", "07_INA", 
 # "08_JPN", "09_ROK", "10_MAS", "11_MEX", "12_NZ", "13_PNG", "14_PE", 
 # "15_PHL", "16_RUS", "17_SGP", "18_CT", "19_THA", "20_USA", "21_VN"
-SCENARIOS = ["Reference", "Current Accounts"]
+SCENARIOS = ["Target", "Reference", "Current Accounts"]
 # backedup tha, aus 15_PHL done: MAS prc , bd  12nz  DOING: ,  13_PNG 21_VN
 #%%
 # ---------------------------------------------------------------------------
@@ -593,7 +592,7 @@ SCENARIOS = ["Reference", "Current Accounts"]
 _PRESET_BASELINE_SEED = {
     # Set True to run only preflight_compressed_projection for this preset.
     "PREFLIGHT_COMPRESSED_PROJECTION_ONLY": False,
-    "RUN_PREFLIGHT_COMPRESSED_PROJECTION": False,
+    "RUN_PREFLIGHT_COMPRESSED_PROJECTION": True,
     # --- Pass mode ---
     "CAPACITY_UNMET_PASS_MODE": "baseline_seed",
     "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT": True,
@@ -625,6 +624,10 @@ _PRESET_BASELINE_SEED = {
     # so LEAP receives the aggregated demand values (not just used internally).
     "WRITE_AGGREGATED_DEMAND_WORKBOOK": True,
     "AGGREGATED_DEMAND_INCLUDE_IN_LEAP_IMPORT": True,
+    # When True, branches are written as Demand\All demand aggregated\{SectorLabel}\{fuel}
+    # instead of the flat Demand\All demand aggregated\{fuel}.
+    # Enable when LEAP has per-sector sub-branches under the aggregated demand node.
+    "AGGREGATED_DEMAND_USE_SECTOR_BRANCHES": False,
     # When True, also generate a LEAP import workbook that zeros every non-share
     # Demand branch from the full model export, so those branches produce no energy
     # use while the aggregated demand branches provide the actual demand values.
@@ -673,6 +676,27 @@ _PRESET_RESULTS_UPDATE = {
     # Set True when the full power model is not ready.
     "RUN_ELECTRICITY_HEAT_INTERIM": False,
 
+    # --- Demand sector exclusions ---
+    # Optional list of 9th-edition sector or sub1sector codes to omit from the
+    # aggregated demand total.  None means no extra exclusions.
+    # Top-level sectors (sectors col):
+    #   04_international_marine_bunkers  05_international_aviation_bunkers
+    #   10_losses_and_own_use            14_industry_sector
+    #   15_transport_sector              16_other_sector   17_nonenergy_use
+    # Sub1sectors (sub1sectors col — finer grain, use these to exclude just a slice):
+    #   10_01_own_use                    10_02_transmission_and_distribution_losses
+    #   14_01_mining_and_quarrying       14_02_construction    14_03_manufacturing
+    #   15_01_domestic_air_transport     15_02_road            15_03_rail
+    #   15_04_domestic_navigation        15_05_pipeline_transport
+    #   15_06_nonspecified_transport     16_01_buildings
+    #   16_02_agriculture_and_fishing    16_05_nonspecified_others
+    # Example: ["15_transport_sector"]  or  ["15_02_road", "15_03_rail"]
+    "AGGREGATED_DEMAND_EXCLUDED_SECTORS": None,
+    # When True, branches are written as Demand\All demand aggregated\{SectorLabel}\{fuel}
+    # instead of the flat Demand\All demand aggregated\{fuel}.
+    # Enable when LEAP has per-sector sub-branches under the aggregated demand node.
+    "AGGREGATED_DEMAND_USE_SECTOR_BRANCHES": False,
+
     # --- Other loss / own-use proxy ---
     # Stage "second" uses LEAP-balance proxy (post-LEAP-run); "first" uses ESTO/ninth proxy.
     "OTHER_LOSS_OWN_USE_PROXY_STAGE": "second",
@@ -709,10 +733,77 @@ PREFLIGHT_COMPRESSED_FAIL_FAST = False
 # override the defaults immediately above, including PREFLIGHT_* toggles.
 globals().update(ACTIVE_PRESET)
 
+# ---------------------------------------------------------------------------
+# Output logging
+# ---------------------------------------------------------------------------
+_WORKFLOW_LOG_PATH = REPO_ROOT / "outputs" / "logs" / "supply_reconciliation_workflow.log"
+
+
+class _TeeWriter:
+    def __init__(self, file_obj, stream):
+        self._file = file_obj
+        self._stream = stream
+
+    def write(self, data):
+        self._file.write(data)
+        self._stream.write(data)
+        return len(data)
+
+    def flush(self):
+        self._file.flush()
+        self._stream.flush()
+
+    def isatty(self):
+        return False
+
+
+@contextmanager
+def _log_to_file(log_path: Path):
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    original = sys.stdout
+    with open(log_path, "w", encoding="utf-8") as f:
+        sys.stdout = _TeeWriter(f, original)
+        try:
+            yield log_path
+        finally:
+            sys.stdout = original
+
+
+def _run_leap_display_name_preflight() -> None:
+    """Check leap_display_names consistency against the combined mapping sheets.
+
+    Imports check_display_name_issues from the sibling leap_mappings repo and
+    prints a warning if orphans or duplicate display names are found.  Failures
+    are non-fatal — the workflow continues regardless.
+    """
+    try:
+        from codebase.utilities.master_config import LEAP_MAPPINGS_REPO_ROOT
+        import sys as _sys
+        _lm = str(LEAP_MAPPINGS_REPO_ROOT)
+        if _lm not in _sys.path:
+            _sys.path.insert(0, _lm)
+        from codebase.mapping_tools.update_leap_display_names import check_display_name_issues  # type: ignore[import]
+        issues = check_display_name_issues()
+        orphans = issues.get("orphan_count", 0)
+        dups = issues.get("duplicate_count", 0)
+        if orphans or dups:
+            print(
+                f"[WARN] leap_display_names: {orphans} orphan(s), "
+                f"{dups} duplicate display name(s) — "
+                "run leap_mappings Stage 0 to review display_names_qa.csv"
+            )
+        else:
+            print("[INFO] leap_display_names: OK")
+    except Exception as exc:
+        print(f"[WARN] leap_display_names preflight skipped: {exc}")
+
+
 def run_with_config() -> dict[str, object]:
     """Run the notebook-configured workflow while optionally preventing PC sleep."""
-    with _keep_windows_pc_awake(enabled=bool(KEEP_PC_AWAKE_WHILE_RUNNING)):
-        return _run_with_config_inner()
+    with _log_to_file(_WORKFLOW_LOG_PATH) as log_path:
+        print(f"[LOG] Writing output to: {log_path}")
+        with _keep_windows_pc_awake(enabled=bool(KEEP_PC_AWAKE_WHILE_RUNNING)):
+            return _run_with_config_inner()
 
 
 def _run_with_config_inner() -> dict[str, object]:
@@ -730,6 +821,8 @@ def _run_with_config_inner() -> dict[str, object]:
         for _mod in _modules:
             patch_baseline_seeds.run_patch(_mod, PATCH_ECONOMIES, run_workflow=_run_workflow)
         return {}
+
+    _run_leap_display_name_preflight()
 
     analysis_write_mode = get_analysis_input_write_mode()
     include_leap_import = analysis_write_mode == "api"

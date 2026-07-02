@@ -46,6 +46,7 @@ from codebase.mappings.canonical_mapping import (
     load_sheet_map,
 )
 from codebase.functions import supply_data_pipeline, leap_api, patch_baseline_seeds
+from codebase.functions.esto_data_utils import get_economy_list as _get_economy_list
 from codebase.functions.analysis_input_write_dispatcher import get_analysis_input_write_mode
 from codebase import (
     electricity_heat_interim_workflow,
@@ -132,6 +133,7 @@ from codebase.supply_reconciliation_balance_tables import (
     _split_sector_codes,
     _sector_code_sequence,
     _select_primary_sector_code,
+    _normalize_conventional_sector_name,
     _safe_filename_token,
     _filter_balance_scenarios,
     _ensure_current_accounts_scenario,
@@ -171,6 +173,12 @@ from codebase.functions.supply_demand_mapping import (
     load_balance_demand_inputs,
     load_direct_leap_demand_inputs,
 )
+
+# Default economy scope used as the fallback in the `economies or ECONOMIES`
+# guards below.  Mirrors the sibling supply modules (supply_leap_io,
+# supply_results_saver); without it those references raise NameError.
+ECONOMIES = list(workflow_cfg.SUPPLY_NOTEBOOK_ECONOMIES)
+
 
 def _collect_transformation_and_transfer_rows(
     economies: Iterable[str] | None = None,
@@ -846,6 +854,18 @@ def load_results_demand_table(
     ].reset_index(drop=True)
 
 
+def _pick_preferred_source(
+    row: "pd.Series",
+    source_priority: tuple[str, ...],
+) -> tuple:
+    """Return (value, source_name) for the first source in priority order that has a non-null value."""
+    for source in source_priority:
+        val = row.get(source)
+        if val is not None and pd.notna(val):
+            return (val, source)
+    return (None, None)
+
+
 def load_results_sector_demand_table(
     comparison_long_path: Path | str = COMPARISON_LONG_PATH,
     mapping_status_path: Path | str = MAPPING_STATUS_PATH,
@@ -1129,7 +1149,7 @@ def prepare_projected_supply_table(
         economies or supply_data_pipeline.ECONOMIES_TO_ANALYZE
     )
     if not economy_list:
-        economy_list = supply_data_pipeline.get_economy_list(data, None)
+        economy_list = _get_economy_list(data, None)
 
     rows: list[dict[str, object]] = []
     for economy in economy_list:
@@ -1200,7 +1220,7 @@ def prepare_supply_primary_table(
         economies or supply_data_pipeline.ECONOMIES_TO_ANALYZE
     )
     if not economy_list:
-        economy_list = supply_data_pipeline.get_economy_list(data, None)
+        economy_list = _get_economy_list(data, None)
 
     rows: list[dict[str, object]] = []
     for economy in economy_list:
@@ -1694,6 +1714,14 @@ def reset_supply_and_transformation_import_export_to_zero(
     - `transformation_process_records` output import/export targets are zeroed for
       matched process records and target fuels.
     """
+    # Late import — these reset-scope helpers live in supply_preflight; a
+    # top-level import risks a circular import via supply_preflight's own supply
+    # module imports.
+    from codebase.functions.supply_preflight import (
+        _configured_reset_module_names,
+        _configured_reset_fuel_labels,
+    )
+
     if not isinstance(reconciliation_table, pd.DataFrame):
         raise TypeError("reconciliation_table must be a pandas DataFrame")
 

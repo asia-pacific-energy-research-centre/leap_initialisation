@@ -28,6 +28,7 @@ from codebase.functions import supply_data_pipeline
 from codebase import transformation_workflow
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP_EXPORTS_ROOT
 from codebase.mappings.canonical_mapping import DEFAULT_SHEET_MAP
+from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
 from codebase.utilities.workflow_utils import _resolve
 from codebase.utilities.leap_results_dashboard_balance import (
     DEFAULT_BACKUP_MAPPINGS_PATH as DEFAULT_BALANCE_BACKUP_MAPPINGS_PATH,
@@ -524,7 +525,7 @@ CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS: dict[str, dict[str, dict]] = {
             "Gas works plants":                _LOCKED_AT_BASE_YEAR,
             "Liquefaction coal to oil":        _LOCKED_AT_BASE_YEAR,
             "Natural gas blending plants":     _LOCKED_AT_BASE_YEAR,
-            "Non-specified transformation":    _LOCKED_AT_BASE_YEAR,
+            "Non specified transformation":    _LOCKED_AT_BASE_YEAR,
             "Patent fuel plants":              _LOCKED_AT_BASE_YEAR,
             "Petrochemical industry":          _LOCKED_AT_BASE_YEAR,
             "Refinery and blending transfers": _LOCKED_AT_BASE_YEAR,
@@ -540,7 +541,6 @@ CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS: dict[str, dict[str, dict]] = {
             "Hydrogen transformation":              UNLIMITED,
             "LNG regasification":                   UNLIMITED,
             "NG Liquefaction":                      UNLIMITED,
-            "Non specified transformation":         UNLIMITED,
             "Oil Refining":                         UNLIMITED,
             "Transmission and Distribution":        UNLIMITED,
         },
@@ -553,7 +553,7 @@ CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS: dict[str, dict[str, dict]] = {
             "Gas works plants":                _LOCKED_AT_BASE_YEAR,
             "Liquefaction coal to oil":        _LOCKED_AT_BASE_YEAR,
             "Natural gas blending plants":     _LOCKED_AT_BASE_YEAR,
-            "Non-specified transformation":    _LOCKED_AT_BASE_YEAR,
+            "Non specified transformation":    _LOCKED_AT_BASE_YEAR,
             "Patent fuel plants":              _LOCKED_AT_BASE_YEAR,
             "Petrochemical industry":          _LOCKED_AT_BASE_YEAR,
             "Refinery and blending transfers": _LOCKED_AT_BASE_YEAR,
@@ -569,7 +569,6 @@ CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS: dict[str, dict[str, dict]] = {
             "Hydrogen transformation":              UNLIMITED,
             "LNG regasification":                   UNLIMITED,
             "NG Liquefaction":                      UNLIMITED,
-            "Non specified transformation":         UNLIMITED,
             "Oil Refining":                         UNLIMITED,
             "Transmission and Distribution":        UNLIMITED,
         },
@@ -831,7 +830,7 @@ _RESET_SCOPE_FROM_EXPORT_CACHE: dict[str, object] | None = None
 
 # Demand mapping/reference inputs.
 DIRECT_DEMAND_SHEET_MAP_PATH = DEFAULT_SHEET_MAP
-DIRECT_DEMAND_MAPPING_WORKBOOK = REPO_ROOT / "config" / "leap_mappings.xlsx"
+DIRECT_DEMAND_MAPPING_WORKBOOK = OUTLOOK_MAPPINGS_MASTER_PATH
 DIRECT_DEMAND_ESTO_MAPPING_SHEET = "leap_combined_esto"
 DIRECT_DEMAND_NINTH_MAPPING_SHEET = "leap_combined_ninth"
 DIRECT_DEMAND_BASE_TABLE_PATH = ENERGY_SOURCE_CONFIG.esto_base_table_path
@@ -888,6 +887,11 @@ AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES = True
 #   16_02_agriculture_and_fishing    16_05_nonspecified_others
 # Example: ["15_transport_sector"]  or  ["15_02_road", "15_03_rail"]
 AGGREGATED_DEMAND_EXCLUDED_SECTORS: list[str] | None = None
+# When True, aggregated demand branches are written as
+# Demand\All demand aggregated\{SectorLabel}\{fuel} instead of the flat
+# Demand\All demand aggregated\{fuel} path. Enable when LEAP has per-sector
+# sub-branches configured under the aggregated demand node.
+AGGREGATED_DEMAND_USE_SECTOR_BRANCHES: bool = False
 
 # Maps LEAP demand branch group names to the ESTO sector/sub1sector codes they
 # represent in the 9th Outlook / ESTO source data.  When a group is listed in

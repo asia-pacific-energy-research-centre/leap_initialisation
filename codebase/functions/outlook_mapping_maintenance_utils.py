@@ -7,6 +7,7 @@ LEAP API calls. They operate solely on their arguments and return new values.
 
 from __future__ import annotations
 
+import re
 from typing import Sequence
 
 import pandas as pd
@@ -754,6 +755,57 @@ def _filter_researcher_rows(frame: pd.DataFrame) -> pd.DataFrame:
     return out.loc[active].copy()
 
 
+_ROLLUP_FLOW_RE = re.compile(
+    r"^(\d{2}(?:\.\d{2})*(?:,\d{2}(?:\.\d{2})*)+)\s+(.+)$"
+)
+
+
+def _parse_esto_target_pairs(target_str: str) -> set[tuple[str, str]]:
+    """Parse 'flow1 || product1 | flow2 || product2' into a set of (flow, product) tuples."""
+    pairs: set[tuple[str, str]] = set()
+    for entry in str(target_str or "").split(" | "):
+        entry = entry.strip()
+        if " || " in entry:
+            flow, product = entry.split(" || ", 1)
+            flow, product = flow.strip(), product.strip()
+            if flow and product:
+                pairs.add((flow, product))
+    return pairs
+
+
+def _expand_rollup_flow(flow: str) -> list[str] | None:
+    """If flow is a rollup like '09.01.02,09.02.02 CHP plants', return the component flows.
+
+    Returns None when the flow is not a multi-code rollup.
+    """
+    m = _ROLLUP_FLOW_RE.match(flow.strip())
+    if not m:
+        return None
+    codes = m.group(1).split(",")
+    suffix = m.group(2)
+    return [f"{code} {suffix}" for code in codes] if len(codes) > 1 else None
+
+
+def _rollup_covers_implied(active_targets_str: str, implied_targets_str: str) -> bool:
+    """Return True when an active combined ESTO target covers all implied component targets.
+
+    This detects the pattern where leap_combined_esto maps to a rollup
+    (e.g. '09.01.02,09.02.02 CHP plants') while ninthpairs_to_esto maps to the
+    individual components — both representations are equivalent, but the user
+    should standardise on one.
+    """
+    implied = _parse_esto_target_pairs(implied_targets_str)
+    if not implied:
+        return False
+    for flow, product in _parse_esto_target_pairs(active_targets_str):
+        component_flows = _expand_rollup_flow(flow)
+        if component_flows is None:
+            continue
+        if implied.issubset({(cf, product) for cf in component_flows}):
+            return True
+    return False
+
+
 def _build_crosswalk_target_conflicts(
     esto_sheet: pd.DataFrame,
     ninth_sheet: pd.DataFrame,
@@ -907,6 +959,11 @@ def _build_crosswalk_target_conflicts(
     def _target_conflict_type(row: pd.Series) -> str:
         if not bool(row["has_master_pair"]):
             return "ninth_pair_missing_from_master_crosswalk"
+        if _rollup_covers_implied(
+            row.get("active_esto_targets", ""),
+            row.get("implied_esto_targets", ""),
+        ):
+            return "rollup_covers_implied_components"
         esto_cardinalities = _split_cardinalities(row.get("esto_cardinalities", ""))
         ninth_cardinality = _clean(row.get("ninth_cardinality", ""))
         if esto_cardinalities == {"one_to_one"} and ninth_cardinality == "one_to_one":

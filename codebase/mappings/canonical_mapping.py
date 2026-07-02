@@ -6,7 +6,11 @@ from typing import TypeAlias
 
 import pandas as pd
 
-from codebase.utilities.master_config import config_table_exists, read_config_table
+from codebase.utilities.master_config import (
+    config_table_exists,
+    read_config_table,
+    OUTLOOK_MAPPINGS_MASTER_PATH,
+)
 
 
 def _safe_read_codebook_sheet(codebook_path: Path, sheet_name: str) -> pd.DataFrame:
@@ -18,8 +22,8 @@ def _safe_read_codebook_sheet(codebook_path: Path, sheet_name: str) -> pd.DataFr
 
 DEFAULT_SHEET_MAP = Path("config/leap_results_sheet_map.csv")
 DEFAULT_BACKUP_LEAP_MAPPINGS = Path("config/backup_leap_mappings.xlsx")
-DEFAULT_CODEBOOK = Path("config/sector_fuel_codes_to_names.xlsx")
-DEFAULT_NINTH_TO_ESTO = Path("config/ninth_pairs_to_esto_pairs.xlsx")
+DEFAULT_CODEBOOK = OUTLOOK_MAPPINGS_MASTER_PATH
+DEFAULT_NINTH_TO_ESTO = OUTLOOK_MAPPINGS_MASTER_PATH
 
 SECTOR_COLUMNS = ["sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"]
 PARENT_CODE_MATCH_PREFIX = "parent_code_match_"

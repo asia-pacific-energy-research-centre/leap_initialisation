@@ -7,6 +7,7 @@ import pandas as pd
 
 from codebase import transformation_workflow
 from codebase.functions import supply_data_pipeline
+from codebase.functions.supply_export_rows import coerce_value_by_year
 from codebase.utilities.master_config import MASTER_CONFIG_PATH, config_table_exists, read_config_table
 
 
@@ -108,7 +109,7 @@ def _iter_year_value_items(
     if not isinstance(labeled_values, dict):
         return
     for label, raw_value in labeled_values.items():
-        year_map = supply_data_pipeline.coerce_value_by_year(raw_value, base_year, final_year)
+        year_map = coerce_value_by_year(raw_value, base_year, final_year)
         for year, value in year_map.items():
             year_int = int(year)
             if year_int < base_year or year_int > final_year:

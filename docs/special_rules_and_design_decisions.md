@@ -271,6 +271,66 @@ future modelling decision, but is enabled for production.
 
 - 2026-06-28: Confirmed 2022 base year, 2060 final year, and retention of the refining Historical Production capacity heuristic.
 
+## INIT-007: Fixed-technology transformation modules are locked at base-year output
+
+**Status:** Confirmed (lock policy); Planned (all-economy application)
+**Owner:** leap_initialisation
+**Type:** Modelling
+**Affected areas:** `CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS` and `CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS` in `codebase/supply_reconciliation_config.py`; capacity-unmet gap allocation in `codebase/supply_reconciliation_allocation.py`; `docs/supply_reconciliation_workflow_guide.md` section 4b
+
+### Situation
+
+When the capacity-unmet allocator closes a positive import gap, it may add
+transformation `Exogenous Capacity` to eligible modules. Some legacy /
+fixed-technology modules (coke ovens, blast furnaces, gas works, etc.) should
+not expand to absorb gaps: growing them is not a realistic supply pathway and
+distorts trade. The cap lookups return "no cap" for any economy or module not
+explicitly listed, so an unlisted economy runs those modules fully unconstrained.
+
+### Options
+
+- Leave every module uncapped and let the allocator grow whatever closes the gap.
+- Lock the fixed-technology modules at base-year output for one representative
+  economy only.
+- Lock the fixed-technology modules at base-year output for every economy, with
+  per-economy overrides added as future runs reveal genuine ceilings.
+
+### Current rule
+
+Lock the following fixed-technology modules at base-year (ESTO baseline) output
+via `KEEP_EXOGENOUS_CAP_SAME_AS_BASE_YEAR_ENERGY_OUTPUT`, so the gap-filler
+cannot expand them; residual gaps spill to the next lever (imports fallback):
+Blast furnaces, BKB and PB plants, Charcoal processing, Coke ovens, Gas works
+plants, Liquefaction coal to oil, Natural gas blending plants, Non-specified
+transformation, Patent fuel plants, Petrochemical industry, Refinery and
+blending transfers, Transfers unallocated, Upstream liquids transfers. All other
+modules are `UNLIMITED`.
+
+This lock currently exists only under the `20_USA` key. The agreed direction is
+to apply it to **all** economies through a shared `__default__` economy entry
+that the cap lookups fall back to, with specific economies overriding it as
+future runs supply real ceilings. The `reference` and `target` scenario ceilings
+are kept as independent dicts (one shared template copied per scenario) so they
+can diverge by scenario without editing one silently changing the other.
+
+`CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS` is presently an all-`UNLIMITED_PRODUCTION`
+scaffold (a no-op that documents which products could be capped later); it
+applies no production constraint today.
+
+### Validation
+
+Extending the lock to all economies is a modelling change: gaps that legacy
+modules previously absorbed by unbounded growth will move to the next lever. On
+the first run with the change, compare per-fuel production, transformation
+output, imports/exports, and unresolved-residual counts against the prior run,
+and confirm no locked module reports added capacity in any economy/scenario.
+
+### History
+
+- 2026-07-01: Recorded the fixed-technology base-year lock, the plan to apply it
+  to all economies via a `__default__` fallback, the per-scenario independence of
+  reference/target ceilings, and the no-op status of the production cap dict.
+
 ## End-to-end run report
 
 Append a dated subsection after each end-to-end run. Report:

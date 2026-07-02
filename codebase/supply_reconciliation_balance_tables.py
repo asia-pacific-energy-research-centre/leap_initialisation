@@ -828,6 +828,10 @@ def _infer_top_level_demand_category(
     esto_flow: object,
 ) -> str:
     """Map a demand row to a broad category using mapped 9th/ESTO sector levels."""
+    # Late import — these lookups live in supply_demand_mapping, which imports
+    # this module at top level, so a top-level import here would be circular.
+    from codebase.functions.supply_demand_mapping import SECTOR_TO_ESTO_FLOW_LOOKUP
+
     flow_label = str(esto_flow or "").strip()
     if not flow_label:
         flow_label = SECTOR_TO_ESTO_FLOW_LOOKUP.get(str(primary_sector_code or "").strip(), "")
@@ -1004,6 +1008,10 @@ def build_reference_conventional_balance_matrix(
     scenario: str,
 ) -> pd.DataFrame:
     """Build the same matrix shape using source ESTO/9th values before adjustments."""
+    # Late import — lives in supply_demand_mapping, which imports this module at
+    # top level (circular if imported at module scope here).
+    from codebase.functions.supply_demand_mapping import ESTO_PARENT_PRODUCT_LOOKUP
+
     year_value = int(year)
     economy_value = str(economy)
     scenario_value = str(scenario)
@@ -1161,6 +1169,10 @@ def build_conventional_balance_matrix(
     scenario: str,
 ) -> pd.DataFrame:
     """Return a conventional balance matrix: sectors on rows, fuels on columns."""
+    # Late import — lives in supply_demand_mapping, which imports this module at
+    # top level (circular if imported at module scope here).
+    from codebase.functions.supply_demand_mapping import ESTO_PARENT_PRODUCT_LOOKUP
+
     year_value = int(year)
     economy_value = str(economy)
     scenario_value = str(scenario)

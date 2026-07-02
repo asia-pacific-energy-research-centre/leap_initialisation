@@ -3052,6 +3052,7 @@ def run_results_linked_transformation_supply_workflow(
                 output_dir=EXPORT_OUTPUT_DIR,
                 region=LEAP_IMPORT_REGION,
                 excluded_sectors=_effective_agg_demand_excluded,
+                use_sector_branches=bool(AGGREGATED_DEMAND_USE_SECTOR_BRANCHES),
             )
         print(f"[INFO] [{economy}] all exports complete.")
         return {
@@ -3230,6 +3231,7 @@ def run_results_linked_transformation_supply_workflow(
         output_dir=OUTPUT_DIR,
         id_lookup_path=AGGREGATED_DEMAND_ID_LOOKUP_PATH,
         excluded_sectors=_effective_agg_demand_excluded,
+        use_sector_branches=bool(AGGREGATED_DEMAND_USE_SECTOR_BRANCHES),
         source_workbooks_by_workflow=baseline_seed_sources,
         required_years_by_scenario=baseline_seed_years_by_scenario,
         required_scenarios_by_source=baseline_seed_required_scenarios,

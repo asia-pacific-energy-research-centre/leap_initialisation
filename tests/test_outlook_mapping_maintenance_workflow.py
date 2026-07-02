@@ -197,6 +197,55 @@ def test_crosswalk_target_conflicts_labels_non_strict_cardinality_review() -> No
     assert conflicts.loc[0, "ninth_cardinality"] == "one_to_one"
 
 
+def test_crosswalk_target_conflicts_labels_rollup_covering_implied_components() -> None:
+    # leap_combined_esto maps to the rollup target; ninthpairs_to_esto maps the
+    # same 9th pair to the individual component targets. Both representations are
+    # equivalent — the rollup covers the components — so the conflict should be
+    # labelled as rollup_covers_implied_components rather than a true mismatch.
+    esto = pd.DataFrame(
+        [
+            {
+                "leap_sector_name_full_path": "CHP interim/CHP interim",
+                "raw_leap_fuel_name": "Black liquor",
+                "esto_flow": "09.01.02,09.02.02 CHP plants",
+                "esto_product": "15.04 Black liquor",
+            }
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {
+                "leap_sector_name_full_path": "CHP interim/CHP interim",
+                "raw_leap_fuel_name": "Black liquor",
+                "ninth_sector": "09_02_chp_plants",
+                "ninth_fuel": "15_04_black_liquor",
+            }
+        ]
+    )
+    ninth_to_esto_pairs = pd.DataFrame(
+        [
+            {
+                "9th_sector": "09_02_chp_plants",
+                "9th_fuel": "15_04_black_liquor",
+                "esto_flow": "09.01.02 CHP plants",
+                "esto_product": "15.04 Black liquor",
+            },
+            {
+                "9th_sector": "09_02_chp_plants",
+                "9th_fuel": "15_04_black_liquor",
+                "esto_flow": "09.02.02 CHP plants",
+                "esto_product": "15.04 Black liquor",
+            },
+        ]
+    )
+
+    conflicts = _build_crosswalk_target_conflicts(esto, ninth, ninth_to_esto_pairs)
+
+    assert len(conflicts) == 1
+    assert conflicts.loc[0, "conflict_type"] == "rollup_covers_implied_components"
+    assert conflicts.loc[0, "active_esto_targets"] == "09.01.02,09.02.02 CHP plants || 15.04 Black liquor"
+
+
 def test_implied_missing_crosswalk_pairs_reports_candidate_to_add() -> None:
     esto = pd.DataFrame(
         [

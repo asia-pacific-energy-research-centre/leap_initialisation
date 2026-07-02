@@ -32,6 +32,7 @@ try:
 except Exception as exc:
     print(f"Failed to add repo root to sys.path: {exc}")
 
+from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH  # noqa: E402
 from codebase.utilities.leap_balance_export_resolver import resolve_balance_export_workbook  # noqa: E402
 from codebase.utilities.energy_balance_template_extractor import (  # noqa: E402
     TemplateBalanceExtractor,
@@ -86,9 +87,9 @@ def _resolve(path: Path | str) -> Path:
     return candidate if candidate.is_absolute() else (REPO_ROOT / candidate)
 
 
-MAPPING_WORKBOOK_PATH = _resolve("config/leap_mappings.xlsx")
+MAPPING_WORKBOOK_PATH = OUTLOOK_MAPPINGS_MASTER_PATH
 MASTER_CONFIG_PATH = _resolve("config/master_config.xlsx")
-CODEBOOK_PATH = _resolve("config/sector_fuel_codes_to_names.xlsx")
+CODEBOOK_PATH = OUTLOOK_MAPPINGS_MASTER_PATH
 ESTO_TABLE_PATH = _resolve("data/00APEC_2025_low_with_subtotals.csv")
 NINTH_TABLE_PATH = _resolve("data/merged_file_energy_ALL_20251106.csv")
 OUTPUT_DIR = _resolve("outputs/mappings/mapping_checks")

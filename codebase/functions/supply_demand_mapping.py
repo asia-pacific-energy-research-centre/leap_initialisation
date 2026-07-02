@@ -139,6 +139,13 @@ from codebase.supply_reconciliation_balance_tables import (
 )
 import codebase.supply_reconciliation_allocation as _sra
 
+# Default economy scope used as the fallback when a caller passes no economies
+# (see the `economies or ECONOMIES` guards below).  Mirrors the sibling supply
+# modules (supply_leap_io, supply_results_saver); without it those references
+# raise NameError.
+ECONOMIES = list(workflow_cfg.SUPPLY_NOTEBOOK_ECONOMIES)
+
+
 def _normalize_sector_match_key(value: object) -> str:
     """Return a forgiving sector key for cross-source name matching."""
     text = str(value or "").strip().lower()

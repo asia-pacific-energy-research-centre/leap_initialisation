@@ -53,6 +53,8 @@ if str(REPO_ROOT) not in sys.path:
 LEAP_MAPPINGS_PATH = REPO_ROOT / "config" / "leap_mappings.xlsx"
 MASTER_CONFIG_PATH = REPO_ROOT / "config" / "master_config.xlsx"
 
+from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH  # noqa: E402
+
 _NINTH_FUEL_COLUMNS = frozenset({"subfuels", "fuels"})
 _NINTH_SECTOR_COLUMNS = frozenset({"sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"})
 
@@ -141,7 +143,7 @@ def _load_sector_flow_final_proposed() -> list[dict]:
 
 def _load_leap_combined_ninth_fuels() -> list[dict]:
     """Extract fuel-level mappings from active rows: ninth_fuel → raw_leap_fuel_name."""
-    df = _read_sheet(LEAP_MAPPINGS_PATH, "leap_combined_ninth")
+    df = _read_sheet(OUTLOOK_MAPPINGS_MASTER_PATH, "leap_combined_ninth")
     active = _active_rows(df)
     pairs = (
         active[["ninth_fuel", "raw_leap_fuel_name"]]
@@ -155,7 +157,7 @@ def _load_leap_combined_ninth_fuels() -> list[dict]:
 
 def _load_leap_combined_esto_products() -> list[dict]:
     """Extract fuel-level mappings from active rows: esto_product → raw_leap_fuel_name."""
-    df = _read_sheet(LEAP_MAPPINGS_PATH, "leap_combined_esto")
+    df = _read_sheet(OUTLOOK_MAPPINGS_MASTER_PATH, "leap_combined_esto")
     active = _active_rows(df)
     pairs = (
         active[["esto_product", "raw_leap_fuel_name"]]

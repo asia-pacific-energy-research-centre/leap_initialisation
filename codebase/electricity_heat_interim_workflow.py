@@ -60,7 +60,7 @@ from codebase.configuration.config import (
     BRANCH_DEMAND_TECHNOLOGY,
 )
 from codebase.utilities import workflow_common
-from codebase.utilities.master_config import read_config_table
+from codebase.utilities.master_config import read_config_table, OUTLOOK_MAPPINGS_MASTER_PATH
 
 LEAP_API_AVAILABLE = leap_api.is_available()
 
@@ -254,37 +254,29 @@ def _load_esto_product_to_ninth_fuel() -> dict[str, str]:
             if esto_label and ninth_label:
                 mapping[esto_label] = ninth_label
 
-    code_to_name_df = read_config_table(
-        REPO_ROOT / "config" / "sector_fuel_codes_to_names.xlsx",
-        sheet_name="code_to_name",
+    ninth_to_esto_df = pd.read_excel(
+        OUTLOOK_MAPPINGS_MASTER_PATH,
+        sheet_name="ninth fuel to esto product",
         dtype=str,
     ).fillna("")
-    required_cols = {"esto_label", "esto_column", "9th_label", "9th_column"}
-    missing = required_cols - set(code_to_name_df.columns)
-    if missing:
-        raise ValueError(
-            "Missing required columns in code_to_name mapping: "
-            f"{sorted(missing)}"
-        )
-
-    product_rows = code_to_name_df[
-        code_to_name_df["esto_column"].astype(str).str.strip().str.lower().eq("products")
-        & code_to_name_df["9th_label"].astype(str).str.strip().ne("")
-    ].copy()
-    for _, row in product_rows.iterrows():
-        esto_label = _normalize_label_text(row["esto_label"])
-        ninth_label = str(row["9th_label"]).strip()
-        if esto_label and ninth_label and esto_label not in mapping:
-            mapping[esto_label] = ninth_label
+    if {"9th_fuel", "esto_product"}.issubset(set(ninth_to_esto_df.columns)):
+        for _, row in ninth_to_esto_df.iterrows():
+            esto_label = _normalize_label_text(row["esto_product"])
+            ninth_label = str(row["9th_fuel"]).strip()
+            if esto_label and ninth_label and esto_label not in mapping:
+                mapping[esto_label] = ninth_label
 
     aggregate_mappings = {
         label: ninth
         for label, ninth in mapping.items()
         if "." not in label.split(" ", 1)[0]
     }
-    for esto_label in code_to_name_df[
-        code_to_name_df["esto_column"].astype(str).str.strip().str.lower().eq("products")
-    ]["esto_label"].map(_normalize_label_text):
+    all_esto_labels = [
+        _normalize_label_text(row["esto_product"])
+        for _, row in ninth_to_esto_df.iterrows()
+        if _normalize_label_text(row.get("esto_product", ""))
+    ]
+    for esto_label in all_esto_labels:
         if not esto_label or esto_label in mapping:
             continue
         code = esto_label.split(" ", 1)[0]

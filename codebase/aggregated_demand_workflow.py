@@ -37,6 +37,7 @@ except Exception as exc:
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions.unified_name_lookup import load_active_mapping_sheet
 from codebase.utilities.output_paths import STANDALONE_LEAP_EXPORTS_ROOT
+from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
 
 # ── Data sources ──────────────────────────────────────────────────────────────
 DATA_DIR = REPO_ROOT / "data"
@@ -44,7 +45,7 @@ CONFIG_DIR = REPO_ROOT / "config"
 ENERGY_SOURCE_CONFIG = workflow_cfg.get_energy_source_config()
 ESTO_BASE_DATA_PATH = ENERGY_SOURCE_CONFIG.esto_base_table_path
 PROJECTION_DATA_PATH = ENERGY_SOURCE_CONFIG.ninth_projection_table_path
-FUEL_MAPPINGS_PATH = CONFIG_DIR / "leap_mappings.xlsx"
+FUEL_MAPPINGS_PATH = OUTLOOK_MAPPINGS_MASTER_PATH
 FUEL_ESTO_SHEET = "leap_combined_esto"
 FUEL_NINTH_SHEET = "leap_combined_ninth"
 
@@ -358,9 +359,9 @@ def load_fuel_mapping(
 
 
 def _normalize_esto_economy(value: object) -> str:
-    """Normalize compact ESTO economy codes such as 20USA to 20_USA."""
+    """Normalize compact ESTO economy codes such as 20USA to 20_USA or 02BD to 02_BD."""
     text = str(value or "").strip()
-    if re.fullmatch(r"\d{2}[A-Za-z]{3}", text):
+    if re.fullmatch(r"\d{2}[A-Za-z]{2,3}", text):
         return f"{text[:2]}_{text[2:].upper()}"
     return text
 

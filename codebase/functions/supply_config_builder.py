@@ -1,10 +1,38 @@
 """Workbook-backed supply fuel config and display-name helpers."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 
 from codebase.functions.esto_data_utils import try_debug_breakpoint
 from codebase.utilities.master_config import config_table_exists, read_config_table
+
+
+def _build_mapping_from_leap_display_names(mapping_df: "pd.DataFrame") -> dict:
+    """Build a code→name dict from the outlook_mappings_master leap_display_names
+    sheet (columns: code, leap_display_name, auto_name).  Falls back to auto_name
+    when leap_display_name is blank; codes with neither (e.g. flows not
+    represented in LEAP) are omitted so callers keep the raw label / skip them."""
+    mapping: dict[str, str] = {}
+    seen_codes: set[str] = set()
+    for _, row in mapping_df.iterrows():
+        code = row.get("code")
+        if code is None or (isinstance(code, float) and pd.isna(code)):
+            continue
+        code = str(code).strip()
+        if not code or code in seen_codes:
+            continue
+        seen_codes.add(code)
+        name = row.get("leap_display_name")
+        if name is None or (isinstance(name, float) and pd.isna(name)) or str(name).strip() == "":
+            name = row.get("auto_name")
+        if name is None or (isinstance(name, float) and pd.isna(name)):
+            continue
+        name = str(name).strip()
+        if name:
+            mapping[code] = name
+    return mapping
 
 
 def find_first_existing_file(path_candidates):
@@ -25,6 +53,25 @@ def load_code_to_name_mapping(path_candidates):
     """Load a code-to-name mapping from the first available workbook."""
     try:
         for path in path_candidates:
+            # outlook_mappings_master.xlsx carries the mapping in the
+            # leap_display_names sheet (code → leap_display_name), not code_to_name.
+            if Path(path).name == "outlook_mappings_master.xlsx":
+                if not config_table_exists(path, sheet_name="leap_display_names"):
+                    continue
+                display_df = read_config_table(
+                    path, sheet_name="leap_display_names", dtype=str
+                ).fillna("")
+                if not {"code", "leap_display_name"}.issubset(set(display_df.columns)):
+                    continue
+                mapping = _build_mapping_from_leap_display_names(display_df)
+                if mapping:
+                    print(
+                        f"Loaded code-to-name mapping from {path} "
+                        f"(leap_display_names): {len(mapping)} entries"
+                    )
+                    return mapping
+                continue
+
             if not config_table_exists(path, sheet_name="code_to_name"):
                 continue
             mapping_df = read_config_table(path, sheet_name="code_to_name", dtype=str).fillna("")
@@ -53,13 +100,13 @@ def load_code_to_name_mapping(path_candidates):
                 )
 
             if "9th_label" in mapping_df.columns and "name" in mapping_df.columns:
-                ninth_labels = mapping_df["9th_label"].astype(str).str.strip()
-                names = mapping_df["name"].astype(str).str.strip()
+                ninth_labels = mapping_df["9th_label"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
+                names = mapping_df["name"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
                 mapping.update({label: name for label, name in zip(ninth_labels, names) if label})
 
             if "esto_label" in mapping_df.columns and "name" in mapping_df.columns:
-                esto_labels = mapping_df["esto_label"].astype(str).str.strip()
-                names = mapping_df["name"].astype(str).str.strip()
+                esto_labels = mapping_df["esto_label"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
+                names = mapping_df["name"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
                 mapping.update({label: name for label, name in zip(esto_labels, names) if label})
 
             if mapping:

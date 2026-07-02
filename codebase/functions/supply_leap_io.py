@@ -46,6 +46,7 @@ from codebase.mappings.canonical_mapping import (
     load_sheet_map,
 )
 from codebase.functions import supply_data_pipeline, leap_api, patch_baseline_seeds
+from codebase.functions.supply_export_rows import coerce_value_by_year
 from codebase.functions.baseline_seed_validation import (
     BaselineSeedValidationError,
     SOURCE_FILE_COLUMN,
@@ -414,7 +415,7 @@ def apply_transformation_target_overrides_for_scenario(
             product = label_to_product.get(str(label)) or label_to_product.get(str(label).lower())
             if not product:
                 continue
-            year_map = supply_data_pipeline.coerce_value_by_year(raw_value, BASE_YEAR, FINAL_YEAR)
+            year_map = coerce_value_by_year(raw_value, BASE_YEAR, FINAL_YEAR)
             for year, value in year_map.items():
                 year_int = int(year)
                 output_value = max(float(value), 0.0)
@@ -459,6 +460,14 @@ def apply_transformation_target_overrides_for_scenario(
                     records[index].setdefault("process_share_by_year", {})[year] = equal_share
 
     if _use_capacity_like_mode():
+        # Late import — these reset-scope helpers live in supply_preflight; a
+        # top-level import risks a circular import via supply_preflight's own
+        # supply module imports.
+        from codebase.functions.supply_preflight import (
+            _configured_reset_module_names,
+            _configured_reset_output_fuel_labels_by_module,
+        )
+
         reset_modules = _configured_reset_module_names()
         reset_output_fuels_by_module = _configured_reset_output_fuel_labels_by_module(
             reset_modules
@@ -489,7 +498,7 @@ def apply_transformation_target_overrides_for_scenario(
             for label, raw_value in output_values.items():
                 if not str(label or "").strip():
                     continue
-                year_map = supply_data_pipeline.coerce_value_by_year(raw_value, BASE_YEAR, FINAL_YEAR)
+                year_map = coerce_value_by_year(raw_value, BASE_YEAR, FINAL_YEAR)
                 for year, value in year_map.items():
                     year_int = int(year)
                     if year_int < BASE_YEAR or year_int > FINAL_YEAR:
@@ -1236,6 +1245,7 @@ def build_aggregated_demand_workbooks_for_results_supply(
     output_dir: Path | str = EXPORT_OUTPUT_DIR,
     region: str = LEAP_IMPORT_REGION,
     excluded_sectors: list[str] | None = None,
+    use_sector_branches: bool = False,
 ) -> list[Path]:
     """
     Write Demand\\All demand aggregated\\{fuel} LEAP import workbooks for each economy.
@@ -1259,7 +1269,6 @@ def build_aggregated_demand_workbooks_for_results_supply(
         FUEL_MAPPINGS_PATH,
         BASE_YEAR,
         PROJECTION_END_YEAR,
-        USE_SECTOR_BRANCHES,
     )
 
     economy_list = workflow_common.normalize_economies(economies)
@@ -1268,16 +1277,19 @@ def build_aggregated_demand_workbooks_for_results_supply(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     exclusion_suffix = _sector_exclusion_suffix(excluded_sectors)
+    sector_suffix = "_by_sector" if use_sector_branches else ""
     paths: list[Path] = []
     for economy in economy_list:
         econ_token = workflow_common.format_filename_segment(economy) or "economy"
         scenario_token = "_".join(
             "".join(c for c in s if c.isalnum()) for s in scenario_list
         )
-        out_path = out_dir / f"aggregated_demand_{econ_token}_{scenario_token}{exclusion_suffix}.xlsx"
+        out_path = out_dir / f"aggregated_demand_{econ_token}_{scenario_token}{exclusion_suffix}{sector_suffix}.xlsx"
         print(f"[INFO] Building aggregated demand workbook for LEAP: economy={economy}")
         if excluded_sectors:
             print(f"[INFO] Excluded sectors: {excluded_sectors}")
+        if use_sector_branches:
+            print(f"[INFO] Sector-branch mode: branches will include sector sub-level.")
         result = save_aggregated_demand_as_leap_workbook(
             economy=economy,
             output_path=out_path,
@@ -1291,7 +1303,7 @@ def build_aggregated_demand_workbooks_for_results_supply(
             exclude_own_use_td_losses=bool(AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES),
             id_lookup_path=AGGREGATED_DEMAND_ID_LOOKUP_PATH,
             excluded_sectors=excluded_sectors,
-            use_sector_branches=USE_SECTOR_BRANCHES,
+            use_sector_branches=use_sector_branches,
         )
         if result is not None:
             paths.append(result)
@@ -1478,6 +1490,7 @@ def write_per_economy_combined_workbooks(
     output_dir: Path | str = OUTPUT_DIR,
     id_lookup_path: Path | str | None = None,
     excluded_sectors: list[str] | None = None,
+    use_sector_branches: bool = False,
     source_workbooks_by_workflow: Mapping[str, Iterable[Path | str]] | None = None,
     required_years_by_scenario: Mapping[str, Iterable[int]] | None = None,
     required_scenarios_by_source: Mapping[str, Iterable[str]] | None = None,
@@ -1643,8 +1656,9 @@ def write_per_economy_combined_workbooks(
                     except Exception as exc:
                         print(f"[WARN] Failed reading {sf.name}: {exc}")
             exclusion_suffix = _sector_exclusion_suffix(excluded_sectors)
+            sector_suffix = "_by_sector" if use_sector_branches else ""
             agg_candidates = sorted(
-                agg_dir.glob(f"aggregated_demand_{econ_token}*{exclusion_suffix}.xlsx"),
+                agg_dir.glob(f"aggregated_demand_{econ_token}*{exclusion_suffix}{sector_suffix}.xlsx"),
                 key=lambda path: (path.stat().st_mtime_ns, path.name),
             )
             for agg_path in agg_candidates[-1:]:

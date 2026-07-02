@@ -155,6 +155,71 @@ def _build_hydrogen_loss_context(
         raise
 
 
+def _build_esto_split_lng_flows(esto_ref, economy, flow_code, esto_year_cols, start_year, export_base_year, export_final_year):
+    """
+    Extract output_series and input_series_by_label from ESTO rows for one LNG sub-flow.
+
+    In ESTO format positive values are outputs and negative values are inputs.
+    Returns (output_series, input_series_by_label) or (None, None) if the base year
+    total is zero (no real data yet for this economy).
+    """
+    if esto_ref is None or "flows" not in esto_ref.columns or "economy" not in esto_ref.columns:
+        return None, None
+
+    flow_rows = esto_ref[
+        (esto_ref["economy"] == economy) &
+        (esto_ref["flows"] == flow_code)
+    ].copy()
+
+    if flow_rows.empty:
+        return None, None
+
+    # Find the base year column (may be int or str after normalisation)
+    base_col = next(
+        (c for c in esto_year_cols if str(c) == str(start_year) and c in flow_rows.columns),
+        None,
+    )
+    if base_col is None:
+        return None, None
+
+    if flow_rows[base_col].fillna(0).abs().sum() == 0:
+        return None, None
+
+    export_years = list(range(export_base_year, export_final_year + 1))
+    valid_cols = {}
+    for c in esto_year_cols:
+        try:
+            yr = int(c)
+        except (ValueError, TypeError):
+            continue
+        if c in flow_rows.columns and export_base_year <= yr <= export_final_year:
+            valid_cols[yr] = c
+
+    # Output series: sum of positive values per year
+    output_data = {yr: float(flow_rows[col].fillna(0).clip(lower=0).sum()) for yr, col in valid_cols.items()}
+    output_series = ensure_full_year_series(pd.Series(output_data, dtype=float), export_base_year, export_final_year)
+
+    # Input series by product label: absolute value of negative-valued rows
+    input_series_by_label = {}
+    product_col = "products" if "products" in flow_rows.columns else None
+    if product_col:
+        for product, prod_rows in flow_rows.groupby(product_col):
+            product_label = str(product).strip()
+            if not product_label or product_label.lower() == "nan":
+                continue
+            input_data = {}
+            for yr, col in valid_cols.items():
+                val = float(prod_rows[col].fillna(0).sum())
+                if val < 0:
+                    input_data[yr] = abs(val)
+            if input_data:
+                s = ensure_full_year_series(pd.Series(input_data, dtype=float), export_base_year, export_final_year)
+                if s.sum() > 0:
+                    input_series_by_label[product_label] = s
+
+    return output_series, input_series_by_label
+
+
 def analyze_lng_liquefaction_regas(
     esto_data,
     year_cols,
@@ -165,6 +230,8 @@ def analyze_lng_liquefaction_regas(
     loss_year_cols,
     sector_config=None,
     process_records=None,
+    esto_reference_data=None,
+    esto_reference_year_cols=None,
 ):
     """Estimate LNG liquefaction/regasification efficiency and auxiliary fuel use."""
     try:
@@ -289,7 +356,37 @@ def analyze_lng_liquefaction_regas(
             else:
                 target[label] = existing.add(series, fill_value=0.0)
 
+        liq_flow_code = lng_config.get("esto_flow_code_liquefaction", "09.06.02.01 Liquefaction")
+        regas_flow_code = lng_config.get("esto_flow_code_regasification", "09.06.02.02 Regasification")
+
         for component_economy in component_economies:
+            # --- ESTO split data path ---
+            # If ESTO already has non-zero base-year data for the split sub-flows,
+            # use those directly rather than running the ninth sign analysis.
+            if esto_reference_data is not None:
+                esto_liq_out, esto_liq_inputs = _build_esto_split_lng_flows(
+                    esto_reference_data, component_economy, liq_flow_code,
+                    esto_reference_year_cols or [], start_year, export_base_year, export_final_year,
+                )
+                esto_regas_out, esto_regas_inputs = _build_esto_split_lng_flows(
+                    esto_reference_data, component_economy, regas_flow_code,
+                    esto_reference_year_cols or [], start_year, export_base_year, export_final_year,
+                )
+                if esto_liq_out is not None or esto_regas_out is not None:
+                    print(f"LNG {component_economy}: using ESTO split data ({liq_flow_code} / {regas_flow_code})")
+                    if esto_liq_out is not None and esto_liq_out.sum() > 0:
+                        liquefaction_output_series = liquefaction_output_series.add(esto_liq_out, fill_value=0.0)
+                        for label, series in (esto_liq_inputs or {}).items():
+                            _accumulate_series_map(liq_input_series_by_label, label, series)
+                        liq_direction_count += int(esto_liq_out.gt(0).sum())
+                    if esto_regas_out is not None and esto_regas_out.sum() > 0:
+                        regas_output_series = regas_output_series.add(esto_regas_out, fill_value=0.0)
+                        for label, series in (esto_regas_inputs or {}).items():
+                            _accumulate_series_map(regas_input_series_by_label, label, series)
+                        regas_direction_count += int(esto_regas_out.gt(0).sum())
+                    continue  # skip ninth sign analysis for this economy
+
+            # --- Ninth sign-analysis path (default) ---
             ng_series_raw = ensure_full_year_series(
                 sum_years_by_year(
                     select_rows(

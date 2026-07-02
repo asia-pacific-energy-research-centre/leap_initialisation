@@ -178,6 +178,8 @@ ESTO_SECTORS = [
     '09.06 Gas processing plants',
     '09.06.01 Gas works plants',
     '09.06.02 Liquefaction/regasification plants',
+    '09.06.02.01 Liquefaction',
+    '09.06.02.02 Regasification',
     '09.06.03 Natural gas blending plants',
     '09.06.04 Gas-to-liquids plants',
     '09.07 Oil refineries',

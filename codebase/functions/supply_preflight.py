@@ -142,6 +142,27 @@ import codebase.supply_reconciliation_allocation as _sra
 # NOTE: _load_reset_scope_from_full_model_export uses a late import of
 #       _extract_catalog_rows_from_full_model_export to avoid circular imports.
 
+# Default scenario list used as the fallback when a caller does not pass
+# scenario_names (see run_preflight_compressed_projection).  Mirrors the
+# sibling supply modules (supply_leap_io, supply_results_saver) that share this
+# `from supply_reconciliation_config import *` header; without it the bare
+# `SCENARIOS` reference in run_preflight_compressed_projection raises NameError.
+SCENARIOS = list(workflow_cfg.SUPPLY_NOTEBOOK_SCENARIOS)
+
+# Preflight toggle also referenced as a bare global by
+# run_preflight_compressed_projection.  It is authored as a notebook-runtime
+# override in supply_reconciliation_workflow; this module-level default keeps
+# the extracted function self-contained (callers may still override the
+# attribute before invoking).  Without it the reference raises NameError.
+PREFLIGHT_COMPRESSED_INCLUDE_CURRENT_ACCOUNTS = True
+
+# Module-level cache for _load_reset_scope_from_full_model_export.  That function
+# declares `global _RESET_SCOPE_FROM_EXPORT_CACHE` and reads it on entry before
+# any assignment runs, so the name must exist at import time or the first call
+# raises NameError.
+_RESET_SCOPE_FROM_EXPORT_CACHE = None
+
+
 @contextmanager
 def _keep_windows_pc_awake(enabled: bool = True):
     """Prevent Windows system sleep while the wrapped workflow is running."""
@@ -1144,6 +1165,15 @@ def run_preflight_compressed_projection(
         "[INFO] Compressed ninth projection source written to "
         f"{source_files['ninth_path']} "
         f"(abs-sum diagnostics: {source_files['ninth_abs_diagnostics_path']})."
+    )
+
+    # Late import (avoids the supply_reconciliation_workflow <-> supply_preflight
+    # import cycle).  Use the workflow wrapper rather than the raw
+    # supply_results_saver entry point so its _sync_results_saver_overrides()
+    # step still runs — that is the callable the bare global resolved to before
+    # this function was extracted out of supply_reconciliation_workflow.
+    from codebase.supply_reconciliation_workflow import (
+        run_results_linked_transformation_supply_workflow,
     )
 
     state = _snapshot_preflight_state()

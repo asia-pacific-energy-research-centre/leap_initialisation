@@ -4,9 +4,15 @@ from pathlib import Path
 
 import pandas as pd
 
-from codebase import leap_results_dashboard_workflow as v1_workflow
 from codebase.utilities.leap_results_dashboard_utils import basic_checks
 from codebase.utilities.workflow_outputs import build_workflow_output_layout
+
+# NOTE: the diagnostics writers this module delegates to were moved to
+# codebase/archive/leap_results_dashboard_workflow.py; the old top-level
+# `codebase.leap_results_dashboard_workflow` no longer exists.  Nothing in the
+# active codebase imports write_diagnostics(), so the dependency is imported
+# lazily to keep this module importable.  Revive or delete when the v2 dashboard
+# diagnostics path is finalised.
 
 
 def write_diagnostics(
@@ -25,6 +31,8 @@ def write_diagnostics(
         "comparison_issue_summary": None,
         "comparison_issue_cause_summary": None,
     }
+    from codebase.archive import leap_results_dashboard_workflow as v1_workflow
+
     layout = build_workflow_output_layout(out_dir)
     generated = v1_workflow._write_gap_and_mapping_diagnostics(
         comparison_long=comparison_long,

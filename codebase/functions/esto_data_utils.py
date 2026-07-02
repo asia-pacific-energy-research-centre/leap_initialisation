@@ -5,12 +5,17 @@ Moved here (Phase 3 deduplication) to eliminate 11 duplicate function bodies.
 from __future__ import annotations
 
 import re
+from functools import lru_cache
 
 import pandas as pd
 
 from codebase.utilities.master_config import read_config_table
 
-ENABLE_DEBUG_BREAKPOINTS = True
+ENABLE_DEBUG_BREAKPOINTS = False
+
+# Precompiled once: this pattern is matched hundreds of millions of times during
+# LEAP workbook generation, so avoid re-resolving it from the regex cache per call.
+_NUMERIC_PREFIX_RE = re.compile(r"^(\d+)")
 
 
 def try_debug_breakpoint():
@@ -23,29 +28,40 @@ def try_debug_breakpoint():
         print(f"Debug breakpoint failed: {breakpoint_exc}")
 
 
+@lru_cache(maxsize=None)
 def _extract_numeric_segments(value):
-    """Return a list of numeric code segments from a code or label."""
+    """Return the numeric code segments from a code or label, as a tuple.
+
+    Memoized: this is a pure function of ``value`` and is called on the order of
+    10^8 times during LEAP workbook generation, over only a few thousand distinct
+    labels.  Returns an (immutable) tuple so the cached result is safe to share.
+    """
     try:
         if value is None:
-            return []
+            return ()
         text = str(value)
         if text == "x":
-            return []
+            return ()
         segments = []
         for chunk in text.replace(".", "_").split("_"):
-            match = re.match(r"^(\d+)", chunk)
+            match = _NUMERIC_PREFIX_RE.match(chunk)
             if not match:
                 break
             segments.append(match.group(1).zfill(2))
-        return segments
+        return tuple(segments)
     except Exception as exc:
         print(f"Failed to extract numeric segments from {value}: {exc}")
         try_debug_breakpoint()
         raise
 
 
+@lru_cache(maxsize=None)
 def _match_code_prefix(label_value, code_value):
-    """Check if label_value shares the numeric prefix of code_value."""
+    """Check if label_value shares the numeric prefix of code_value.
+
+    Memoized: pure function called element-wise via DataFrame.apply across many
+    repeated (label, code) pairs during workbook generation.
+    """
     try:
         code_segments = _extract_numeric_segments(code_value)
         if not code_segments:
@@ -58,6 +74,18 @@ def _match_code_prefix(label_value, code_value):
         print(f"Failed to match code prefix for {code_value}: {exc}")
         try_debug_breakpoint()
         raise
+
+
+def _match_code_prefix_mask(series, code_value):
+    """Vectorized equivalent of ``series.apply(lambda v: _match_code_prefix(v, code_value))``.
+
+    Evaluates the (pure, memoized) predicate once per *unique* value in the
+    column and then uses ``Series.isin`` — turning an O(rows) Python-level apply
+    into O(unique values) predicate calls plus a vectorized membership test.
+    This is exactly equivalent for a pure boolean predicate.
+    """
+    matching = [value for value in series.unique() if _match_code_prefix(value, code_value)]
+    return series.isin(matching)
 
 
 def load_csv_data(path, label):

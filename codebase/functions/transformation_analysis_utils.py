@@ -11,11 +11,16 @@
 import os
 import re
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
 
-from codebase.utilities.master_config import config_table_exists, read_config_table
+from codebase.utilities.master_config import (
+    config_table_exists,
+    read_config_table,
+    OUTLOOK_MAPPINGS_MASTER_PATH,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -50,6 +55,7 @@ from codebase.functions.esto_data_utils import (
     try_debug_breakpoint,
     _extract_numeric_segments,
     _match_code_prefix,
+    _match_code_prefix_mask,
     load_csv_data,
     normalize_year_columns,
     filter_reference_scenario,
@@ -103,6 +109,7 @@ CONFIG_DIR = REPO_ROOT / "config"
 SUBTOTAL_MAPPING_PATH = CONFIG_DIR / "ESTO_subtotal_mapping.xlsx"
 NINTH_TO_ESTO_MAPPING_PATH = CONFIG_DIR / "ninth_pairs_to_esto_pairs.xlsx"
 CODE_TO_NAME_PATHS = [
+    OUTLOOK_MAPPINGS_MASTER_PATH,
     CONFIG_DIR / "sector_fuel_codes_to_names.updated.xlsx",
     CONFIG_DIR / "sector_fuel_codes_to_names.xlsx",
 ]
@@ -209,6 +216,8 @@ MAJOR_SECTOR_CONFIG = {
         "transformation_sub1": "09_06_gas_processing_plants",
         "transformation_sub2": ["09_06_02_liquefaction_regasification_plants"],
         "loss_sub2": ["10_01_03_liquefaction_regasification_plants"],
+        "esto_flow_code_liquefaction": "09.06.02.01 Liquefaction",
+        "esto_flow_code_regasification": "09.06.02.02 Regasification",
     },
     "gas_works": {
         "dataset_key": "esto",
@@ -458,8 +467,13 @@ def ensure_repo_root():
 
 
 
+@lru_cache(maxsize=None)
 def _normalize_economy_value(value):
-    """Normalize economy codes to a common underscore-free form."""
+    """Normalize economy codes to a common underscore-free form.
+
+    Memoized: pure function applied element-wise (tens of millions of calls)
+    over a tiny set of distinct economy codes during workbook generation.
+    """
     try:
         if value is None:
             return ""
@@ -485,10 +499,10 @@ def select_rows(df, filters):
 
             if column in ["sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"]:
                 if "flows" in df.columns:
-                    mask &= df["flows"].apply(lambda flow: _match_code_prefix(flow, value))
+                    mask &= _match_code_prefix_mask(df["flows"], value)
                     continue
             if column in ["fuels", "subfuels"] and "products" in df.columns:
-                mask &= df["products"].apply(lambda product: _match_code_prefix(product, value))
+                mask &= _match_code_prefix_mask(df["products"], value)
                 continue
 
             mask &= False
@@ -1256,10 +1270,53 @@ def summarize_loss_sectors(
 
 
 
+def _build_mapping_from_leap_display_names(mapping_df: "pd.DataFrame") -> dict:
+    """Build a code→name dict from the leap_display_names sheet format."""
+    mapping = {}
+    seen_codes: set = set()
+    for _, row in mapping_df.iterrows():
+        code = row.get("code")
+        if code is None or (isinstance(code, float) and pd.isna(code)):
+            continue
+        code = str(code).strip()
+        if not code or code in seen_codes:
+            continue
+        seen_codes.add(code)
+        name = row.get("leap_display_name")
+        if name is None or (isinstance(name, float) and pd.isna(name)) or str(name).strip() == "":
+            name = row.get("auto_name")
+        if name is None or (isinstance(name, float) and pd.isna(name)):
+            continue
+        name = str(name).strip()
+        if name:
+            mapping[code] = name
+    return mapping
+
+
 def load_code_to_name_mapping(path_candidates):
     """Load the code-to-name mapping from the first available workbook."""
     try:
         for path in path_candidates:
+            path = Path(path)
+            # outlook_mappings_master.xlsx uses the leap_display_names sheet format
+            if path.name == "outlook_mappings_master.xlsx":
+                if not path.exists():
+                    continue
+                try:
+                    mapping_df = pd.read_excel(path, sheet_name="leap_display_names")
+                except Exception as exc:
+                    print(f"Failed to read leap_display_names from {path}: {exc}")
+                    continue
+                if not {"code", "leap_display_name"}.issubset(set(mapping_df.columns)):
+                    print(f"leap_display_names in {path} missing expected columns; trying next file.")
+                    continue
+                mapping = _build_mapping_from_leap_display_names(mapping_df)
+                if not mapping:
+                    print(f"No usable mappings found in {path}; trying next file.")
+                    continue
+                print(f"Loaded code-to-name mapping from {path} (leap_display_names): {len(mapping)} entries")
+                return mapping
+
             if not config_table_exists(path, sheet_name="code_to_name"):
                 continue
             try:
@@ -1466,6 +1523,8 @@ def run_lng_analysis(
         loss_year_cols,
         sector_config,
         process_records,
+        esto_reference_data=esto_data_raw,
+        esto_reference_year_cols=esto_year_cols_raw,
     )
 
 

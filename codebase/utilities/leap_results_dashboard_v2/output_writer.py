@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from codebase import leap_results_dashboard_workflow as v1_workflow
+# NOTE: _write_workbook_with_header_comments was moved to
+# codebase/archive/leap_results_dashboard_workflow.py; the old top-level
+# `codebase.leap_results_dashboard_workflow` no longer exists.  Nothing in the
+# active codebase imports write_core_outputs(), so the dependency is imported
+# lazily to keep this module importable.  Revive or delete when the v2 dashboard
+# output path is finalised.
 
 
 def write_core_outputs(
@@ -20,6 +25,8 @@ def write_core_outputs(
     atomic_mapping_edges: pd.DataFrame | None = None,
     atomic_validation_report: pd.DataFrame | None = None,
 ) -> dict[str, str]:
+    from codebase.archive import leap_results_dashboard_workflow as v1_workflow
+
     out_dir.mkdir(parents=True, exist_ok=True)
     comparison_long_path = out_dir / "comparison_long.csv"
     comparison_wide_path = out_dir / "comparison_wide.csv"
