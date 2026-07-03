@@ -36,8 +36,37 @@ only its ninth->esto pairs pointer (#1) is legacy.
 
 ## Changes made
 
-(updated as work proceeds)
+### C1 — shared canonical loaders (commit `codex: add shared canonical mapping loaders + tests`)
+- New `codebase/mappings/canonical_loaders.py`: validated loaders for the four
+  canonical sheets, active-row filtering, conflict detection, context-aware
+  fuel resolution; raises `CanonicalMappingError`.
+- New `tests/test_canonical_loaders.py` (16 tests, all pass incl. real workbook).
+
+### C2 — balance-demand / balance-conversion ninth->esto pairs repointed to canonical
+- `leap_results_dashboard_balance.DEFAULT_MAPPING_PAIRS_PATH` changed from
+  `(config/master_config.xlsx, ninth_pairs_to_esto_pairs)` to
+  `(leap_mappings/.../outlook_mappings_master.xlsx, ninth_pairs_to_esto_pairs)`.
+  This is the single source feeding both `convert_leap_balances_to_esto_long_table`
+  and the balance-demand `BALANCE_DEMAND_NINTH_TO_ESTO_MAPPING` pointer.
+- Verified it loads via `load_canonical_pairs`: 2251 clean pairs, 224 one-to-many
+  (conflicting-target) keys surfaced. Regression tests
+  `test_balance_demand_mapping_fixes.py` + `test_balance_demand_conservation.py`
+  (16) still pass.
 
 ## Open questions / issues for review
 
-(updated as work proceeds)
+- **[RISK C2] ninth_pairs content differs between the two workbooks.** The old
+  `master_config.xlsx` sheet had 3126 rows; canonical has 2412. Comparing the
+  four key columns: 1580 pairs were only in master_config, 937 only in canonical.
+  Repointing is the intended migration (canonical = source of truth), but it
+  WILL change which 9th->ESTO pairs balance-demand and balance-conversion use.
+  **Please run a full supply-reconciliation pass for a known economy/scenario and
+  re-check energy conservation + mapped-row coverage before importing to LEAP.**
+  If canonical is missing pairs that master_config had and that removes real
+  mapped energy, those pairs need to be added to the canonical workbook (in
+  leap_mappings), not restored from master_config.
+- **[INFO C2] 224 one-to-many 9th->ESTO keys** exist in canonical (a 9th pair
+  mapping to multiple ESTO pairs). `load_canonical_pairs` returns these as
+  `conflicts` but keeps all rows. This matches the documented mapping-system
+  design (many-to-one is fine; one-to-many needs review). Not resolved by
+  arbitrary selection.

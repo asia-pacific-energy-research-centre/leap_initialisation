@@ -20,7 +20,11 @@ from typing import Any, Iterable, Sequence
 import pandas as pd
 from codebase.mappings.canonical_mapping import ConfigTableRef, split_config_table_ref
 from codebase.utilities.leap_balance_export_resolver import resolve_balance_export_workbook
-from codebase.utilities.master_config import config_table_exists, read_config_table
+from codebase.utilities.master_config import (
+    OUTLOOK_MAPPINGS_MASTER_PATH,
+    config_table_exists,
+    read_config_table,
+)
 
 from codebase.utilities.energy_balance_template_extractor import TemplateBalanceExtractor
 from codebase.utilities.leap_results_dashboard_utils import (
@@ -53,7 +57,10 @@ DEFAULT_TGT_WORKBOOK_PATH = resolve_balance_export_workbook(
     scenario="TGT",
     date_id=DEFAULT_TGT_BALANCE_EXPORT_DATE_ID,
 )
-DEFAULT_MAPPING_PAIRS_PATH = (REPO_ROOT / "config/master_config.xlsx", "ninth_pairs_to_esto_pairs")
+# Canonical 9th-pair -> ESTO-pair mapping (leap_mappings/config/outlook_mappings_master.xlsx).
+# Migrated off the local config/master_config.xlsx copy so all balance-conversion
+# and balance-demand consumers read the single canonical source of truth.
+DEFAULT_MAPPING_PAIRS_PATH = (OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs")
 DEFAULT_CODEBOOK_PATH = REPO_ROOT / "config/sector_fuel_codes_to_names.xlsx"
 
 DEFAULT_SHEET_MAP_PATH = REPO_ROOT / "config/leap_results_sheet_map.csv"
