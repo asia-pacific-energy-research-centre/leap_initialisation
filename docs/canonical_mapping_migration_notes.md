@@ -159,7 +159,7 @@ any remaining legacy/exceptional logic.
 - Regression subset (123 tests) incl. balance-demand conservation, other
   loss/own use, supply conservation/diagnostics/export, module attribute
   contracts — all pass.
-- Full suite run: see final status in this file / commit message.
+- Full suite run: **353 passed, 10 skipped, 0 failed** (exit 0, ~16 min).
 - Not run: a live end-to-end supply-reconciliation preflight for a real economy
   (needs LEAP balance exports + full data env). **C2 in particular changes which
   9th->ESTO pairs are used — a real preflight + conservation check is still
