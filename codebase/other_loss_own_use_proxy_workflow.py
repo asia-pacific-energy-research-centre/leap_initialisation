@@ -28,6 +28,10 @@ except Exception as exc:
 
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
+from codebase.mappings.canonical_loaders import (
+    load_leap_combined_esto,
+    load_leap_combined_ninth,
+)
 from codebase.configuration.config import BASE_YEAR
 from codebase.functions.analysis_input_write_dispatcher import dispatch_analysis_input_write
 from codebase.functions.leap_core import (
@@ -660,31 +664,70 @@ def load_output_fuel_validation_esto_tables(
     return tables
 
 
-def load_fuel_mapping_lookup(mapping_path: Path | str = LEAP_MAPPINGS_PATH) -> dict[str, dict[str, str]]:
-    """Load ESTO/9th fuel -> LEAP fuel lookups from config/leap_mappings.xlsx."""
-    path = _resolve(mapping_path)
-    lookups = {"esto": {}, "ninth": {}}
-    if not path.exists():
-        return lookups
-    try:
-        esto = pd.read_excel(path, sheet_name="fuel_product_final_proposed", dtype=str).fillna("")
-    except Exception:
-        esto = pd.DataFrame()
-    for _, row in esto.iterrows():
-        source = str(row.get("esto_product", "") or "").strip()
-        leap = str(row.get("leap_fuel_name", "") or "").strip()
-        if source and leap:
-            lookups["esto"][_normalize_source_token(source)] = sanitize_leap_name(leap)
-    try:
-        ninth = pd.read_excel(path, sheet_name="fuel_ninth_final_proposed", dtype=str).fillna("")
-    except Exception:
-        ninth = pd.DataFrame()
-    for _, row in ninth.iterrows():
-        source = str(row.get("ninth_fuel", "") or "").strip()
-        leap = str(row.get("leap_fuel_name", "") or "").strip()
-        if source and leap:
-            lookups["ninth"][_normalize_source_token(source)] = sanitize_leap_name(leap)
-    return lookups
+# Records the ambiguous fuel-only mappings dropped by the most recent
+# load_fuel_mapping_lookup() call so they can be inspected rather than silently
+# resolved by arbitrary first-row selection.
+LAST_FUEL_MAPPING_AMBIGUITY: dict[str, dict[str, list[str]]] = {"esto": {}, "ninth": {}}
+
+
+def _build_fuel_only_lookup(
+    frame: pd.DataFrame, source_col: str
+) -> tuple[dict[str, str], dict[str, list[str]]]:
+    """Map ``source_col`` code -> single LEAP fuel name from a canonical sheet.
+
+    Only unambiguous entries (a source code that maps to exactly one distinct
+    LEAP fuel name across the sheet) are returned. Codes mapping to multiple
+    distinct LEAP fuels are returned separately as ambiguity and excluded from
+    the lookup so callers fall back to mechanical label cleanup instead of an
+    arbitrary pick.
+    """
+    lookup: dict[str, str] = {}
+    ambiguous: dict[str, list[str]] = {}
+    candidates: dict[str, dict[str, str]] = {}
+    for _, row in frame.iterrows():
+        source = str(row.get(source_col, "") or "").strip()
+        leap = str(row.get("raw_leap_fuel_name", "") or "").strip()
+        if not source or not leap:
+            continue
+        key = _normalize_source_token(source)
+        if not key:
+            continue
+        sanitized = sanitize_leap_name(leap)
+        candidates.setdefault(key, {})[_normalize_balance_label(sanitized)] = sanitized
+    for key, variants in candidates.items():
+        if len(variants) == 1:
+            lookup[key] = next(iter(variants.values()))
+        else:
+            ambiguous[key] = sorted(variants.values())
+    return lookup, ambiguous
+
+
+def load_fuel_mapping_lookup(
+    mapping_path: Path | str = LEAP_MAPPINGS_PATH,
+) -> dict[str, dict[str, str]]:
+    """Build ESTO-product / 9th-fuel -> LEAP fuel-name lookups from canonical sheets.
+
+    Derived from the canonical ``leap_combined_esto`` (esto_product -> LEAP fuel)
+    and ``leap_combined_ninth`` (ninth_fuel -> LEAP fuel) sheets in
+    outlook_mappings_master.xlsx. Only unambiguous fuel-only mappings are kept;
+    ambiguous source codes are recorded in ``LAST_FUEL_MAPPING_AMBIGUITY`` and
+    left out so ``_format_fuel_branch_label`` falls back to mechanical cleanup
+    rather than an arbitrary first-row LEAP fuel.
+    """
+    esto_frame = load_leap_combined_esto(workbook=mapping_path)
+    ninth_frame = load_leap_combined_ninth(workbook=mapping_path)
+    esto_lookup, esto_ambiguous = _build_fuel_only_lookup(esto_frame, "esto_product")
+    ninth_lookup, ninth_ambiguous = _build_fuel_only_lookup(ninth_frame, "ninth_fuel")
+    LAST_FUEL_MAPPING_AMBIGUITY["esto"] = esto_ambiguous
+    LAST_FUEL_MAPPING_AMBIGUITY["ninth"] = ninth_ambiguous
+    if esto_ambiguous or ninth_ambiguous:
+        print(
+            "[INFO] other_loss_own_use fuel mapping: "
+            f"{len(esto_ambiguous)} ambiguous ESTO-product and "
+            f"{len(ninth_ambiguous)} ambiguous 9th-fuel code(s) left to mechanical "
+            "cleanup (see LAST_FUEL_MAPPING_AMBIGUITY)."
+        )
+    return {"esto": esto_lookup, "ninth": ninth_lookup}
 
 
 def resolve_leap_balance_workbook_path(

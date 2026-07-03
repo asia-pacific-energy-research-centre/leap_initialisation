@@ -53,7 +53,31 @@ only its ninth->esto pairs pointer (#1) is legacy.
   `test_balance_demand_mapping_fixes.py` + `test_balance_demand_conservation.py`
   (16) still pass.
 
+### C3 — other loss/own use fuel mapping fixed (was silently empty)
+- `other_loss_own_use_proxy_workflow.load_fuel_mapping_lookup` pointed at the
+  canonical workbook (`LEAP_MAPPINGS_PATH = OUTLOOK_MAPPINGS_MASTER_PATH`) but
+  requested sheets `fuel_product_final_proposed` / `fuel_ninth_final_proposed`
+  that exist only in legacy `leap_mappings.xlsx`. The reads were caught and
+  swallowed, so the lookup returned **empty dicts** and every output fuel label
+  fell back to mechanical cleanup of the ESTO/9th code.
+- Rebuilt from canonical `leap_combined_esto` (esto_product -> LEAP fuel) and
+  `leap_combined_ninth` (ninth_fuel -> LEAP fuel). Only unambiguous fuel-only
+  mappings are kept (71 ESTO, 52 9th). Ambiguous codes (0 ESTO, 5 9th) are
+  recorded in `LAST_FUEL_MAPPING_AMBIGUITY` and left to mechanical cleanup —
+  never resolved by arbitrary first-row selection.
+- `test_other_loss_own_use_proxy_workflow.py` (36) still passes.
+
 ## Open questions / issues for review
+
+- **[REVIEW C3] Behaviour change in other-loss/own-use output fuel labels.**
+  Because the lookup was previously empty, some output-fuel branch labels will
+  now be the canonical LEAP fuel name (`raw_leap_fuel_name`) instead of a
+  mechanical cleanup of the ESTO product / 9th fuel code. This is more correct
+  but changes some branch labels. The 5 ambiguous 9th-fuel codes (a 9th fuel
+  code mapping to multiple LEAP fuels in the canonical sheet) are listed in
+  `LAST_FUEL_MAPPING_AMBIGUITY['ninth']` after a run — worth a glance to decide
+  whether any deserve a context-aware (sector-scoped) rule in leap_mappings.
+
 
 - **[RISK C2] ninth_pairs content differs between the two workbooks.** The old
   `master_config.xlsx` sheet had 3126 rows; canonical has 2412. Comparing the
