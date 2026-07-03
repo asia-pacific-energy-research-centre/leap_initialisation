@@ -713,6 +713,25 @@ def _infer_active_demand_branch_groups(sector_table: pd.DataFrame) -> list[str]:
     return active
 
 
+def resolve_effective_aggregated_demand_exclusions(
+    sector_table: pd.DataFrame,
+) -> list[str] | None:
+    """Return the exact exclusions used for the reconciliation placeholder."""
+    from codebase.aggregated_demand_workflow import resolve_active_branch_excluded_sectors
+
+    inferred_active_branches = _infer_active_demand_branch_groups(sector_table)
+    active_branches = (
+        inferred_active_branches
+        if inferred_active_branches
+        else list(DETAILED_DEMAND_BRANCHES_ACTIVE or [])
+    )
+    return resolve_active_branch_excluded_sectors(
+        active_branches=active_branches,
+        sector_map=LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
+        base_excluded=AGGREGATED_DEMAND_EXCLUDED_SECTORS,
+    )
+
+
 def load_results_demand_table(
     comparison_long_path: Path | str = COMPARISON_LONG_PATH,
     mapping_status_path: Path | str = MAPPING_STATUS_PATH,
@@ -768,11 +787,7 @@ def load_results_demand_table(
                     f"branches = {active_branches}"
                 )
 
-        effective_excluded = resolve_active_branch_excluded_sectors(
-            active_branches=active_branches,
-            sector_map=LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
-            base_excluded=AGGREGATED_DEMAND_EXCLUDED_SECTORS,
-        )
+        effective_excluded = resolve_effective_aggregated_demand_exclusions(sector_table)
         if effective_excluded:
             print(f"[INFO] Aggregated demand dummy: effective excluded sectors = {effective_excluded}")
 

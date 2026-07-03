@@ -6,7 +6,10 @@ import pandas as pd
 import pytest
 
 from codebase.functions.balance_demand_conservation import (
+    build_raw_demand_conservation_reference,
     build_balance_demand_conservation_diagnostics,
+    prepare_aggregated_demand_reference,
+    prepare_reconciliation_demand_totals,
 )
 
 
@@ -72,6 +75,98 @@ def test_conservation_diagnostic_rejects_negative_tolerance():
             _rows("resolved_total", [10.0, 20.0]),
             tolerance_pj=-1.0,
         )
+
+
+def test_optional_adapter_can_combine_placeholder_and_detailed_sectors():
+    reference_source = pd.DataFrame(
+        [{"economy": "20_USA", "scenario": "Reference", "esto_product": "p1", "year": 2030, "demand_value": 100.0}]
+    )
+    placeholder = reference_source.copy()
+    placeholder["demand_value"] = 60.0
+    detailed = reference_source.copy()
+    detailed["demand_value"] = 40.0
+
+    diagnostics = build_balance_demand_conservation_diagnostics(
+        prepare_aggregated_demand_reference(reference_source),
+        prepare_reconciliation_demand_totals(
+            placeholder,
+            detailed_sector_demand=detailed,
+            include_detailed_sectors=True,
+        ),
+    )
+
+    assert diagnostics.loc[0, "status"] == "match"
+    assert diagnostics.loc[0, "resolved_total"] == pytest.approx(100.0)
+
+
+def test_results_update_excludes_detailed_leap_sector_rows_from_both_sides():
+    residual_reference = pd.DataFrame(
+        [{"economy": "20_USA", "scenario": "Reference", "esto_product": "p1", "year": 2030, "demand_value": 60.0}]
+    )
+    detailed_leap = residual_reference.copy()
+    detailed_leap["demand_value"] = 250.0
+
+    diagnostics = build_balance_demand_conservation_diagnostics(
+        prepare_aggregated_demand_reference(residual_reference),
+        prepare_reconciliation_demand_totals(
+            residual_reference,
+            detailed_sector_demand=detailed_leap,
+            include_detailed_sectors=False,
+        ),
+    )
+
+    assert diagnostics.loc[0, "status"] == "match"
+    assert diagnostics.loc[0, "resolved_total"] == pytest.approx(60.0)
+
+
+def test_total_energy_surface_detects_mapping_loss_across_fuels():
+    reference = pd.DataFrame(
+        [
+            {"economy": "20_USA", "scenario": "Reference", "esto_product": "p1", "year": 2030, "demand_value": 40.0},
+            {"economy": "20_USA", "scenario": "Reference", "esto_product": "p2", "year": 2030, "demand_value": 60.0},
+        ]
+    )
+    resolved = reference.iloc[[0]].copy()
+
+    diagnostics = build_balance_demand_conservation_diagnostics(
+        prepare_aggregated_demand_reference(reference, collapse_products=True),
+        prepare_reconciliation_demand_totals(resolved, collapse_products=True),
+    )
+
+    assert diagnostics.loc[0, "reference_total"] == pytest.approx(100.0)
+    assert diagnostics.loc[0, "resolved_total"] == pytest.approx(40.0)
+    assert diagnostics.loc[0, "status"] == "value_mismatch"
+
+
+def test_raw_reference_is_built_before_fuel_mapping(monkeypatch):
+    import codebase.aggregated_demand_workflow as aggregated
+
+    base = pd.DataFrame(
+        [{"economy": "20_USA", "fuel_code": "base", "year": 2022, "value": 10.0}]
+    )
+    projection = pd.DataFrame(
+        [
+            {"economy": "20_USA", "fuel_code": "unmapped_a", "year": 2023, "value": 30.0},
+            {"economy": "20_USA", "fuel_code": "unmapped_b", "year": 2023, "value": 70.0},
+        ]
+    )
+    monkeypatch.setattr(aggregated, "_load_esto_base_csv", lambda *args, **kwargs: pd.DataFrame())
+    monkeypatch.setattr(aggregated, "_load_demand_csv", lambda *args, **kwargs: pd.DataFrame())
+    monkeypatch.setattr(aggregated, "_extract_base_year", lambda *args, **kwargs: base.copy())
+    monkeypatch.setattr(aggregated, "_extract_projection_years", lambda *args, **kwargs: projection.copy())
+
+    reference = build_raw_demand_conservation_reference(
+        economy="20_USA",
+        scenarios=["Reference"],
+        base_year=2022,
+        final_year=2023,
+        data_path="unused.csv",
+        esto_data_path="unused.csv",
+    )
+    totals = reference.groupby("year")["reference_total"].sum().to_dict()
+
+    assert totals == pytest.approx({2022: 10.0, 2023: 100.0})
+    assert reference["esto_product"].eq("__all_fuels__").all()
 
 
 #%%

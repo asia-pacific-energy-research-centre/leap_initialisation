@@ -34,25 +34,47 @@ confirm that the two paths use identical sector-exclusion settings.
 
 ## Pass-specific interpretation
 
-- `baseline_seed`: compare aggregated-demand reference totals with the
-  projection-only mapping result. This is independent because the two paths
-  perform separate filtering, mapping, and aggregation even though both start
-  from 9th Outlook data.
-- `results_update`: compare the same reference totals with demand selected from
-  the real LEAP balance export path. Differences can represent model results as
-  well as mapping loss, so the diagnostic must retain sector and product context.
+- `baseline_seed`: compare raw pre-mapping ESTO/9th demand totals with the
+  `demand_table` actually passed to `build_reconciliation_table`. The primary
+  invariant is total energy by economy, scenario, sector context, and year.
+  Product-level diagnostics are secondary because contextual allocation may
+  legitimately redistribute aggregate source fuels across ESTO products.
+- `results_update`: compare only the residual aggregated-demand placeholder.
+  First infer the detailed sector branches present in the LEAP balance export,
+  convert those branches to the established ESTO/9th exclusion list, and apply
+  that same list to the reference and resolved surfaces. Detailed LEAP sector
+  demand is deliberately absent from both sides; it is not expected to equal the
+  ESTO/9th reference after modelling changes.
 
 The implementation is in
 `codebase/functions/balance_demand_conservation.py`. It accepts prepared tables
 rather than re-reading mapping inputs, which avoids making the diagnostic depend
-on the rules it is checking. The current mapping-fix worktree also modifies the
-shared producer/consumer files, so automatic workflow wiring is intentionally
-deferred until those changes are committed or otherwise stabilized.
+on the rules it is checking. Pass-specific adapters support a total-energy
+surface and make the results-update exclusion of detailed LEAP rows explicit.
 
 ## Remaining ambiguity
 
-`results_update` may legitimately diverge from the ESTO/9th reference if LEAP
-demand has been changed by the modeller. Before making the check blocking, the
-workflow needs an explicit decision on whether such divergence is expected and,
-if so, whether the conservation reference should instead be the pre-mapping LEAP
-sector/fuel total from the same export.
+The check remains diagnostic-only until it is exercised against a real
+`20_USA` results-update pass. The active-sector inference and road-exclusion
+deduplication are already tested in `tests/test_aggregated_demand_workflow.py`;
+workflow wiring must reuse that exact effective exclusion list rather than
+reconstructing it independently.
+
+Separate checks have different scopes:
+
+- Baseline supply source preservation will compare ESTO/9th production,
+  imports, and exports before mapping with the final mapped baseline rows.
+- Results update will not compare supply with ESTO/9th. Its supply-side check is
+  reconciliation closure after adjustments: resolved supply must satisfy demand,
+  transformation requirements, losses, and the other explicitly included balance
+  terms within tolerance.
+
+## Initial 20_USA baseline result
+
+The first diagnostic run produced 79 economy/scenario/year rows and three
+mismatches, all in base year 2022. Resolved demand is 58.097029 PJ below the raw
+ESTO reference in Current Accounts, Reference, and Target. The aggregated-demand
+workflow reports the corresponding dropped source products as `02 Coal products`,
+`15 Solid biomass`, and `16 Others`; the latter two contribute the full observed
+difference in the current 20_USA base-year demand rows. These remain visible as
+diagnostic mismatches rather than being silently classified as expected exclusions.

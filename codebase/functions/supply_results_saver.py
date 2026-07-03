@@ -212,6 +212,7 @@ from codebase.functions.supply_reconciliation_tables import (
     load_leap_constraint_tables,
     load_results_demand_table,
     load_results_sector_demand_table,
+    resolve_effective_aggregated_demand_exclusions,
     build_transformation_balance_table,
     build_transformation_sector_table,
     prepare_projected_supply_table,
@@ -221,6 +222,12 @@ from codebase.functions.supply_reconciliation_tables import (
     apply_trade_split_between_transformation_and_supply,
     build_supply_overrides,
     reset_supply_and_transformation_import_export_to_zero,
+)
+from codebase.functions.balance_demand_conservation import (
+    build_balance_demand_conservation_diagnostics,
+    build_raw_demand_conservation_reference,
+    prepare_reconciliation_demand_totals,
+    write_balance_demand_conservation_diagnostics,
 )
 from codebase.functions.supply_leap_io import (
     _build_supply_measures_for_trade_mode,
@@ -2728,6 +2735,56 @@ def run_results_linked_transformation_supply_workflow(
             sector_demand_table["economy"].isin(economy_list)
         ].copy()
         demand_table = demand_table[demand_table["economy"].isin(economy_list)].copy()
+    from codebase.aggregated_demand_workflow import ESTO_BASE_DATA_PATH, PROJECTION_DATA_PATH
+
+    try:
+        conservation_exclusions = resolve_effective_aggregated_demand_exclusions(
+            sector_demand_table
+        )
+        conservation_scenarios = sorted(
+            demand_table.get("scenario", pd.Series(dtype=str))
+            .dropna().astype(str).str.strip().loc[lambda values: values.ne("")].unique().tolist()
+        )
+        raw_reference_parts = [
+            build_raw_demand_conservation_reference(
+                economy=economy,
+                scenarios=conservation_scenarios,
+                base_year=BASE_YEAR,
+                final_year=FINAL_YEAR,
+                data_path=PROJECTION_DATA_PATH,
+                esto_data_path=ESTO_BASE_DATA_PATH,
+                exclude_own_use_td_losses=bool(AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES),
+                excluded_sectors=conservation_exclusions,
+            )
+            for economy in economy_list
+        ]
+        raw_demand_reference = (
+            pd.concat(raw_reference_parts, ignore_index=True)
+            if raw_reference_parts
+            else pd.DataFrame()
+        )
+        resolved_demand_totals = prepare_reconciliation_demand_totals(
+            demand_table,
+            collapse_products=True,
+        )
+        balance_demand_conservation = build_balance_demand_conservation_diagnostics(
+            raw_demand_reference,
+            resolved_demand_totals,
+        )
+    except Exception as exc:
+        print(f"[WARN] Balance-demand conservation diagnostic could not run: {exc}")
+        balance_demand_conservation = pd.DataFrame(
+            [{"status": "diagnostic_error", "is_mismatch": True, "diagnostic_error": str(exc)}]
+        )
+    balance_demand_conservation_path = write_balance_demand_conservation_diagnostics(
+        balance_demand_conservation,
+        _resolve(RESULTS_CHECKS_DIR) / "supply_reconciliation_balance_demand_conservation.csv",
+    )
+    mismatch_count = int(balance_demand_conservation["is_mismatch"].sum())
+    print(
+        "[INFO] Wrote diagnostic-only balance-demand conservation check: "
+        f"{balance_demand_conservation_path} ({mismatch_count} mismatch row(s))."
+    )
     _ts_cache_hit = False
     if TRANSFORMATION_SUPPLY_CACHE_ENABLED:
         import hashlib as _hashlib, json as _json, pickle as _pickle
@@ -3434,6 +3491,7 @@ def run_results_linked_transformation_supply_workflow(
         "demand_mapping_issues_csv": balance_demand_issue_path,
         "direct_demand_mapping_gaps_csv": balance_demand_issue_path,
         "balance_matching_diagnostics_csv": balance_matching_diagnostics_path,
+        "balance_demand_conservation_csv": balance_demand_conservation_path,
         "source_diagnostics_csv": source_diagnostics_path,
         "leap_import_result": leap_import_result,
         "capacity_unmet_iterative_summary": _sra._CAPACITY_UNMET_RUNTIME_PASS_SUMMARY,
