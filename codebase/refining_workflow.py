@@ -15,7 +15,11 @@ from typing import Sequence
 
 import pandas as pd
 
-from codebase.utilities.master_config import config_table_exists, read_config_table
+from codebase.utilities.master_config import (
+    OUTLOOK_MAPPINGS_MASTER_PATH,
+    config_table_exists,
+    read_config_table,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 try:
@@ -401,14 +405,17 @@ def _discover_fill_scenarios(
 
 
 # Optional: remap refining fuels to ESTO product names before creating/filling branches.
+# All paths are resolved from REPO_ROOT so notebook execution does not depend on the
+# current working directory. The refining fuel mapping is derived from the canonical
+# leap_combined_ninth sheet; MAPPING_CSV_PATH is an optional override that need not exist.
 REMAP_FUELS = True
-MAPPING_CSV_PATH = "../config/refining_fuel_mapping.csv"
-NINTH_TO_ESTO_PAIRS_PATH = "../config/ninth_pairs_to_esto_pairs.xlsx"
+MAPPING_CSV_PATH = REPO_ROOT / "config" / "refining_fuel_mapping.csv"
+NINTH_TO_ESTO_PAIRS_PATH = (OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs")
 REMAP_OUTPUT_PATH = (
     STANDALONE_LEAP_EXPORTS_ROOT
     / f"refining_export_remapped_{_safe_filename_segment(ECONOMY)}_{_safe_filename_segment('all_scenarios' if FILL_ALL_SCENARIOS else SCENARIO)}.xlsx"
 )
-REMAP_REPORT_PATH = "../intermediate_data/refining_fuel_remap_report.csv"
+REMAP_REPORT_PATH = REPO_ROOT / "intermediate_data" / "refining_fuel_remap_report.csv"
 
 FILL_BRANCHES_FROM_EXPORT_FILE = True
 HANDLE_CURRENT_ACCOUNTS_TOO = True

@@ -67,6 +67,20 @@ only its ninth->esto pairs pointer (#1) is legacy.
   never resolved by arbitrary first-row selection.
 - `test_other_loss_own_use_proxy_workflow.py` (36) still passes.
 
+### C4 — refining remap: REPO_ROOT paths + canonical-derived mapping
+- `refining_workflow.py`: `MAPPING_CSV_PATH`, `NINTH_TO_ESTO_PAIRS_PATH`,
+  `REMAP_REPORT_PATH` were CWD-relative (`../config/...`, `../intermediate_data/...`)
+  and `refining_fuel_mapping.csv` was missing. Now all resolve from `REPO_ROOT`;
+  `NINTH_TO_ESTO_PAIRS_PATH` points at the canonical
+  `(outlook_mappings_master.xlsx, ninth_pairs_to_esto_pairs)`.
+- `transformation_fuel_remap._load_mapping` now derives the refining
+  source-fuel -> 9th-fuel mapping from canonical `leap_combined_ninth` (refining
+  paths, 24 unambiguous fuels). `mapping_csv_path` is optional and overrides the
+  derived base only when the file exists. `_load_pairs` accepts a
+  `(path, sheet)` ref so the canonical sheet is read directly.
+- `test_refining_capacity_policy.py` passes; derivation + pair resolution
+  verified (e.g. Crude oil -> 06_01_crude_oil -> 06.01 Crude oil).
+
 ## Open questions / issues for review
 
 - **[REVIEW C3] Behaviour change in other-loss/own-use output fuel labels.**

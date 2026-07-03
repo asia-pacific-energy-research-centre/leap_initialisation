@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from codebase.utilities.master_config import read_config_table
+from codebase.mappings.canonical_loaders import load_leap_combined_ninth
 from codebase.functions.leap_excel_io import read_export_sheet, write_export_sheet
 from codebase.functions.leap_labels import clean_fuel_label_for_leap
 
@@ -24,27 +25,72 @@ def _normalize_text(value: object) -> str:
     return str(value).strip()
 
 
-def _load_mapping(mapping_csv_path: Path) -> dict[str, MappingRow]:
-    df = read_config_table(mapping_csv_path).fillna("")
-    rows: dict[str, MappingRow] = {}
-    for _, row in df.iterrows():
-        source_fuel = _normalize_text(row.get("source_fuel"))
-        if not source_fuel:
-            continue
+def _derive_refining_mapping_from_canonical(branch_root: str) -> dict[str, MappingRow]:
+    """Derive source-LEAP-fuel -> 9th-fuel from canonical ``leap_combined_ninth``.
+
+    Filters canonical rows to the refining branch (paths containing "refin") and
+    keeps only unambiguous LEAP-fuel -> 9th-fuel mappings. This replaces the old
+    hand-maintained ``config/refining_fuel_mapping.csv`` so the remap no longer
+    depends on a missing standalone file. Ambiguous fuels are omitted (the remap
+    reports them as unmapped and leaves the branch unchanged).
+    """
+    ninth = load_leap_combined_ninth()
+    root_token = "refin"
+    paths = ninth["leap_sector_name_full_path"].astype(str)
+    subset = ninth[paths.str.contains(root_token, case=False, na=False)]
+    candidates: dict[str, set[str]] = {}
+    for _, row in subset.iterrows():
+        source_fuel = _normalize_text(row.get("raw_leap_fuel_name"))
         ninth_fuel = _normalize_text(row.get("ninth_fuel"))
-        override = _normalize_text(row.get("esto_product_override"))
-        notes = _normalize_text(row.get("notes"))
+        if not source_fuel or not ninth_fuel:
+            continue
+        candidates.setdefault(source_fuel, set()).add(ninth_fuel)
+    rows: dict[str, MappingRow] = {}
+    for source_fuel, ninth_fuels in candidates.items():
+        if len(ninth_fuels) != 1:
+            continue  # ambiguous within refining context; leave to unmapped report
         rows[source_fuel] = MappingRow(
             source_fuel=source_fuel,
-            ninth_fuel=ninth_fuel,
-            esto_product_override=override,
-            notes=notes,
+            ninth_fuel=next(iter(ninth_fuels)),
+            esto_product_override="",
+            notes="derived_from_canonical_leap_combined_ninth",
         )
     return rows
 
 
-def _load_pairs(pairs_path: Path) -> pd.DataFrame:
-    df = read_config_table(pairs_path)
+def _load_mapping(
+    mapping_csv_path: Path | str | None,
+    branch_root: str = "",
+) -> dict[str, MappingRow]:
+    """Load the refining source-fuel -> 9th-fuel mapping.
+
+    The canonical ``leap_combined_ninth`` refining rows are the base mapping. An
+    optional ``mapping_csv_path`` (``source_fuel``, ``ninth_fuel``,
+    ``esto_product_override``, ``notes``) overrides/augments it where present; a
+    missing CSV is not an error.
+    """
+    rows: dict[str, MappingRow] = _derive_refining_mapping_from_canonical(branch_root)
+    path = Path(mapping_csv_path) if mapping_csv_path else None
+    if path is not None and path.exists():
+        df = read_config_table(path).fillna("")
+        for _, row in df.iterrows():
+            source_fuel = _normalize_text(row.get("source_fuel"))
+            if not source_fuel:
+                continue
+            rows[source_fuel] = MappingRow(
+                source_fuel=source_fuel,
+                ninth_fuel=_normalize_text(row.get("ninth_fuel")),
+                esto_product_override=_normalize_text(row.get("esto_product_override")),
+                notes=_normalize_text(row.get("notes")),
+            )
+    return rows
+
+
+def _load_pairs(pairs_path: Path | str | tuple) -> pd.DataFrame:
+    if isinstance(pairs_path, tuple) and len(pairs_path) == 2:
+        df = read_config_table(pairs_path[0], sheet_name=pairs_path[1])
+    else:
+        df = read_config_table(pairs_path)
     df = df.fillna("")
     df["9th_fuel"] = df["9th_fuel"].astype(str).str.strip()
     df["esto_product"] = df["esto_product"].astype(str).str.strip()
@@ -119,8 +165,8 @@ def _is_fuel_leaf(
 def remap_transformation_export_fuels(
     input_path: str | Path,
     output_path: str | Path,
-    mapping_csv_path: str | Path,
-    pairs_path: str | Path,
+    pairs_path: str | Path | tuple,
+    mapping_csv_path: str | Path | None = None,
     sheet_name: str = "Export",
     branch_root: str = "Transformation\\Oil Refining",
     fuel_group_labels: tuple[str, ...] = ("Output Fuels", "Feedstock Fuels", "Auxiliary Fuels"),
@@ -129,11 +175,9 @@ def remap_transformation_export_fuels(
 ) -> dict[str, object]:
     input_path = Path(input_path)
     output_path = Path(output_path)
-    mapping_csv_path = Path(mapping_csv_path)
-    pairs_path = Path(pairs_path)
 
     header_rows, df, columns = read_export_sheet(input_path, sheet_name)
-    mapping_by_fuel = _load_mapping(mapping_csv_path)
+    mapping_by_fuel = _load_mapping(mapping_csv_path, branch_root)
     pairs_df = _load_pairs(pairs_path)
 
     level_cols = [col for col in columns if str(col).startswith("Level ")]
