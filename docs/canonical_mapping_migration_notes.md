@@ -81,7 +81,47 @@ only its ninth->esto pairs pointer (#1) is legacy.
 - `test_refining_capacity_policy.py` passes; derivation + pair resolution
   verified (e.g. Crude oil -> 06_01_crude_oil -> 06.01 Crude oil).
 
+### C5 — electricity/heat interim: BLOCKED, documented (no behaviour change)
+Investigated migrating `electricity_heat_interim_workflow.py` off master_config.
+Two legacy reads; both cannot be safely migrated yet because the canonical
+workbook is missing rows the current logic depends on. Left as-is with an
+in-code NOTE pointing here. **Evidence:**
+
+1. `_load_esto_product_to_ninth_fuel` (esto_product -> 9th_fuel relationship)
+   still reads `master_config.xlsx/independent_product_mapping`. Removing it and
+   relying on canonical would (a) change 8 detailed assignments and (b) drop 8
+   aggregate esto->9th rows that feed the parent-code fallback and are ABSENT
+   from canonical `ninth_pairs_to_esto_pairs`:
+   `01 Coal->01_coal`, `06 Crude oil & NGL->06_crude_oil_and_ngl_unallocated`,
+   `07 Petroleum products->07_petroleum_products`, `08 Gas->08_gas`,
+   `12 Solar->12_solar`, `15.04 Black liqour->15_04_black_liquor`
+   (`02 Coal products`, `05 Oil shale...` are present in canonical).
+
+2. `_load_power_interim_display_name_map` (labels) still reads
+   `master_config.xlsx/sector_fuel_code_to_name`. Swapping to canonical
+   `leap_display_names` would LOSE 193 code->name entries present in the legacy
+   table but absent from `leap_display_names`, many power-sector and
+   output-affecting (e.g. `09_01_08_solar->Solar`, `09_02_01_coal->Coal CHP`,
+   `09_x_heat_plants->Other heat plants 1`, `12_solar->Solar`). These labels
+   drive interim branch names AND the NEVER_OUTPUT filter, so the swap would
+   change LEAP output. Not safe as a drop-in.
+
 ## Open questions / issues for review
+
+- **[BLOCKER C5] To finish the electricity/heat interim migration, the canonical
+  `leap_mappings` workbook must be extended** (via the leap_mappings maintenance
+  workflow, not from here):
+  - add the 6 missing aggregate esto->9th rows above to a canonical relationship
+    sheet (or confirm the parent-code fallback should use canonical aggregates);
+  - add the ~193 missing fuel/sector `code -> leap_display_name` entries (power
+    plant/CHP/heat-plant/own-use fuels) to `leap_display_names`.
+  Once present, both `_load_esto_product_to_ninth_fuel` and
+  `_load_power_interim_display_name_map` can switch to the shared canonical
+  loaders (a `build_code_to_display_name`-based version is ready to drop in).
+  Until then the workflow keeps its master_config reads to avoid changing LEAP
+  branch labels / dropping fallback coverage. A per-code diff dump can be
+  regenerated on request.
+
 
 - **[REVIEW C3] Behaviour change in other-loss/own-use output fuel labels.**
   Because the lookup was previously empty, some output-fuel branch labels will

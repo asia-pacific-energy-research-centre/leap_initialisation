@@ -344,6 +344,13 @@ def _load_power_interim_display_name_map() -> dict[str, str]:
     if _POWER_INTERIM_DISPLAY_NAME_MAP is not None:
         return _POWER_INTERIM_DISPLAY_NAME_MAP
 
+    # NOTE (canonical migration): labels here should come from the canonical
+    # leap_display_names sheet, but that sheet currently lacks ~193 fuel/sector
+    # codes present in sector_fuel_code_to_name (many power-sector, e.g.
+    # 09_01_08_solar -> Solar, 09_02_01_coal -> Coal CHP, 12_solar -> Solar).
+    # These labels drive interim branch names and the NEVER_OUTPUT filter, so the
+    # switch is blocked until those codes are added to leap_display_names in the
+    # leap_mappings workbook. See docs/canonical_mapping_migration_notes.md (C5).
     mapping: dict[str, str] = {}
     code_to_name_df = read_config_table(
         REPO_ROOT / "config" / "master_config.xlsx",
