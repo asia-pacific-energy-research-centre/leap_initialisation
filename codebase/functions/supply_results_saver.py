@@ -229,6 +229,12 @@ from codebase.functions.balance_demand_conservation import (
     prepare_reconciliation_demand_totals,
     write_balance_demand_conservation_diagnostics,
 )
+from codebase.functions.supply_conservation import (
+    build_baseline_supply_source_preservation,
+    build_results_update_closure_diagnostics,
+    find_exported_supply_products,
+    write_supply_diagnostic,
+)
 from codebase.functions.supply_leap_io import (
     _build_supply_measures_for_trade_mode,
     _build_transformation_target_multiplier_table,
@@ -2858,6 +2864,8 @@ def run_results_linked_transformation_supply_workflow(
             except Exception as _cache_exc:
                 print(f"[WARN] Could not write transformation/supply cache: {_cache_exc}.")
     timer.lap("build transformation and supply inputs")
+    baseline_supply_preservation_path: Path | None = None
+    results_update_closure_path: Path | None = None
     reconciliation_table = build_reconciliation_table(
         demand_table,
         transformation_table,
@@ -2872,6 +2880,23 @@ def run_results_linked_transformation_supply_workflow(
             transformation_target_rows if _use_legacy_trade_split_mode() else None
         ),
     )
+    if not _is_capacity_unmet_baseline_seed_pass():
+        try:
+            results_update_closure = build_results_update_closure_diagnostics(
+                reconciliation_table
+            )
+            results_update_closure_path = write_supply_diagnostic(
+                results_update_closure,
+                _resolve(RESULTS_CHECKS_DIR)
+                / "supply_reconciliation_results_update_closure.csv",
+            )
+            mismatch_count = int(results_update_closure["is_mismatch"].sum())
+            print(
+                "[INFO] Wrote diagnostic-only results-update reconciliation closure check: "
+                f"{results_update_closure_path} ({mismatch_count} mismatch row(s))."
+            )
+        except Exception as exc:
+            print(f"[WARN] Results-update closure diagnostic could not run: {exc}")
     if RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT:
         reset_economies = RESET_SCOPE_ECONOMIES if RESET_SCOPE_ECONOMIES is not None else economy_list
         reset_scenarios = RESET_SCOPE_SCENARIOS if RESET_SCOPE_SCENARIOS is not None else export_scenario_list
@@ -3166,6 +3191,33 @@ def run_results_linked_transformation_supply_workflow(
             f"[WARN] Export errors in {len(_economy_export_errors)} economy/economies: {_failed_labels}. "
             "Re-run with just these economies to retry."
         )
+    if _is_capacity_unmet_baseline_seed_pass():
+        try:
+            exported_supply_products = find_exported_supply_products(
+                [path for _, path in export_paths],
+                assets[1],
+            )
+            baseline_supply_preservation = build_baseline_supply_source_preservation(
+                assets=assets,
+                supply_projection_table=supply_projection_table,
+                supply_primary_table=supply_primary_table,
+                economies=economy_list,
+                base_year=BASE_YEAR,
+                final_year=FINAL_YEAR,
+                included_esto_products=exported_supply_products,
+            )
+            baseline_supply_preservation_path = write_supply_diagnostic(
+                baseline_supply_preservation,
+                _resolve(RESULTS_CHECKS_DIR)
+                / "supply_reconciliation_baseline_supply_source_preservation.csv",
+            )
+            mismatch_count = int(baseline_supply_preservation["is_mismatch"].sum())
+            print(
+                "[INFO] Wrote diagnostic-only baseline supply source preservation check: "
+                f"{baseline_supply_preservation_path} ({mismatch_count} mismatch row(s))."
+            )
+        except Exception as exc:
+            print(f"[WARN] Baseline supply source preservation diagnostic could not run: {exc}")
     demand_zeroing_paths: list[Path] = []
     if ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT and USE_AGGREGATED_DEMAND_AS_DUMMY:
         demand_zeroing_paths = build_other_demand_zeroing_workbooks(
@@ -3492,6 +3544,8 @@ def run_results_linked_transformation_supply_workflow(
         "direct_demand_mapping_gaps_csv": balance_demand_issue_path,
         "balance_matching_diagnostics_csv": balance_matching_diagnostics_path,
         "balance_demand_conservation_csv": balance_demand_conservation_path,
+        "baseline_supply_source_preservation_csv": baseline_supply_preservation_path,
+        "results_update_closure_csv": results_update_closure_path,
         "source_diagnostics_csv": source_diagnostics_path,
         "leap_import_result": leap_import_result,
         "capacity_unmet_iterative_summary": _sra._CAPACITY_UNMET_RUNTIME_PASS_SUMMARY,
