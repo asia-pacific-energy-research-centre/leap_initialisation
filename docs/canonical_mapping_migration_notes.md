@@ -106,6 +106,20 @@ in-code NOTE pointing here. **Evidence:**
    drive interim branch names AND the NEVER_OUTPUT filter, so the swap would
    change LEAP output. Not safe as a drop-in.
 
+### C6 — display-name resolution already canonical (verified, no change)
+- `transformation_analysis_utils.load_code_to_name_mapping` and
+  `supply_config_builder.load_code_to_name_mapping` both read the canonical
+  `leap_display_names` sheet first (`CODE_TO_NAME_PATHS[0] =
+  OUTLOOK_MAPPINGS_MASTER_PATH`) and only fall back to legacy `code_to_name`
+  files if the canonical sheet is absent. Supply, transformation and transfers
+  (shared foundation) therefore already label via `leap_display_names`.
+- other loss/own use now labels via canonical `raw_leap_fuel_name` (C3);
+  refining renames leaves to canonical ESTO product codes (C4). Only the
+  electricity/heat interim map remains legacy (C5, blocked).
+- Minor future cleanup: the two `load_code_to_name_mapping` copies duplicate the
+  `build_code_to_display_name` logic now in `canonical_loaders`; could be
+  de-duplicated later, but left as-is to avoid behaviour churn.
+
 ## Open questions / issues for review
 
 - **[BLOCKER C5] To finish the electricity/heat interim migration, the canonical
