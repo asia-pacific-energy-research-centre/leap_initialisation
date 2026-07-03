@@ -120,6 +120,51 @@ in-code NOTE pointing here. **Evidence:**
   `build_code_to_display_name` logic now in `canonical_loaders`; could be
   de-duplicated later, but left as-is to avoid behaviour churn.
 
+## Mapping lineage table (post-migration)
+
+For each supply-reconciliation workflow: which canonical sheet it reads, whether
+it goes through a shared loader, the matching keys, allocation/label method, and
+any remaining legacy/exceptional logic.
+
+| Workflow | Canonical sheet(s) | Shared loader | Matching keys | Allocation method | Display-name method | Remaining exceptional logic |
+|---|---|---|---|---|---|---|
+| Direct balance demand (`supply_demand_mapping`) | `leap_combined_esto`, `leap_combined_ninth`, `ninth_pairs_to_esto_pairs` | partial (`load_canonical_pairs`); raw reads for esto/ninth | (leap path, raw fuel); (9th sector, 9th fuel) | exact pair, descendant expansion disabled | via transformation `code_to_name` (canonical) | runtime-inferred esto for demand rows w/o authored LEAP->ESTO row (labelled, not written back) |
+| Supply projection alloc (`supply_reconciliation_tables`) | `ninth_pairs_to_esto_pairs` (via `DEFAULT_MAPPING_PAIRS_PATH`, now canonical) | no (uses balance module) | (9th sector, 9th fuel)->(flow, product) | sign-stable allocation | `leap_display_names` (supply_config_builder) | — |
+| Transformation projection alloc | `ninth_pairs_to_esto_pairs` (canonical) | no | (9th sector, 9th fuel) | sign-stable allocation | `leap_display_names` | shares foundation with transfers |
+| Transfers | shares transformation mapping/allocation | via transformation | same as transformation | same as transformation | `leap_display_names` | — |
+| LEAP balance->ESTO conversion (`leap_results_dashboard_balance`) | `ninth_pairs_to_esto_pairs` (canonical, C2) | `load_canonical_pairs` | (9th sector, 9th fuel) | — (label conversion) | codebook/leap fallback | broad module; only pairs pointer migrated |
+| Other loss/own use (`other_loss_own_use_proxy_workflow`) | `leap_combined_esto`, `leap_combined_ninth` (C3) | `load_leap_combined_esto/ninth` | esto_product / ninth_fuel -> LEAP fuel | proxy activity (unchanged) | canonical `raw_leap_fuel_name`, unambiguous only | ambiguous fuels -> mechanical cleanup (recorded) |
+| Refining (`refining_workflow` / `transformation_fuel_remap`) | `leap_combined_ninth`, `ninth_pairs_to_esto_pairs` (C4) | `load_leap_combined_ninth` | source LEAP fuel -> 9th fuel -> esto_product | branch relabel (unchanged) | ESTO product code as branch leaf | optional `refining_fuel_mapping.csv` override if present |
+| Aggregated demand (`aggregated_demand_workflow`) | still reads `read_config_table` redirects | no | — | — | — | NOT migrated this pass — see below |
+| Electricity/heat interim | canonical `ninth fuel to esto product` + legacy master_config (C5) | no | esto_product/ninth_fuel | — | legacy `sector_fuel_code_to_name` | BLOCKED: canonical missing ~193 labels + 6 aggregates |
+| Preflight (`supply_preflight`) | inherits above (compressed) | inherits | inherits | inherits | inherits | exercises future-only mappings |
+
+## Not migrated this pass (scoped out / lower priority)
+
+- `aggregated_demand_workflow.py` and `energy_balance_template_extractor.py` still
+  reference `fuel_ninth_final_proposed` / `fuel_product_final_proposed` via
+  `read_config_table` (which redirects legacy names). These are demand-template
+  helpers; they were not in the critical supply/transformation/refining path
+  fixed here. Worth a follow-up pass using the same shared loaders.
+- `unified_name_lookup.py` reads `leap_mappings.xlsx` + `master_config.xlsx`
+  sheets directly; not on the supply-reconciliation hot path but a candidate for
+  later consolidation.
+- `read_config_table` legacy filename->master_config redirects remain in place
+  (used by non-mapping config tables too); not removed to avoid broad breakage.
+
+## Verification done
+
+- New unit tests: `tests/test_canonical_loaders.py` (16),
+  `tests/test_canonical_migration_fixes.py` (6) — all pass.
+- Regression subset (123 tests) incl. balance-demand conservation, other
+  loss/own use, supply conservation/diagnostics/export, module attribute
+  contracts — all pass.
+- Full suite run: see final status in this file / commit message.
+- Not run: a live end-to-end supply-reconciliation preflight for a real economy
+  (needs LEAP balance exports + full data env). **C2 in particular changes which
+  9th->ESTO pairs are used — a real preflight + conservation check is still
+  required before LEAP import.**
+
 ## Open questions / issues for review
 
 - **[BLOCKER C5] To finish the electricity/heat interim migration, the canonical
