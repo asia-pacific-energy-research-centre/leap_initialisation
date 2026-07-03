@@ -1415,6 +1415,7 @@ from codebase.functions.transformation_record_builder import (
     build_process_record,
     append_process_record,
     build_zero_skeleton_record,
+    borrow_zero_skeleton_measures,
     select_primary_label,
     build_transformation_process_table,
     build_transformation_detail_table,

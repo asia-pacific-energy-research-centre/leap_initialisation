@@ -35,6 +35,7 @@ from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP
 from codebase.utilities.master_config import MASTER_CONFIG_PATH, config_table_exists, read_config_table
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.configuration.all_products_and_flows import ESTO_PRODUCT_LIST, ESTO_SECTORS
+from codebase.configuration.known_leap_label_exceptions import KNOWN_LEAP_LABEL_EXCEPTIONS
 from codebase.mappings.canonical_mapping import (
     DEFAULT_BACKUP_LEAP_MAPPINGS,
     DEFAULT_CODEBOOK,
@@ -216,6 +217,8 @@ def _is_non_actionable_demand_fuel(fuel_text: object) -> bool:
     token = str(fuel_text or "").strip().lower()
     if not token:
         return False
+    if token in DEMAND_NON_ACTIONABLE_FUEL_EXACT_MATCHES:
+        return True
     return any(phrase in token for phrase in DEMAND_NON_ACTIONABLE_FUEL_PHRASES)
 
 
@@ -445,29 +448,56 @@ def _build_augmented_balance_demand_mapping_workbook() -> Path:
         subset=["leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product"]
     )
 
-    inferred_rows = pd.DataFrame(columns=raw_esto.columns)
-    if not inferred.empty:
-        inferred_rows = pd.DataFrame("", index=range(len(inferred)), columns=raw_esto.columns)
-        for col in raw_esto.columns:
-            if col in inferred.columns:
-                inferred_rows[col] = inferred[col].values
-        if "leap_sector_name_original" in inferred_rows.columns:
-            inferred_rows["leap_sector_name_original"] = inferred["leap_sector_name_full_path"].values
-        if "leap_is_subtotal" in inferred_rows.columns:
-            inferred_rows["leap_is_subtotal"] = False
-        if "esto_pair_is_subtotal" in inferred_rows.columns:
-            inferred_rows["esto_pair_is_subtotal"] = False
-        if "subtotal_mismatch_is_ok" in inferred_rows.columns:
-            inferred_rows["subtotal_mismatch_is_ok"] = False
-        if "remove_row" in inferred_rows.columns:
-            inferred_rows["remove_row"] = False
-        if "Note" in inferred_rows.columns:
-            inferred_rows["Note"] = (
-                "Runtime inferred for supply_reconciliation from leap_combined_ninth "
-                "+ ninth_pairs_to_esto_pairs."
-            )
+    inferred_rows = _build_inferred_esto_rows(
+        inferred[["leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product"]],
+        raw_esto.columns,
+        default_note=(
+            "Runtime inferred for supply_reconciliation from leap_combined_ninth "
+            "+ ninth_pairs_to_esto_pairs."
+        ),
+    )
 
-    augmented_esto = pd.concat([raw_esto, inferred_rows], ignore_index=True, sort=False)
+    # For demand rows the canonical 9th->ESTO bridge could not resolve (e.g. the
+    # Freight road/Passenger road leaves, which have leap_combined_ninth rows but
+    # no leap_combined_esto rows at any level), fall back to the maintained rollup
+    # rules: roll the LEAP identity to a pre-built rollup target (e.g. "Road") and
+    # look up that target's ESTO pair. General over all three rollup sheets, not
+    # Road-specific — see _resolve_demand_esto_pairs_via_rollups.
+    resolved_keys = set(
+        inferred[["leap_sector_name_full_path", "raw_leap_fuel_name"]]
+        .itertuples(index=False, name=None)
+    )
+    unresolved = candidates[~candidates["_source_key"].isin(resolved_keys)].copy()
+    rollup_pairs = _resolve_demand_esto_pairs_via_rollups(
+        unresolved,
+        esto_reference=active_esto,
+        canonical=canonical,
+    )
+    rollup_rows = _build_inferred_esto_rows(rollup_pairs, raw_esto.columns, default_note="")
+    if not rollup_pairs.empty:
+        still_missing = unresolved[
+            ~unresolved["_source_key"].isin(
+                set(rollup_pairs[["leap_sector_name_full_path", "raw_leap_fuel_name"]].itertuples(index=False, name=None))
+            )
+        ]
+    else:
+        still_missing = unresolved
+    if not still_missing.empty:
+        sample = (
+            still_missing[["leap_sector_name_full_path", "raw_leap_fuel_name"]]
+            .drop_duplicates()
+            .head(10)
+            .itertuples(index=False, name=None)
+        )
+        print(
+            "[WARN] "
+            f"{still_missing[['leap_sector_name_full_path', 'raw_leap_fuel_name']].drop_duplicates().shape[0]} "
+            "demand LEAP sector/fuel key(s) have no direct ESTO pair, no canonical "
+            "9th->ESTO bridge, and no active rollup rule with a pre-built rolled "
+            f"target. Examples: {list(sample)}"
+        )
+
+    augmented_esto = pd.concat([raw_esto, inferred_rows, rollup_rows], ignore_index=True, sort=False)
     for cardinality_col in ["pair_mapping_cardinality", "fuel_mapping_cardinality", "sector_mapping_cardinality"]:
         if cardinality_col in augmented_esto.columns:
             augmented_esto[cardinality_col] = ""
@@ -476,13 +506,194 @@ def _build_augmented_balance_demand_mapping_workbook() -> Path:
     with pd.ExcelWriter(augmented_path) as writer:
         augmented_esto.to_excel(writer, sheet_name=DIRECT_DEMAND_ESTO_MAPPING_SHEET, index=False)
         raw_ninth.to_excel(writer, sheet_name=DIRECT_DEMAND_NINTH_MAPPING_SHEET, index=False)
-    if not inferred_rows.empty:
+    if not inferred_rows.empty or not rollup_rows.empty:
         print(
             "[INFO] Added "
-            f"{len(inferred_rows)} runtime-inferred demand LEAP->ESTO mapping row(s) "
-            f"for balance-demand conversion. See {augmented_path}."
+            f"{len(inferred_rows)} canonical-bridge and {len(rollup_rows)} rollup-resolved "
+            "runtime-inferred demand LEAP->ESTO mapping row(s) for balance-demand "
+            f"conversion. See {augmented_path}."
         )
     return augmented_path
+
+
+def _build_inferred_esto_rows(
+    pairs: pd.DataFrame,
+    template_columns,
+    *,
+    default_note: str,
+) -> pd.DataFrame:
+    """Shape resolved (leap_sector, leap_fuel, esto_flow, esto_product) pairs as ESTO sheet rows."""
+    template_columns = list(template_columns)
+    if pairs is None or pairs.empty:
+        return pd.DataFrame(columns=template_columns)
+    pairs = pairs.reset_index(drop=True)
+    rows = pd.DataFrame("", index=range(len(pairs)), columns=template_columns)
+    for col in template_columns:
+        if col in pairs.columns:
+            rows[col] = pairs[col].values
+    if "leap_sector_name_original" in rows.columns:
+        rows["leap_sector_name_original"] = pairs["leap_sector_name_full_path"].values
+    for flag_col in ["leap_is_subtotal", "esto_pair_is_subtotal", "subtotal_mismatch_is_ok", "remove_row"]:
+        if flag_col in rows.columns:
+            rows[flag_col] = False
+    if "Note" in rows.columns:
+        rows["Note"] = pairs["Note"].values if "Note" in pairs.columns else default_note
+    return rows
+
+
+def _resolve_demand_esto_pairs_via_rollups(
+    unresolved: pd.DataFrame,
+    *,
+    esto_reference: pd.DataFrame,
+    canonical: pd.DataFrame,
+) -> pd.DataFrame:
+    """Resolve missing demand ESTO pairs through the maintained rollup rules.
+
+    General resolver over every active row in ``leap_rollup_rules`` /
+    ``ninth_rollup_rules`` / ``esto_rollup_rules`` (gated only by each row's own
+    ``include``/``rollup_context`` fields, using mapping_rollups semantics — no
+    separate allowlist). For a LEAP demand ``(sector, fuel)`` with no direct
+    leaf-level ESTO pair, roll the LEAP identity to a maintained rollup target
+    (e.g. ``Freight road`` -> ``Road``, keeping the original fuel) and look up
+    that target's pre-built combined-sheet ESTO pair. If the LEAP axis does not
+    resolve, fall back to rolling the 9th identity via ``ninth_rollup_rules`` and
+    bridging through ``ninth_pairs_to_esto_pairs``; failing that, roll the direct
+    9th->ESTO leaf pair to a maintained parent via ``esto_rollup_rules`` when that
+    parent is a real combined-sheet ESTO target. All three rollup sheets are thus
+    consulted. Proven by the Road transport case but not scoped to it.
+
+    Rows that cannot be resolved are omitted; the caller reports them.
+    """
+    from codebase.mapping_tools import mapping_rollups as mr
+
+    columns = ["leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product", "Note"]
+    if unresolved is None or unresolved.empty:
+        return pd.DataFrame(columns=columns)
+
+    # Read rollup sheets directly (never mr.read_rollup_rules, which may save the
+    # master workbook — outlook_mappings_master.xlsx must not be modified here).
+    def _read_rollup_sheet(sheet_name: str) -> pd.DataFrame:
+        expected = mr.ROLLUP_SHEET_COLUMNS[sheet_name]
+        try:
+            frame = read_config_table(DIRECT_DEMAND_MAPPING_WORKBOOK, sheet_name=sheet_name, dtype=object).fillna("")
+        except Exception:
+            return pd.DataFrame(columns=expected)
+        for column in expected:
+            if column not in frame.columns:
+                frame[column] = ""
+        return frame
+
+    leap_rules = mr.active_rollup_rules(_read_rollup_sheet("leap_rollup_rules"), "leap_to_esto")
+    ninth_rules = mr.active_rollup_rules(_read_rollup_sheet("ninth_rollup_rules"), "ninth_to_esto")
+    esto_rules = mr.active_rollup_rules(_read_rollup_sheet("esto_rollup_rules"), "ninth_to_esto")
+
+    # Pre-built combined-sheet ESTO targets: (leap_sector, leap_fuel) -> (flow, product).
+    esto_ref = esto_reference.copy()
+    for col in ["leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product"]:
+        esto_ref[col] = esto_ref[col].fillna("").astype(str).str.strip()
+    for subtotal_col in ["leap_is_subtotal", "esto_pair_is_subtotal"]:
+        if subtotal_col in esto_ref.columns:
+            esto_ref = esto_ref[~esto_ref[subtotal_col].map(_truthy_flag)]
+    esto_ref = esto_ref[esto_ref["esto_flow"].ne("") & esto_ref["esto_product"].ne("")]
+    esto_lookup: dict[tuple[str, str], tuple[str, str]] = {}
+    real_esto_pairs: set[tuple[str, str]] = set()
+    for row in esto_ref.itertuples(index=False):
+        key = (mr.normalise_key(row.leap_sector_name_full_path), mr.normalise_key(row.raw_leap_fuel_name))
+        esto_lookup.setdefault(key, (row.esto_flow, row.esto_product))
+        real_esto_pairs.add((mr.normalise_key(row.esto_flow), mr.normalise_key(row.esto_product)))
+
+    # 9th -> ESTO canonical bridge for the ninth-axis fallback.
+    canon = canonical.copy()
+    for col in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:
+        canon[col] = canon[col].fillna("").astype(str).str.strip()
+    canon = canon[canon["esto_flow"].ne("") & canon["esto_product"].ne("")]
+    ninth_esto_lookup: dict[tuple[str, str], tuple[str, str]] = {}
+    for sec, fuel, flow, product in zip(canon["9th_sector"], canon["9th_fuel"], canon["esto_flow"], canon["esto_product"]):
+        ninth_esto_lookup.setdefault((mr.normalise_key(sec), mr.normalise_key(fuel)), (flow, product))
+
+    def _roll_identity(flow_value: str, product_value: str, rules_df: pd.DataFrame, sheet_name: str) -> list[tuple[str, str, str]]:
+        """Return best-first [(rolled_flow, rolled_product, note)] for exact-or-descendant flow matches."""
+        if rules_df.empty:
+            return []
+        cols = mr.rollup_columns_for_sheet(sheet_name)
+        flow_norm = mr.normalise_key(flow_value)
+        ranked: list[tuple[float, int, int, str, str, str]] = []
+        for _, rule in rules_df.iterrows():
+            input_flow = mr.normalise_key(rule.get(cols["input_flow"], ""))
+            if input_flow in {"", "*", "all"}:
+                flow_spec = 3
+            elif flow_norm == input_flow:
+                flow_spec = 1
+            elif flow_norm.startswith(input_flow + "/"):
+                flow_spec = 2
+            else:
+                continue
+            if not mr.value_matches(rule.get(cols["input_product"], ""), product_value):
+                continue
+            product_spec = 1 if mr.normalise_key(rule.get(cols["input_product"], "")) not in {"", "*", "all"} else 2
+            rolled_flow = mr.clean_text(rule.get(cols["rolled_flow"], "")) or mr.clean_text(flow_value)
+            rolled_product = mr.clean_text(rule.get(cols["rolled_product"], "")) or mr.clean_text(product_value)
+            note = f"{mr.clean_text(rule.get(cols['input_flow'], '')) or '*'} -> {rolled_flow}"
+            ranked.append((mr.parse_priority(rule.get("priority", "")), flow_spec, product_spec, rolled_flow, rolled_product, note))
+        ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+        return [(item[3], item[4], item[5]) for item in ranked]
+
+    resolved_rows: list[dict[str, str]] = []
+    cache: dict[tuple[str, str, str, str], tuple[str, str, str] | None] = {}
+    key_cols = {name: idx for idx, name in enumerate(unresolved.columns)}
+    for row in unresolved.itertuples(index=False, name=None):
+        sector = str(row[key_cols["leap_sector_name_full_path"]]).strip()
+        fuel = str(row[key_cols["raw_leap_fuel_name"]]).strip()
+        ninth_sector = str(row[key_cols.get("ninth_sector", -1)]).strip() if "ninth_sector" in key_cols else ""
+        ninth_fuel = str(row[key_cols.get("ninth_fuel", -1)]).strip() if "ninth_fuel" in key_cols else ""
+        cache_key = (sector, fuel, ninth_sector, ninth_fuel)
+        if cache_key not in cache:
+            resolved: tuple[str, str, str] | None = None
+            for rolled_sector, rolled_fuel, note in _roll_identity(sector, fuel, leap_rules, "leap_rollup_rules"):
+                pair = esto_lookup.get((mr.normalise_key(rolled_sector), mr.normalise_key(rolled_fuel)))
+                if pair:
+                    resolved = (pair[0], pair[1], f"leap_rollup:{note}")
+                    break
+            if resolved is None and ninth_sector:
+                for rolled_sector, rolled_fuel, note in _roll_identity(ninth_sector, ninth_fuel, ninth_rules, "ninth_rollup_rules"):
+                    pair = ninth_esto_lookup.get((mr.normalise_key(rolled_sector), mr.normalise_key(rolled_fuel)))
+                    if pair:
+                        resolved = (pair[0], pair[1], f"ninth_rollup:{note}")
+                        break
+            if resolved is None and ninth_sector:
+                # ESTO axis: a direct (unrolled) 9th->ESTO bridge can yield a leaf
+                # ESTO pair that is not itself a combined-sheet target; roll it via
+                # esto_rollup_rules to the maintained parent target and accept it
+                # only if that parent exists as a real combined ESTO pair.
+                direct = ninth_esto_lookup.get((mr.normalise_key(ninth_sector), mr.normalise_key(ninth_fuel)))
+                if direct:
+                    esto_candidates = [(direct[0], direct[1], "")] + _roll_identity(
+                        direct[0], direct[1], esto_rules, "esto_rollup_rules"
+                    )
+                    for cand_flow, cand_product, note in esto_candidates:
+                        if (mr.normalise_key(cand_flow), mr.normalise_key(cand_product)) in real_esto_pairs:
+                            resolved = (cand_flow, cand_product, f"esto_rollup:{note}" if note else "esto_direct_bridge")
+                            break
+            cache[cache_key] = resolved
+        resolved = cache[cache_key]
+        if resolved:
+            resolved_rows.append(
+                {
+                    "leap_sector_name_full_path": sector,
+                    "raw_leap_fuel_name": fuel,
+                    "esto_flow": resolved[0],
+                    "esto_product": resolved[1],
+                    "Note": (
+                        "Runtime inferred for supply_reconciliation via rollup rule "
+                        f"({resolved[2]})."
+                    ),
+                }
+            )
+    if not resolved_rows:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(resolved_rows, columns=columns).drop_duplicates(
+        subset=["leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product"]
+    )
 
 
 def _annotate_balance_demand_issue_scope(balance_demand_issues: pd.DataFrame) -> pd.DataFrame:
@@ -505,16 +716,16 @@ def _annotate_balance_demand_issue_scope(balance_demand_issues: pd.DataFrame) ->
         issues["mapping_key_fuel"].ne(""),
         issues["leap_product_name"],
     )
-    issues["issue_fuel_is_do_not_use"] = issues["issue_fuel_key"].map(_is_non_actionable_demand_fuel)
+    issues["issue_fuel_is_non_actionable"] = issues["issue_fuel_key"].map(_is_non_actionable_demand_fuel)
 
     try:
         active_ninth = _load_active_direct_demand_mapping_sheet(DIRECT_DEMAND_NINTH_MAPPING_SHEET)
     except Exception as exc:
         issues["demand_relevant"] = True
-        issues.loc[issues["issue_fuel_is_do_not_use"], "demand_relevant"] = False
+        issues.loc[issues["issue_fuel_is_non_actionable"], "demand_relevant"] = False
         issues["demand_relevance_basis"] = f"fallback_keep_all:{type(exc).__name__}"
-        issues.loc[issues["issue_fuel_is_do_not_use"], "demand_relevance_basis"] = (
-            "excluded_do_not_use_fuel"
+        issues.loc[issues["issue_fuel_is_non_actionable"], "demand_relevance_basis"] = (
+            "excluded_non_actionable_fuel"
         )
         return issues
 
@@ -522,10 +733,10 @@ def _annotate_balance_demand_issue_scope(balance_demand_issues: pd.DataFrame) ->
     missing_cols = [col for col in required_cols if col not in active_ninth.columns]
     if missing_cols:
         issues["demand_relevant"] = True
-        issues.loc[issues["issue_fuel_is_do_not_use"], "demand_relevant"] = False
+        issues.loc[issues["issue_fuel_is_non_actionable"], "demand_relevant"] = False
         issues["demand_relevance_basis"] = "fallback_keep_all:missing_ninth_columns"
-        issues.loc[issues["issue_fuel_is_do_not_use"], "demand_relevance_basis"] = (
-            "excluded_do_not_use_fuel"
+        issues.loc[issues["issue_fuel_is_non_actionable"], "demand_relevance_basis"] = (
+            "excluded_non_actionable_fuel"
         )
         return issues
 
@@ -586,9 +797,9 @@ def _annotate_balance_demand_issue_scope(balance_demand_issues: pd.DataFrame) ->
         "sector_match_non_demand_sector"
     )
 
-    issues.loc[issues["issue_fuel_is_do_not_use"], "demand_relevant"] = False
-    issues.loc[issues["issue_fuel_is_do_not_use"], "demand_relevance_basis"] = (
-        "excluded_do_not_use_fuel"
+    issues.loc[issues["issue_fuel_is_non_actionable"], "demand_relevant"] = False
+    issues.loc[issues["issue_fuel_is_non_actionable"], "demand_relevance_basis"] = (
+        "excluded_non_actionable_fuel"
     )
     return issues
 
@@ -661,6 +872,13 @@ def _build_direct_demand_mapping_status(
     leap_sheet_fuels = leap_long[["sheet_name", "fuel_label"]].drop_duplicates().copy()
     leap_sheet_fuels["sheet_name"] = leap_sheet_fuels["sheet_name"].astype(str).str.strip()
     leap_sheet_fuels["fuel_label"] = leap_sheet_fuels["fuel_label"].astype(str).str.strip()
+    # Rewrite known LEAP-model spelling gaps to the mapping-sheet spelling before
+    # the string-key join against leap_combined_ninth/leap_combined_esto. Safe to
+    # apply eagerly: an entry only rewrites a LEAP label that would not otherwise
+    # match (a correctly spelled label is not a KNOWN_LEAP_LABEL_EXCEPTIONS key).
+    leap_sheet_fuels["fuel_label"] = leap_sheet_fuels["fuel_label"].replace(
+        KNOWN_LEAP_LABEL_EXCEPTIONS
+    )
 
     demand_sheet_map = sheet_map.copy()
     demand_sheet_map["sheet_name"] = demand_sheet_map["sheet_name"].astype(str).str.strip()
@@ -1157,7 +1375,14 @@ def load_balance_demand_inputs(
     workbook_dir: Path | str = LEAP_RESULTS_TABLES_DIR,
     allow_projection_only_without_balance_exports: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Build comparison_long + mapping_status in-memory from LEAP balance exports."""
+    """Build comparison_long + mapping_status in-memory from LEAP balance exports.
+
+    When ``allow_projection_only_without_balance_exports`` is True (the
+    baseline_seed pass), demand is always sourced from the 9th projection-only
+    table for every economy, regardless of whether that economy already has
+    LEAP balance export workbooks. LEAP's own exports are only compared
+    against during the results_update pass.
+    """
     economy_list = workflow_common.normalize_economies(economies or ECONOMIES)
     balance_scenarios = _filter_balance_scenarios(scenarios)
     scenario_map = _build_balance_demand_scenario_map(balance_scenarios)
@@ -1193,11 +1418,11 @@ def load_balance_demand_inputs(
 
     for economy in economy_list:
         economy_text = str(economy or "").strip()
-        try:
-            ref_workbook_path, tgt_workbook_path = _resolve_balance_demand_workbooks_for_economy(economy_text)
-        except FileNotFoundError:
-            if not allow_projection_only_without_balance_exports:
-                raise
+        if allow_projection_only_without_balance_exports:
+            # baseline_seed always sizes supply off the 9th projection-only demand,
+            # never off a specific LEAP run's own balance export, even when one
+            # exists for this economy. Comparing against a real LEAP export is the
+            # results_update pass's job.
             mapping_status = _projection_only_mapping_status()
             comparison_long = _build_projection_rows_from_ninth(
                 mapping_status,
@@ -1208,14 +1433,16 @@ def load_balance_demand_inputs(
             issues = pd.DataFrame()
             matching_diagnostics = pd.DataFrame()
             print(
-                "[INFO] No LEAP balance exports found for "
-                f"{economy_text}; using 9th projection-only demand for baseline_seed."
+                "[INFO] baseline_seed pass: using 9th projection-only demand for "
+                f"{economy_text} (LEAP balance exports, if any, are ignored for this pass)."
             )
             comparison_long_parts.append(comparison_long)
             mapping_status_parts.append(mapping_status)
             issue_parts.append(issues)
             matching_diagnostics_parts.append(matching_diagnostics)
             continue
+
+        ref_workbook_path, tgt_workbook_path = _resolve_balance_demand_workbooks_for_economy(economy_text)
         base_economy = (
             DIRECT_DEMAND_BASE_ECONOMY
             if economy_text == DIRECT_DEMAND_PROJECTION_ECONOMY

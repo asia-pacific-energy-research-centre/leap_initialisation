@@ -56,6 +56,13 @@ def _write_template(path: Path, *, variable_id: int = 420) -> None:
         )
 
 
+def _write_template_rows(path: Path, rows: list[dict[str, object]]) -> None:
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        pd.DataFrame(rows).to_excel(
+            writer, sheet_name="Export", index=False, startrow=2
+        )
+
+
 def test_default_scenario_windows_use_2022_base_and_2060_final_year() -> None:
     windows = get_baseline_seed_validation_years(
         ["Current Accounts", "Reference", "Target"]
@@ -188,6 +195,75 @@ def test_final_writer_exposes_key_scoped_zero_reset_exception(
     assert len(written) == 1
     output = pd.read_excel(written[0], sheet_name="LEAP", header=2)
     assert output["VariableID"].iloc[0] == -1
+
+
+def test_final_writer_preserves_non_branch_ids_for_warning_only_aggregated_demand_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "aggregated_demand_20_USA_reference.xlsx"
+    _write_leap_workbook(source, [{
+        "BranchID": -1,
+        "VariableID": 2040,
+        "ScenarioID": 2,
+        "RegionID": 1,
+        "Branch Path": "Demand\\All demand aggregated\\Black liquor",
+        "Variable": "Final Energy Intensity",
+        "Scenario": "Reference",
+        "Region": "United States",
+        "Scale": "",
+        "Units": "Petajoule",
+        "Per...": "Million households",
+        "Expression": "1",
+    }])
+    template = tmp_path / "full model export.xlsx"
+    _write_template_rows(template, [{
+        "BranchID": 500,
+        "VariableID": 900,
+        "ScenarioID": 2,
+        "RegionID": 1,
+        "Branch Path": "Demand\\All demand aggregated\\Electricity",
+        "Variable": "Final Energy Intensity",
+        "Scenario": "Reference",
+        "Region": "United States",
+        "Scale": "",
+        "Units": "Petajoule",
+        "Per...": "Million households",
+        "Expression": "1",
+    }])
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io._load_reference_export_data",
+        lambda: pd.DataFrame(),
+    )
+
+    written = write_per_economy_combined_workbooks(
+        economies=["20_USA"],
+        output_dir=tmp_path / "output",
+        id_lookup_path=template,
+        source_workbooks_by_workflow={"aggregated_demand_workflow": [source]},
+        required_years_by_scenario={"Reference": [2023]},
+    )
+
+    assert len(written) == 1
+    output = pd.read_excel(written[0], sheet_name="LEAP", header=2)
+    row = output.loc[
+        output["Branch Path"].eq("Demand\\All demand aggregated\\Black liquor")
+        & output["Variable"].eq("Final Energy Intensity")
+    ].iloc[0]
+    assert row["BranchID"] == -1
+    assert row["VariableID"] == 2040
+
+    consolidated = next(
+        (tmp_path / "output" / "supporting_files" / "baseline_seed_validation").glob(
+            "*_consolidated_rule_findings.csv"
+        )
+    )
+    findings = pd.read_csv(consolidated)
+    aggregate_findings = findings[
+        findings["rule_id"].isin(["SEED-003", "SEED-004", "SEED-011"])
+    ]
+    assert set(aggregate_findings["status"]) == {"warn"}
+    assert not aggregate_findings["blocking"].any()
 
 
 def test_default_reference_validation_window_requires_2023_through_2060(

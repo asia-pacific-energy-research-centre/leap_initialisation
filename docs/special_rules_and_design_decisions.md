@@ -137,9 +137,15 @@ the group has no genuine sibling values in any configured year may a synthetic
 100% anchor be considered, and it should normally be used only when the
 relevant Exogenous Capacity is explicitly zero. Any exception to the
 zero-capacity condition must be documented in producer configuration.
-When no producer-specific fallback is configured, select the alphabetically
-first canonical branch path. This is deterministic and must not depend on
-workbook row order. No capacity exception is currently approved.
+Before falling back to a synthetic anchor, a group with no genuine values in a
+scenario borrows the normalized profile from the same group in another scenario
+(donor priority Reference, Current Accounts, Target; nearest-year mapping),
+still gated on explicit zero capacity. Zero-skeleton process records likewise
+borrow inert technology measures (efficiency, auxiliary/own-use ratios) from a
+donor scenario via `borrow_zero_skeleton_measures`.
+When no donor exists and no producer-specific fallback is configured, select
+the alphabetically first canonical branch path. This is deterministic and must
+not depend on workbook row order. No capacity exception is currently approved.
 
 Missing or unparseable share expressions and conflicting duplicate groups block import. A one-leaf active group must therefore be 100%. The validator does not infer required scenarios or years from a reference workbook; callers provide those windows explicitly.
 
@@ -156,6 +162,7 @@ without the required capacity evidence.
 - 2026-06-27: Confirmed the three share-group invariants and separated them from unresolved zero-activity and fallback-fuel choices.
 - 2026-06-28: Required complete canonical sibling groups with explicit zero rows for unused siblings across every generated share measure; confirmed normalization above or below 100%, nearest-profile reuse for isolated zero years, and the zero-capacity constraint on wholly synthetic groups.
 - 2026-06-28: Implemented template-driven completion for Output, Process, and Feedstock shares; deterministic alphabetical fallback is permitted only with explicit zero capacity, and partial share-group patches block.
+- 2026-07-03: Zero-skeleton records now carry the full branch/variable key set (scenario-coverage symmetry, SEED-010). All-zero share groups borrow the donor scenario's genuine profile before the synthetic anchor, and zero-skeleton records borrow inert efficiency/auxiliary measures from a donor scenario (user decision, Finn: prefer real profiles over defaults when a scenario legitimately has zero activity, e.g. USA Target hydrogen).
 
 ## INIT-004: Do not use 9th Outlook power-output sectors in interim power calculations
 
@@ -330,6 +337,156 @@ and confirm no locked module reports added capacity in any economy/scenario.
 - 2026-07-01: Recorded the fixed-technology base-year lock, the plan to apply it
   to all economies via a `__default__` fallback, the per-scenario independence of
   reference/target ceilings, and the no-op status of the production cap dict.
+
+## INIT-008: Balance-demand mapping gaps — baseline_seed demand source, non-actionable fuel, known LEAP label exceptions, and the general rollup fallback
+
+**Status:** Confirmed
+**Owner:** leap_initialisation
+**Type:** Data mapping / comparison boundary
+**Affected areas:**
+`codebase/functions/supply_demand_mapping.py`
+(`load_balance_demand_inputs`, `_build_augmented_balance_demand_mapping_workbook`,
+`_build_direct_demand_mapping_status`, `_resolve_demand_esto_pairs_via_rollups`,
+`_build_inferred_esto_rows`, `_annotate_balance_demand_issue_scope`);
+`codebase/functions/supply_results_saver.py`
+(`_is_capacity_unmet_baseline_seed_pass`, balance-demand issue gating);
+`codebase/functions/baseline_seed_validation.py`
+(`enrich_seed_ids_from_template`, `_rescue_ids_via_known_leap_label_exceptions`);
+`codebase/configuration/known_leap_label_exceptions.py`
+(`KNOWN_LEAP_LABEL_EXCEPTIONS`);
+`codebase/supply_reconciliation_config.py`
+(`DEMAND_NON_ACTIONABLE_FUEL_EXACT_MATCHES`);
+`codebase/mapping_tools/mapping_rollups.py` (reused rollup machinery);
+`leap_mappings/config/outlook_mappings_master.xlsx` sheets `leap_combined_ninth`,
+`leap_combined_esto`, `leap_rollup_rules`, `esto_rollup_rules`,
+`ninth_rollup_rules`, `ninth_pairs_to_esto_pairs` (read only — never edited here).
+
+### Situation
+
+A `20_USA` baseline_seed run produced 1384 `missing_esto_pair` rows in
+`supply_reconciliation_balance_demand_issues.csv` that were also flagged
+demand-relevant, hard-stopping the run under
+`BALANCE_DEMAND_FAIL_ON_MAPPING_ISSUES = True`. Root causes were four distinct
+issues, not one:
+
+1. **baseline_seed was comparing against real LEAP balance exports.** During the
+   baseline_seed pass there is no meaningful LEAP export to compare against; the
+   pass should size supply purely from the 9th projection-only demand. Comparing
+   against LEAP exports is the `results_update` pass's job.
+2. **`Total` fuel rows were treated as demand-actionable.** A fuel label of
+   exactly `Total` is a sector rollup, not a real fuel, so a missing ESTO pair
+   for it should never block demand sizing.
+3. **One correctly-spelled mapping row broke an exact-string join.** The live
+   LEAP model, its raw full-model export, and `ESTO_PRODUCT_LIST`
+   (`15.04 Black liqour`) all use the typo `Black liqour`, but
+   `leap_combined_ninth`/`leap_combined_esto` spell it correctly as
+   `Black liquor`. The exact-string join in the demand-comparison path and the
+   template ID-canonicalization path therefore failed for that fuel.
+4. **`Freight road`/`Passenger road` had no ESTO rows at any level.**
+   `leap_combined_ninth` has full leaf-level mappings for both sectors but
+   `leap_combined_esto` has zero rows for either — 1270 of the 1384 actionable
+   rows. Both combined sheets already contain a complete pre-built synthetic
+   `Road` sector (12 fuel rows), and `leap_rollup_rules` already declares
+   `Freight road`/`Passenger road` → sector `Road`.
+
+### Options
+
+- Edit `outlook_mappings_master.xlsx` to fix the `Black liquor` spelling and to
+  author `Freight road`/`Passenger road` ESTO rows. **Rejected by Finn:** the
+  spelling is a LEAP-model-side issue to be corrected upstream, and the Road
+  target already exists — nothing needs authoring in the workbook.
+- Special-case `Black liqour` and `Road` in code. **Rejected:** brittle and
+  hides the general shape of both problems.
+- Handle the spelling gap as a reviewable config-keyed alias and the missing
+  ESTO pairs as a general resolver over the maintained rollup sheets. **Chosen.**
+
+### Current rule
+
+1. **baseline_seed uses projection-only demand unconditionally.**
+   `load_balance_demand_inputs(..., allow_projection_only_without_balance_exports=True)`
+   (set only for the baseline_seed pass via `_is_capacity_unmet_baseline_seed_pass()`)
+   sources every economy's demand from the 9th projection-only table and ignores
+   any LEAP balance export for that economy. Real LEAP exports are compared only
+   during `results_update`.
+2. **`Total` fuel rows are not demand-actionable.**
+   `DEMAND_NON_ACTIONABLE_FUEL_EXACT_MATCHES = ("total",)` drives
+   `_is_non_actionable_demand_fuel`; matching rows get `demand_relevant = False`,
+   basis `excluded_non_actionable_fuel` (flag `issue_fuel_is_non_actionable`).
+3. **Known LEAP label exceptions (temporary).**
+   `KNOWN_LEAP_LABEL_EXCEPTIONS = {"Black liqour": "Black liquor"}` in
+   `codebase/configuration/known_leap_label_exceptions.py` maps a LEAP-model
+   spelling to the mapping-sheet spelling. It is applied in two places:
+   - In `_build_direct_demand_mapping_status`, the LEAP fuel-label column is
+     rewritten through the dict before the `leap_combined_ninth`/`leap_combined_esto`
+     join (safe to apply eagerly — an entry only rewrites a label that would not
+     otherwise match).
+   - In `enrich_seed_ids_from_template`, a narrow rescue pass runs *after* the
+     normal template lookup: only rows still at `BranchID`/`VariableID == -1` get
+     the alias applied (both directions) to their branch key and re-looked-up
+     against the same `branch_ids`/`variable_ids` dicts. Only rows that flip from
+     `-1` to a real match are overwritten; genuinely unmatched rows stay `-1` and
+     stay blocking. Rescues are logged
+     (`[INFO] rescued … via KNOWN_LEAP_LABEL_EXCEPTIONS`).
+   This mechanism is **temporary**. Remove the entry once the LEAP model spelling
+   is corrected upstream and the rescue log goes quiet. Do not expand the dict
+   beyond reviewed entries without checking with Finn — it is not a general
+   fuzzy-matching layer.
+4. **General rollup-resolution fallback.**
+   `_resolve_demand_esto_pairs_via_rollups`, wired into
+   `_build_augmented_balance_demand_mapping_workbook`, resolves any demand
+   `(leap_sector, fuel)` that has no direct leaf-level ESTO pair and no canonical
+   `ninth_pairs_to_esto_pairs` bridge. It rolls the LEAP identity to a maintained
+   rollup target via `leap_rollup_rules` (exact-or-descendant sector match; blank
+   `rolled_*` keeps the original per the sheet's own convention) and looks up that
+   target's pre-built combined-sheet ESTO pair; failing that, it rolls the 9th
+   identity via `ninth_rollup_rules` and bridges through `ninth_pairs_to_esto_pairs`.
+   It reuses `codebase/mapping_tools/mapping_rollups.py` (`active_rollup_rules`,
+   `value_matches`, `parse_priority`, `normalise_key`, `rollup_columns_for_sheet`)
+   rather than a parallel implementation. It is **general over all active rows in
+   `leap_rollup_rules`, `esto_rollup_rules`, and `ninth_rollup_rules`**, gated only
+   by each row's own `include`/`rollup_context` fields — no separate allowlist, per
+   Finn's explicit call, since those sheets are already maintained and reviewed. It
+   is proven via the Road transport case but not scoped to it (e.g. it equally
+   resolves `Coal transformation` and other maintained rollups). Rows that no rule
+   plus pre-built target can resolve are reported (`[WARN] … no active rollup rule
+   with a pre-built rolled target`), never silently invented.
+
+### Validation
+
+- `python -m pytest tests/ -k "demand or balance_demand or supply_reconciliation or baseline_seed" -q`.
+- `tests/test_balance_demand_mapping_fixes.py` (alias parity; Road leap-rollup;
+  a second non-Road leap-rollup pattern; a ninth_rollup fallback; an unresolvable
+  row omitted) and the `enrich_seed_ids_from_template` rescue / stays-`-1` tests
+  in `tests/test_baseline_seed_comparison_workflow.py`.
+- Rebuilding the augmented balance-demand mapping leaves **0** demand
+  `(leap_sector, fuel)` keys without an ESTO pair (57 candidates, all resolved),
+  and `_build_projection_only_mapping_status` — the inner-join path baseline_seed
+  uses — now contains the `Freight road`/`Passenger road` descendant 9th sectors
+  (`15_02_01_*` / `15_02_02_*`) carrying the pre-built `15.02 Road` ESTO pair,
+  rather than silently dropping them.
+- Provenance note (verified against the current workbook): the pre-existing
+  canonical `ninth_pairs_to_esto_pairs` bridge already maps every **non-subtotal
+  leaf** Freight/Passenger road 9th code (the deep vehicle/technology codes such
+  as `15_02_01_01_02_gasoline_engine`, 143 of 157 rows) to `15.02 Road`, so those
+  leaves — which carry the actual demand — resolve via the canonical bridge and
+  the rollup fallback adds 0 rows today. The only Freight/Passenger road 9th codes
+  the canonical bridge does *not* cover are the parent codes `15_02_02_freight` /
+  `15_02_01_passenger`, but every such row is `leap_is_subtotal = True` /
+  `ninth_pair_is_subtotal = True` and is excluded from the augment candidates (and
+  from the projection-only inner join — 0 rows) to avoid double-counting the
+  children, so no demand is lost. The rollup resolver is therefore the general
+  safety net for any *non-subtotal* sector/fuel a rollup rule + pre-built target
+  covers but the canonical bridge does not (present or future); its own resolution
+  is exercised directly in `tests/test_balance_demand_mapping_fixes.py` with an
+  empty canonical bridge. Any residual gap is reported, never invented.
+
+### History
+
+- 2026-07-03: Recorded all four balance-demand mapping fixes — baseline_seed
+  projection-only demand source, the `Total` non-actionable-fuel exclusion, the
+  temporary `KNOWN_LEAP_LABEL_EXCEPTIONS` alias/rescue mechanism, and the general
+  rollup-resolution fallback (proven via the Road transport case). No mapping
+  workbook rows were edited.
 
 ## End-to-end run report
 

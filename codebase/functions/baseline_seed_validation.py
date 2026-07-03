@@ -14,6 +14,7 @@ from typing import Iterable, Mapping
 
 import pandas as pd
 
+from codebase.configuration.known_leap_label_exceptions import KNOWN_LEAP_LABEL_EXCEPTIONS
 from codebase.functions.leap_expressions import parse_expression
 
 
@@ -29,6 +30,11 @@ SHARE_VARIABLE_RULE_IDS = {
     "Process Share": "SEED-007",
     "Feedstock Fuel Share": "SEED-008",
 }
+
+# When a share group is all-zero in one scenario, borrow the genuine profile from
+# another scenario (first match wins) before falling back to a synthetic anchor.
+SHARE_DONOR_SCENARIO_PRIORITY = ("Reference", "Current Accounts", "Target")
+AGGREGATED_DEMAND_BRANCH_PREFIX = "demand\\all demand aggregated\\"
 
 
 @dataclass(frozen=True)
@@ -172,6 +178,21 @@ def _row_has_all_valid_ids(row: pd.Series) -> bool:
     return all(column in row.index and _id_valid(row[column]) for column in ID_COLUMNS)
 
 
+def _is_warning_only_aggregated_demand_branch(row: pd.Series) -> bool:
+    """Return True for explicit placeholder fuel branches absent from LEAP.
+
+    These rows remain in the workbook with ``BranchID=-1`` as an audit signal.
+    They cannot import into LEAP, but their absence must not block generation of
+    the other valid baseline-seed rows (Finn decision, 2026-07-03).
+    """
+    return (
+        _normalized(row.get(SOURCE_WORKFLOW_COLUMN)).lower() == "aggregated_demand_workflow"
+        and _normalized(row.get("Branch Path")).lower().startswith(AGGREGATED_DEMAND_BRANCH_PREFIX)
+        and not _id_valid(row.get("BranchID"))
+        and all(_id_valid(row.get(column)) for column in ["VariableID", "ScenarioID", "RegionID"])
+    )
+
+
 def _row_sort_signature(row: pd.Series) -> tuple[object, ...]:
     id_validity = tuple(0 if _id_valid(row.get(column)) else 1 for column in ID_COLUMNS)
     ids = tuple(_normalized(row.get(column)) for column in ID_COLUMNS)
@@ -180,7 +201,8 @@ def _row_sort_signature(row: pd.Series) -> tuple[object, ...]:
         _normalized(row.get(column))
         for column in sorted(
             set(row.index)
-            - {*PROVENANCE_COLUMNS, *LOGICAL_KEY_COLUMNS, *ID_COLUMNS, "Expression"}
+            - {*PROVENANCE_COLUMNS, *LOGICAL_KEY_COLUMNS, *ID_COLUMNS, "Expression"},
+            key=str,
         )
     )
     return (sum(id_validity), id_validity, ids, expression, metadata)
@@ -196,7 +218,8 @@ def _duplicate_classification(group: pd.DataFrame) -> tuple[str, int]:
 
     comparison_columns = sorted(
         set(group.columns)
-        - {*PROVENANCE_COLUMNS, *LOGICAL_KEY_COLUMNS}
+        - {*PROVENANCE_COLUMNS, *LOGICAL_KEY_COLUMNS},
+        key=str,
     )
     row_signatures = {
         tuple(
@@ -443,6 +466,35 @@ def complete_canonical_share_groups(
     additions: list[pd.Series] = []
     diagnostics: list[dict[str, object]] = []
     group_columns = ["__parent", "Variable", "Scenario", "Region"]
+
+    # Pass 0: genuine normalized profiles per (group, variable, region) and scenario,
+    # so an all-zero group can borrow the profile from a scenario with real data
+    # instead of falling straight to the deterministic synthetic anchor.
+    donor_profiles: dict[tuple[str, str, str], dict[str, dict[int, dict[str, float]]]] = {}
+    for key, group in shares.groupby(group_columns, dropna=False, sort=True):
+        group_path, variable, scenario, region = map(_text, key)
+        years = sorted({int(year) for year in required_years_by_scenario.get(scenario, [])})
+        if not years:
+            continue
+        parsed_by_path: dict[str, dict[int, float]] = {}
+        for _, row in group.iterrows():
+            parsed = _expression_values(row.get("Expression"), years)
+            if parsed:
+                parsed_by_path[_text(row["Branch Path"])] = parsed
+        for year in years:
+            raw = {
+                path: max(values.get(year, 0.0), 0.0)
+                for path, values in parsed_by_path.items()
+            }
+            total = sum(raw.values())
+            if total > tolerance:
+                profile = {path: value * 100.0 / total for path, value in raw.items()}
+                anchor = sorted(profile, key=lambda path: (-profile[path], path.lower()))[0]
+                profile[anchor] += 100.0 - sum(profile.values())
+                donor_profiles.setdefault(
+                    (_normalized(group_path), _normalized(variable), _normalized(region)), {}
+                ).setdefault(_normalized(scenario), {})[year] = profile
+
     for key, group in shares.groupby(group_columns, dropna=False, sort=True):
         group_path, variable, scenario, region = map(_text, key)
         group_context = {
@@ -561,17 +613,65 @@ def complete_canonical_share_groups(
                 region=region, years=years, tolerance=tolerance,
             )
             if allowed:
-                anchor = sorted(parsed_by_path, key=str.lower)[0]
-                profiles = {
-                    year: {path: 100.0 if path == anchor else 0.0 for path in parsed_by_path}
-                    for year in years
-                }
-                diagnostics.append(_finding(
-                    SHARE_VARIABLE_RULE_IDS[variable], "info",
-                    "Generated deterministic synthetic share anchor for an explicitly zero-capacity group.",
-                    evidence=f"anchor={anchor}; {capacity_evidence}",
-                    **group_context,
-                ))
+                # Prefer a genuine profile from another scenario over the synthetic
+                # anchor: with zero capacity the shares are inert, and a borrowed
+                # real profile is more useful if the module is later activated.
+                borrowed_scenario = None
+                scenario_profiles = donor_profiles.get(
+                    (_normalized(group_path), _normalized(variable), _normalized(region)), {}
+                )
+                for donor_scenario in SHARE_DONOR_SCENARIO_PRIORITY:
+                    donor_key = _normalized(donor_scenario)
+                    if donor_key == _normalized(scenario):
+                        continue
+                    donor_by_year = scenario_profiles.get(donor_key)
+                    if not donor_by_year:
+                        continue
+                    donor_years = sorted(donor_by_year)
+                    for year in years:
+                        nearest = min(
+                            donor_years,
+                            key=lambda candidate: (abs(candidate - year), 0 if candidate >= year else 1),
+                        )
+                        source_profile = donor_by_year[nearest]
+                        raw = {
+                            path: max(source_profile.get(path, 0.0), 0.0)
+                            for path in parsed_by_path
+                        }
+                        total = sum(raw.values())
+                        if total > tolerance:
+                            profile = {path: value * 100.0 / total for path, value in raw.items()}
+                        else:
+                            fallback_anchor = sorted(parsed_by_path, key=str.lower)[0]
+                            profile = {
+                                path: 100.0 if path == fallback_anchor else 0.0
+                                for path in parsed_by_path
+                            }
+                        anchor = sorted(profile, key=lambda path: (-profile[path], path.lower()))[0]
+                        profile[anchor] += 100.0 - sum(profile.values())
+                        profiles[year] = profile
+                    borrowed_scenario = donor_scenario
+                    break
+                if borrowed_scenario is not None:
+                    diagnostics.append(_finding(
+                        SHARE_VARIABLE_RULE_IDS[variable], "info",
+                        "Borrowed normalized share profile from another scenario for an "
+                        "explicitly zero-capacity group.",
+                        evidence=f"donor_scenario={borrowed_scenario}; {capacity_evidence}",
+                        **group_context,
+                    ))
+                else:
+                    anchor = sorted(parsed_by_path, key=str.lower)[0]
+                    profiles = {
+                        year: {path: 100.0 if path == anchor else 0.0 for path in parsed_by_path}
+                        for year in years
+                    }
+                    diagnostics.append(_finding(
+                        SHARE_VARIABLE_RULE_IDS[variable], "info",
+                        "Generated deterministic synthetic share anchor for an explicitly zero-capacity group.",
+                        evidence=f"anchor={anchor}; {capacity_evidence}",
+                        **group_context,
+                    ))
             else:
                 diagnostics.append(_finding(
                     SHARE_VARIABLE_RULE_IDS[variable], "fail",
@@ -797,15 +897,99 @@ def enrich_seed_ids_from_template(
         result.get("Branch Path", pd.Series("", index=result.index))
     )
     result["BranchID"] = branch_keys.map(branch_ids).fillna(-1).astype(int)
-    result["VariableID"] = pd.Series(
+    mapped_variable_ids = pd.Series(
         list(zip(branch_keys, variable_keys)), index=result.index
-    ).map(variable_ids).fillna(-1).astype(int)
+    ).map(variable_ids)
+    existing_variable_ids = pd.to_numeric(
+        result.get("VariableID", pd.Series(-1, index=result.index)), errors="coerce"
+    )
+    # Preserve a valid variable ID on an intentionally retained aggregate-demand
+    # placeholder branch even when that branch itself has no canonical BranchID.
+    mapped_variable_ids = mapped_variable_ids.where(
+        mapped_variable_ids.notna(), existing_variable_ids.where(existing_variable_ids.ge(0))
+    )
+    result["VariableID"] = mapped_variable_ids.fillna(-1).astype(int)
     result["ScenarioID"] = scenario_keys.map(scenario_ids).fillna(-1).astype(int)
     mapped_region_ids = region_keys.map(region_ids)
     if sole_region_id is not None:
         mapped_region_ids = mapped_region_ids.fillna(sole_region_id)
     result["RegionID"] = mapped_region_ids.fillna(-1).astype(int)
+
+    # --- Known LEAP-label exception rescue pass ------------------------------
+    # A handful of fuel/sector labels are spelled differently in the live LEAP
+    # model vs. outlook_mappings_master (see KNOWN_LEAP_LABEL_EXCEPTIONS, e.g.
+    # "Black liqour"/"Black liquor"). When that gap leaves a row at -1 after the
+    # normal lookup, retry the *same* branch_ids/variable_ids dicts against an
+    # alias-substituted branch key. Only rows that flip from -1 to a real match
+    # are overwritten; rows still -1 afterward stay exactly as blocking as
+    # before. Substitution is tried in both directions because either the
+    # template or the seed row may carry either spelling.
+    _rescue_ids_via_known_leap_label_exceptions(
+        result,
+        branch_ids=branch_ids,
+        variable_ids=variable_ids,
+        canonical_paths=canonical_paths,
+    )
     return result
+
+
+def _rescue_ids_via_known_leap_label_exceptions(
+    result: pd.DataFrame,
+    *,
+    branch_ids: Mapping[str, int],
+    variable_ids: Mapping[tuple[str, str], int],
+    canonical_paths: Mapping[str, str],
+) -> None:
+    """Flip -1 BranchID/VariableID rows to real matches via label aliases in place."""
+    if not KNOWN_LEAP_LABEL_EXCEPTIONS:
+        return
+    alias_pairs: list[tuple[str, str]] = []
+    for leap_label, mapping_label in KNOWN_LEAP_LABEL_EXCEPTIONS.items():
+        if leap_label and mapping_label:
+            alias_pairs.append((leap_label, mapping_label))
+            alias_pairs.append((mapping_label, leap_label))
+    if not alias_pairs:
+        return
+
+    def _alias_branch_key(path_text: str) -> tuple[str, str] | None:
+        for old, new in alias_pairs:
+            if old in path_text:
+                candidate_key = _normalized(path_text.replace(old, new)).lower()
+                if candidate_key in branch_ids:
+                    return candidate_key, f"{old} -> {new}"
+        return None
+
+    rescued_branch: list[str] = []
+    rescued_variable: list[str] = []
+    for idx in result.index:
+        branch_id = int(result.at[idx, "BranchID"])
+        variable_id = int(result.at[idx, "VariableID"])
+        if branch_id >= 0 and variable_id >= 0:
+            continue
+        original_path = _text(result.at[idx, "Branch Path"])
+        rescue = _alias_branch_key(original_path)
+        if rescue is None:
+            continue
+        corrected_key, note = rescue
+        if branch_id < 0:
+            result.at[idx, "BranchID"] = int(branch_ids[corrected_key])
+            result.at[idx, "Branch Path"] = canonical_paths.get(corrected_key, original_path)
+            rescued_branch.append(f"{original_path} [{note}]")
+        if variable_id < 0:
+            variable_key = _normalized(result.at[idx, "Variable"]).lower() if "Variable" in result.columns else ""
+            composite = (corrected_key, variable_key)
+            if composite in variable_ids:
+                result.at[idx, "VariableID"] = int(variable_ids[composite])
+                rescued_variable.append(f"{original_path} [{note}]")
+
+    if rescued_branch or rescued_variable:
+        print(
+            "[INFO] rescued "
+            f"{len(rescued_branch)} BranchID and {len(rescued_variable)} VariableID "
+            "row(s) via KNOWN_LEAP_LABEL_EXCEPTIONS. When the LEAP model spelling is "
+            "corrected upstream this rescue should go quiet and the exception entry "
+            f"can be deleted. Examples: {(rescued_branch or rescued_variable)[:5]}"
+        )
 
 
 def _exception_matches(finding: dict[str, object], exception: dict[str, object]) -> bool:
@@ -890,13 +1074,24 @@ def validate_seed_rows(
             if not invalid_columns:
                 continue
             context = _row_context(row)
-            findings.append(_finding("SEED-003", "fail", "Resolved row has one or more missing IDs.", evidence="|".join(invalid_columns), **context))
+            warning_only = _is_warning_only_aggregated_demand_branch(row)
+            findings.append(_finding(
+                "SEED-003", "warn" if warning_only else "fail",
+                "Aggregate-demand placeholder branch is absent from LEAP; row retained with BranchID=-1."
+                if warning_only else "Resolved row has one or more missing IDs.",
+                evidence="|".join(invalid_columns), **context,
+            ))
             is_zero = _expression_is_zero(row.get("Expression"), zero_tolerance)
             if is_zero is True:
                 findings.append(_finding("SEED-005", "warn", "Missing-ID zero row may be an intended reset but cannot reset LEAP by ID.", evidence="|".join(invalid_columns), **context))
             else:
                 detail = "unparseable" if is_zero is None else "nonzero"
-                findings.append(_finding("SEED-004", "fail", "Missing-ID row contains a nonzero or unparseable expression.", evidence=f"{detail}; ids={'|'.join(invalid_columns)}", **context))
+                findings.append(_finding(
+                    "SEED-004", "warn" if warning_only else "fail",
+                    "Nonzero aggregate-demand placeholder cannot import because BranchID=-1."
+                    if warning_only else "Missing-ID row contains a nonzero or unparseable expression.",
+                    evidence=f"{detail}; ids={'|'.join(invalid_columns)}", **context,
+                ))
 
     findings.extend(_validate_shares(resolved, tolerance=share_tolerance))
 
@@ -979,10 +1174,12 @@ def validate_seed_rows(
         for _, row in resolved.iterrows():
             branch_path = _text(row.get("Branch Path"))
             if branch_path and branch_path.lower() not in valid_paths:
+                warning_only = _is_warning_only_aggregated_demand_branch(row)
                 findings.append(_finding(
                     "SEED-011",
-                    "fail",
-                    "Branch path is absent from the canonical full-model export.",
+                    "warn" if warning_only else "fail",
+                    "Aggregate-demand placeholder branch is absent from the canonical full-model export."
+                    if warning_only else "Branch path is absent from the canonical full-model export.",
                     evidence=str(path),
                     **_row_context(row),
                 ))

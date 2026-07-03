@@ -282,6 +282,10 @@ DEMAND_SECTOR_PREFIXES = ("04_", "05_", "14_", "15_", "16_")
 DEMAND_NON_ACTIONABLE_FUEL_PHRASES = (
     "do not use",
 )
+# Fuel labels that are sector-level rollups rather than real fuels, so they
+# never need their own ESTO pair (the per-fuel rows underneath them already
+# carry the demand). Matched as a full, case-insensitive fuel label.
+DEMAND_NON_ACTIONABLE_FUEL_EXACT_MATCHES = ("total",)
 
 # Capacity-constrained mode knobs.
 CAPACITY_CONSTRAINT_FACTOR = 1.0

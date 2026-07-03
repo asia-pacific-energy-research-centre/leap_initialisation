@@ -1828,6 +1828,20 @@ def analyze_hydrogen_transformation(
                     continue
                 source_output_series[output_label] = series
             if not source_output_series:
+                # All output series are zero for this scenario (a legitimate zero
+                # pathway); keep the process present with a zero skeleton so
+                # scenario coverage stays symmetric across scenarios.
+                for _cfg in group_configs:
+                    _pname = _cfg.get("process_code", source_sub2)
+                    print(
+                        f"{sector_title} ({_pname}): all output series zero for "
+                        f"{economy}; writing zero skeleton for scenario coverage."
+                    )
+                    append_process_record(process_records, build_zero_skeleton_record(
+                        economy, sector_title, _pname,
+                        _cfg.get("output_subfuels") or [],
+                        export_base_year, export_final_year,
+                    ))
                 continue
 
             process_inputs = {}

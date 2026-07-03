@@ -17,6 +17,7 @@ from codebase.functions.baseline_seed_validation import (
     resolve_logical_duplicates,
     validate_seed_rows,
 )
+from codebase.functions.patch_baseline_seeds import MODULE_REGISTRY
 
 
 def _row(branch: str, variable: str, expression: object, *, branch_id: int = 1) -> dict[str, object]:
@@ -182,6 +183,19 @@ def test_duplicate_classification_exact_and_multiple_valid_rows() -> None:
     assert conflicting_groups["blocking"].item()
 
 
+def test_duplicate_resolution_accepts_mixed_type_column_labels() -> None:
+    data = _with_excel_rows([
+        _row("Resources\\Gas", "Imports", "0", branch_id=1),
+        _row("Resources\\Gas", "Imports", "0", branch_id=1),
+    ])
+    data[2022.0] = 0.0
+
+    resolved, duplicates = resolve_logical_duplicates(data)
+
+    assert len(resolved) == 1
+    assert duplicates["classification"].item() == "exact_duplicate_same_ids_and_expression"
+
+
 def test_validator_checks_all_ids_and_distinguishes_zero_reset() -> None:
     rows = [
         _row("Resources\\Gas", "Imports", "Data(2022,5)"),
@@ -196,6 +210,35 @@ def test_validator_checks_all_ids_and_distinguishes_zero_reset() -> None:
     zero_findings = result.findings[result.findings["rule_id"] == "SEED-005"]
     assert len(zero_findings) == 1
     assert not zero_findings["blocking"].item()
+
+
+def test_missing_aggregated_demand_branch_is_warning_only(tmp_path: Path) -> None:
+    row = _row(
+        "Demand\\All demand aggregated\\Black liquor",
+        "Final Energy Intensity",
+        "1",
+        branch_id=-1,
+    )
+    row["source_workflow"] = "aggregated_demand_workflow"
+    template = tmp_path / "template.xlsx"
+    canonical = pd.DataFrame([
+        _row("Demand\\All demand aggregated\\Electricity", "Final Energy Intensity", "1")
+    ])
+    with pd.ExcelWriter(template, engine="openpyxl") as writer:
+        canonical.to_excel(writer, sheet_name="Export", index=False, startrow=2)
+
+    result = validate_seed_rows(pd.DataFrame([row]), template_path=template)
+
+    findings = result.findings[result.findings["rule_id"].isin(["SEED-003", "SEED-004", "SEED-011"])]
+    assert set(findings["rule_id"]) == {"SEED-003", "SEED-004", "SEED-011"}
+    assert findings["status"].eq("warn").all()
+    assert not findings["blocking"].any()
+
+
+def test_aggregated_demand_patch_scope_does_not_strip_entire_demand_tree() -> None:
+    assert MODULE_REGISTRY["aggregated_demand"].strip_prefixes == [
+        "Demand\\All demand aggregated\\"
+    ]
 
 
 def test_missing_id_zero_exception_requires_rule_and_key_scope() -> None:
@@ -328,6 +371,45 @@ def test_zero_reset_is_enriched_with_real_ids(tmp_path: Path) -> None:
 
     assert enriched[["BranchID", "VariableID", "ScenarioID", "RegionID"]].iloc[0].tolist() == [20, 30, 2, 1]
     assert result.findings.empty
+
+
+def test_known_leap_label_exception_rescues_branch_and_variable_id(tmp_path: Path) -> None:
+    # The mapping sheets spell the fuel "Black liquor"; the live LEAP model (and
+    # therefore the seed row's branch path) uses the typo "Black liqour". Without
+    # the KNOWN_LEAP_LABEL_EXCEPTIONS rescue the row would stay -1 and block.
+    template_branch = "Demand\\Industry\\Black liquor"
+    seed_branch = "Demand\\Industry\\Black liqour"
+    template_path = tmp_path / "template.xlsx"
+    template_row = _row(template_branch, "Activity Level", "")
+    template_row.update({"BranchID": 555, "VariableID": 77, "ScenarioID": 2, "RegionID": 1})
+    _write_template(template_path, [template_row])
+
+    candidate = _with_excel_rows([_row(seed_branch, "Activity Level", "Data(2023,1)", branch_id=-1)])
+    candidate["VariableID"] = -1
+
+    enriched = enrich_seed_ids_from_template(candidate, template_path)
+
+    assert int(enriched["BranchID"].iloc[0]) == 555
+    assert int(enriched["VariableID"].iloc[0]) == 77
+    # Branch Path is rewritten to the canonical (template) spelling on rescue.
+    assert enriched["Branch Path"].iloc[0] == template_branch
+
+
+def test_genuinely_unmatched_branch_stays_minus_one(tmp_path: Path) -> None:
+    template_path = tmp_path / "template.xlsx"
+    template_row = _row("Demand\\Industry\\Black liquor", "Activity Level", "")
+    template_row.update({"BranchID": 555, "VariableID": 77, "ScenarioID": 2, "RegionID": 1})
+    _write_template(template_path, [template_row])
+
+    candidate = _with_excel_rows(
+        [_row("Resources\\Primary\\Unobtanium", "Activity Level", "Data(2023,1)", branch_id=-1)]
+    )
+    candidate["VariableID"] = -1
+
+    enriched = enrich_seed_ids_from_template(candidate, template_path)
+
+    assert int(enriched["BranchID"].iloc[0]) == -1
+    assert int(enriched["VariableID"].iloc[0]) == -1
 
 
 def test_share_validation_uses_resolved_rows_not_duplicate_physical_rows() -> None:

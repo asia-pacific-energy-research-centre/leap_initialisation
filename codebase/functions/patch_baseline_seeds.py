@@ -205,7 +205,9 @@ MODULE_REGISTRY: dict[str, ModuleConfig] = {
         workbook_glob="electricity_heat_interim_{econ}*.xlsx",
     ),
     "aggregated_demand": ModuleConfig(
-        strip_prefixes=["Demand\\"],
+        # Patch only the placeholder subtree. Stripping the full Demand root
+        # would remove demand-zeroing and other independently owned branches.
+        strip_prefixes=["Demand\\All demand aggregated\\"],
         workbook_glob="aggregated_demand_{econ}*.xlsx",
     ),
     "losses_own_use": ModuleConfig(

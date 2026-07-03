@@ -16,11 +16,51 @@ import pytest
 import codebase.aggregated_demand_workflow as aggregated_demand_workflow
 import codebase.functions.supply_reconciliation_tables as supply_reconciliation_tables
 from codebase.aggregated_demand_workflow import (
+    _extract_contextual_projection_years,
     _esto_flow_is_excluded,
     _sector_exclusion_suffix,
     build_aggregated_demand_as_dummy,
     resolve_active_branch_excluded_sectors,
 )
+
+
+def test_contextual_projection_uses_same_sector_esto_fuel_shares(monkeypatch):
+    ninth = pd.DataFrame([
+        {
+            "economy": "20_USA", "scenarios": "reference",
+            "sectors": "14_industry_sector", "sub1sectors": "14_02_construction",
+            "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x",
+            "fuels": "01_x_thermal_coal", "subfuels": "x",
+            "subtotal_results": False, "2023": 200.0,
+        }
+    ])
+    esto = pd.DataFrame([
+        {"economy": "20_USA", "flows": "14.02 Construction", "products": "p1", "is_subtotal": False, "2022": 25.0},
+        {"economy": "20_USA", "flows": "14.02 Construction", "products": "p2", "is_subtotal": False, "2022": 75.0},
+    ])
+    mapping = pd.DataFrame([
+        {"9th_sector": "14_02_construction", "9th_fuel": "01_x_thermal_coal", "esto_flow": "14.02 Construction", "esto_product": "p1"},
+        {"9th_sector": "14_02_construction", "9th_fuel": "01_x_thermal_coal", "esto_flow": "14.02 Construction", "esto_product": "p2"},
+    ])
+    monkeypatch.setattr(
+        aggregated_demand_workflow,
+        "load_active_mapping_sheet",
+        lambda sheet_name, workbook_path: mapping.copy(),
+    )
+
+    result, diagnostics = _extract_contextual_projection_years(
+        ninth_df=ninth,
+        esto_df=esto,
+        csv_scenario="reference",
+        esto_fuel_map={"p1": "Fuel A", "p2": "Fuel B"},
+        base_year=2022,
+        final_year=2023,
+        exclude_own_use_td_losses=True,
+    )
+
+    values = result.set_index("leap_fuel_name")["value"].to_dict()
+    assert values == pytest.approx({"Fuel A": 50.0, "Fuel B": 150.0})
+    assert diagnostics.empty
 from codebase.supply_reconciliation_config import (
     DETAILED_DEMAND_BRANCHES_ACTIVE,
     LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,

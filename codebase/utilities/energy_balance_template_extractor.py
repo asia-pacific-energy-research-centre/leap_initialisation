@@ -8,7 +8,12 @@ from pathlib import Path
 import openpyxl
 import pandas as pd
 
-from codebase.utilities.master_config import MASTER_CONFIG_PATH, config_table_exists, read_config_table
+from codebase.utilities.master_config import (
+    LEAP_MAPPINGS_REPO_ROOT,
+    MASTER_CONFIG_PATH,
+    config_table_exists,
+    read_config_table,
+)
 from codebase.utilities.workflow_outputs import build_workflow_output_layout, write_output_manifest
 
 
@@ -18,6 +23,76 @@ SECTOR_COLUMNS = {"sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4s
 FUEL_COLUMNS = {"fuels", "subfuels"}
 MAX_SCAN_COLS = 200
 MAX_SCAN_ROWS = 2000
+
+# Reviewed subtotal-mismatch exceptions maintained in the leap_mappings repo.
+SUBTOTAL_MISMATCH_EXCEPTIONS_PATH = (
+    LEAP_MAPPINGS_REPO_ROOT / "config" / "mapping_issue_exception_sets.xlsx"
+)
+SUBTOTAL_MISMATCH_EXCEPTIONS_SHEET = "subtotal_mismatch_allowed"
+_SUBTOTAL_EXCEPTION_KEY_COLUMNS = {
+    "leap_combined_esto": ("esto_flow", "esto_product"),
+    "leap_combined_ninth": ("ninth_sector", "ninth_fuel"),
+}
+_SUBTOTAL_MISMATCH_EXCEPTION_SETS: dict[str, set[tuple[str, str, str, str]]] | None = None
+
+_EXTRACTOR_REPO_ROOT = Path(__file__).resolve().parents[2]
+SUBTOTAL_FLAG_DIAGNOSTIC_DIR = (
+    _EXTRACTOR_REPO_ROOT
+    / "outputs"
+    / "leap_exports"
+    / "supply_reconciliation"
+    / "supporting_files"
+    / "checks"
+)
+
+
+def _norm_exception_part(value: object) -> str:
+    return str(value or "").strip().casefold()
+
+
+def load_subtotal_mismatch_exception_sets() -> dict[str, set[tuple[str, str, str, str]]]:
+    """Load enabled rows of the reviewed subtotal_mismatch_allowed exception sheet.
+
+    Returns {sheet_label: {(leap_path, leap_fuel, target_sector, target_fuel), ...}}
+    with all parts stripped and casefolded. Missing workbook or sheet yields an
+    empty mapping (with a warning) so validation degrades to the strict behavior.
+    """
+    global _SUBTOTAL_MISMATCH_EXCEPTION_SETS
+    if _SUBTOTAL_MISMATCH_EXCEPTION_SETS is not None:
+        return _SUBTOTAL_MISMATCH_EXCEPTION_SETS
+    sets: dict[str, set[tuple[str, str, str, str]]] = {}
+    try:
+        frame = pd.read_excel(
+            SUBTOTAL_MISMATCH_EXCEPTIONS_PATH,
+            sheet_name=SUBTOTAL_MISMATCH_EXCEPTIONS_SHEET,
+            dtype=str,
+        ).fillna("")
+        enabled = (
+            frame.get("enabled", pd.Series("", index=frame.index))
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .isin({"1", "true", "yes", "y", "on", "t"})
+        )
+        for _, row in frame[enabled].iterrows():
+            sheet = str(row.get("sheet", "")).strip()
+            key_cols = _SUBTOTAL_EXCEPTION_KEY_COLUMNS.get(sheet)
+            if not key_cols:
+                continue
+            key = (
+                _norm_exception_part(row.get("leap_sector_name_full_path")),
+                _norm_exception_part(row.get("raw_leap_fuel_name")),
+                _norm_exception_part(row.get(key_cols[0])),
+                _norm_exception_part(row.get(key_cols[1])),
+            )
+            sets.setdefault(sheet, set()).add(key)
+    except Exception as exc:
+        print(
+            "[WARN] Could not load subtotal mismatch exceptions from "
+            f"{SUBTOTAL_MISMATCH_EXCEPTIONS_PATH}: {exc}"
+        )
+    _SUBTOTAL_MISMATCH_EXCEPTION_SETS = sets
+    return sets
 
 UNIT_PREFIX_TO_SCALE = {
     "none": 1.0,
@@ -612,6 +687,30 @@ class TemplateBalanceExtractor:
             ]
             exact_duplicate_active = out.loc[valid].duplicated(subset=exact_duplicate_cols, keep=False)
             exact_duplicate_rows = out.loc[valid].loc[exact_duplicate_active].copy()
+            if not exact_duplicate_rows.empty and truthy(
+                os.environ.get("LEAP_INIT_DROP_EXACT_DUPLICATE_MAPPINGS", "")
+            ):
+                # LEAP_INIT_DROP_EXACT_DUPLICATE_MAPPINGS: user-authorized escape hatch
+                # that losslessly drops repeated rows that are identical across ALL
+                # columns (keep first; order-independent because the copies are equal).
+                # Key-duplicates whose other columns differ are real conflicts and
+                # still raise below.
+                fully_identical = out.duplicated(keep="first") & out.index.isin(
+                    exact_duplicate_rows.index
+                )
+                if fully_identical.any():
+                    print(
+                        f"[WARN] {sheet_label}: dropping {int(fully_identical.sum())} fully "
+                        "identical duplicate mapping row(s) because "
+                        "LEAP_INIT_DROP_EXACT_DUPLICATE_MAPPINGS is set.",
+                        flush=True,
+                    )
+                    out = out.loc[~fully_identical].copy()
+                    valid = valid.loc[out.index]
+                    exact_duplicate_active = out.loc[valid].duplicated(
+                        subset=exact_duplicate_cols, keep=False
+                    )
+                    exact_duplicate_rows = out.loc[valid].loc[exact_duplicate_active].copy()
             if not exact_duplicate_rows.empty:
                 exact_duplicate_rows["_mapping_row_number"] = exact_duplicate_rows.index + 2
                 preview_cols = ["_mapping_row_number", *exact_duplicate_cols]
@@ -683,6 +782,13 @@ class TemplateBalanceExtractor:
                             f"you do not want authored cardinality validation. Preview: {preview}"
                         )
 
+            # Authored target flag as recorded in the mapping workbook, captured
+            # before the lookup override below so validation can prefer it.
+            authored_target_subtotal = (
+                out[target_subtotal_col].fillna("").astype(str).str.strip()
+                if target_subtotal_col in out.columns
+                else pd.Series("", index=out.index)
+            )
             if target_subtotal_lookup:
                 out[target_subtotal_col] = out.apply(
                     lambda row: target_subtotal_lookup.get(
@@ -715,11 +821,92 @@ class TemplateBalanceExtractor:
                     f"Ninth 19_total and ESTO 19 Total must be subtotal. Preview: {preview}"
                 )
 
+            # Validation basis: prefer the authored subtotal flags recorded in the
+            # mapping workbook, falling back to the computed/lookup flags only for
+            # rows where the authored value is blank. Reviewed exceptions from the
+            # leap_mappings subtotal_mismatch_allowed sheet are honored. Downstream
+            # record building keeps using the computed/lookup flags unchanged.
+            authored_leap_subtotal = (
+                out["leap_is_subtotal"].fillna("").astype(str).str.strip()
+                if "leap_is_subtotal" in out.columns
+                else pd.Series("", index=out.index)
+            )
+            leap_flag_validation = out["leap_is_subtotal_computed"].where(
+                authored_leap_subtotal.eq(""), authored_leap_subtotal.map(truthy)
+            )
+            target_flag_lookup = out[target_subtotal_col].fillna(False).map(truthy)
+            target_flag_validation = target_flag_lookup.where(
+                authored_target_subtotal.eq(""), authored_target_subtotal.map(truthy)
+            )
+            sheet_exceptions = load_subtotal_mismatch_exception_sets().get(sheet_label, set())
+            if sheet_exceptions:
+                exception_matched = pd.Series(
+                    [
+                        (
+                            _norm_exception_part(path),
+                            _norm_exception_part(fuel),
+                            _norm_exception_part(sector),
+                            _norm_exception_part(product),
+                        )
+                        in sheet_exceptions
+                        for path, fuel, sector, product in zip(
+                            out["leap_sector_name_full_path"],
+                            out["raw_leap_fuel_name"],
+                            out[target_sector_col],
+                            out[target_fuel_col],
+                        )
+                    ],
+                    index=out.index,
+                )
+            else:
+                exception_matched = pd.Series(False, index=out.index)
+
             subtotal_mismatch = (
                 valid
-                & out["leap_is_subtotal_computed"].ne(out[target_subtotal_col].fillna(False).map(truthy))
+                & leap_flag_validation.ne(target_flag_validation)
+                & ~out["subtotal_mismatch_is_ok"]
+                & ~exception_matched
+            )
+
+            # Computed-vs-authored disagreements are diagnostics, not blockers:
+            # rows the old computed basis would have flagged but the authored
+            # basis (plus exceptions) accepts are written to a CSV for review.
+            computed_mismatch = (
+                valid
+                & out["leap_is_subtotal_computed"].ne(target_flag_lookup)
                 & ~out["subtotal_mismatch_is_ok"]
             )
+            diagnostic_only = computed_mismatch & ~subtotal_mismatch
+            if diagnostic_only.any():
+                diag_cols = [
+                    "leap_sector_name_full_path",
+                    "raw_leap_fuel_name",
+                    target_sector_col,
+                    target_fuel_col,
+                    "leap_is_subtotal_computed",
+                    target_subtotal_col,
+                    "subtotal_mismatch_is_ok",
+                ]
+                diag = out.loc[diagnostic_only, diag_cols].copy()
+                diag["exception_matched"] = exception_matched.loc[diagnostic_only]
+                diag_path = (
+                    SUBTOTAL_FLAG_DIAGNOSTIC_DIR
+                    / f"subtotal_flag_computed_vs_authored_{sheet_label}.csv"
+                )
+                try:
+                    diag_path.parent.mkdir(parents=True, exist_ok=True)
+                    diag.to_csv(diag_path, index=False, encoding="utf-8-sig")
+                    print(
+                        f"[WARN] {sheet_label}: {int(diagnostic_only.sum())} computed-vs-authored "
+                        f"subtotal flag disagreement(s) recorded (not blocking): {diag_path}",
+                        flush=True,
+                    )
+                except Exception as exc:
+                    print(
+                        f"[WARN] {sheet_label}: could not write subtotal flag diagnostic CSV "
+                        f"({exc}); {int(diagnostic_only.sum())} disagreement(s) not blocking.",
+                        flush=True,
+                    )
             mismatch_rows = out[subtotal_mismatch].copy()
             if not mismatch_rows.empty:
                 preview_cols = [
@@ -732,10 +919,21 @@ class TemplateBalanceExtractor:
                     "subtotal_mismatch_is_ok",
                 ]
                 preview = mismatch_rows[preview_cols].drop_duplicates().head(30).to_dict("records")
-                raise ValueError(
-                    f"{sheet_label} contains subtotal mismatches. Set subtotal_mismatch_is_ok=True "
-                    f"only for intentional subtotal-to-non-subtotal mappings. Preview: {preview}"
-                )
+                # LEAP_INIT_ALLOW_SUBTOTAL_MISMATCH: user-authorized escape hatch for
+                # runs against a mapping workbook whose subtotal flags are mid-review;
+                # mismatched rows are reported but do not block the run.
+                if truthy(os.environ.get("LEAP_INIT_ALLOW_SUBTOTAL_MISMATCH", "")):
+                    print(
+                        f"[WARN] {sheet_label}: {len(mismatch_rows)} subtotal mismatch row(s) "
+                        "allowed because LEAP_INIT_ALLOW_SUBTOTAL_MISMATCH is set. "
+                        f"Preview (up to 30): {preview}",
+                        flush=True,
+                    )
+                else:
+                    raise ValueError(
+                        f"{sheet_label} contains subtotal mismatches. Set subtotal_mismatch_is_ok=True "
+                        f"only for intentional subtotal-to-non-subtotal mappings. Preview: {preview}"
+                    )
 
             pair_many_to_many = out["pair_mapping_cardinality_computed"].eq("many_to_many")
             many_to_many_rows = out[

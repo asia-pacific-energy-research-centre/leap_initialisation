@@ -47,6 +47,7 @@ from codebase.mappings.canonical_mapping import (
 )
 from codebase.functions import supply_data_pipeline, leap_api, patch_baseline_seeds
 from codebase.functions.supply_export_rows import coerce_value_by_year
+from codebase.functions.transformation_record_builder import _is_excluded_transformation_record
 from codebase.functions.baseline_seed_validation import (
     BaselineSeedValidationError,
     SOURCE_FILE_COLUMN,
@@ -590,13 +591,17 @@ def save_transformation_exports_with_split_targets(
             if str(record.get("economy") or "").strip()
         }
     )
+    # Collect scenario-specific records for all economies once per scenario, then
+    # split by economy so each export file only contains one economy's records.
+    # Without this per-economy split, multiple economies that share the same sector
+    # name (e.g. "BKB and PB plants") emit identical Branch_Path rows that are
+    # summed in finalise_export_df, producing Output Share > 100%.
+    # All scenarios are collected before writing so zero-skeleton records can
+    # borrow inert technology measures from a scenario with genuine data.
+    records_by_scenario: dict[str, list[dict]] = {}
+    targets_by_scenario: dict[str, object] = {}
     for scenario in scenario_list:
         projection_scenario = _projection_scenario_for_export(scenario)
-        # Collect scenario-specific records for all economies once per scenario, then
-        # split by economy so each export file only contains one economy's records.
-        # Without this per-economy split, multiple economies that share the same sector
-        # name (e.g. "BKB and PB plants") emit identical Branch_Path rows that are
-        # summed in finalise_export_df, producing Output Share > 100%.
         all_scenario_records = process_records
         all_scenario_targets = process_target_rows
         try:
@@ -613,6 +618,59 @@ def save_transformation_exports_with_split_targets(
                 f"[WARN] Failed to build scenario-specific transformation baseline for "
                 f"{scenario} (projection={projection_scenario}); falling back to default baseline: {exc}"
             )
+        records_by_scenario[scenario] = all_scenario_records
+        targets_by_scenario[scenario] = all_scenario_targets
+
+    transformation_workflow.core.borrow_zero_skeleton_measures(records_by_scenario)
+
+    # Zero skeletons are only meaningful for processes that exist as canonical
+    # LEAP branches. A config-enabled process with zero data everywhere and no
+    # branch in the full-model export (e.g. SMR without CCS in models that only
+    # carry Electrolysers + SMR with CCS) must not emit rows: they would have no
+    # IDs (SEED-003/011) and pollute share groups (SEED-007).
+    if full_branch_catalog_df is not None and not full_branch_catalog_df.empty:
+        catalog_paths = [
+            str(value).strip().lower()
+            for value in full_branch_catalog_df.get("branch_path", pd.Series(dtype=str)).tolist()
+            if str(value).strip()
+        ]
+        _code_map = transformation_workflow.core.code_to_name_mapping
+
+        def _skeleton_process_in_catalog(record) -> bool:
+            sector = str(
+                transformation_workflow.core.map_code_label(record.get("sector_title"), _code_map) or ""
+            ).strip()
+            process = str(
+                transformation_workflow.core.map_code_label(record.get("process_name"), _code_map) or ""
+            ).strip()
+            if not sector or not process:
+                return False
+            prefix = f"transformation\\{sector}\\processes\\{process}".lower()
+            return any(
+                path == prefix or path.startswith(prefix + "\\") for path in catalog_paths
+            )
+
+        dropped_skeletons = 0
+        for _scenario in list(records_by_scenario):
+            kept_records = []
+            for record in records_by_scenario[_scenario] or []:
+                if record.get("is_zero_skeleton") and (
+                    _is_excluded_transformation_record(record)
+                    or not _skeleton_process_in_catalog(record)
+                ):
+                    dropped_skeletons += 1
+                    continue
+                kept_records.append(record)
+            records_by_scenario[_scenario] = kept_records
+        if dropped_skeletons:
+            print(
+                f"[INFO] Dropped {dropped_skeletons} zero-skeleton record(s) whose process "
+                "branch is absent from the full-model catalog."
+            )
+
+    for scenario in scenario_list:
+        all_scenario_records = records_by_scenario[scenario]
+        all_scenario_targets = targets_by_scenario[scenario]
         for economy in (base_economies or [transformation_workflow._infer_primary_economy(all_scenario_records)]):
             economy_records = [r for r in all_scenario_records if str(r.get("economy") or "").strip() == economy]
             economy_targets = (
@@ -653,9 +711,12 @@ def save_transformation_exports_with_split_targets(
                 transformation_workflow.core.EXPORT_MODEL_NAME,
                 [scenario],
                 full_branch_catalog_df=full_branch_catalog_df,
+                # Producer ownership: transfer-adjacent modules belong to the
+                # transfers workbook only, so exclude them from this producer's
+                # tier-2 zero-fill scope (they would otherwise duplicate keys).
                 in_scope_sector_titles=(
                     transformation_workflow.core.get_analyzed_sector_titles()
-                    | transfers_workflow.get_transfer_sector_titles()
+                    - transfers_workflow.get_transfer_sector_titles()
                 ),
             )
             if export_path:
@@ -732,10 +793,10 @@ def save_transfer_exports_with_supply_overrides(
                 transformation_workflow.core.EXPORT_MODEL_NAME,
                 [scenario],
                 full_branch_catalog_df=full_branch_catalog_df,
-                in_scope_sector_titles=(
-                    transformation_workflow.core.get_analyzed_sector_titles()
-                    | transfers_workflow.get_transfer_sector_titles()
-                ),
+                # Producer ownership: the transfers workbook zero-fills only the
+                # transfer-adjacent modules it owns; all other transformation
+                # modules are owned by the transformation/refining producers.
+                in_scope_sector_titles=transfers_workflow.get_transfer_sector_titles(),
             )
             if export_path:
                 export_file = Path(export_path)
@@ -1677,9 +1738,11 @@ def write_per_economy_combined_workbooks(
         combined = pd.concat(frames, ignore_index=True, sort=False)
         combined = _remap_resource_branch_paths(combined, reference_df)
         combined = _backfill_metadata_from_reference(combined, reference_df)
-        combined = combined.drop(
-            columns=["BranchID", "VariableID", "ScenarioID", "RegionID"], errors="ignore"
-        )
+        # Preserve non-branch IDs through validation. Canonical rows will be
+        # re-enriched from the full-model export, while reviewed aggregate-demand
+        # placeholder branches can retain their valid Variable/Scenario/Region IDs
+        # even though the BranchID stays unresolved by design.
+        combined = combined.drop(columns=["BranchID"], errors="ignore")
         if "Region" in combined.columns:
             combined["Region"] = region
 

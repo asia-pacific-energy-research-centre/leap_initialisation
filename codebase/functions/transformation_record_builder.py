@@ -895,28 +895,94 @@ def build_zero_skeleton_record(
 ):
     """Return a zero-activity process record for sectors with no ESTO data.
 
-    Ensures LEAP receives explicit zero Import/Export Target rows for processes
-    that are in scope but had no historical activity, rather than leaving stale
-    values from a prior run untouched.  The caller is responsible for printing
-    the reason before calling this so the log stays informative.
+    Ensures LEAP receives explicit zero rows for processes that are in scope but
+    had no activity, rather than leaving stale values from a prior run untouched.
+    The record carries the full branch/variable key set a genuine record would
+    (zero output series per configured output fuel, inert efficiency, zero
+    import/export targets) so a scenario with legitimately zero activity emits
+    the same keys as scenarios with real values and scenario-coverage validation
+    (SEED-010) stays symmetric. All-zero share groups resolve to 100 via the
+    final writer's INIT-003 synthetic anchor, permitted because Exogenous
+    Capacity is explicitly zero. The caller is responsible for printing the
+    reason before calling this so the log stays informative.
     """
     base = int(export_base_year if export_base_year is not None else EXPORT_BASE_YEAR)
     final = int(export_final_year if export_final_year is not None else EXPORT_FINAL_YEAR)
     zero_by_year = {year: 0.0 for year in range(base, final + 1)}
     zero_targets = {str(label): dict(zero_by_year) for label in (output_labels or [])}
-    return build_process_record(
+    record = build_process_record(
         economy=economy,
         sector_title=sector_title,
         process_name=process_name,
-        output_values={},
+        output_values={str(label): dict(zero_by_year) for label in (output_labels or [])},
         feedstock_values={},
-        efficiency=None,
+        # Inert placeholder for a zero-capacity process; keeps the Process
+        # Efficiency key present in every scenario. Replaced by a genuine donor
+        # scenario's value via borrow_zero_skeleton_measures when one exists.
+        efficiency=1.0,
         auxiliary_ratios={},
         loss_values={},
         loss_total=0.0,
         output_import_targets=zero_targets,
         output_export_targets=dict(zero_targets),
     )
+    record["is_zero_skeleton"] = True
+    return record
+
+
+def borrow_zero_skeleton_measures(
+    records_by_scenario,
+    donor_priority=("Reference", "Current Accounts", "Target"),
+):
+    """Copy inert technology measures onto zero skeletons from scenarios with data.
+
+    A scenario can legitimately have zero activity for a process (e.g. USA Target
+    hydrogen) while other scenarios carry genuine values. Shares are borrowed
+    across scenarios by the final writer's canonical share completion; this
+    handles the record-level measures (efficiency, auxiliary and own-use ratios)
+    so a zero-capacity process shows the donor scenario's technology parameters
+    instead of placeholders. With zero capacity these values are inert.
+    """
+    def _key(record):
+        return (
+            str(record.get("economy") or "").strip(),
+            str(record.get("sector_title") or "").strip(),
+            str(record.get("process_name") or "").strip(),
+        )
+
+    genuine_by_scenario = {}
+    for scenario, records in (records_by_scenario or {}).items():
+        for record in records or []:
+            if not record.get("is_zero_skeleton"):
+                genuine_by_scenario.setdefault(str(scenario), {})[_key(record)] = record
+
+    borrowed = 0
+    for scenario, records in (records_by_scenario or {}).items():
+        for record in records or []:
+            if not record.get("is_zero_skeleton"):
+                continue
+            for donor_scenario in donor_priority:
+                if str(donor_scenario) == str(scenario):
+                    continue
+                donor = genuine_by_scenario.get(str(donor_scenario), {}).get(_key(record))
+                if donor is None:
+                    continue
+                if donor.get("efficiency") is not None:
+                    record["efficiency"] = donor.get("efficiency")
+                    record["efficiency_scale"] = donor.get(
+                        "efficiency_scale", record.get("efficiency_scale")
+                    )
+                record["auxiliary_ratios"] = dict(donor.get("auxiliary_ratios") or {})
+                record["own_use_ratios"] = dict(donor.get("own_use_ratios") or {})
+                record["borrowed_measures_from_scenario"] = str(donor_scenario)
+                borrowed += 1
+                break
+    if borrowed:
+        print(
+            f"[INFO] Borrowed inert technology measures onto {borrowed} zero-skeleton "
+            "record(s) from donor scenarios."
+        )
+    return borrowed
 
 
 def select_primary_label(value_map):

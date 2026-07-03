@@ -179,19 +179,25 @@ def _keep_windows_pc_awake(enabled: bool = True):
         result = ctypes.windll.kernel32.SetThreadExecutionState(
             ES_CONTINUOUS | ES_SYSTEM_REQUIRED
         )
-        if result:
-            print("[INFO] Windows sleep prevention enabled for this workflow run.")
-        else:
-            print("[WARN] Could not enable Windows sleep prevention for this workflow run.")
-        try:
-            yield
-        finally:
-            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
-            if result:
-                print("[INFO] Windows sleep prevention released.")
     except Exception as exc:
+        # Only setup failures fall back to a plain yield. Exceptions raised by the
+        # wrapped workflow (thrown into this generator at the yield below) must not
+        # be caught here, or contextlib sees a second yield after throw() and raises
+        # "generator didn't stop after throw()", masking the real error.
         print(f"[WARN] Windows sleep prevention unavailable: {exc}")
         yield
+        return
+
+    if result:
+        print("[INFO] Windows sleep prevention enabled for this workflow run.")
+    else:
+        print("[WARN] Could not enable Windows sleep prevention for this workflow run.")
+    try:
+        yield
+    finally:
+        ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+        if result:
+            print("[INFO] Windows sleep prevention released.")
 
 
 def _emit_completion_beep(*, success: bool = True, style: str = "simple") -> None:

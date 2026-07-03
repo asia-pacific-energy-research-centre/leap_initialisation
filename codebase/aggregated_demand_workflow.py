@@ -36,6 +36,13 @@ except Exception as exc:
 
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions.unified_name_lookup import load_active_mapping_sheet
+from codebase.functions.ninth_projection_mapping import (
+    add_ninth_pair_columns,
+    allocate_ninth_projection_to_esto,
+    build_esto_base_year_values,
+    build_ninth_projection_series,
+    normalize_economy_key,
+)
 from codebase.utilities.output_paths import STANDALONE_LEAP_EXPORTS_ROOT
 from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
 
@@ -48,6 +55,7 @@ PROJECTION_DATA_PATH = ENERGY_SOURCE_CONFIG.ninth_projection_table_path
 FUEL_MAPPINGS_PATH = OUTLOOK_MAPPINGS_MASTER_PATH
 FUEL_ESTO_SHEET = "leap_combined_esto"
 FUEL_NINTH_SHEET = "leap_combined_ninth"
+NINTH_TO_ESTO_SHEET = "ninth_pairs_to_esto_pairs"
 
 # ── Year settings ─────────────────────────────────────────────────────────────
 BASE_YEAR = ENERGY_SOURCE_CONFIG.esto_base_year
@@ -440,13 +448,19 @@ def _load_demand_csv(
     """
     stable_cols = [
         "economy", "scenarios", "sectors", "sub1sectors", "sub2sectors",
+        "sub3sectors", "sub4sectors",
         "fuels", "subfuels", "subtotal_results",
     ]
     year_cols = [str(y) for y in range(BASE_YEAR, final_year + 1)]
     header = pd.read_csv(path, nrows=0)
     use_cols = [c for c in [*stable_cols, *year_cols] if c in header.columns]
     df = pd.read_csv(path, usecols=use_cols, low_memory=False)
-    for col in ["economy", "scenarios", "sectors", "sub1sectors", "sub2sectors", "fuels", "subfuels"]:
+    for col in [
+        "economy", "scenarios", "sectors", "sub1sectors", "sub2sectors",
+        "sub3sectors", "sub4sectors", "fuels", "subfuels",
+    ]:
+        if col not in df.columns:
+            df[col] = "x"
         df[col] = df[col].astype(str).str.strip()
     df["subtotal_results"] = (
         df["subtotal_results"].astype(str).str.strip().str.lower().isin({"true", "1", "yes"})
@@ -616,6 +630,189 @@ def _extract_projection_years(
     return long[out_cols].copy()
 
 
+def _extract_contextual_projection_years(
+    ninth_df: pd.DataFrame,
+    esto_df: pd.DataFrame,
+    csv_scenario: str,
+    esto_fuel_map: dict[str, str],
+    base_year: int = BASE_YEAR,
+    final_year: int = PROJECTION_END_YEAR,
+    exclude_own_use_td_losses: bool = False,
+    excluded_sectors: list[str] | None = None,
+    use_sector_branches: bool = False,
+    mappings_path: Path = FUEL_MAPPINGS_PATH,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Allocate aggregate 9th fuels using same-sector ESTO base-year shares.
+
+    The canonical 9th-to-ESTO relationships define the detailed candidates for
+    each (9th sector, 9th fuel) source pair. The established projection allocator
+    then calculates economy-specific shares from matching ESTO flow/product rows,
+    preserving each 9th source-pair total exactly. This avoids the previous
+    order-dependent ``drop_duplicates(..., keep="first")`` fuel assignment.
+    """
+    mask = (
+        ~ninth_df["subtotal_results"]
+        & ninth_df["sectors"].isin(NINTH_SECTORS)
+        & ninth_df["sub1sectors"].isin(NINTH_SUB1_SECTORS)
+        & ninth_df["sub2sectors"].isin(NINTH_SUB2_SECTORS)
+        & ninth_df["scenarios"].astype(str).str.lower().eq(str(csv_scenario).lower())
+    )
+    if exclude_own_use_td_losses:
+        mask &= ~ninth_df["sub1sectors"].isin(OWN_USE_SECTORS | TD_LOSSES_SECTORS)
+    if excluded_sectors:
+        excluded = {str(item).strip() for item in excluded_sectors if str(item).strip()}
+        mask &= ~(ninth_df["sectors"].isin(excluded) | ninth_df["sub1sectors"].isin(excluded))
+    ninth_filtered = ninth_df[mask].copy()
+    if not exclude_own_use_td_losses:
+        td_electricity = (
+            ninth_filtered["sub1sectors"].eq(TD_LOSSES_SUB1)
+            & ninth_filtered["fuels"].eq(TD_LOSSES_EXCLUDE_FUEL)
+        )
+        ninth_filtered = ninth_filtered[~td_electricity].copy()
+
+    projection_years = [
+        year for year in range(PROJECTION_START_YEAR, final_year + 1)
+        if str(year) in ninth_filtered.columns
+    ]
+    if ninth_filtered.empty or not projection_years:
+        columns = ["economy", "leap_fuel_name", "year", "value"]
+        if use_sector_branches:
+            columns.insert(1, "sector")
+        return pd.DataFrame(columns=columns), pd.DataFrame()
+    mapping = load_active_mapping_sheet(NINTH_TO_ESTO_SHEET, Path(mappings_path))
+    for column in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:
+        mapping[column] = mapping[column].fillna("").astype(str).str.strip()
+    mapped_sectors = set(mapping["9th_sector"])
+    ninth_filtered = ninth_filtered.rename(
+        columns={str(year): year for year in projection_years}
+    )
+    ninth_pairs = add_ninth_pair_columns(ninth_filtered)
+    # Detailed 9th demand rows can sit below the sector level represented in the
+    # mapping workbook (for example road engine types below ``15_02_road``).
+    # Resolve each row to the deepest mapped ancestor for its fuel so allocation
+    # remains within the narrowest supported sector/module context.
+    sector_columns = ["sub4sectors", "sub3sectors", "sub2sectors", "sub1sectors", "sectors"]
+    resolved_sectors: list[str] = []
+    for _, row in ninth_pairs.iterrows():
+        fuel = str(row.get("9th_fuel", "")).strip()
+        candidates = [
+            str(row.get(column, "")).strip()
+            for column in sector_columns
+            if str(row.get(column, "")).strip().lower() not in {"", "x", "nan", "none"}
+        ]
+        resolved_sectors.append(
+            next((sector for sector in candidates if sector in mapped_sectors), candidates[0] if candidates else "")
+        )
+    ninth_pairs["9th_sector"] = resolved_sectors
+    ninth_pairs["economy_key"] = ninth_pairs["economy"].map(normalize_economy_key)
+    ninth_series = build_ninth_projection_series(ninth_pairs, projection_years)
+
+    # Some valid demand source pairs are absent as exact crosswalk rows even
+    # though both independent axes are reviewed elsewhere in the workbook
+    # (for example 17_nonenergy_use × 07_x_other_petroleum_products). Use exact
+    # rows when present; otherwise combine that sector's reviewed ESTO flows
+    # with that fuel's reviewed ESTO products. Base-year values in the resulting
+    # flow/product context determine the actual allocation shares.
+    sector_flows = (
+        mapping.groupby("9th_sector", dropna=False)["esto_flow"]
+        .apply(lambda values: sorted({value for value in values if value}))
+        .to_dict()
+    )
+    fuel_products = (
+        mapping.groupby("9th_fuel", dropna=False)["esto_product"]
+        .apply(lambda values: sorted({value for value in values if value}))
+        .to_dict()
+    )
+    mapping_rows: list[dict[str, str]] = []
+    for sector, fuel in ninth_series[["9th_sector", "9th_fuel"]].drop_duplicates().itertuples(index=False, name=None):
+        exact = mapping[mapping["9th_sector"].eq(sector) & mapping["9th_fuel"].eq(fuel)]
+        if not exact.empty:
+            mapping_rows.extend(
+                exact[["9th_sector", "9th_fuel", "esto_flow", "esto_product"]].to_dict("records")
+            )
+            continue
+        mapping_rows.extend(
+            {
+                "9th_sector": sector,
+                "9th_fuel": fuel,
+                "esto_flow": flow,
+                "esto_product": product,
+            }
+            for flow in sector_flows.get(sector, [])
+            for product in fuel_products.get(fuel, [])
+        )
+    mapping = pd.DataFrame(mapping_rows).drop_duplicates()
+
+    # Keep subtotal rows in this allocation-only table: canonical mappings may
+    # target a parent flow such as ``17 Non-energy use`` and its product values
+    # provide the correct within-sector weights. These rows are never added to
+    # the base-year demand output, so retaining them here cannot double count it.
+    flows = esto_df["flows"].astype(str).str.strip()
+    own_use_mask = flows.str.startswith("10.01")
+    td_mask = flows.str.startswith("10.02")
+    other_mask = flows.str.startswith(("04", "05", "14", "15", "16", "17"))
+    if exclude_own_use_td_losses:
+        esto_mask = other_mask
+    else:
+        esto_mask = own_use_mask | td_mask | other_mask
+    esto_filtered = esto_df[esto_mask].copy()
+    if not exclude_own_use_td_losses:
+        td_electricity = (
+            esto_filtered["flows"].astype(str).str.startswith("10.02")
+            & esto_filtered["products"].astype(str).str.startswith("17")
+        )
+        esto_filtered = esto_filtered[~td_electricity].copy()
+    if excluded_sectors:
+        excluded = {str(item).strip() for item in excluded_sectors if str(item).strip()}
+        esto_filtered = esto_filtered[
+            ~esto_filtered["flows"].map(lambda flow: _esto_flow_is_excluded(flow, excluded))
+        ].copy()
+    base_values = build_esto_base_year_values(esto_filtered, base_year)
+
+    projection_wide, diagnostics = allocate_ninth_projection_to_esto(
+        mapping_df=mapping,
+        ninth_series=ninth_series,
+        base_values=base_values,
+        projection_years=projection_years,
+        strict_conservation=True,
+    )
+    if projection_wide.empty:
+        columns = ["economy", "leap_fuel_name", "year", "value"]
+        if use_sector_branches:
+            columns.insert(1, "sector")
+        return pd.DataFrame(columns=columns), diagnostics
+
+    projection_wide["fuel_code"] = projection_wide["esto_product"]
+    projection_wide["leap_fuel_name"] = projection_wide["fuel_code"].map(esto_fuel_map)
+    unmapped = sorted(
+        projection_wide.loc[projection_wide["leap_fuel_name"].isna(), "fuel_code"]
+        .dropna().astype(str).unique()
+    )
+    if unmapped:
+        print(
+            f"[WARN] {len(unmapped)} allocated ESTO products have no active LEAP fuel mapping, "
+            f"dropped: {unmapped[:15]}"
+        )
+    projection_wide = projection_wide[projection_wide["leap_fuel_name"].notna()].copy()
+    projection_wide["economy"] = projection_wide["economy_key"].map(
+        lambda value: f"{str(value)[:2]}_{str(value)[2:]}" if len(str(value)) > 2 else str(value)
+    )
+    if use_sector_branches:
+        projection_wide["sector"] = projection_wide["esto_flow"].map(_esto_flow_to_sector)
+        id_vars = ["economy", "sector", "leap_fuel_name"]
+    else:
+        id_vars = ["economy", "leap_fuel_name"]
+    long = projection_wide.melt(
+        id_vars=id_vars,
+        value_vars=projection_years,
+        var_name="year",
+        value_name="value",
+    )
+    long["year"] = pd.to_numeric(long["year"], errors="coerce").astype("Int64")
+    long["value"] = pd.to_numeric(long["value"], errors="coerce").abs().fillna(0.0)
+    return long, diagnostics
+
+
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 def build_aggregated_demand(
@@ -650,7 +847,6 @@ def build_aggregated_demand(
     Matching ESTO flow prefixes are omitted from the base-year extraction.
     """
     esto_fuel_map = load_fuel_mapping(fuel_mappings_path, FUEL_ESTO_SHEET)
-    ninth_fuel_map = load_fuel_mapping(fuel_mappings_path, FUEL_NINTH_SHEET)
     esto_df = _load_esto_base_csv(esto_data_path, economy=economy, base_year=base_year)
     ninth_df = _load_demand_csv(data_path, economy=economy, final_year=final_year)
 
@@ -673,37 +869,53 @@ def build_aggregated_demand(
     )
     base_agg = base_rows.groupby(group_cols, as_index=False)["value"].sum(min_count=1)
     base_agg["value"] = base_agg["value"].fillna(0.0)
+    base_agg["leap_fuel_name"] = base_agg["fuel_code"].map(esto_fuel_map)
+    unmapped_base = sorted(
+        base_agg.loc[base_agg["leap_fuel_name"].isna(), "fuel_code"]
+        .dropna().astype(str).unique()
+    )
+    if unmapped_base:
+        print(
+            f"[WARN] {len(unmapped_base)} ESTO products have no active canonical mapping, "
+            f"dropped: {unmapped_base[:15]}"
+        )
+    base_agg = base_agg[base_agg["leap_fuel_name"].notna()].copy()
 
     if scenario == "Current Accounts":
         combined = base_agg.copy()
     else:
         csv_scen = SCENARIO_CSV_MAP.get(scenario, "reference").lower()
-        proj_rows = _extract_projection_years(
-            ninth_df,
+        proj_rows, allocation_diagnostics = _extract_contextual_projection_years(
+            ninth_df=ninth_df,
+            esto_df=esto_df,
             csv_scenario=csv_scen,
+            esto_fuel_map=esto_fuel_map,
+            base_year=base_year,
             final_year=final_year,
             exclude_own_use_td_losses=exclude_own_use_td_losses,
             excluded_sectors=excluded_sectors,
             use_sector_branches=use_sector_branches,
+            mappings_path=fuel_mappings_path,
         )
-        proj_agg = proj_rows.groupby(group_cols, as_index=False)["value"].sum(min_count=1)
+        proj_group_cols = (
+            ["economy", "sector", "leap_fuel_name", "year"]
+            if use_sector_branches else ["economy", "leap_fuel_name", "year"]
+        )
+        proj_agg = proj_rows.groupby(proj_group_cols, as_index=False)["value"].sum(min_count=1)
         proj_agg["value"] = proj_agg["value"].fillna(0.0)
         combined = pd.concat([base_agg, proj_agg], ignore_index=True)
+        if not allocation_diagnostics.empty:
+            fallback_count = int(
+                allocation_diagnostics.get("diagnostic_type", pd.Series(dtype=str))
+                .eq("share_fallback").sum()
+            )
+            print(
+                f"[INFO] Contextual aggregate-fuel allocation diagnostics: "
+                f"{len(allocation_diagnostics)} row(s), {fallback_count} fallback row(s)."
+            )
 
     combined["year"] = combined["year"].astype(int)
     combined = combined[(combined["year"] >= base_year) & (combined["year"] <= final_year)].copy()
-
-    # Map fuel codes → LEAP fuel names
-    combined["leap_fuel_name"] = combined["fuel_code"].map(ninth_fuel_map)
-    base_mask = combined["year"].eq(int(base_year))
-    combined.loc[base_mask, "leap_fuel_name"] = combined.loc[base_mask, "fuel_code"].map(esto_fuel_map)
-    unmapped = combined.loc[combined["leap_fuel_name"].isna(), "fuel_code"].unique()
-    if len(unmapped):
-        print(
-            f"[WARN] {len(unmapped)} fuel/product codes have no active canonical mapping,"
-            f" dropped: {sorted(unmapped)[:15]}"
-        )
-    combined = combined[combined["leap_fuel_name"].notna()].copy()
 
     # Aggregate many-to-one fuel mappings
     agg_cols = (["economy", "sector", "leap_fuel_name", "year"] if use_sector_branches
