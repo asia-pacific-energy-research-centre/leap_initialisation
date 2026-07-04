@@ -75,6 +75,30 @@ def test_supply_empty_comparison_fails():
         build_baseline_supply_conservation_artifacts(assets, empty_projection, empty_primary, ["20_USA"], 2022, 2023)
 
 
+def test_ninth_parent_fuel_row_is_excluded_when_detailed_subfuels_exist():
+    assets, projection, primary = _supply_fixture()
+    ninth = assets[0]["ninth"][0].copy()
+    production = ninth[ninth["sectors"] == "01_production"].iloc[0].to_dict()
+    production.update({"fuels": "01_coal", "subfuels": "x", 2023: 12.0})
+    child = dict(production)
+    child.update({"subfuels": "01_x_thermal_coal", 2023: 12.0})
+    other = ninth[ninth["sectors"] != "01_production"].copy()
+    assets[0]["ninth"] = (pd.concat([other, pd.DataFrame([production, child])], ignore_index=True), [2023])
+
+    totals, _, lineage = build_baseline_supply_conservation_artifacts(
+        assets, projection, primary, ["20_USA"], 2022, 2023
+    )
+
+    production_total = totals[(totals.flow == "production") & (totals.year == 2023)].iloc[0]
+    assert production_total.reference_total == pytest.approx(12.0)
+    parent = lineage[
+        (lineage.source_system == "9TH")
+        & (lineage.flow == "production")
+        & (lineage.source_product == "01_coal")
+    ]
+    assert set(parent.exclusion_reason) == {"structural_parent_aggregate"}
+
+
 def test_results_update_closure_passes_balanced_row():
     row = pd.DataFrame([{
         "economy": "20_USA", "scenario": "Reference", "esto_product": "p1", "year": 2030,

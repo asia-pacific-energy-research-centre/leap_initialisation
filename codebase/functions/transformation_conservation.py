@@ -21,35 +21,62 @@ def build_raw_transformation_output_reference(
     scenarios: list[str],
     base_year: int,
     final_year: int,
+    include_power_outputs: bool = True,
 ) -> pd.DataFrame:
     """Extract independent positive transformation outputs from raw balances."""
     rows = []
     for economy in economies:
-        base = esto[esto["economy"].astype(str).eq(str(economy).replace("_", ""))]
+        normalized_economy = str(economy).replace("_", "").casefold()
+        base = esto[
+            esto["economy"]
+            .astype(str)
+            .str.replace("_", "", regex=False)
+            .str.casefold()
+            .eq(normalized_economy)
+        ]
         base = base[base["flows"].astype(str).str.match(r"^09(?:\.|\s)")]
-        rows.extend(_raw_rows(base, economy, scenarios, base_year, "ESTO", "flows", "products"))
+        rows.extend(
+            _raw_rows(
+                base, economy, scenarios, base_year, "ESTO", "flows", "products",
+                include_power_outputs=include_power_outputs,
+            )
+        )
         projection = ninth[ninth["economy"].astype(str).eq(str(economy))]
         projection = projection[projection["sectors"].astype(str).str.match(r"^09(?:_|\s)")]
         for scenario in scenarios:
             scenario_rows = projection
             if "scenarios" in scenario_rows.columns:
-                scenario_rows = scenario_rows[scenario_rows["scenarios"].astype(str).str.casefold().eq(str(scenario).casefold())]
+                source_scenario = (
+                    "target"
+                    if str(scenario).strip().casefold() == "target"
+                    else "reference"
+                )
+                scenario_rows = scenario_rows[
+                    scenario_rows["scenarios"]
+                    .astype(str)
+                    .str.casefold()
+                    .eq(source_scenario)
+                ]
             for year in range(base_year + 1, final_year + 1):
-                rows.extend(_raw_rows(scenario_rows, economy, [scenario], year, "9TH", "sectors", "fuels"))
+                rows.extend(
+                    _raw_rows(
+                        scenario_rows, economy, [scenario], year, "9TH", "sectors", "fuels",
+                        include_power_outputs=include_power_outputs,
+                    )
+                )
     return pd.DataFrame(rows, columns=_lineage_columns())
 
 
 def build_transformation_output_conservation(
     reference_rows: pd.DataFrame,
-    process_records: list[dict],
-    scenarios: list[str],
+    process_records_by_scenario: dict[str, list[dict]],
     tolerance_pj: float = 1e-6,
     compressed_projection_years: set[int] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Compare raw positive outputs with final pre-export process-record outputs."""
     if tolerance_pj < 0:
         raise ValueError("tolerance_pj must be non-negative")
-    produced = _produced_rows(process_records, scenarios)
+    produced = _produced_rows(process_records_by_scenario)
     included_reference = reference_rows[reference_rows["included"]].copy()
     if included_reference.empty and produced.empty:
         raise ValueError("Transformation output conservation comparison is empty")
@@ -90,53 +117,89 @@ def build_transformation_output_conservation(
     return totals.sort_values(keys).reset_index(drop=True), breakdown.reset_index(drop=True), lineage.reset_index(drop=True)
 
 
-def _raw_rows(frame, economy, scenarios, year, source_system, module_column, fuel_column):
+def _raw_rows(
+    frame,
+    economy,
+    scenarios,
+    year,
+    source_system,
+    module_column,
+    fuel_column,
+    include_power_outputs=True,
+):
     year_column = year if year in frame.columns else str(year)
     if year_column not in frame.columns:
         return []
     module_parents = _parents(frame[module_column])
     fuel_parents = _parents(frame[fuel_column]) if fuel_column in frame.columns else set()
+    detailed_subfuel = pd.Series(False, index=frame.index)
+    parent_fuels_with_detail: set[str] = set()
+    if source_system == "9TH" and "subfuels" in frame.columns and "fuels" in frame.columns:
+        subfuel_text = frame["subfuels"].fillna("").astype(str).str.strip()
+        detailed_subfuel = ~subfuel_text.str.casefold().isin({"", "x", "nan", "none"})
+        parent_fuels_with_detail = set(
+            frame.loc[detailed_subfuel, "fuels"].fillna("").astype(str)
+        )
     rows = []
     for index, row in frame.iterrows():
         module = str(row.get(module_column, ""))
         fuel = str(row.get(fuel_column, ""))
+        is_detailed_subfuel = bool(detailed_subfuel.loc[index])
+        if source_system == "9TH":
+            module = _deepest_hierarchy_value(
+                row,
+                ["sub4sectors", "sub3sectors", "sub2sectors", "sub1sectors", module_column],
+            )
+            if is_detailed_subfuel:
+                fuel = str(row.get("subfuels", ""))
         subtotal = any(_truthy(row.get(column)) for column in ("is_subtotal", "subtotal_layout", "subtotal_results"))
         aggregate = _code(module) in module_parents or _code(fuel) in fuel_parents
+        if source_system == "9TH" and not is_detailed_subfuel:
+            aggregate = aggregate or str(row.get("fuels", "")) in parent_fuels_with_detail
         raw_value = float(pd.to_numeric(pd.Series([row.get(year_column)]), errors="coerce").fillna(0.0).iloc[0])
         positive_output = raw_value > 0
-        included = positive_output and not subtotal and not aggregate
-        exclusion = "" if included else "non_positive_input_or_zero" if not positive_output else "subtotal_or_structural_aggregate"
+        power_out_of_scope = not include_power_outputs and _is_power_module(module)
+        included = positive_output and not subtotal and not aggregate and not power_out_of_scope
+        exclusion = (
+            ""
+            if included
+            else "non_positive_input_or_zero"
+            if not positive_output
+            else "subtotal_or_structural_aggregate"
+            if subtotal or aggregate
+            else "module_not_built_in_active_workflow"
+        )
         for scenario in scenarios:
             rows.append(_lineage_row(economy, scenario, year, source_system, module, fuel, raw_value if included else max(raw_value, 0.0), included, exclusion, index))
     return rows
 
 
-def _produced_rows(process_records, scenarios):
+def _produced_rows(process_records_by_scenario):
     rows = []
-    label_counts = {}
-    for record in process_records:
-        key = (record.get("economy"), record.get("sector_title"), tuple(sorted((record.get("output_values") or {}).keys())))
-        label_counts[key] = label_counts.get(key, 0) + 1
-    for record_index, record in enumerate(process_records):
-        economy = str(record.get("economy", ""))
-        module = str(record.get("sector_title") or record.get("process_name") or "")
-        output_values = record.get("output_values") or {}
-        fan_out = label_counts.get((record.get("economy"), record.get("sector_title"), tuple(sorted(output_values.keys()))), 0) > 1
-        for fuel, series in output_values.items():
-            if not isinstance(series, dict):
-                continue
-            for year, raw_value in series.items():
-                value = float(pd.to_numeric(pd.Series([raw_value]), errors="coerce").fillna(0.0).iloc[0])
-                if value <= 0:
+    for scenario, process_records in process_records_by_scenario.items():
+        label_counts = {}
+        for record in process_records:
+            key = (record.get("economy"), record.get("sector_title"), tuple(sorted((record.get("output_values") or {}).keys())))
+            label_counts[key] = label_counts.get(key, 0) + 1
+        for record_index, record in enumerate(process_records):
+            economy = str(record.get("economy", ""))
+            module = str(record.get("sector_title") or record.get("process_name") or "")
+            output_values = record.get("output_values") or {}
+            fan_out = label_counts.get((record.get("economy"), record.get("sector_title"), tuple(sorted(output_values.keys()))), 0) > 1
+            for fuel, series in output_values.items():
+                if not isinstance(series, dict):
                     continue
-                for scenario in scenarios:
+                for year, raw_value in series.items():
+                    value = float(pd.to_numeric(pd.Series([raw_value]), errors="coerce").fillna(0.0).iloc[0])
+                    if value <= 0:
+                        continue
                     rows.append({"economy": economy, "scenario": scenario, "transformation_module": COMPARISON_GROUP,
                         "output_fuel": OUTPUT_FUEL_GROUP, "year": int(year), "source_system": "PRODUCED_TRANSFORMATION",
                         "source_module": module, "source_fuel": str(fuel), "value": value, "included": True,
                         "inclusion_reason": "positive_pre_export_process_output", "exclusion_reason": "",
                         "value_classification": "untraceable" if fan_out else "exact",
                         "mapping_status": "fan_out_source_link_not_retained" if fan_out else "exact_direct",
-                        "source_row_id": _hash(["produced", record_index, economy, module, fuel, year, value])})
+                        "source_row_id": _hash(["produced", scenario, record_index, economy, module, fuel, year, value])})
     return pd.DataFrame(rows, columns=_lineage_columns())
 
 
@@ -151,6 +214,19 @@ def _lineage_row(economy, scenario, year, system, module, fuel, value, included,
 
 def _lineage_columns():
     return ["economy", "scenario", "transformation_module", "output_fuel", "year", "source_system", "source_module", "source_fuel", "value", "included", "inclusion_reason", "exclusion_reason", "value_classification", "mapping_status", "source_row_id"]
+
+
+def _deepest_hierarchy_value(row, columns):
+    for column in columns:
+        value = str(row.get(column, "")).strip()
+        if value.casefold() not in {"", "x", "nan", "none"}:
+            return value
+    return ""
+
+
+def _is_power_module(value):
+    code = _code(value)
+    return code == "09.01" or code.startswith("09.01.") or code == "09.02" or code.startswith("09.02.") or code.startswith("09.x")
 
 
 def _reason(row):

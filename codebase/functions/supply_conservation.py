@@ -118,10 +118,17 @@ def build_baseline_supply_conservation_artifacts(
 def _build_supply_reference_rows(esto, ninth, economies, base_year, final_year, included_esto_products):
     rows = []
     for economy in economies:
-        compact = str(economy).replace("_", "")
+        compact = str(economy).replace("_", "").casefold()
         for flow in SUPPLY_FLOWS:
             esto_flow = supply_data_pipeline.FLOW_CODES_BY_DATASET["esto"][flow]
-            subset = esto[esto["economy"].astype(str).eq(compact) & esto["flows"].astype(str).eq(esto_flow)]
+            subset = esto[
+                esto["economy"]
+                .astype(str)
+                .str.replace("_", "", regex=False)
+                .str.casefold()
+                .eq(compact)
+                & esto["flows"].astype(str).eq(esto_flow)
+            ]
             rows.extend(_source_rows(subset, economy, flow, base_year, "ESTO", "flows", "products", included_esto_products))
             ninth_flow = supply_data_pipeline.FLOW_CODES_BY_DATASET["ninth"][flow]
             subset = ninth[ninth["economy"].astype(str).eq(str(economy)) & ninth["sectors"].astype(str).eq(ninth_flow)]
@@ -138,12 +145,25 @@ def _source_rows(frame, economy, flow, year, source_system, flow_col, product_co
     product_col = product_col if product_col in frame.columns else ("subfuels" if "subfuels" in frame.columns else product_col)
     products = frame[product_col].fillna("").astype(str) if product_col in frame.columns else pd.Series("", index=frame.index)
     parent_codes = _parent_codes(products)
+    detailed_subfuel = pd.Series(False, index=frame.index)
+    parent_fuels_with_detail: set[str] = set()
+    if source_system == "9TH" and "subfuels" in frame.columns and "fuels" in frame.columns:
+        subfuel_text = frame["subfuels"].fillna("").astype(str).str.strip()
+        detailed_subfuel = ~subfuel_text.str.casefold().isin({"", "x", "nan", "none"})
+        parent_fuels_with_detail = set(
+            frame.loc[detailed_subfuel, "fuels"].fillna("").astype(str)
+        )
     output = []
     for index, row in frame.iterrows():
         product = str(row.get(product_col, ""))
+        is_detailed_subfuel = bool(detailed_subfuel.loc[index])
+        if source_system == "9TH" and is_detailed_subfuel:
+            product = str(row.get("subfuels", ""))
         code = _code(product)
         subtotal = any(_truthy(row.get(column)) for column in ("is_subtotal", "subtotal_layout", "subtotal_results"))
         structural_parent = bool(code and code in parent_codes)
+        if source_system == "9TH" and not is_detailed_subfuel:
+            structural_parent = structural_parent or str(row.get("fuels", "")) in parent_fuels_with_detail
         in_export_scope = included_products is None or product in included_products
         included = not subtotal and not structural_parent and in_export_scope
         reason = "included_leaf_in_export_scope" if included else (

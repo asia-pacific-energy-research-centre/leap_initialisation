@@ -3139,6 +3139,7 @@ def run_results_linked_transformation_supply_workflow(
     electricity_heat_interim_paths: list[Path] = []
     aggregated_demand_workbook_paths: list[Path] = []
     combined_export_path: Path | None = None
+    transformation_records_by_scenario: dict[str, list[dict]] = {}
     _economy_export_errors: list[tuple[str, Exception]] = []
 
     # Compute the effective excluded sectors once: manually configured exclusions merged
@@ -3210,6 +3211,7 @@ def run_results_linked_transformation_supply_workflow(
             output_dir=TRANSFORMATION_EXPORT_OUTPUT_DIR,
             filename_template=TRANSFORMATION_EXPORT_FILENAME_TEMPLATE,
             full_branch_catalog_df=pre_run_catalog_df if not pre_run_catalog_df.empty else None,
+            records_by_scenario_out=transformation_records_by_scenario,
         )
         econ_transfer_paths = save_transfer_exports_with_supply_overrides(
             reconciliation_table,
@@ -3221,6 +3223,13 @@ def run_results_linked_transformation_supply_workflow(
         )
         econ_dummy: list[Path] = []
         if RUN_ELECTRICITY_HEAT_INTERIM:
+            interim_records = electricity_heat_interim_workflow.build_electricity_heat_interim_rows(
+                economies=[economy]
+            )
+            for scenario in export_scenario_list:
+                transformation_records_by_scenario.setdefault(str(scenario), []).extend(
+                    copy.deepcopy(interim_records)
+                )
             econ_dummy = build_electricity_heat_interim_workbooks_for_results_supply(
                 economies=[economy],
                 scenarios=export_scenario_list,
@@ -3315,8 +3324,18 @@ def run_results_linked_transformation_supply_workflow(
         )
     if _is_capacity_unmet_baseline_seed_pass():
         try:
+            supply_scope_paths = [path for _, path in export_paths]
+            if not supply_scope_paths:
+                for economy in economy_list:
+                    supply_scope_paths.extend(
+                        sorted(
+                            _resolve(EXPORT_OUTPUT_DIR).glob(
+                                f"supply_leap_imports_{economy}*.xlsx"
+                            )
+                        )
+                    )
             exported_supply_products = find_exported_supply_products(
-                [path for _, path in export_paths],
+                supply_scope_paths,
                 assets[1],
             )
             baseline_supply_preservation, supply_breakdown, supply_lineage = (
@@ -3354,7 +3373,16 @@ def run_results_linked_transformation_supply_workflow(
             print(f"[WARN] Baseline supply source preservation diagnostic could not run: {exc}")
         try:
             raw_esto, _ = supply_data_pipeline.resolve_dataset(assets[0], "esto")
-            raw_ninth, _ = supply_data_pipeline.resolve_dataset(assets[0], "ninth")
+            raw_ninth = transformation_workflow.core.ninth_data_raw.copy()
+            raw_ninth_years = [
+                column for column in raw_ninth.columns if str(column).isdigit()
+            ]
+            if "00_APEC" in economy_list and not raw_ninth["economy"].astype(str).eq("00_APEC").any():
+                raw_ninth = transformation_workflow.core.add_all_economy_total(
+                    raw_ninth,
+                    raw_ninth_years,
+                    "00_APEC",
+                )
             transformation_reference = build_raw_transformation_output_reference(
                 esto=raw_esto,
                 ninth=raw_ninth,
@@ -3362,12 +3390,12 @@ def run_results_linked_transformation_supply_workflow(
                 scenarios=export_scenario_list,
                 base_year=BASE_YEAR,
                 final_year=FINAL_YEAR,
+                include_power_outputs=bool(RUN_ELECTRICITY_HEAT_INTERIM),
             )
             transformation_totals, transformation_breakdown, transformation_lineage = (
                 build_transformation_output_conservation(
                     reference_rows=transformation_reference,
-                    process_records=transformation_process_records,
-                    scenarios=export_scenario_list,
+                    process_records_by_scenario=transformation_records_by_scenario,
                 )
             )
             transformation_output_conservation_path = write_supply_diagnostic(

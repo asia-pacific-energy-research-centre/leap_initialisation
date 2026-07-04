@@ -565,6 +565,7 @@ def save_transformation_exports_with_split_targets(
     output_dir: Path | str = TRANSFORMATION_EXPORT_OUTPUT_DIR,
     filename_template: str = TRANSFORMATION_EXPORT_FILENAME_TEMPLATE,
     full_branch_catalog_df: pd.DataFrame | None = None,
+    records_by_scenario_out: dict[str, list[dict]] | None = None,
 ) -> list[Path]:
     """Save scenario-specific transformation LEAP workbooks with split import/export targets."""
     if not process_records:
@@ -667,6 +668,10 @@ def save_transformation_exports_with_split_targets(
                 f"[INFO] Dropped {dropped_skeletons} zero-skeleton record(s) whose process "
                 "branch is absent from the full-model catalog."
             )
+
+    if records_by_scenario_out is not None:
+        for scenario, scenario_records in records_by_scenario.items():
+            records_by_scenario_out.setdefault(str(scenario), []).extend(scenario_records)
 
     for scenario in scenario_list:
         all_scenario_records = records_by_scenario[scenario]

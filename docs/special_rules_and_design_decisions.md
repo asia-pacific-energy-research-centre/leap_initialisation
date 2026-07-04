@@ -618,6 +618,13 @@ parents, and own-use/loss proxy values are not outputs. Finer raw modules and
 fuels remain in lineage because source and LEAP module definitions are not
 consistently one-to-one; no allocation shares are invented.
 
+The reference scope follows modules active in the run. Electricity, CHP, and
+heat-plant source outputs remain visible in the scope-audit lineage but use
+`module_not_built_in_active_workflow` when the electricity/heat interim workflow
+is disabled. When it is enabled, its pre-export process records are included on
+the produced side. Reference and Current Accounts use the reference projection;
+Target uses the target projection, matching transformation export generation.
+
 This proves that output energy was not dropped or duplicated during
 construction. It does not prove LEAP round-trip fidelity, convergence,
 efficiency, or the full transformation identity. Transformation v2 is deferred:
