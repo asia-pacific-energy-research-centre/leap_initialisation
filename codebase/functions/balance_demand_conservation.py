@@ -126,6 +126,8 @@ def build_balance_demand_conservation_breakdown(
     reference_rows: pd.DataFrame,
     expected_mapped_rows: pd.DataFrame,
     resolved_rows: pd.DataFrame,
+    expected_provenance: pd.DataFrame | None = None,
+    resolved_provenance: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Explain the total gap as mapping loss plus product-level resolution gaps.
 
@@ -184,6 +186,24 @@ def build_balance_demand_conservation_breakdown(
     product_bridge["difference"] = (
         product_bridge["actual_resolved_value"] - product_bridge["expected_mapped_value"]
     )
+    product_bridge = _merge_provenance_summary(
+        product_bridge, expected_provenance, prefix="expected"
+    )
+    product_bridge = _merge_provenance_summary(
+        product_bridge, resolved_provenance, prefix="actual"
+    )
+
+    provenance_columns = [
+        "expected_source_system", "expected_source_fuels",
+        "expected_allocation_methods", "expected_allocation_share_min",
+        "expected_allocation_share_max", "expected_value_quality",
+        "actual_source_system", "actual_source_fuels",
+        "actual_allocation_methods", "actual_allocation_share_min",
+        "actual_allocation_share_max", "actual_value_quality",
+    ]
+    for column in provenance_columns:
+        if column not in mapping_bridge:
+            mapping_bridge[column] = pd.NA
 
     columns = [
         *BREAKDOWN_KEY_COLUMNS,
@@ -193,6 +213,7 @@ def build_balance_demand_conservation_breakdown(
         "expected_mapped_value",
         "actual_resolved_value",
         "difference",
+        *provenance_columns,
     ]
     return (
         pd.concat([mapping_bridge[columns], product_bridge[columns]], ignore_index=True)
@@ -205,6 +226,8 @@ def build_balance_demand_conservation_lineage(
     reference_rows: pd.DataFrame,
     expected_mapped_rows: pd.DataFrame,
     resolved_rows: pd.DataFrame,
+    expected_provenance: pd.DataFrame | None = None,
+    resolved_provenance: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Return honest stage rows without inventing unavailable cross-stage links."""
     source_columns = [
@@ -239,6 +262,7 @@ def build_balance_demand_conservation_lineage(
         ["economy", "scenario", "year", "esto_product", "value"],
         "expected",
     )
+    expected = _merge_provenance_summary(expected, expected_provenance, prefix="expected")
 
     actual = resolved_rows[
         ["economy", "scenario", "year", "esto_product", "resolved_total"]
@@ -256,13 +280,27 @@ def build_balance_demand_conservation_lineage(
         ["economy", "scenario", "year", "esto_product", "value"],
         "resolved",
     )
+    actual = _merge_provenance_summary(actual, resolved_provenance, prefix="actual")
 
     columns = [
         "lineage_stage", "row_id", "linked_source_row_id", "source_system",
         "economy", "scenario", "year", "source_sector_or_flow",
         "source_fuel_or_product", "esto_product", "value",
         "value_classification", "mapping_status", "allocation_share",
+        "source_fuels", "allocation_methods", "allocation_share_min",
+        "allocation_share_max", "allocation_quality",
     ]
+    source["source_fuels"] = source["source_fuel_or_product"]
+    source["allocation_methods"] = "not_yet_mapped"
+    source["allocation_share_min"] = pd.NA
+    source["allocation_share_max"] = pd.NA
+    source["allocation_quality"] = "source_observation"
+    for frame, prefix in [(expected, "expected"), (actual, "actual")]:
+        frame["source_fuels"] = frame.get(f"{prefix}_source_fuels", "")
+        frame["allocation_methods"] = frame.get(f"{prefix}_allocation_methods", "unknown")
+        frame["allocation_share_min"] = frame.get(f"{prefix}_allocation_share_min", pd.NA)
+        frame["allocation_share_max"] = frame.get(f"{prefix}_allocation_share_max", pd.NA)
+        frame["allocation_quality"] = frame.get(f"{prefix}_value_quality", "unknown")
     return pd.concat([source[columns], expected[columns], actual[columns]], ignore_index=True)
 
 
@@ -418,6 +456,67 @@ def _deterministic_row_ids(
     return (keys + "|" + occurrence).map(
         lambda value: f"{prefix}_{hashlib.sha256(value.encode('utf-8')).hexdigest()[:16]}"
     )
+
+
+def _merge_provenance_summary(
+    rows: pd.DataFrame,
+    provenance: pd.DataFrame | None,
+    prefix: str,
+) -> pd.DataFrame:
+    """Attach compact allocation evidence to product-level rows."""
+    output = rows.copy()
+    text_columns = {
+        f"{prefix}_source_system": "unknown",
+        f"{prefix}_source_fuels": "",
+        f"{prefix}_allocation_methods": "unknown",
+        f"{prefix}_value_quality": "unknown",
+    }
+    numeric_columns = [
+        f"{prefix}_allocation_share_min",
+        f"{prefix}_allocation_share_max",
+    ]
+    if provenance is None or provenance.empty:
+        for column, default in text_columns.items():
+            output[column] = default
+        for column in numeric_columns:
+            output[column] = pd.NA
+        return output
+
+    work = provenance.copy()
+    required = ["economy", "scenario", "year", "esto_product", "allocation_method"]
+    _require_columns(work, required, f"{prefix}_provenance")
+    for column in ["source_system", "source_fuel_or_product"]:
+        if column not in work:
+            work[column] = ""
+    if "allocation_share" not in work:
+        work["allocation_share"] = pd.NA
+    keys = ["economy", "scenario", "year", "esto_product"]
+    work["allocation_share"] = pd.to_numeric(work["allocation_share"], errors="coerce")
+
+    def _join(values: pd.Series) -> str:
+        return "|".join(sorted({str(value).strip() for value in values if str(value).strip()}))
+
+    summary = work.groupby(keys, as_index=False, dropna=False).agg(
+        source_system=("source_system", _join),
+        source_fuels=("source_fuel_or_product", _join),
+        allocation_methods=("allocation_method", _join),
+        allocation_share_min=("allocation_share", "min"),
+        allocation_share_max=("allocation_share", "max"),
+    )
+    estimated_methods = {"equal_split", "equal_split_fallback"}
+    summary["value_quality"] = summary["allocation_methods"].map(
+        lambda methods: (
+            "estimated"
+            if estimated_methods.intersection(str(methods).split("|"))
+            else "allocated"
+            if any(method != "direct" for method in str(methods).split("|"))
+            else "exact_direct"
+        )
+    )
+    summary = summary.rename(columns={
+        column: f"{prefix}_{column}" for column in summary.columns if column not in keys
+    })
+    return output.merge(summary, on=keys, how="left")
 
 
 #%%

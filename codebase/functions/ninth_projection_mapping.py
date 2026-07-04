@@ -251,7 +251,8 @@ def allocate_ninth_projection_to_esto(
     projection_years: Sequence[int],
     sign_stable_flows: Iterable[str] | str | None = None,
     strict_conservation: bool = False,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+    return_allocation_provenance: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame] | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Allocate 9th projections to ESTO pairs using base-year share rules.
 
     How allocation works
@@ -302,7 +303,8 @@ def allocate_ninth_projection_to_esto(
     known to be affected by aggregation artifacts.
     """
     if mapping_df.empty or ninth_series.empty or not projection_years:
-        return pd.DataFrame(), pd.DataFrame()
+        empty_result = (pd.DataFrame(), pd.DataFrame())
+        return (*empty_result, pd.DataFrame()) if return_allocation_provenance else empty_result
     mapping = mapping_df.copy()
     mapping["9th_sector"] = mapping["9th_sector"].fillna("").astype(str).str.strip()
     mapping["9th_fuel"] = mapping["9th_fuel"].fillna("").astype(str).str.strip()
@@ -313,7 +315,8 @@ def allocate_ninth_projection_to_esto(
         subset=["9th_sector", "9th_fuel", "esto_flow", "esto_product"]
     )
     if mapping.empty:
-        return pd.DataFrame(), pd.DataFrame()
+        empty_result = (pd.DataFrame(), pd.DataFrame())
+        return (*empty_result, pd.DataFrame()) if return_allocation_provenance else empty_result
     sign_stable_flow_set = _resolve_sign_stable_flow_set(mapping, sign_stable_flows)
 
     base_values = base_values.copy()
@@ -460,6 +463,35 @@ def allocate_ninth_projection_to_esto(
             )
         merged[year] = allocated
 
+    allocation_provenance = pd.DataFrame()
+    if return_allocation_provenance:
+        provenance = merged[
+            [
+                "economy_key", "9th_sector", "9th_fuel", "esto_flow",
+                "esto_product", "share", "share_source", "group_count", *year_cols,
+            ]
+        ].copy()
+        provenance["allocation_method"] = "direct"
+        multiple_targets = provenance["group_count"].gt(1)
+        provenance.loc[multiple_targets & provenance["share_source"].eq("economy"), "allocation_method"] = (
+            "proportional_esto_base_year"
+        )
+        provenance.loc[multiple_targets & provenance["share_source"].eq("apec"), "allocation_method"] = (
+            "proportional_apec_fallback"
+        )
+        provenance.loc[multiple_targets & provenance["share_source"].eq("equal"), "allocation_method"] = (
+            "equal_split_fallback"
+        )
+        allocation_provenance = provenance.melt(
+            id_vars=[
+                "economy_key", "9th_sector", "9th_fuel", "esto_flow",
+                "esto_product", "share", "share_source", "allocation_method",
+            ],
+            value_vars=year_cols,
+            var_name="year",
+            value_name="allocated_value",
+        )
+
     projection_df = (
         merged.groupby(["economy_key", "esto_flow", "esto_product"], dropna=False)[
             year_cols
@@ -524,6 +556,8 @@ def allocate_ninth_projection_to_esto(
         diagnostics["sign_stable_mode"] = diagnostics["apply_sign_stable"].map(
             {True: "enabled", False: "disabled"}
         )
+    if return_allocation_provenance:
+        return projection_df, diagnostics, allocation_provenance
     return projection_df, diagnostics
 
 

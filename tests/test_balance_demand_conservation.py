@@ -234,4 +234,39 @@ def test_lineage_keeps_source_rows_once_and_does_not_invent_links():
     assert mapped["mapping_status"].eq("mapped_but_source_link_not_retained").all()
 
 
+def test_breakdown_labels_direct_proportional_and_estimated_values():
+    reference = _rows("reference_total", [100.0, 0.0]).iloc[[0]].copy()
+    reference["esto_product"] = "__all_fuels__"
+    expected = pd.DataFrame([
+        {"economy": "20_USA", "scenario": "Reference", "esto_product": "p1", "year": 2030, "demand_value": 100.0}
+    ])
+    resolved = prepare_reconciliation_demand_totals(expected)
+    expected_provenance = pd.DataFrame([
+        {
+            "economy": "20_USA", "scenario": "Reference", "year": 2030,
+            "esto_product": "p1", "source_system": "NINTH",
+            "source_fuel_or_product": "01_coal", "allocation_method": "proportional_esto_base_year",
+            "allocation_share": 0.75,
+        }
+    ])
+    resolved_provenance = pd.DataFrame([
+        {
+            "economy": "20_USA", "scenario": "Reference", "year": 2030,
+            "esto_product": "p1", "source_system": "LEAP_BALANCE",
+            "source_fuel_or_product": "Coal", "allocation_method": "equal_split",
+            "allocation_share": 0.5,
+        }
+    ])
+
+    breakdown = build_balance_demand_conservation_breakdown(
+        reference, expected, resolved, expected_provenance, resolved_provenance
+    )
+    row = breakdown[breakdown["component"].eq("p1")].iloc[0]
+    assert row["expected_source_system"] == "NINTH"
+    assert row["expected_allocation_methods"] == "proportional_esto_base_year"
+    assert row["expected_value_quality"] == "allocated"
+    assert row["actual_allocation_methods"] == "equal_split"
+    assert row["actual_value_quality"] == "estimated"
+
+
 #%%

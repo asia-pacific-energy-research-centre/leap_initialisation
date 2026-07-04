@@ -2799,7 +2799,7 @@ def run_results_linked_transformation_supply_workflow(
     try:
         from codebase.aggregated_demand_workflow import build_aggregated_demand_as_dummy
 
-        expected_mapped_parts = [
+        expected_mapped_with_provenance = [
             build_aggregated_demand_as_dummy(
                 economy=economy,
                 scenarios=conservation_scenarios,
@@ -2810,14 +2810,28 @@ def run_results_linked_transformation_supply_workflow(
                 exclude_own_use_td_losses=bool(AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES),
                 excluded_sectors=conservation_exclusions,
                 use_sector_branches=False,
+                return_provenance=True,
             )
             for economy in economy_list
         ]
         expected_mapped_demand = (
-            pd.concat(expected_mapped_parts, ignore_index=True)
-            if expected_mapped_parts
+            pd.concat([item[0] for item in expected_mapped_with_provenance], ignore_index=True)
+            if expected_mapped_with_provenance
             else pd.DataFrame()
         )
+        expected_mapping_provenance = (
+            pd.concat([item[1] for item in expected_mapped_with_provenance], ignore_index=True)
+            if expected_mapped_with_provenance
+            else pd.DataFrame()
+        )
+        resolved_mapping_provenance = balance_matching_diagnostics.copy()
+        if not resolved_mapping_provenance.empty:
+            resolved_mapping_provenance["source_system"] = "LEAP_BALANCE"
+            resolved_mapping_provenance["source_fuel_or_product"] = (
+                resolved_mapping_provenance["leap_fuel_name_raw"]
+                if "leap_fuel_name_raw" in resolved_mapping_provenance.columns
+                else ""
+            )
         resolved_demand_by_product = prepare_reconciliation_demand_totals(
             demand_table,
             collapse_products=False,
@@ -2826,11 +2840,15 @@ def run_results_linked_transformation_supply_workflow(
             reference_rows=raw_demand_reference,
             expected_mapped_rows=expected_mapped_demand,
             resolved_rows=resolved_demand_by_product,
+            expected_provenance=expected_mapping_provenance,
+            resolved_provenance=resolved_mapping_provenance,
         )
         balance_demand_lineage = build_balance_demand_conservation_lineage(
             reference_rows=raw_demand_reference,
             expected_mapped_rows=expected_mapped_demand,
             resolved_rows=resolved_demand_by_product,
+            expected_provenance=expected_mapping_provenance,
+            resolved_provenance=resolved_mapping_provenance,
         )
         checks_dir = _resolve(RESULTS_CHECKS_DIR)
         balance_demand_breakdown_path = write_balance_demand_conservation_table(

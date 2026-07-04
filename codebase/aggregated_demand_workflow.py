@@ -638,7 +638,8 @@ def _extract_contextual_projection_years(
     excluded_sectors: list[str] | None = None,
     use_sector_branches: bool = False,
     mappings_path: Path = FUEL_MAPPINGS_PATH,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+    return_allocation_provenance: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame] | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Allocate aggregate 9th fuels using same-sector ESTO base-year shares.
 
     The canonical 9th-to-ESTO relationships define the detailed candidates for
@@ -675,7 +676,8 @@ def _extract_contextual_projection_years(
         columns = ["economy", "leap_fuel_name", "year", "value"]
         if use_sector_branches:
             columns.insert(1, "sector")
-        return pd.DataFrame(columns=columns), pd.DataFrame()
+        empty = (pd.DataFrame(columns=columns), pd.DataFrame())
+        return (*empty, pd.DataFrame()) if return_allocation_provenance else empty
     mapping = load_active_mapping_sheet(NINTH_TO_ESTO_SHEET, Path(mappings_path))
     for column in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:
         mapping[column] = mapping[column].fillna("").astype(str).str.strip()
@@ -766,18 +768,22 @@ def _extract_contextual_projection_years(
         ].copy()
     base_values = build_esto_base_year_values(esto_filtered, base_year)
 
-    projection_wide, diagnostics = allocate_ninth_projection_to_esto(
+    allocation_result = allocate_ninth_projection_to_esto(
         mapping_df=mapping,
         ninth_series=ninth_series,
         base_values=base_values,
         projection_years=projection_years,
         strict_conservation=True,
+        return_allocation_provenance=return_allocation_provenance,
     )
+    projection_wide, diagnostics = allocation_result[:2]
+    provenance = allocation_result[2] if return_allocation_provenance else pd.DataFrame()
     if projection_wide.empty:
         columns = ["economy", "leap_fuel_name", "year", "value"]
         if use_sector_branches:
             columns.insert(1, "sector")
-        return pd.DataFrame(columns=columns), diagnostics
+        empty = (pd.DataFrame(columns=columns), diagnostics)
+        return (*empty, provenance) if return_allocation_provenance else empty
 
     projection_wide["fuel_code"] = projection_wide["esto_product"]
     projection_wide["leap_fuel_name"] = projection_wide["fuel_code"].map(esto_fuel_map)
@@ -807,6 +813,8 @@ def _extract_contextual_projection_years(
     )
     long["year"] = pd.to_numeric(long["year"], errors="coerce").astype("Int64")
     long["value"] = pd.to_numeric(long["value"], errors="coerce").abs().fillna(0.0)
+    if return_allocation_provenance:
+        return long, diagnostics, provenance
     return long, diagnostics
 
 
@@ -823,7 +831,8 @@ def build_aggregated_demand(
     exclude_own_use_td_losses: bool = False,
     excluded_sectors: list[str] | None = None,
     use_sector_branches: bool = False,
-) -> pd.DataFrame:
+    return_provenance: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """
     Build aggregated demand by LEAP fuel for one economy and scenario.
 
@@ -877,12 +886,28 @@ def build_aggregated_demand(
             f"dropped: {unmapped_base[:15]}"
         )
     base_agg = base_agg[base_agg["leap_fuel_name"].notna()].copy()
+    provenance_parts = [
+        pd.DataFrame(
+            {
+                "economy": base_agg["economy"],
+                "scenario": scenario,
+                "year": base_agg["year"],
+                "source_system": "ESTO",
+                "source_sector_or_flow": "",
+                "source_fuel_or_product": base_agg["fuel_code"],
+                "leap_fuel_name": base_agg["leap_fuel_name"],
+                "allocation_method": "direct",
+                "allocation_share": 1.0,
+                "allocated_value": base_agg["value"],
+            }
+        )
+    ]
 
     if scenario == "Current Accounts":
         combined = base_agg.copy()
     else:
         csv_scen = SCENARIO_CSV_MAP.get(scenario, "reference").lower()
-        proj_rows, allocation_diagnostics = _extract_contextual_projection_years(
+        contextual_result = _extract_contextual_projection_years(
             ninth_df=ninth_df,
             esto_df=esto_df,
             csv_scenario=csv_scen,
@@ -893,7 +918,29 @@ def build_aggregated_demand(
             excluded_sectors=excluded_sectors,
             use_sector_branches=use_sector_branches,
             mappings_path=fuel_mappings_path,
+            return_allocation_provenance=return_provenance,
         )
+        proj_rows, allocation_diagnostics = contextual_result[:2]
+        allocation_provenance = contextual_result[2] if return_provenance else pd.DataFrame()
+        if return_provenance and not allocation_provenance.empty:
+            allocation_provenance = allocation_provenance.copy()
+            allocation_provenance["economy"] = allocation_provenance["economy_key"].map(
+                lambda value: f"{str(value)[:2]}_{str(value)[2:]}" if len(str(value)) > 2 else str(value)
+            )
+            allocation_provenance["scenario"] = scenario
+            allocation_provenance["source_system"] = "NINTH"
+            allocation_provenance["source_sector_or_flow"] = allocation_provenance["9th_sector"]
+            allocation_provenance["source_fuel_or_product"] = allocation_provenance["9th_fuel"]
+            allocation_provenance["leap_fuel_name"] = allocation_provenance["esto_product"].map(esto_fuel_map)
+            provenance_parts.append(
+                allocation_provenance[
+                    [
+                        "economy", "scenario", "year", "source_system",
+                        "source_sector_or_flow", "source_fuel_or_product",
+                        "leap_fuel_name", "allocation_method", "share", "allocated_value",
+                    ]
+                ].rename(columns={"share": "allocation_share"})
+            )
         proj_group_cols = (
             ["economy", "sector", "leap_fuel_name", "year"]
             if use_sector_branches else ["economy", "leap_fuel_name", "year"]
@@ -924,11 +971,14 @@ def build_aggregated_demand(
     out_cols = (["economy", "scenario", "sector", "leap_fuel_name", "year", "value"]
                 if use_sector_branches
                 else ["economy", "scenario", "leap_fuel_name", "year", "value"])
-    return (
+    result = (
         result[out_cols]
         .sort_values(out_cols[:-1])
         .reset_index(drop=True)
     )
+    if return_provenance:
+        return result, pd.concat(provenance_parts, ignore_index=True)
+    return result
 
 
 def build_aggregated_demand_all_scenarios(
@@ -942,7 +992,8 @@ def build_aggregated_demand_all_scenarios(
     exclude_own_use_td_losses: bool = False,
     excluded_sectors: list[str] | None = None,
     use_sector_branches: bool = False,
-) -> pd.DataFrame:
+    return_provenance: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """Build aggregated demand for all LEAP scenarios and return combined DataFrame."""
     parts = [
         build_aggregated_demand(
@@ -956,9 +1007,15 @@ def build_aggregated_demand_all_scenarios(
             exclude_own_use_td_losses=exclude_own_use_td_losses,
             excluded_sectors=excluded_sectors,
             use_sector_branches=use_sector_branches,
+            return_provenance=return_provenance,
         )
         for s in scenarios
     ]
+    if return_provenance:
+        return (
+            pd.concat([part[0] for part in parts], ignore_index=True),
+            pd.concat([part[1] for part in parts], ignore_index=True),
+        )
     return pd.concat(parts, ignore_index=True)
 
 
@@ -973,7 +1030,8 @@ def build_aggregated_demand_as_dummy(
     exclude_own_use_td_losses: bool = False,
     excluded_sectors: list[str] | None = None,
     use_sector_branches: bool = False,
-) -> pd.DataFrame:
+    return_provenance: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """
     Return aggregated demand data in the format expected by load_results_demand_table
     in supply_reconciliation_workflow.py for use as dummy demand.
@@ -995,7 +1053,7 @@ def build_aggregated_demand_as_dummy(
     Rows where no esto_product mapping exists are dropped.
     """
     use_scenarios = scenarios if scenarios is not None else LEAP_SCENARIOS
-    long = build_aggregated_demand_all_scenarios(
+    built = build_aggregated_demand_all_scenarios(
         economy=economy,
         scenarios=use_scenarios,
         base_year=base_year,
@@ -1006,11 +1064,14 @@ def build_aggregated_demand_as_dummy(
         exclude_own_use_td_losses=exclude_own_use_td_losses,
         excluded_sectors=excluded_sectors,
         use_sector_branches=use_sector_branches,
+        return_provenance=return_provenance,
     )
+    long, provenance = built if return_provenance else (built, pd.DataFrame())
     if long.empty:
-        return pd.DataFrame(
+        empty = pd.DataFrame(
             columns=["economy", "scenario", "esto_product", "year", "demand_value", "demand_source"]
         )
+        return (empty, provenance) if return_provenance else empty
 
     # Load reverse mapping: leap_fuel_name → esto_product from active canonical rows.
     fuel_prod = load_active_mapping_sheet(FUEL_ESTO_SHEET, Path(fuel_mappings_path))
@@ -1024,6 +1085,10 @@ def build_aggregated_demand_as_dummy(
     )
 
     long["esto_product"] = long["leap_fuel_name"].map(prod_map)
+    if return_provenance and not provenance.empty:
+        provenance = provenance.copy()
+        provenance["esto_product"] = provenance["leap_fuel_name"].map(prod_map)
+        provenance = provenance[provenance["esto_product"].notna()].copy()
     unmapped = long.loc[long["esto_product"].isna(), "leap_fuel_name"].unique()
     if len(unmapped):
         print(
@@ -1038,11 +1103,14 @@ def build_aggregated_demand_as_dummy(
     result["value"] = result["value"].fillna(0.0)
     result["demand_source"] = "aggregated_demand_projection"
 
-    return (
+    result = (
         result.rename(columns={"value": "demand_value"})
         [["economy", "scenario", "esto_product", "year", "demand_value", "demand_source"]]
         .reset_index(drop=True)
     )
+    if return_provenance:
+        return result, provenance.reset_index(drop=True)
+    return result
 
 
 # ── Aggregated demand LEAP workbook ──────────────────────────────────────────

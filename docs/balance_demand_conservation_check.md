@@ -49,10 +49,14 @@ additional CSV files beside it:
 
 The current workflow does not retain the link from every raw source row through
 every allocation to its final resolved row. The lineage output says
-`mapped_but_source_link_not_retained` instead of inventing that link. Mapped
-product values are labelled `mapped_aggregate_may_include_estimates` because
-some projection allocations use fallback shares. This prototype is intended to
-make the gaps inspectable before deeper row-level capture is added.
+`mapped_but_source_link_not_retained` instead of inventing that link. Product
+rows identify their source system (`ESTO` in the base year and `NINTH` after
+it), source fuel codes, allocation method, minimum/maximum applied share, and
+value quality. `exact_direct` means no split was needed, `allocated` means an
+explicit proportional share was used, and `estimated` means an equal-split
+fallback was required. The resolved LEAP side carries the same fields from its
+balance-mapping diagnostics. This prototype is intended to make the gaps
+inspectable before deeper row-to-row linking is added.
 
 ## Pass-specific interpretation
 
