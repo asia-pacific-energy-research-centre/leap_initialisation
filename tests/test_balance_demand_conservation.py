@@ -12,6 +12,7 @@ from codebase.functions.balance_demand_conservation import (
     build_balance_demand_conservation_lineage,
     prepare_aggregated_demand_reference,
     prepare_reconciliation_demand_totals,
+    prepare_reconciliation_sector_demand_totals,
 )
 
 
@@ -267,6 +268,91 @@ def test_breakdown_labels_direct_proportional_and_estimated_values():
     assert row["expected_value_quality"] == "allocated"
     assert row["actual_allocation_methods"] == "equal_split"
     assert row["actual_value_quality"] == "estimated"
+
+
+def test_sector_exclusions_are_applied_to_leap_rows_before_aggregation():
+    sector_rows = pd.DataFrame(
+        [
+            {
+                "economy": "20_USA", "scenario": "Reference", "sheet": "Industry",
+                "esto_product": "p1", "esto_flow": "14.03 Manufacturing", "year": 2030,
+                "demand_value": 40.0,
+            },
+            {
+                "economy": "20_USA", "scenario": "Reference", "sheet": "Other sector",
+                "esto_product": "p1", "esto_flow": "16.02 Agriculture", "year": 2030,
+                "demand_value": 60.0,
+            },
+        ]
+    )
+
+    totals, audit = prepare_reconciliation_sector_demand_totals(
+        sector_rows,
+        excluded_sectors=["14_industry_sector"],
+    )
+
+    assert totals["resolved_total"].sum() == pytest.approx(60.0)
+    status = audit.set_index("leap_branch")["included"].to_dict()
+    assert status == {"Industry": False, "Other sector": True}
+    assert (
+        audit.set_index("leap_branch").loc["Industry", "exclusion_reason"]
+        == "configured_detailed_sector_exclusion"
+    )
+
+
+def test_breakdown_shows_leap_branch_contributions_and_exclusions():
+    reference = _rows("reference_total", [60.0, 0.0]).iloc[[0]].copy()
+    reference["esto_product"] = "__all_fuels__"
+    expected = pd.DataFrame([
+        {"economy": "20_USA", "scenario": "Reference", "esto_product": "p1", "year": 2030, "demand_value": 60.0}
+    ])
+    resolved = prepare_reconciliation_demand_totals(expected)
+    branch_audit = pd.DataFrame(
+        [
+            {
+                "economy": "20_USA", "scenario": "Reference", "year": 2030,
+                "esto_product": "p1", "esto_flow": "16.02 Agriculture",
+                "leap_branch": "Other sector", "branch_contribution_value": 60.0,
+                "included": True, "exclusion_reason": "",
+            },
+            {
+                "economy": "20_USA", "scenario": "Reference", "year": 2030,
+                "esto_product": "p1", "esto_flow": "14.03 Manufacturing",
+                "leap_branch": "Industry", "branch_contribution_value": 40.0,
+                "included": False, "exclusion_reason": "configured_detailed_sector_exclusion",
+            },
+        ]
+    )
+    source_scope = pd.DataFrame(
+        [
+            {
+                "source_system": "ESTO", "economy": "20_USA", "scenario": "Reference",
+                "year": 2030, "source_flow_or_sector": "14 Industry sector",
+                "source_fuel_or_product": "p1", "value": 100.0, "included": False,
+                "exclusion_reason": "subtotal",
+            },
+            {
+                "source_system": "ESTO", "economy": "20_USA", "scenario": "Reference",
+                "year": 2030, "source_flow_or_sector": "10.01 Own Use",
+                "source_fuel_or_product": "p1", "value": 5.0, "included": False,
+                "exclusion_reason": "handled_by_other_loss_own_use_proxy",
+            },
+        ]
+    )
+
+    breakdown = build_balance_demand_conservation_breakdown(
+        reference,
+        expected,
+        resolved,
+        source_scope_audit=source_scope,
+        resolved_scope_audit=branch_audit,
+    )
+    row = breakdown[breakdown["component"].eq("p1")].iloc[0]
+    assert row["included_leap_branches"] == "Other sector"
+    assert row["excluded_leap_branches"] == "Industry"
+    assert row["included_leap_branch_contributions"] == "Other sector=60"
+    assert row["excluded_leap_branch_contributions"] == "Industry=40"
+    assert row["excluded_source_flows"] == "10.01 Own Use"
 
 
 #%%

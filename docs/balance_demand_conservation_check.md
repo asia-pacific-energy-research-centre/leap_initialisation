@@ -16,6 +16,12 @@ The comparison unit is:
 `resolved_total` is the sum of the rows actually selected by the reconciliation
 demand path in the same unit. The diagnostic reports resolved minus reference.
 
+`sector_context` is labelled `Demand rows included in conservation scope (see
+lineage scope audit)`. The lineage output contains `source_scope` and
+`actual_resolved_branch` rows showing what was included or excluded, why, and
+the value contributed by each source flow or LEAP branch. Configured detailed-
+sector exclusions are applied to both sides before comparison.
+
 ## Comparison surface
 
 - Include actionable demand rows for the configured scenarios and years.
@@ -45,7 +51,15 @@ additional CSV files beside it:
   the difference in the existing total CSV.
 - `supply_reconciliation_balance_demand_conservation_lineage.csv` shows the
   underlying rows in three clearly labelled groups: `original_source`,
-  `expected_mapped`, and `actual_resolved`.
+  `expected_mapped`, and `actual_resolved`. It also includes `source_scope`
+  records for included/excluded ESTO or Ninth rows and
+  `actual_resolved_branch` records for each LEAP branch contribution.
+
+The breakdown exposes `expected_source_flows`, `excluded_source_flows`,
+`included_leap_branches`, `excluded_leap_branches`, and compact branch/value
+contribution strings. Subtotal exclusions remain in the detailed lineage but
+are not presented as wholly excluded flows, because the same flow can have an
+excluded subtotal row and included component rows.
 
 The current workflow does not retain the link from every raw source row through
 every allocation to its final resolved row. The lineage output says

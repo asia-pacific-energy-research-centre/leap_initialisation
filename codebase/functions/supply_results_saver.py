@@ -229,6 +229,7 @@ from codebase.functions.balance_demand_conservation import (
     build_balance_demand_conservation_lineage,
     build_raw_demand_conservation_reference,
     prepare_reconciliation_demand_totals,
+    prepare_reconciliation_sector_demand_totals,
     write_balance_demand_conservation_diagnostics,
     write_balance_demand_conservation_table,
 )
@@ -2754,7 +2755,7 @@ def run_results_linked_transformation_supply_workflow(
             demand_table.get("scenario", pd.Series(dtype=str))
             .dropna().astype(str).str.strip().loc[lambda values: values.ne("")].unique().tolist()
         )
-        raw_reference_parts = [
+        raw_reference_with_scope = [
             build_raw_demand_conservation_reference(
                 economy=economy,
                 scenarios=conservation_scenarios,
@@ -2764,16 +2765,23 @@ def run_results_linked_transformation_supply_workflow(
                 esto_data_path=ESTO_BASE_DATA_PATH,
                 exclude_own_use_td_losses=bool(AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES),
                 excluded_sectors=conservation_exclusions,
+                return_scope_audit=True,
             )
             for economy in economy_list
         ]
         raw_demand_reference = (
-            pd.concat(raw_reference_parts, ignore_index=True)
-            if raw_reference_parts
+            pd.concat([item[0] for item in raw_reference_with_scope], ignore_index=True)
+            if raw_reference_with_scope
             else pd.DataFrame()
         )
-        resolved_demand_totals = prepare_reconciliation_demand_totals(
-            demand_table,
+        source_scope_audit = (
+            pd.concat([item[1] for item in raw_reference_with_scope], ignore_index=True)
+            if raw_reference_with_scope
+            else pd.DataFrame()
+        )
+        resolved_demand_totals, resolved_scope_audit = prepare_reconciliation_sector_demand_totals(
+            sector_demand_table,
+            excluded_sectors=conservation_exclusions,
             collapse_products=True,
         )
         balance_demand_conservation = build_balance_demand_conservation_diagnostics(
@@ -2826,14 +2834,27 @@ def run_results_linked_transformation_supply_workflow(
         )
         resolved_mapping_provenance = balance_matching_diagnostics.copy()
         if not resolved_mapping_provenance.empty:
+            from codebase.aggregated_demand_workflow import _esto_flow_is_excluded
+
+            excluded_codes = {
+                str(value).strip()
+                for value in (conservation_exclusions or [])
+                if str(value).strip()
+            }
+            resolved_mapping_provenance = resolved_mapping_provenance[
+                ~resolved_mapping_provenance["esto_flow"].map(
+                    lambda flow: _esto_flow_is_excluded(flow, excluded_codes)
+                )
+            ].copy()
             resolved_mapping_provenance["source_system"] = "LEAP_BALANCE"
             resolved_mapping_provenance["source_fuel_or_product"] = (
                 resolved_mapping_provenance["leap_fuel_name_raw"]
                 if "leap_fuel_name_raw" in resolved_mapping_provenance.columns
                 else ""
             )
-        resolved_demand_by_product = prepare_reconciliation_demand_totals(
-            demand_table,
+        resolved_demand_by_product, resolved_scope_audit = prepare_reconciliation_sector_demand_totals(
+            sector_demand_table,
+            excluded_sectors=conservation_exclusions,
             collapse_products=False,
         )
         balance_demand_breakdown = build_balance_demand_conservation_breakdown(
@@ -2842,6 +2863,8 @@ def run_results_linked_transformation_supply_workflow(
             resolved_rows=resolved_demand_by_product,
             expected_provenance=expected_mapping_provenance,
             resolved_provenance=resolved_mapping_provenance,
+            source_scope_audit=source_scope_audit,
+            resolved_scope_audit=resolved_scope_audit,
         )
         balance_demand_lineage = build_balance_demand_conservation_lineage(
             reference_rows=raw_demand_reference,
@@ -2849,6 +2872,8 @@ def run_results_linked_transformation_supply_workflow(
             resolved_rows=resolved_demand_by_product,
             expected_provenance=expected_mapping_provenance,
             resolved_provenance=resolved_mapping_provenance,
+            source_scope_audit=source_scope_audit,
+            resolved_scope_audit=resolved_scope_audit,
         )
         checks_dir = _resolve(RESULTS_CHECKS_DIR)
         balance_demand_breakdown_path = write_balance_demand_conservation_table(

@@ -554,13 +554,14 @@ def _extract_base_year(
         raise KeyError(f"Base year column '{base_year}' not found in ESTO data.")
 
     filtered["fuel_code"] = products.loc[filtered.index]
+    filtered["source_flow"] = filtered["flows"].astype(str).str.strip()
     filtered["year"] = int(base_year)
     filtered["value"] = pd.to_numeric(filtered[base_col], errors="coerce").abs().fillna(0.0)
 
     if use_sector_branches:
         filtered["sector"] = filtered["flows"].apply(_esto_flow_to_sector)
-        return filtered[["economy", "sector", "fuel_code", "year", "value"]].copy()
-    return filtered[["economy", "fuel_code", "year", "value"]].copy()
+        return filtered[["economy", "sector", "source_flow", "fuel_code", "year", "value"]].copy()
+    return filtered[["economy", "source_flow", "fuel_code", "year", "value"]].copy()
 
 
 def _extract_projection_years(
@@ -886,19 +887,24 @@ def build_aggregated_demand(
             f"dropped: {unmapped_base[:15]}"
         )
     base_agg = base_agg[base_agg["leap_fuel_name"].notna()].copy()
+    base_provenance = base_rows.copy()
+    if "source_flow" not in base_provenance:
+        base_provenance["source_flow"] = ""
+    base_provenance["leap_fuel_name"] = base_provenance["fuel_code"].map(esto_fuel_map)
+    base_provenance = base_provenance[base_provenance["leap_fuel_name"].notna()].copy()
     provenance_parts = [
         pd.DataFrame(
             {
-                "economy": base_agg["economy"],
+                "economy": base_provenance["economy"],
                 "scenario": scenario,
-                "year": base_agg["year"],
+                "year": base_provenance["year"],
                 "source_system": "ESTO",
-                "source_sector_or_flow": "",
-                "source_fuel_or_product": base_agg["fuel_code"],
-                "leap_fuel_name": base_agg["leap_fuel_name"],
+                "source_sector_or_flow": base_provenance["source_flow"],
+                "source_fuel_or_product": base_provenance["fuel_code"],
+                "leap_fuel_name": base_provenance["leap_fuel_name"],
                 "allocation_method": "direct",
                 "allocation_share": 1.0,
-                "allocated_value": base_agg["value"],
+                "allocated_value": base_provenance["value"],
             }
         )
     ]

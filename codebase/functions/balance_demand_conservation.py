@@ -16,7 +16,7 @@ CONSERVATION_KEY_COLUMNS = (
     "year",
 )
 
-TOTAL_DEMAND_CONTEXT = "All demand after detailed-sector exclusions"
+TOTAL_DEMAND_CONTEXT = "Demand rows included in conservation scope (see lineage scope audit)"
 
 BREAKDOWN_KEY_COLUMNS = (
     "economy",
@@ -35,7 +35,8 @@ def build_raw_demand_conservation_reference(
     esto_data_path: Path | str,
     exclude_own_use_td_losses: bool = False,
     excluded_sectors: list[str] | None = None,
-) -> pd.DataFrame:
+    return_scope_audit: bool = False,
+) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """Build pre-mapping total-energy demand directly from ESTO/9th rows."""
     from codebase import aggregated_demand_workflow as aggregated
 
@@ -51,6 +52,16 @@ def build_raw_demand_conservation_reference(
         ninth = ninth.copy()
         esto["economy"] = economy_label
         ninth["economy"] = economy_label
+
+    scope_audit = _build_raw_source_scope_audit(
+        esto=esto,
+        ninth=ninth,
+        scenarios=scenarios,
+        base_year=base_year,
+        final_year=final_year,
+        exclude_own_use_td_losses=exclude_own_use_td_losses,
+        excluded_sectors=excluded_sectors,
+    )
 
     base = aggregated._extract_base_year(
         esto,
@@ -109,7 +120,7 @@ def build_raw_demand_conservation_reference(
     source["value_classification"] = "exact_aggregated"
     source["sector_context"] = TOTAL_DEMAND_CONTEXT
     source["esto_product"] = "__all_fuels__"
-    return source.rename(columns={"value": "reference_total"})[
+    result = source.rename(columns={"value": "reference_total"})[
         [
             *CONSERVATION_KEY_COLUMNS,
             "reference_total",
@@ -120,6 +131,44 @@ def build_raw_demand_conservation_reference(
             "value_classification",
         ]
     ].reset_index(drop=True)
+    return (result, scope_audit) if return_scope_audit else result
+
+
+def prepare_reconciliation_sector_demand_totals(
+    sector_demand: pd.DataFrame,
+    excluded_sectors: list[str] | None,
+    collapse_products: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Apply the same sector exclusions to LEAP rows and retain branch evidence."""
+    required = [
+        "economy", "scenario", "sheet", "esto_product", "esto_flow",
+        "year", "demand_value",
+    ]
+    _require_columns(sector_demand, required, "sector_demand")
+    from codebase.aggregated_demand_workflow import _esto_flow_is_excluded
+
+    audit = sector_demand[required].copy()
+    excluded = {str(value).strip() for value in (excluded_sectors or []) if str(value).strip()}
+    audit["included"] = ~audit["esto_flow"].map(
+        lambda flow: _esto_flow_is_excluded(flow, excluded)
+    )
+    audit["exclusion_reason"] = ""
+    audit.loc[~audit["included"], "exclusion_reason"] = "configured_detailed_sector_exclusion"
+    audit = audit.rename(
+        columns={
+            "sheet": "leap_branch",
+            "demand_value": "branch_contribution_value",
+        }
+    )
+
+    included = audit[audit["included"]].rename(
+        columns={"branch_contribution_value": "demand_value"}
+    )
+    totals = prepare_reconciliation_demand_totals(
+        included,
+        collapse_products=collapse_products,
+    )
+    return totals, audit.reset_index(drop=True)
 
 
 def build_balance_demand_conservation_breakdown(
@@ -128,6 +177,8 @@ def build_balance_demand_conservation_breakdown(
     resolved_rows: pd.DataFrame,
     expected_provenance: pd.DataFrame | None = None,
     resolved_provenance: pd.DataFrame | None = None,
+    source_scope_audit: pd.DataFrame | None = None,
+    resolved_scope_audit: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Explain the total gap as mapping loss plus product-level resolution gaps.
 
@@ -192,14 +243,24 @@ def build_balance_demand_conservation_breakdown(
     product_bridge = _merge_provenance_summary(
         product_bridge, resolved_provenance, prefix="actual"
     )
+    product_bridge = _merge_scope_summary(
+        product_bridge,
+        source_scope_audit=source_scope_audit,
+        resolved_scope_audit=resolved_scope_audit,
+    )
 
     provenance_columns = [
         "expected_source_system", "expected_source_fuels",
+        "expected_source_flows",
         "expected_allocation_methods", "expected_allocation_share_min",
         "expected_allocation_share_max", "expected_value_quality",
         "actual_source_system", "actual_source_fuels",
+        "actual_source_flows",
         "actual_allocation_methods", "actual_allocation_share_min",
         "actual_allocation_share_max", "actual_value_quality",
+        "excluded_source_flows", "included_leap_branches",
+        "excluded_leap_branches", "included_leap_branch_contributions",
+        "excluded_leap_branch_contributions",
     ]
     for column in provenance_columns:
         if column not in mapping_bridge:
@@ -228,6 +289,8 @@ def build_balance_demand_conservation_lineage(
     resolved_rows: pd.DataFrame,
     expected_provenance: pd.DataFrame | None = None,
     resolved_provenance: pd.DataFrame | None = None,
+    source_scope_audit: pd.DataFrame | None = None,
+    resolved_scope_audit: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Return honest stage rows without inventing unavailable cross-stage links."""
     source_columns = [
@@ -301,7 +364,65 @@ def build_balance_demand_conservation_lineage(
         frame["allocation_share_min"] = frame.get(f"{prefix}_allocation_share_min", pd.NA)
         frame["allocation_share_max"] = frame.get(f"{prefix}_allocation_share_max", pd.NA)
         frame["allocation_quality"] = frame.get(f"{prefix}_value_quality", "unknown")
-    return pd.concat([source[columns], expected[columns], actual[columns]], ignore_index=True)
+    parts = [source[columns], expected[columns], actual[columns]]
+    if source_scope_audit is not None and not source_scope_audit.empty:
+        scope = source_scope_audit.copy()
+        scope["lineage_stage"] = "source_scope"
+        scope["row_id"] = _deterministic_row_ids(
+            scope,
+            [
+                "source_system", "economy", "scenario", "year",
+                "source_flow_or_sector", "source_fuel_or_product", "value",
+                "included", "exclusion_reason",
+            ],
+            "scope",
+        )
+        scope["linked_source_row_id"] = ""
+        scope["source_sector_or_flow"] = scope["source_flow_or_sector"]
+        scope["esto_product"] = ""
+        scope["value_classification"] = "exact_source_scope"
+        scope["mapping_status"] = scope["included"].map(
+            {True: "included", False: "excluded"}
+        )
+        scope["allocation_share"] = pd.NA
+        scope["source_fuels"] = scope["source_fuel_or_product"]
+        scope["allocation_methods"] = "not_yet_mapped"
+        scope["allocation_share_min"] = pd.NA
+        scope["allocation_share_max"] = pd.NA
+        scope["allocation_quality"] = scope["exclusion_reason"].where(
+            ~scope["included"], "included"
+        )
+        parts.append(scope[columns])
+    if resolved_scope_audit is not None and not resolved_scope_audit.empty:
+        branch = resolved_scope_audit.copy()
+        branch["lineage_stage"] = "actual_resolved_branch"
+        branch["source_system"] = "LEAP_BALANCE"
+        branch["source_sector_or_flow"] = branch["leap_branch"]
+        branch["source_fuel_or_product"] = branch["esto_product"]
+        branch["value"] = branch["branch_contribution_value"]
+        branch["row_id"] = _deterministic_row_ids(
+            branch,
+            [
+                "economy", "scenario", "year", "leap_branch", "esto_product",
+                "branch_contribution_value", "included", "exclusion_reason",
+            ],
+            "branch",
+        )
+        branch["linked_source_row_id"] = ""
+        branch["value_classification"] = "exact_branch_contribution"
+        branch["mapping_status"] = branch["included"].map(
+            {True: "included", False: "excluded"}
+        )
+        branch["allocation_share"] = pd.NA
+        branch["source_fuels"] = branch["esto_product"]
+        branch["allocation_methods"] = "resolved_branch"
+        branch["allocation_share_min"] = pd.NA
+        branch["allocation_share_max"] = pd.NA
+        branch["allocation_quality"] = branch["exclusion_reason"].where(
+            ~branch["included"], "included"
+        )
+        parts.append(branch[columns])
+    return pd.concat(parts, ignore_index=True)
 
 
 def write_balance_demand_conservation_table(rows: pd.DataFrame, output_path: Path | str) -> Path:
@@ -468,6 +589,7 @@ def _merge_provenance_summary(
     text_columns = {
         f"{prefix}_source_system": "unknown",
         f"{prefix}_source_fuels": "",
+        f"{prefix}_source_flows": "",
         f"{prefix}_allocation_methods": "unknown",
         f"{prefix}_value_quality": "unknown",
     }
@@ -485,7 +607,7 @@ def _merge_provenance_summary(
     work = provenance.copy()
     required = ["economy", "scenario", "year", "esto_product", "allocation_method"]
     _require_columns(work, required, f"{prefix}_provenance")
-    for column in ["source_system", "source_fuel_or_product"]:
+    for column in ["source_system", "source_fuel_or_product", "source_sector_or_flow"]:
         if column not in work:
             work[column] = ""
     if "allocation_share" not in work:
@@ -499,6 +621,7 @@ def _merge_provenance_summary(
     summary = work.groupby(keys, as_index=False, dropna=False).agg(
         source_system=("source_system", _join),
         source_fuels=("source_fuel_or_product", _join),
+        source_flows=("source_sector_or_flow", _join),
         allocation_methods=("allocation_method", _join),
         allocation_share_min=("allocation_share", "min"),
         allocation_share_max=("allocation_share", "max"),
@@ -517,6 +640,231 @@ def _merge_provenance_summary(
         column: f"{prefix}_{column}" for column in summary.columns if column not in keys
     })
     return output.merge(summary, on=keys, how="left")
+
+
+def _merge_scope_summary(
+    rows: pd.DataFrame,
+    source_scope_audit: pd.DataFrame | None,
+    resolved_scope_audit: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """Attach explicit included/excluded source flows and LEAP branches."""
+    output = rows.copy()
+    base_keys = ["economy", "scenario", "year"]
+    if source_scope_audit is not None and not source_scope_audit.empty:
+        source = source_scope_audit.copy()
+        excluded = source[
+            ~source["included"].astype(bool)
+            & source["exclusion_reason"].ne("subtotal")
+        ]
+        excluded_summary = excluded.groupby(base_keys, as_index=False).agg(
+            excluded_source_flows=(
+                "source_flow_or_sector",
+                lambda values: "|".join(sorted({str(value).strip() for value in values if str(value).strip()})),
+            )
+        )
+        output = output.merge(excluded_summary, on=base_keys, how="left")
+    else:
+        output["excluded_source_flows"] = ""
+
+    if resolved_scope_audit is not None and not resolved_scope_audit.empty:
+        branch = resolved_scope_audit.copy()
+        keys = [*base_keys, "esto_product"]
+        records: list[dict[str, object]] = []
+        for key, group in branch.groupby(keys, dropna=False, sort=False):
+            included = group[group["included"].astype(bool)]
+            excluded = group[~group["included"].astype(bool)]
+
+            def _branches(frame: pd.DataFrame) -> str:
+                return "|".join(sorted({str(value).strip() for value in frame["leap_branch"] if str(value).strip()}))
+
+            def _contributions(frame: pd.DataFrame) -> str:
+                if frame.empty:
+                    return ""
+                totals = frame.groupby("leap_branch", dropna=False)["branch_contribution_value"].sum()
+                return "|".join(
+                    f"{branch_name}={float(value):.12g}"
+                    for branch_name, value in sorted(totals.items(), key=lambda item: str(item[0]))
+                )
+
+            records.append(
+                {
+                    **dict(zip(keys, key)),
+                    "included_leap_branches": _branches(included),
+                    "excluded_leap_branches": _branches(excluded),
+                    "included_leap_branch_contributions": _contributions(included),
+                    "excluded_leap_branch_contributions": _contributions(excluded),
+                }
+            )
+        output = output.merge(pd.DataFrame(records), on=keys, how="left")
+    else:
+        for column in [
+            "included_leap_branches", "excluded_leap_branches",
+            "included_leap_branch_contributions", "excluded_leap_branch_contributions",
+        ]:
+            output[column] = ""
+    text_columns = [
+        "excluded_source_flows", "included_leap_branches", "excluded_leap_branches",
+        "included_leap_branch_contributions", "excluded_leap_branch_contributions",
+    ]
+    for column in text_columns:
+        if column not in output:
+            output[column] = ""
+        output[column] = output[column].fillna("")
+    return output
+
+
+def _build_raw_source_scope_audit(
+    esto: pd.DataFrame,
+    ninth: pd.DataFrame,
+    scenarios: list[str],
+    base_year: int,
+    final_year: int,
+    exclude_own_use_td_losses: bool,
+    excluded_sectors: list[str] | None,
+) -> pd.DataFrame:
+    """Record every relevant raw demand row and why it is included or excluded."""
+    from codebase import aggregated_demand_workflow as aggregated
+
+    excluded = {str(value).strip() for value in (excluded_sectors or []) if str(value).strip()}
+    records: list[pd.DataFrame] = []
+
+    esto_work = esto.copy()
+    if not {"flows", "products", "is_subtotal", str(base_year)}.issubset(esto_work.columns):
+        esto_work = pd.DataFrame(columns=["economy", "flows", "products", "is_subtotal", str(base_year)])
+    esto_flows = esto_work["flows"].fillna("").astype(str).str.strip()
+    esto_products = esto_work["products"].fillna("").astype(str).str.strip()
+    own_use = esto_flows.str.startswith("10.01")
+    td_losses = esto_flows.str.startswith("10.02")
+    other_demand = esto_flows.str.startswith(("04", "05", "14", "15", "16", "17"))
+    esto_work = esto_work[own_use | td_losses | other_demand].copy()
+    esto_flows = esto_work["flows"].fillna("").astype(str).str.strip()
+    esto_products = esto_work["products"].fillna("").astype(str).str.strip()
+    esto_work["included"] = True
+    esto_work["exclusion_reason"] = ""
+    esto_work.loc[esto_work["is_subtotal"].astype(bool), ["included", "exclusion_reason"]] = [
+        False, "subtotal"
+    ]
+    if exclude_own_use_td_losses:
+        own_or_loss = esto_flows.str.startswith(("10.01", "10.02"))
+        esto_work.loc[own_or_loss, ["included", "exclusion_reason"]] = [
+            False, "handled_by_other_loss_own_use_proxy"
+        ]
+    else:
+        td_electricity = esto_flows.str.startswith("10.02") & esto_products.str.startswith("17")
+        esto_work.loc[td_electricity, ["included", "exclusion_reason"]] = [
+            False, "electricity_td_loss_exclusion"
+        ]
+    configured = esto_flows.map(lambda flow: aggregated._esto_flow_is_excluded(flow, excluded))
+    esto_work.loc[configured, ["included", "exclusion_reason"]] = [
+        False, "configured_detailed_sector_exclusion"
+    ]
+    esto_audit = pd.DataFrame(
+        {
+            "source_system": "ESTO",
+            "economy": esto_work["economy"],
+            "scenario": "Current Accounts",
+            "year": int(base_year),
+            "source_flow_or_sector": esto_flows,
+            "source_fuel_or_product": esto_products,
+            "value": pd.to_numeric(esto_work[str(base_year)], errors="coerce").abs().fillna(0.0),
+            "included": esto_work["included"].astype(bool),
+            "exclusion_reason": esto_work["exclusion_reason"],
+        }
+    )
+    esto_parts = []
+    for scenario in scenarios:
+        part = esto_audit.copy()
+        part["scenario"] = str(scenario).strip()
+        esto_parts.append(part)
+    if esto_parts:
+        records.append(pd.concat(esto_parts, ignore_index=True))
+
+    required_ninth = {
+        "scenarios", "sectors", "sub1sectors", "sub2sectors", "fuels",
+        "subfuels", "subtotal_results",
+    }
+    for scenario in scenarios:
+        if str(scenario).strip() == "Current Accounts":
+            continue
+        if not required_ninth.issubset(ninth.columns):
+            continue
+        csv_scenario = aggregated.SCENARIO_CSV_MAP.get(str(scenario).strip(), "reference").lower()
+        work = ninth[ninth["scenarios"].astype(str).str.lower().eq(csv_scenario)].copy()
+        sector_family = (
+            work["sectors"].isin(aggregated.NINTH_SECTORS)
+            & work["sub1sectors"].isin(aggregated.NINTH_SUB1_SECTORS)
+            & work["sub2sectors"].isin(aggregated.NINTH_SUB2_SECTORS)
+        )
+        work = work[sector_family].copy()
+        if work.empty:
+            continue
+        work["included"] = True
+        work["exclusion_reason"] = ""
+        work.loc[work["subtotal_results"].astype(bool), ["included", "exclusion_reason"]] = [
+            False, "subtotal"
+        ]
+        if exclude_own_use_td_losses:
+            own_or_loss = work["sub1sectors"].isin(
+                aggregated.OWN_USE_SECTORS | aggregated.TD_LOSSES_SECTORS
+            )
+            work.loc[own_or_loss, ["included", "exclusion_reason"]] = [
+                False, "handled_by_other_loss_own_use_proxy"
+            ]
+        else:
+            td_electricity = (
+                work["sub1sectors"].eq(aggregated.TD_LOSSES_SUB1)
+                & work["fuels"].eq(aggregated.TD_LOSSES_EXCLUDE_FUEL)
+            )
+            work.loc[td_electricity, ["included", "exclusion_reason"]] = [
+                False, "electricity_td_loss_exclusion"
+            ]
+        configured = work["sectors"].isin(excluded) | work["sub1sectors"].isin(excluded)
+        work.loc[configured, ["included", "exclusion_reason"]] = [
+            False, "configured_detailed_sector_exclusion"
+        ]
+        work["source_flow_or_sector"] = work.apply(
+            lambda row: next(
+                (
+                    str(row[column]).strip()
+                    for column in ["sub2sectors", "sub1sectors", "sectors"]
+                    if str(row[column]).strip().lower() not in {"", "x", "nan", "none"}
+                ),
+                "",
+            ),
+            axis=1,
+        )
+        work["source_fuel_or_product"] = aggregated._resolve_fuel_code(
+            work["fuels"], work["subfuels"]
+        )
+        years = [str(year) for year in range(aggregated.PROJECTION_START_YEAR, final_year + 1) if str(year) in work]
+        if not years:
+            continue
+        long = work[
+            [
+                "economy", "source_flow_or_sector", "source_fuel_or_product",
+                "included", "exclusion_reason", *years,
+            ]
+        ].melt(
+            id_vars=[
+                "economy", "source_flow_or_sector", "source_fuel_or_product",
+                "included", "exclusion_reason",
+            ],
+            value_vars=years,
+            var_name="year",
+            value_name="value",
+        )
+        long["source_system"] = "NINTH"
+        long["scenario"] = str(scenario).strip()
+        long["year"] = pd.to_numeric(long["year"], errors="raise").astype(int)
+        long["value"] = pd.to_numeric(long["value"], errors="coerce").abs().fillna(0.0)
+        records.append(long)
+
+    columns = [
+        "source_system", "economy", "scenario", "year",
+        "source_flow_or_sector", "source_fuel_or_product", "value",
+        "included", "exclusion_reason",
+    ]
+    return pd.concat(records, ignore_index=True)[columns] if records else pd.DataFrame(columns=columns)
 
 
 #%%
