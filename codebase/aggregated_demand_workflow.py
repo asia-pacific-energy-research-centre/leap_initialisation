@@ -347,13 +347,10 @@ def load_fuel_mapping(
     elif sheet == FUEL_NINTH_SHEET:
         source_col = "ninth_fuel"
     else:
-        # Compatibility for older direct calls to fuel_ninth_final_proposed.
-        raw = pd.read_excel(path, sheet_name=sheet).fillna("")
-        raw["ninth_fuel"] = raw["ninth_fuel"].astype(str).str.strip()
-        raw["leap_fuel_name"] = raw["leap_fuel_name"].astype(str).str.strip()
-        raw = raw[raw["leap_fuel_name"].str.lower().ne("nan")]
-        raw = raw.drop_duplicates(subset=["ninth_fuel"], keep="first")
-        return dict(zip(raw["ninth_fuel"], raw["leap_fuel_name"]))
+        raise ValueError(
+            f"load_fuel_mapping only supports the canonical sheets "
+            f"{FUEL_ESTO_SHEET!r} and {FUEL_NINTH_SHEET!r}; got {sheet!r}."
+        )
     required = [source_col, "raw_leap_fuel_name"]
     missing = [col for col in required if col not in df.columns]
     if missing:
@@ -993,7 +990,8 @@ def build_aggregated_demand_as_dummy(
     table stays aligned with the LEAP workbook when own-use and T&D losses are
     being handled by the separate proxy workflow.
 
-    Fuel names are mapped back to esto_product codes via fuel_product_final_proposed.
+    Fuel names are mapped back to esto_product codes via the canonical
+    leap_combined_esto sheet (esto_product -> raw_leap_fuel_name).
     Rows where no esto_product mapping exists are dropped.
     """
     use_scenarios = scenarios if scenarios is not None else LEAP_SCENARIOS

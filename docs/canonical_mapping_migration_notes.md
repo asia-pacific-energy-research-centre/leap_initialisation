@@ -139,18 +139,49 @@ any remaining legacy/exceptional logic.
 | Electricity/heat interim | canonical `ninth fuel to esto product` + legacy master_config (C5) | no | esto_product/ninth_fuel | — | legacy `sector_fuel_code_to_name` | BLOCKED: canonical missing ~193 labels + 6 aggregates |
 | Preflight (`supply_preflight`) | inherits above (compressed) | inherits | inherits | inherits | inherits | exercises future-only mappings |
 
-## Not migrated this pass (scoped out / lower priority)
+## C7 — follow-up files reviewed (aggregated demand / template extractor / name lookup)
 
-- `aggregated_demand_workflow.py` and `energy_balance_template_extractor.py` still
-  reference `fuel_ninth_final_proposed` / `fuel_product_final_proposed` via
-  `read_config_table` (which redirects legacy names). These are demand-template
-  helpers; they were not in the critical supply/transformation/refining path
-  fixed here. Worth a follow-up pass using the same shared loaders.
-- `unified_name_lookup.py` reads `leap_mappings.xlsx` + `master_config.xlsx`
-  sheets directly; not on the supply-reconciliation hot path but a candidate for
-  later consolidation.
+Investigated the three "lower priority" files. All three are **already off legacy
+mapping data on the active supply-reconciliation path**; only dead code / stale
+comments remained:
+
+- `aggregated_demand_workflow.py` — already reads canonical sheets
+  (`FUEL_MAPPINGS_PATH = OUTLOOK_MAPPINGS_MASTER_PATH`, `FUEL_ESTO_SHEET =
+  leap_combined_esto`, `FUEL_NINTH_SHEET = leap_combined_ninth`). Removed a dead
+  `else` branch in `load_fuel_mapping` that read the legacy
+  `fuel_ninth_final_proposed` sheet (unreachable — no caller passes that name)
+  and fixed a stale docstring referencing `fuel_product_final_proposed`.
+  `test_aggregated_demand_workflow.py` (48) passes.
+- `energy_balance_template_extractor.py` — reads its `mapping_pairs_path`, which
+  on the supply path is the canonical workbook (it loads `leap_combined_ninth`
+  from it at runtime). Its `*_final_proposed` reads are wrapped in try/except and
+  simply no-op because those sheets are absent from canonical. Left untouched
+  because the file also carries unrelated **pre-existing uncommitted changes**;
+  the stale "config/leap_mappings.xlsx" comment can be cleaned up in a dedicated
+  commit later.
+- `unified_name_lookup.py` — deliberately a multi-source name *consolidator*
+  (legacy proposed sheets + canonical `leap_combined_*` + master_config), with
+  conflict detection. Only consumer of its consolidation API is a scrapbook
+  (`fill_apec_9th_fuels_template.py`); its `load_active_mapping_sheet` export is
+  called by aggregated demand with canonical paths. Correct as-is; not on the
+  reconciliation hot path. No change.
+
 - `read_config_table` legacy filename->master_config redirects remain in place
   (used by non-mapping config tables too); not removed to avoid broad breakage.
+
+## Review diagnostics for the remaining canonical additions (C2 / C5)
+
+Three CSVs under `docs/canonical_migration_diagnostics/` (see its README) list,
+for your review, the rows the local `master_config.xlsx` copies carry that the
+canonical workbook lacks or maps differently, each annotated with canonical's
+alternative mapping:
+
+- `canonical_ninth_pairs_missing_from_canonical.csv` — C2 (1580 rows; 381 are
+  malformed local junk).
+- `canonical_leap_display_names_missing.csv` — C5 labels (229 rows; 78 whose
+  name already exists in canonical under another code).
+- `canonical_independent_product_mapping_diff.csv` — C5 relationships (35 rows;
+  includes the 6 aggregate esto->9th rows the interim workflow needs).
 
 ## Verification done
 
