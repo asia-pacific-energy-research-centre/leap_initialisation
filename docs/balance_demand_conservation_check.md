@@ -32,6 +32,28 @@ The check is diagnostic-only. It should not block a run until real `20_USA`
 baseline-seed and results-update outputs establish an appropriate tolerance and
 confirm that the two paths use identical sector-exclusion settings.
 
+## Human-readable prototype outputs
+
+The workflow now leaves the existing total comparison unchanged and writes two
+additional CSV files beside it:
+
+- `supply_reconciliation_balance_demand_conservation_breakdown.csv` explains
+  each total difference in two steps. `source_to_expected_mapping` shows energy
+  lost or gained while mapping raw demand. `expected_mapping_to_actual_resolved`
+  then compares each mapped ESTO product with the value reconciliation consumed.
+  Adding the `difference` column for one economy, scenario, and year reproduces
+  the difference in the existing total CSV.
+- `supply_reconciliation_balance_demand_conservation_lineage.csv` shows the
+  underlying rows in three clearly labelled groups: `original_source`,
+  `expected_mapped`, and `actual_resolved`.
+
+The current workflow does not retain the link from every raw source row through
+every allocation to its final resolved row. The lineage output says
+`mapped_but_source_link_not_retained` instead of inventing that link. Mapped
+product values are labelled `mapped_aggregate_may_include_estimates` because
+some projection allocations use fallback shares. This prototype is intended to
+make the gaps inspectable before deeper row-level capture is added.
+
 ## Pass-specific interpretation
 
 - `baseline_seed`: compare raw pre-mapping ESTO/9th demand totals with the

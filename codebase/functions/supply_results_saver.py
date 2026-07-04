@@ -224,10 +224,13 @@ from codebase.functions.supply_reconciliation_tables import (
     reset_supply_and_transformation_import_export_to_zero,
 )
 from codebase.functions.balance_demand_conservation import (
+    build_balance_demand_conservation_breakdown,
     build_balance_demand_conservation_diagnostics,
+    build_balance_demand_conservation_lineage,
     build_raw_demand_conservation_reference,
     prepare_reconciliation_demand_totals,
     write_balance_demand_conservation_diagnostics,
+    write_balance_demand_conservation_table,
 )
 from codebase.functions.supply_conservation import (
     build_baseline_supply_source_preservation,
@@ -2791,6 +2794,59 @@ def run_results_linked_transformation_supply_workflow(
         "[INFO] Wrote diagnostic-only balance-demand conservation check: "
         f"{balance_demand_conservation_path} ({mismatch_count} mismatch row(s))."
     )
+    balance_demand_breakdown_path = None
+    balance_demand_lineage_path = None
+    try:
+        from codebase.aggregated_demand_workflow import build_aggregated_demand_as_dummy
+
+        expected_mapped_parts = [
+            build_aggregated_demand_as_dummy(
+                economy=economy,
+                scenarios=conservation_scenarios,
+                base_year=BASE_YEAR,
+                final_year=FINAL_YEAR,
+                data_path=PROJECTION_DATA_PATH,
+                esto_data_path=ESTO_BASE_DATA_PATH,
+                exclude_own_use_td_losses=bool(AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES),
+                excluded_sectors=conservation_exclusions,
+                use_sector_branches=False,
+            )
+            for economy in economy_list
+        ]
+        expected_mapped_demand = (
+            pd.concat(expected_mapped_parts, ignore_index=True)
+            if expected_mapped_parts
+            else pd.DataFrame()
+        )
+        resolved_demand_by_product = prepare_reconciliation_demand_totals(
+            demand_table,
+            collapse_products=False,
+        )
+        balance_demand_breakdown = build_balance_demand_conservation_breakdown(
+            reference_rows=raw_demand_reference,
+            expected_mapped_rows=expected_mapped_demand,
+            resolved_rows=resolved_demand_by_product,
+        )
+        balance_demand_lineage = build_balance_demand_conservation_lineage(
+            reference_rows=raw_demand_reference,
+            expected_mapped_rows=expected_mapped_demand,
+            resolved_rows=resolved_demand_by_product,
+        )
+        checks_dir = _resolve(RESULTS_CHECKS_DIR)
+        balance_demand_breakdown_path = write_balance_demand_conservation_table(
+            balance_demand_breakdown,
+            checks_dir / "supply_reconciliation_balance_demand_conservation_breakdown.csv",
+        )
+        balance_demand_lineage_path = write_balance_demand_conservation_table(
+            balance_demand_lineage,
+            checks_dir / "supply_reconciliation_balance_demand_conservation_lineage.csv",
+        )
+        print(
+            "[INFO] Wrote balance-demand breakdown and lineage prototypes: "
+            f"{balance_demand_breakdown_path}, {balance_demand_lineage_path}."
+        )
+    except Exception as exc:
+        print(f"[WARN] Balance-demand breakdown/lineage prototype could not run: {exc}")
     _ts_cache_hit = False
     if TRANSFORMATION_SUPPLY_CACHE_ENABLED:
         import hashlib as _hashlib, json as _json, pickle as _pickle
@@ -3544,6 +3600,8 @@ def run_results_linked_transformation_supply_workflow(
         "direct_demand_mapping_gaps_csv": balance_demand_issue_path,
         "balance_matching_diagnostics_csv": balance_matching_diagnostics_path,
         "balance_demand_conservation_csv": balance_demand_conservation_path,
+        "balance_demand_conservation_breakdown_csv": balance_demand_breakdown_path,
+        "balance_demand_conservation_lineage_csv": balance_demand_lineage_path,
         "baseline_supply_source_preservation_csv": baseline_supply_preservation_path,
         "results_update_closure_csv": results_update_closure_path,
         "source_diagnostics_csv": source_diagnostics_path,

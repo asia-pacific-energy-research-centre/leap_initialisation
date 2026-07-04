@@ -6,8 +6,10 @@ import pandas as pd
 import pytest
 
 from codebase.functions.balance_demand_conservation import (
+    build_balance_demand_conservation_breakdown,
     build_raw_demand_conservation_reference,
     build_balance_demand_conservation_diagnostics,
+    build_balance_demand_conservation_lineage,
     prepare_aggregated_demand_reference,
     prepare_reconciliation_demand_totals,
 )
@@ -167,6 +169,69 @@ def test_raw_reference_is_built_before_fuel_mapping(monkeypatch):
 
     assert totals == pytest.approx({2022: 10.0, 2023: 100.0})
     assert reference["esto_product"].eq("__all_fuels__").all()
+
+
+def test_breakdown_components_add_back_to_existing_total_difference():
+    reference = _rows("reference_total", [40.0, 60.0])
+    reference["esto_product"] = "__all_fuels__"
+    expected = pd.DataFrame(
+        [
+            {"economy": "20_USA", "scenario": "Reference", "esto_product": "p1", "year": 2030, "demand_value": 35.0},
+            {"economy": "20_USA", "scenario": "Reference", "esto_product": "p2", "year": 2030, "demand_value": 55.0},
+        ]
+    )
+    resolved = prepare_reconciliation_demand_totals(
+        pd.DataFrame(
+            [
+                {"economy": "20_USA", "scenario": "Reference", "esto_product": "p1", "year": 2030, "demand_value": 50.0},
+                {"economy": "20_USA", "scenario": "Reference", "esto_product": "p2", "year": 2030, "demand_value": 70.0},
+            ]
+        )
+    )
+
+    breakdown = build_balance_demand_conservation_breakdown(reference, expected, resolved)
+
+    # Mapping loses 10 PJ; resolution adds 30 PJ. Net resolved-reference is 20 PJ.
+    assert breakdown["difference"].sum() == pytest.approx(20.0)
+    stage_totals = breakdown.groupby("breakdown_stage")["difference"].sum().to_dict()
+    assert stage_totals == pytest.approx(
+        {
+            "source_to_expected_mapping": -10.0,
+            "expected_mapping_to_actual_resolved": 30.0,
+        }
+    )
+
+
+def test_lineage_keeps_source_rows_once_and_does_not_invent_links():
+    reference = pd.DataFrame(
+        [
+            {
+                "economy": "20_USA", "scenario": "Reference",
+                "sector_context": "All demand after detailed-sector exclusions",
+                "esto_product": "__all_fuels__", "year": 2030,
+                "reference_total": 100.0, "source_system": "NINTH",
+                "source_row_id": "source_1", "source_sector_or_flow": "industry",
+                "source_fuel_or_product": "gas", "value_classification": "exact_aggregated",
+            }
+        ]
+    )
+    expected = pd.DataFrame(
+        [
+            {"economy": "20_USA", "scenario": "Reference", "esto_product": "gas_a", "year": 2030, "demand_value": 40.0},
+            {"economy": "20_USA", "scenario": "Reference", "esto_product": "gas_b", "year": 2030, "demand_value": 60.0},
+        ]
+    )
+    resolved = prepare_reconciliation_demand_totals(expected)
+
+    lineage = build_balance_demand_conservation_lineage(reference, expected, resolved)
+    original = lineage[lineage["lineage_stage"].eq("original_source")]
+    mapped = lineage[lineage["lineage_stage"].eq("expected_mapped")]
+
+    assert original["value"].sum() == pytest.approx(100.0)
+    assert len(original) == 1
+    assert mapped["value"].sum() == pytest.approx(100.0)
+    assert mapped["linked_source_row_id"].eq("").all()
+    assert mapped["mapping_status"].eq("mapped_but_source_link_not_retained").all()
 
 
 #%%

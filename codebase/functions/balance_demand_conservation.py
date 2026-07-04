@@ -3,6 +3,7 @@
 #%%
 
 from pathlib import Path
+import hashlib
 
 import pandas as pd
 
@@ -16,6 +17,13 @@ CONSERVATION_KEY_COLUMNS = (
 )
 
 TOTAL_DEMAND_CONTEXT = "All demand after detailed-sector exclusions"
+
+BREAKDOWN_KEY_COLUMNS = (
+    "economy",
+    "scenario",
+    "sector_context",
+    "year",
+)
 
 
 def build_raw_demand_conservation_reference(
@@ -78,13 +86,192 @@ def build_raw_demand_conservation_reference(
             columns=[*CONSERVATION_KEY_COLUMNS, "reference_total"]
         )
     source = pd.concat(parts, ignore_index=True)
+    source["source_system"] = source["year"].map(
+        lambda year: "ESTO" if int(year) == int(base_year) else "NINTH"
+    )
+    source["source_fuel_or_product"] = source["fuel_code"].astype(str)
+    source["source_sector_or_flow"] = source.get(
+        "sector", pd.Series("", index=source.index, dtype=str)
+    ).fillna("").astype(str)
+    source["source_row_id"] = _deterministic_row_ids(
+        source,
+        columns=[
+            "source_system",
+            "economy",
+            "scenario",
+            "source_sector_or_flow",
+            "source_fuel_or_product",
+            "year",
+            "value",
+        ],
+        prefix="source",
+    )
+    source["value_classification"] = "exact_aggregated"
     source["sector_context"] = TOTAL_DEMAND_CONTEXT
     source["esto_product"] = "__all_fuels__"
+    return source.rename(columns={"value": "reference_total"})[
+        [
+            *CONSERVATION_KEY_COLUMNS,
+            "reference_total",
+            "source_system",
+            "source_row_id",
+            "source_sector_or_flow",
+            "source_fuel_or_product",
+            "value_classification",
+        ]
+    ].reset_index(drop=True)
+
+
+def build_balance_demand_conservation_breakdown(
+    reference_rows: pd.DataFrame,
+    expected_mapped_rows: pd.DataFrame,
+    resolved_rows: pd.DataFrame,
+) -> pd.DataFrame:
+    """Explain the total gap as mapping loss plus product-level resolution gaps.
+
+    The mapping bridge deliberately stays at all-fuels level. Raw Ninth fuel
+    codes and ESTO products are different vocabularies, so forcing a product
+    join would imply lineage that the current workflow has not retained.
+    """
+    _require_columns(reference_rows, [*CONSERVATION_KEY_COLUMNS, "reference_total"], "reference_rows")
+    _require_columns(
+        expected_mapped_rows,
+        ["economy", "scenario", "esto_product", "year", "demand_value"],
+        "expected_mapped_rows",
+    )
+    _require_columns(resolved_rows, [*CONSERVATION_KEY_COLUMNS, "resolved_total"], "resolved_rows")
+
+    reference = _aggregate_side(reference_rows, "reference_total")
+    reference = reference.groupby(list(BREAKDOWN_KEY_COLUMNS), as_index=False)["reference_total"].sum()
+
+    expected = expected_mapped_rows[
+        ["economy", "scenario", "esto_product", "year", "demand_value"]
+    ].copy()
+    expected["sector_context"] = TOTAL_DEMAND_CONTEXT
+    expected = _aggregate_side(
+        expected.rename(columns={"demand_value": "expected_mapped_value"}),
+        "expected_mapped_value",
+    )
+    resolved = _aggregate_side(resolved_rows, "resolved_total")
+
+    expected_totals = expected.groupby(list(BREAKDOWN_KEY_COLUMNS), as_index=False)[
+        "expected_mapped_value"
+    ].sum()
+    mapping_bridge = reference.merge(expected_totals, on=list(BREAKDOWN_KEY_COLUMNS), how="outer")
+    mapping_bridge[["reference_total", "expected_mapped_value"]] = mapping_bridge[
+        ["reference_total", "expected_mapped_value"]
+    ].fillna(0.0)
+    mapping_bridge["breakdown_stage"] = "source_to_expected_mapping"
+    mapping_bridge["component"] = "__all_fuels__"
+    mapping_bridge["original_source_value"] = mapping_bridge["reference_total"]
+    mapping_bridge["actual_resolved_value"] = pd.NA
+    mapping_bridge["difference"] = (
+        mapping_bridge["expected_mapped_value"] - mapping_bridge["original_source_value"]
+    )
+
+    product_bridge = expected.merge(
+        resolved,
+        on=list(CONSERVATION_KEY_COLUMNS),
+        how="outer",
+    )
+    product_bridge[["expected_mapped_value", "resolved_total"]] = product_bridge[
+        ["expected_mapped_value", "resolved_total"]
+    ].fillna(0.0)
+    product_bridge["breakdown_stage"] = "expected_mapping_to_actual_resolved"
+    product_bridge["component"] = product_bridge["esto_product"]
+    product_bridge["original_source_value"] = pd.NA
+    product_bridge["actual_resolved_value"] = product_bridge["resolved_total"]
+    product_bridge["difference"] = (
+        product_bridge["actual_resolved_value"] - product_bridge["expected_mapped_value"]
+    )
+
+    columns = [
+        *BREAKDOWN_KEY_COLUMNS,
+        "breakdown_stage",
+        "component",
+        "original_source_value",
+        "expected_mapped_value",
+        "actual_resolved_value",
+        "difference",
+    ]
     return (
-        source.rename(columns={"value": "reference_total"})
-        [[*CONSERVATION_KEY_COLUMNS, "reference_total"]]
+        pd.concat([mapping_bridge[columns], product_bridge[columns]], ignore_index=True)
+        .sort_values([*BREAKDOWN_KEY_COLUMNS, "breakdown_stage", "component"])
         .reset_index(drop=True)
     )
+
+
+def build_balance_demand_conservation_lineage(
+    reference_rows: pd.DataFrame,
+    expected_mapped_rows: pd.DataFrame,
+    resolved_rows: pd.DataFrame,
+) -> pd.DataFrame:
+    """Return honest stage rows without inventing unavailable cross-stage links."""
+    source_columns = [
+        "economy", "scenario", "year", "source_system", "source_row_id",
+        "source_sector_or_flow", "source_fuel_or_product", "reference_total",
+        "value_classification",
+    ]
+    _require_columns(reference_rows, source_columns, "reference_rows")
+
+    source = reference_rows[source_columns].copy().rename(
+        columns={"reference_total": "value", "source_row_id": "row_id"}
+    )
+    source["lineage_stage"] = "original_source"
+    source["esto_product"] = ""
+    source["mapping_status"] = "not_yet_mapped"
+    source["allocation_share"] = pd.NA
+    source["linked_source_row_id"] = ""
+
+    expected = expected_mapped_rows[
+        ["economy", "scenario", "year", "esto_product", "demand_value"]
+    ].copy().rename(columns={"demand_value": "value"})
+    expected["lineage_stage"] = "expected_mapped"
+    expected["source_system"] = "ESTO_OR_NINTH"
+    expected["source_sector_or_flow"] = ""
+    expected["source_fuel_or_product"] = ""
+    expected["value_classification"] = "mapped_aggregate_may_include_estimates"
+    expected["mapping_status"] = "mapped_but_source_link_not_retained"
+    expected["allocation_share"] = pd.NA
+    expected["linked_source_row_id"] = ""
+    expected["row_id"] = _deterministic_row_ids(
+        expected,
+        ["economy", "scenario", "year", "esto_product", "value"],
+        "expected",
+    )
+
+    actual = resolved_rows[
+        ["economy", "scenario", "year", "esto_product", "resolved_total"]
+    ].copy().rename(columns={"resolved_total": "value"})
+    actual["lineage_stage"] = "actual_resolved"
+    actual["source_system"] = "LEAP_BALANCE"
+    actual["source_sector_or_flow"] = ""
+    actual["source_fuel_or_product"] = ""
+    actual["value_classification"] = "exact_aggregated"
+    actual["mapping_status"] = "resolved_but_source_link_not_retained"
+    actual["allocation_share"] = pd.NA
+    actual["linked_source_row_id"] = ""
+    actual["row_id"] = _deterministic_row_ids(
+        actual,
+        ["economy", "scenario", "year", "esto_product", "value"],
+        "resolved",
+    )
+
+    columns = [
+        "lineage_stage", "row_id", "linked_source_row_id", "source_system",
+        "economy", "scenario", "year", "source_sector_or_flow",
+        "source_fuel_or_product", "esto_product", "value",
+        "value_classification", "mapping_status", "allocation_share",
+    ]
+    return pd.concat([source[columns], expected[columns], actual[columns]], ignore_index=True)
+
+
+def write_balance_demand_conservation_table(rows: pd.DataFrame, output_path: Path | str) -> Path:
+    """Write one conservation support table and return its resolved path."""
+    path = Path(output_path).resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows.to_csv(path, index=False)
+    return path
 
 
 def build_balance_demand_conservation_diagnostics(
@@ -217,6 +404,19 @@ def _aggregate_side(rows: pd.DataFrame, value_column: str) -> pd.DataFrame:
     return (
         work.groupby(list(CONSERVATION_KEY_COLUMNS), as_index=False, dropna=False)[value_column]
         .sum(min_count=1)
+    )
+
+
+def _deterministic_row_ids(
+    rows: pd.DataFrame,
+    columns: list[str],
+    prefix: str,
+) -> pd.Series:
+    """Build repeatable IDs, including a counter for duplicate natural keys."""
+    keys = rows[columns].fillna("").astype(str).agg("|".join, axis=1)
+    occurrence = keys.groupby(keys, sort=False).cumcount().astype(str)
+    return (keys + "|" + occurrence).map(
+        lambda value: f"{prefix}_{hashlib.sha256(value.encode('utf-8')).hexdigest()[:16]}"
     )
 
 
