@@ -1199,6 +1199,17 @@ def run_workflow(*, error_on_gaps: bool = True, check_raw_leap_coverage: bool = 
     )
     _report_coverage_gaps(gaps, error_on_gaps=error_on_gaps)
 
+    print("\n" + "=" * 70)
+    print("CONFIRMATION REQUIRED")
+    print("=" * 70)
+    print(f"About to overwrite sheets {ESTO_SHEET!r} and {NINTH_SHEET!r} in:")
+    print(f"  {MAPPING_WORKBOOK_PATH}")
+    print(f"A timestamped backup was already created at:\n  {backup_path}")
+    answer = input("\nType 'yes' to proceed, anything else to abort: ").strip().lower()
+    if answer != "yes":
+        print("Aborted -- no changes written.")
+        sys.exit(0)
+
     _replace_sheet_with_dataframe(MAPPING_WORKBOOK_PATH, ESTO_SHEET, refreshed_esto)
     _replace_sheet_with_dataframe(MAPPING_WORKBOOK_PATH, NINTH_SHEET, refreshed_ninth)
 
@@ -1237,7 +1248,7 @@ def run_workflow(*, error_on_gaps: bool = True, check_raw_leap_coverage: bool = 
 
 
 #%%
-RUN_WORKFLOW = True
+RUN_WORKFLOW = False
 # Set to False to emit a warning instead of raising an error when coverage gaps are found.
 ERROR_ON_GAPS = False
 CREATE_RESEARCHER_MAPPINGS = False

@@ -45,7 +45,7 @@ LEAP_ORIGINAL_EXPORT_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 OUTPUT_DIR = REPO_ROOT / "results" / "mapping_relationships"
 QA_DIR = OUTPUT_DIR / "qa"
 
-RUN_UPDATE_MAPPING_CARDINALITY = True
+RUN_UPDATE_MAPPING_CARDINALITY = False
 FAIL_ON_MANY_TO_MANY_AFTER_ROLLUP = False
 MAPPING_BALANCE_COVERAGE_TOLERANCE_PJ = 1e-6
 MAPPING_BALANCE_COVERAGE_YEARS = ("2022",)
@@ -1093,6 +1093,17 @@ def update_mapping_cardinality(
     backup_dir.mkdir(parents=True, exist_ok=True)
     backup_path = backup_dir / f"{mapping_workbook_path.stem}.before_rollup_cardinality_{pd.Timestamp.now():%Y%m%d_%H%M%S}{mapping_workbook_path.suffix}"
     shutil.copy2(mapping_workbook_path, backup_path)
+
+    print("\n" + "=" * 70)
+    print("CONFIRMATION REQUIRED")
+    print("=" * 70)
+    print(f"About to update rollup/cardinality sheets and mapping sheets in:")
+    print(f"  {mapping_workbook_path}")
+    print(f"A timestamped backup was already created at:\n  {backup_path}")
+    answer = input("\nType 'yes' to proceed, anything else to abort: ").strip().lower()
+    if answer != "yes":
+        print("Aborted -- no changes written.")
+        sys.exit(0)
 
     ensure_rollup_sheets(mapping_workbook_path)
     ensure_individual_mapping_exception_sheet(mapping_workbook_path)
