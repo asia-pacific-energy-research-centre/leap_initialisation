@@ -343,6 +343,9 @@ def test_results_update_preflight_routing_and_restoration(tmp_path, monkeypatch,
         observed["econ"] = srs.ECONOMIES
         observed["ref_wb"] = sdm.BALANCE_DEMAND_REF_WORKBOOK_PATH
         observed["checks"] = srs.RESULTS_CHECKS_DIR
+        observed["validation_years"] = workflow_cfg.get_baseline_seed_validation_years(
+            ["Reference", "Target"]
+        )
         if runner_fails:
             raise RuntimeError("simulated pipeline failure")
         return {}
@@ -367,6 +370,10 @@ def test_results_update_preflight_routing_and_restoration(tmp_path, monkeypatch,
     assert observed["leap_supply"] is False
     assert observed["ref_wb"] == reduced_ref
     assert "preflight_compressed_results_update" in str(observed["checks"])
+    assert observed["validation_years"] == {
+        "Reference": [2023],
+        "Target": [2023],
+    }
 
     # Production state restored after success AND failure.
     assert srs.CAPACITY_UNMET_PASS_MODE == prod_pass_mode

@@ -1098,6 +1098,8 @@ def _snapshot_preflight_state() -> dict[str, object]:
         "GLOBAL_FINAL_YEAR",
         "TRANSFORMATION_EXPORT_FINAL_YEAR",
         "MINOR_DEMAND_EXPORT_FINAL_YEAR",
+        "BASELINE_SEED_VALIDATION_BASE_YEAR",
+        "BASELINE_SEED_VALIDATION_FINAL_YEAR",
     ]
     return {
         "globals": {name: globals().get(name) for name in names},
@@ -1137,6 +1139,8 @@ def _apply_preflight_compressed_state(
     workflow_cfg.GLOBAL_FINAL_YEAR = compressed_year
     workflow_cfg.TRANSFORMATION_EXPORT_FINAL_YEAR = compressed_year
     workflow_cfg.MINOR_DEMAND_EXPORT_FINAL_YEAR = compressed_year
+    workflow_cfg.BASELINE_SEED_VALIDATION_BASE_YEAR = base_year
+    workflow_cfg.BASELINE_SEED_VALIDATION_FINAL_YEAR = compressed_year
 
     importlib.reload(supply_data_pipeline)
     importlib.reload(transformation_workflow.core)
@@ -1625,6 +1629,11 @@ def _apply_preflight_results_update_state(
     workflow_cfg.GLOBAL_FINAL_YEAR = compressed_year
     workflow_cfg.TRANSFORMATION_EXPORT_FINAL_YEAR = compressed_year
     workflow_cfg.MINOR_DEMAND_EXPORT_FINAL_YEAR = compressed_year
+    # Baseline-seed validation must use the same deliberately compressed
+    # two-year horizon as the generated preflight workbooks. Production values
+    # are restored in ``finally`` by _restore_preflight_state.
+    workflow_cfg.BASELINE_SEED_VALIDATION_BASE_YEAR = base_year
+    workflow_cfg.BASELINE_SEED_VALIDATION_FINAL_YEAR = compressed_year
 
     importlib.reload(supply_data_pipeline)
     importlib.reload(transformation_workflow.core)
