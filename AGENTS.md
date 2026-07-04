@@ -19,6 +19,15 @@ In Claude Code sessions all three repos are configured as additional working dir
 
 Agents can read, search, and edit files in any of them. When a task here involves mapping concepts, read `C:\Users\Work\github\leap_mappings\docs\mappings_system.md` first rather than inferring from context.
 
+## Running the supply reconciliation workflow
+
+`codebase/supply_reconciliation_workflow.py` is a long-running workflow. When an
+agent runs it, **let it run to completion — do not interrupt or kill it to check
+on it.** Launch it in the background and poll its progress at most once every
+**10 minutes**. Frequent polling wastes effort and risks disturbing the run;
+the workflow reports its own per-stage progress, so a 10-minute cadence is
+sufficient to notice a stall or failure.
+
 ## Rebuild scope and active documentation
 
 This repository is being rebuilt. All new workflow code goes here, not in `leap_utilities`.
