@@ -909,16 +909,60 @@ class TemplateBalanceExtractor:
                     )
             mismatch_rows = out[subtotal_mismatch].copy()
             if not mismatch_rows.empty:
+                # Attach the actual validation-basis flags (authored value overriding
+                # the computed/lookup flag) so a written mismatch row shows *why* it
+                # blocks -- the raw computed flags can both read False while the
+                # authored ones differ. Kept local to the export, not mutated onto out.
+                mismatch_rows["leap_is_subtotal_validation"] = leap_flag_validation[subtotal_mismatch].to_numpy()
+                mismatch_rows[f"{target_subtotal_col}_validation"] = target_flag_validation[
+                    subtotal_mismatch
+                ].to_numpy()
                 preview_cols = [
                     "leap_sector_name_full_path",
                     "raw_leap_fuel_name",
                     target_sector_col,
                     target_fuel_col,
                     "leap_is_subtotal_computed",
+                    "leap_is_subtotal_validation",
                     target_subtotal_col,
+                    f"{target_subtotal_col}_validation",
                     "subtotal_mismatch_is_ok",
                 ]
-                preview = mismatch_rows[preview_cols].drop_duplicates().head(30).to_dict("records")
+                unique_mismatches = mismatch_rows[preview_cols].drop_duplicates()
+                preview = unique_mismatches.head(30).to_dict("records")
+
+                # Always write the full blocking set to a CSV so it can be
+                # inspected, the flags fixed, or the reviewed rows pasted straight
+                # into the `subtotal_mismatch_allowed` exception sheet. The column
+                # order matches that sheet: enabled, sheet, leap_sector_name_full_path,
+                # raw_leap_fuel_name, <target sector>, <target fuel>, plus the flags
+                # for review.
+                blocking_export = unique_mismatches.copy()
+                blocking_export.insert(0, "sheet", sheet_label)
+                blocking_export.insert(0, "enabled", "")
+                blocking_path = (
+                    SUBTOTAL_FLAG_DIAGNOSTIC_DIR
+                    / f"subtotal_flag_blocking_mismatches_{sheet_label}.csv"
+                )
+                try:
+                    blocking_path.parent.mkdir(parents=True, exist_ok=True)
+                    blocking_export.to_csv(blocking_path, index=False, encoding="utf-8-sig")
+                    print(
+                        f"[INFO] {sheet_label}: wrote {len(unique_mismatches)} blocking subtotal "
+                        f"mismatch row(s) for review to {blocking_path}. Fix the flags or add the "
+                        "reviewed rows (enabled=TRUE) to the "
+                        f"'{SUBTOTAL_MISMATCH_EXCEPTIONS_SHEET}' sheet of "
+                        f"{SUBTOTAL_MISMATCH_EXCEPTIONS_PATH}.",
+                        flush=True,
+                    )
+                except Exception as exc:
+                    blocking_path = None
+                    print(
+                        f"[WARN] {sheet_label}: could not write blocking subtotal mismatch CSV "
+                        f"({exc}); {len(unique_mismatches)} row(s) remain unreviewed.",
+                        flush=True,
+                    )
+
                 # LEAP_INIT_ALLOW_SUBTOTAL_MISMATCH: user-authorized escape hatch for
                 # runs against a mapping workbook whose subtotal flags are mid-review;
                 # mismatched rows are reported but do not block the run.
@@ -932,7 +976,9 @@ class TemplateBalanceExtractor:
                 else:
                     raise ValueError(
                         f"{sheet_label} contains subtotal mismatches. Set subtotal_mismatch_is_ok=True "
-                        f"only for intentional subtotal-to-non-subtotal mappings. Preview: {preview}"
+                        "only for intentional subtotal-to-non-subtotal mappings. "
+                        f"Full list of {len(unique_mismatches)} row(s) written to {blocking_path}. "
+                        f"Preview: {preview}"
                     )
 
             pair_many_to_many = out["pair_mapping_cardinality_computed"].eq("many_to_many")
