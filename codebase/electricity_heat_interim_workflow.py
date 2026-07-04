@@ -60,7 +60,10 @@ from codebase.configuration.config import (
     BRANCH_DEMAND_TECHNOLOGY,
 )
 from codebase.utilities import workflow_common
-from codebase.utilities.master_config import read_config_table, OUTLOOK_MAPPINGS_MASTER_PATH
+from codebase.mappings.canonical_loaders import (
+    build_code_to_display_name,
+    load_canonical_sheet,
+)
 
 LEAP_API_AVAILABLE = leap_api.is_available()
 
@@ -179,6 +182,18 @@ POWER_INTERIM_ALLOWED_WORKBOOK_ONLY_LABELS: frozenset[str] = frozenset({
     "Natural gas liquids",
 })
 
+# These 9th aggregate codes have several valid LEAP leaf names in the canonical
+# display-name table. The interim workflow must retain its established single
+# branch choice because the aggregated source series cannot be split back into
+# those leaves without inventing shares.
+POWER_INTERIM_AMBIGUOUS_DISPLAY_NAMES: dict[str, str] = {
+    "01_x_thermal_coal": "Other bituminous coal",
+    "02_coal_products": "Coke oven coke",
+    "07_x_jet_fuel": "Kerosene type jet fuel",
+    "07_x_other_petroleum_products": "Other products",
+    "12_01_of_which_photovoltaics": "of which Photovoltaics",
+}
+
 _ESTO_PRODUCT_TO_NINTH_FUEL: dict[str, str] | None = None
 _POWER_INTERIM_DISPLAY_NAME_MAP: dict[str, str] | None = None
 
@@ -235,36 +250,26 @@ def _zero_years_outside_range(
 
 
 def _load_esto_product_to_ninth_fuel() -> dict[str, str]:
-    """Load product-to-9th-fuel mapping from master_config code_to_name table."""
+    """Load product-to-9th-fuel mappings from the canonical workbook."""
     global _ESTO_PRODUCT_TO_NINTH_FUEL
     if _ESTO_PRODUCT_TO_NINTH_FUEL is not None:
         return _ESTO_PRODUCT_TO_NINTH_FUEL
 
     mapping: dict[str, str] = {}
 
-    independent_df = read_config_table(
-        REPO_ROOT / "config" / "master_config.xlsx",
-        sheet_name="independent_product_mapping",
+    ninth_to_esto_df = load_canonical_sheet(
+        "ninth fuel to esto product",
+        ("9th_fuel", "esto_product"),
         dtype=str,
     ).fillna("")
-    if {"esto_label", "9th_label"}.issubset(set(independent_df.columns)):
-        for _, row in independent_df.iterrows():
-            esto_label = _normalize_label_text(row["esto_label"])
-            ninth_label = str(row["9th_label"]).strip()
-            if esto_label and ninth_label:
-                mapping[esto_label] = ninth_label
-
-    ninth_to_esto_df = pd.read_excel(
-        OUTLOOK_MAPPINGS_MASTER_PATH,
-        sheet_name="ninth fuel to esto product",
-        dtype=str,
-    ).fillna("")
-    if {"9th_fuel", "esto_product"}.issubset(set(ninth_to_esto_df.columns)):
-        for _, row in ninth_to_esto_df.iterrows():
-            esto_label = _normalize_label_text(row["esto_product"])
-            ninth_label = str(row["9th_fuel"]).strip()
-            if esto_label and ninth_label and esto_label not in mapping:
-                mapping[esto_label] = ninth_label
+    for _, row in ninth_to_esto_df.iterrows():
+        esto_label = _normalize_label_text(row["esto_product"])
+        ninth_label = str(row["9th_fuel"]).strip()
+        # A few aggregate ESTO products intentionally have multiple 9th
+        # counterparts. Preserve the workbook's stable first-row choice, which
+        # matches the previous loader's deterministic precedence.
+        if esto_label and ninth_label and esto_label not in mapping:
+            mapping[esto_label] = ninth_label
 
     aggregate_mappings = {
         label: ninth
@@ -315,7 +320,7 @@ def _drop_ninth_projection_subtotals(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _map_esto_products_to_ninth_fuels(df: pd.DataFrame) -> pd.DataFrame:
-    """Add fuel columns to ESTO rows using master_config product mappings."""
+    """Add fuel columns to ESTO rows using canonical product mappings."""
     if df.empty:
         return df.copy()
     if "products" not in df.columns:
@@ -339,40 +344,19 @@ def _map_esto_products_to_ninth_fuels(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _load_power_interim_display_name_map() -> dict[str, str]:
-    """Load a label-to-display-name map for validating interim fuel branches."""
+    """Load canonical code-to-display-name mappings for interim fuel branches."""
     global _POWER_INTERIM_DISPLAY_NAME_MAP
     if _POWER_INTERIM_DISPLAY_NAME_MAP is not None:
         return _POWER_INTERIM_DISPLAY_NAME_MAP
 
-    # NOTE (canonical migration): labels here should come from the canonical
-    # leap_display_names sheet, but that sheet currently lacks ~193 fuel/sector
-    # codes present in sector_fuel_code_to_name (many power-sector, e.g.
-    # 09_01_08_solar -> Solar, 09_02_01_coal -> Coal CHP, 12_solar -> Solar).
-    # These labels drive interim branch names and the NEVER_OUTPUT filter, so the
-    # switch is blocked until those codes are added to leap_display_names in the
-    # leap_mappings workbook. See docs/canonical_mapping_migration_notes.md (C5).
-    mapping: dict[str, str] = {}
-    code_to_name_df = read_config_table(
-        REPO_ROOT / "config" / "master_config.xlsx",
-        sheet_name="sector_fuel_code_to_name",
-        dtype=str,
-    ).fillna("")
-    required_cols = {"esto_label", "9th_label", "name"}
-    missing = required_cols - set(code_to_name_df.columns)
-    if missing:
-        raise ValueError(
-            "Missing required columns in sector_fuel_code_to_name mapping: "
-            f"{sorted(missing)}"
-        )
-
-    for _, row in code_to_name_df.iterrows():
-        display_name = _normalize_label_text(row.get("name", ""))
-        if not display_name:
-            continue
-        for col in ("esto_label", "9th_label"):
-            label = _normalize_label_text(row.get(col, ""))
-            if label and label not in mapping:
-                mapping[label] = display_name
+    # Some source codes intentionally appear more than once for branch-specific
+    # labels. The shared builder preserves sheet order and returns the same stable
+    # first match used by this path historically; its conflict table is for QA.
+    # Include explicitly non-output aggregate labels so the existing
+    # POWER_INTERIM_NEVER_OUTPUT_LABELS guard can still identify and suppress
+    # Coal/Gas/Petroleum-product subtotal rows.
+    mapping, _conflicts = build_code_to_display_name(include_excluded=True)
+    mapping.update(POWER_INTERIM_AMBIGUOUS_DISPLAY_NAMES)
 
     _POWER_INTERIM_DISPLAY_NAME_MAP = mapping
     return _POWER_INTERIM_DISPLAY_NAME_MAP

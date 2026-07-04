@@ -134,6 +134,30 @@ def test_display_name_missing_code_absent(tmp_path: Path):
     assert "99.99" not in mapping
 
 
+def test_display_name_builder_can_include_explicitly_excluded_labels(tmp_path: Path):
+    wb = tmp_path / "wb.xlsx"
+    sheets = _base_sheets()
+    sheets[cl.SHEET_LEAP_DISPLAY_NAMES] = pd.DataFrame(
+        [
+            {
+                "code": "01_coal",
+                "leap_display_name": "Coal",
+                "USED_IN_LEAP_INITIALISATION": False,
+            }
+        ]
+    )
+    _write_workbook(wb, sheets)
+
+    default_mapping, _ = cl.build_code_to_display_name(workbook=wb)
+    complete_mapping, _ = cl.build_code_to_display_name(
+        workbook=wb,
+        include_excluded=True,
+    )
+
+    assert "01_coal" not in default_mapping
+    assert complete_mapping["01_coal"] == "Coal"
+
+
 def test_display_name_duplicate_conflict_detected(tmp_path: Path):
     wb = tmp_path / "wb.xlsx"
     sheets = _base_sheets()

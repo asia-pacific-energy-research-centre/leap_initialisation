@@ -93,4 +93,55 @@ def test_signed_09_rows_supply_outputs_and_inputs_without_forbidden_influence(
     assert "16_others" not in totals
 
 
+def test_power_interim_display_names_and_never_output_use_canonical_builder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        workflow,
+        "build_code_to_display_name",
+        lambda **kwargs: (
+            {
+                "01_coal": "Coal",
+                "12_solar_unallocated": "Solar nonspecified",
+                "15_04_black_liquor": "Black liquor",
+            },
+            pd.DataFrame(),
+        ),
+    )
+    monkeypatch.setattr(workflow, "_POWER_INTERIM_DISPLAY_NAME_MAP", None)
+
+    assert workflow._safe_power_interim_display_label("01_coal") == "Coal"
+    assert (
+        workflow._safe_power_interim_display_label("12_solar_unallocated")
+        == "Solar nonspecified"
+    )
+    assert workflow._safe_power_interim_display_label("15_04_black_liquor") == "Black liqour"
+    assert workflow._safe_power_interim_display_label("01_x_thermal_coal") == "Other bituminous coal"
+    assert workflow._safe_power_interim_display_label("07_x_jet_fuel") == "Kerosene type jet fuel"
+    assert "Coal" in workflow.POWER_INTERIM_NEVER_OUTPUT_LABELS
+    assert "Solar nonspecified" not in workflow.POWER_INTERIM_NEVER_OUTPUT_LABELS
+
+
+def test_esto_product_mapping_reads_only_canonical_sheet(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, tuple[str, ...]]] = []
+
+    def fake_load(sheet_name: str, required_columns, **kwargs) -> pd.DataFrame:
+        calls.append((sheet_name, tuple(required_columns)))
+        return pd.DataFrame(
+            [
+                {"9th_fuel": "01_coal", "esto_product": "01 Coal"},
+                {"9th_fuel": "12_solar_unallocated", "esto_product": "12.99 Solar nonspecified"},
+            ]
+        )
+
+    monkeypatch.setattr(workflow, "load_canonical_sheet", fake_load)
+    monkeypatch.setattr(workflow, "_ESTO_PRODUCT_TO_NINTH_FUEL", None)
+
+    mapping = workflow._load_esto_product_to_ninth_fuel()
+
+    assert calls == [("ninth fuel to esto product", ("9th_fuel", "esto_product"))]
+    assert mapping["01 Coal"] == "01_coal"
+    assert mapping["12.99 Solar nonspecified"] == "12_solar_unallocated"
+
+
 #%%

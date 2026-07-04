@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from codebase.functions.esto_data_utils import try_debug_breakpoint
+from codebase.mappings.canonical_loaders import filter_used_in_leap_initialisation
 from codebase.utilities.master_config import config_table_exists, read_config_table
 
 
@@ -60,7 +61,8 @@ def load_code_to_name_mapping(path_candidates):
                     continue
                 display_df = read_config_table(
                     path, sheet_name="leap_display_names", dtype=str
-                ).fillna("")
+                )
+                display_df = filter_used_in_leap_initialisation(display_df).fillna("")
                 if not {"code", "leap_display_name"}.issubset(set(display_df.columns)):
                     continue
                 mapping = _build_mapping_from_leap_display_names(display_df)

@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from codebase.mappings.canonical_loaders import filter_used_in_leap_initialisation
 from codebase.utilities.master_config import (
     config_table_exists,
     read_config_table,
@@ -1304,6 +1305,7 @@ def load_code_to_name_mapping(path_candidates):
                     continue
                 try:
                     mapping_df = pd.read_excel(path, sheet_name="leap_display_names")
+                    mapping_df = filter_used_in_leap_initialisation(mapping_df)
                 except Exception as exc:
                     print(f"Failed to read leap_display_names from {path}: {exc}")
                     continue

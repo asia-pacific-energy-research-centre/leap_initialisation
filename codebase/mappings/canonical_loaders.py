@@ -50,6 +50,11 @@ NINTH_PAIRS_SOURCE = ("9th_sector", "9th_fuel")
 NINTH_PAIRS_TARGET = ("esto_flow", "esto_product")
 LEAP_DISPLAY_NAMES_REQUIRED = ("code", "leap_display_name")
 
+# Column marking rows excluded from LEAP entirely. Explicit False excludes the
+# row; blank/NaN or True keep it (blank is the common case and means "not
+# reviewed / not flagged for exclusion", not "excluded").
+USED_IN_LEAP_INITIALISATION_COLUMN = "USED_IN_LEAP_INITIALISATION"
+
 # Optional active-row filter flags, applied only where present.
 ACTIVE_ROW_FLAG_COLUMNS = ("remove_row", "duplicate_to_remove")
 
@@ -101,19 +106,44 @@ def apply_active_row_filter(frame: pd.DataFrame) -> pd.DataFrame:
     return frame.loc[mask].copy()
 
 
+def filter_used_in_leap_initialisation(frame: pd.DataFrame) -> pd.DataFrame:
+    """Drop rows explicitly excluded from LEAP via ``USED_IN_LEAP_INITIALISATION``.
+
+    Only an explicit ``False`` (or falsy string equivalent) excludes a row;
+    blank/NaN and ``True`` both keep it, since blank is the common "not
+    flagged either way" case rather than "excluded". Frames without the
+    column are returned unchanged.
+    """
+    if frame.empty or USED_IN_LEAP_INITIALISATION_COLUMN not in frame.columns:
+        return frame
+    col = frame[USED_IN_LEAP_INITIALISATION_COLUMN]
+
+    def _excluded(value: object) -> bool:
+        if pd.isna(value):
+            return False
+        text = str(value).strip().lower()
+        return text in {"false", "0", "0.0", "f", "no", "n"}
+
+    mask = ~col.map(_excluded)
+    return frame.loc[mask].copy()
+
+
 def load_canonical_sheet(
     sheet_name: str,
     required_columns: Sequence[str],
     *,
     workbook: str | Path | None = None,
     apply_active_filter: bool = True,
+    apply_usage_filter: bool = True,
     dtype: object | None = None,
 ) -> pd.DataFrame:
     """Load one canonical sheet, validating presence and required columns.
 
     Raises :class:`CanonicalMappingError` naming the workbook, sheet, and any
-    missing required columns.  Applies ``remove_row`` / ``duplicate_to_remove``
-    filtering when those columns exist unless ``apply_active_filter`` is False.
+    missing required columns. Drops rows explicitly excluded via
+    ``USED_IN_LEAP_INITIALISATION`` unless ``apply_usage_filter`` is False, and
+    applies ``remove_row`` / ``duplicate_to_remove`` filtering when those
+    columns exist unless ``apply_active_filter`` is False.
     """
     path = _resolve_workbook(workbook)
     if sheet_name not in _sheet_names(path):
@@ -131,6 +161,8 @@ def load_canonical_sheet(
             f"Canonical sheet '{sheet_name}' in {path} is missing required "
             f"columns {missing}. Present columns: {list(frame.columns)}."
         )
+    if apply_usage_filter:
+        frame = filter_used_in_leap_initialisation(frame)
     if apply_active_filter:
         frame = apply_active_row_filter(frame)
     return frame.reset_index(drop=True)
@@ -169,7 +201,9 @@ def load_ninth_pairs_to_esto_pairs(
     return frame, conflicts
 
 
-def load_leap_display_names(*, workbook: str | Path | None = None) -> pd.DataFrame:
+def load_leap_display_names(
+    *, workbook: str | Path | None = None, include_excluded: bool = False
+) -> pd.DataFrame:
     """Raw ``leap_display_names`` sheet (code -> display name only).
 
     Read as strings so purely-numeric codes (e.g. ``"17"``) and codes with
@@ -180,12 +214,16 @@ def load_leap_display_names(*, workbook: str | Path | None = None) -> pd.DataFra
         LEAP_DISPLAY_NAMES_REQUIRED,
         workbook=workbook,
         apply_active_filter=False,
+        apply_usage_filter=not include_excluded,
         dtype=str,
     )
 
 
 def build_code_to_display_name(
-    *, workbook: str | Path | None = None, detect_conflicts: bool = True
+    *,
+    workbook: str | Path | None = None,
+    detect_conflicts: bool = True,
+    include_excluded: bool = False,
 ) -> tuple[dict[str, str], pd.DataFrame]:
     """Build a ``code -> LEAP display name`` dict from ``leap_display_names``.
 
@@ -194,7 +232,10 @@ def build_code_to_display_name(
     codes appearing more than once with differing resolved names.  The first
     occurrence wins in ``mapping`` (stable, sheet order).
     """
-    frame = load_leap_display_names(workbook=workbook)
+    frame = load_leap_display_names(
+        workbook=workbook,
+        include_excluded=include_excluded,
+    )
     has_auto = "auto_name" in frame.columns
     mapping: dict[str, str] = {}
     per_code_names: dict[str, set[str]] = {}
@@ -321,6 +362,7 @@ __all__ = [
     "SHEET_NINTH_PAIRS_TO_ESTO_PAIRS",
     "SHEET_LEAP_DISPLAY_NAMES",
     "apply_active_row_filter",
+    "filter_used_in_leap_initialisation",
     "load_canonical_sheet",
     "load_leap_combined_esto",
     "load_leap_combined_ninth",
