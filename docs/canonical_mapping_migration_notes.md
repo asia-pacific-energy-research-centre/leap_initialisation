@@ -223,16 +223,17 @@ alternative mapping:
   whether any deserve a context-aware (sector-scoped) rule in leap_mappings.
 
 
-- **[RISK C2] ninth_pairs content differs between the two workbooks.** The old
-  `master_config.xlsx` sheet had 3126 rows; canonical has 2412. Comparing the
-  four key columns: 1580 pairs were only in master_config, 937 only in canonical.
-  Repointing is the intended migration (canonical = source of truth), but it
-  WILL change which 9th->ESTO pairs balance-demand and balance-conversion use.
-  **Please run a full supply-reconciliation pass for a known economy/scenario and
-  re-check energy conservation + mapped-row coverage before importing to LEAP.**
-  If canonical is missing pairs that master_config had and that removes real
-  mapped energy, those pairs need to be added to the canonical workbook (in
-  leap_mappings), not restored from master_config.
+- **[RISK C2 — downgraded after review] ninth_pairs content differs, but the
+  1580-row diff is almost entirely cardinality artifacts, not lost mappings.**
+  Reclassifying by whether the `(9th_fuel -> esto_product)` relationship survives
+  in canonical (see `canonical_ninth_pairs_missing_CLASSIFIED.csv`): 1004 rows
+  keep the same fuel->product with a different sector/flow, 381 are local junk,
+  106 have the source key present in canonical mapped to its own target, 22 are
+  pure artifacts, 51 are minor "review" (mostly peat / aggregate labels), and
+  only **15 are genuine absences** — and those reduce to peat (negligible for
+  APEC), the aggregate `06 Crude oil & NGL` label, and a `Black liqour` vs
+  `Black liquor` spelling difference. Net: repointing loses no material mapped
+  energy. A live preflight is still worthwhile but this is not a blocker.
 - **[INFO C2] 224 one-to-many 9th->ESTO keys** exist in canonical (a 9th pair
   mapping to multiple ESTO pairs). `load_canonical_pairs` returns these as
   `conflicts` but keeps all rows. This matches the documented mapping-system

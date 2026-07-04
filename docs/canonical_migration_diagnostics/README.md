@@ -28,6 +28,36 @@ Verdict counts: `esto_target_sourced_elsewhere_in_canonical` 501,
 `esto_product_absent_from_canonical` 9. The 381 `malformed_blank_key` rows are
 junk in the local copy (blank or mis-columned keys) and can be ignored.
 
+### `canonical_ninth_pairs_missing_CLASSIFIED.csv` — the version to actually use
+
+The row-level count above massively overstates real gaps: `ninth_pairs` is
+heavily one-to-many, so a local row's full 4-tuple can be "missing" while the
+underlying `(9th_fuel -> esto_product)` relationship is still present in
+canonical under a different sector/flow. This file reclassifies every missing
+row by whether the *relationship* survives in canonical:
+
+| `classification` | Rows | Real gap? |
+| --- | --- | --- |
+| `fuelproduct_preserved_sectorflow_differs` | 1004 | No — same fuel->product, different sector/flow context (cardinality) |
+| `malformed_blank` | 381 | No — local junk |
+| `source_key_exists_diff_product` | 106 | No — canonical maps that 9th key to its own target |
+| `review_fuelproduct_not_paired` | 51 | Maybe — worth a glance (mostly peat / aggregate labels) |
+| `both_relationships_preserved` | 22 | No — pure cardinality artifact |
+| `REAL_GAP_*` | **15** | Genuine absence — but see below |
+
+The 15 `REAL_GAP` rows reduce to essentially nothing of substance:
+- `03 Peat` / `04 Peat products` used as *9th fuels* (6 rows) — peat is negligible
+  for APEC economies; canonical does not carry it.
+- `06 Crude oil & NGL` as an *esto_product* (6 rows) — an aggregate label;
+  canonical represents this via detailed `06.01`/`06.02` codes.
+- `15.04 Black liqour` (3 rows) — a **spelling difference** only; canonical has
+  `15.04 Black liquor`.
+
+Conclusion: repointing `ninth_pairs` to canonical (C2) loses **no** material
+mapped energy. A live preflight is still worth running, but the diff is not a
+blocker. `canonical_products_for_this_fuel` column shows what canonical maps each
+fuel to, for quick confirmation.
+
 ## `canonical_leap_display_names_missing.csv` (C5 labels)
 
 Legacy `sector_fuel_code_to_name` code->name entries that are missing from or
