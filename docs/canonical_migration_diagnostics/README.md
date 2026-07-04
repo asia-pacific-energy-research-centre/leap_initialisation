@@ -73,8 +73,30 @@ different names).
 | `legacy_name_already_in_canonical` | does `legacy_name` already appear as a display name for some other code? (78 yes / 151 no) |
 | `canonical_codes_using_legacy_name` | which canonical codes already use that name |
 
-`different_name` rows are worth a look first — some reveal questionable canonical
-entries (e.g. `09.01.01 Electricity plants` currently resolves to `Gas`).
+`different_name` rows are mostly deliberate canonical improvements — leave them.
+The genuinely-actionable set is `missing_code` (canonical has no name for that
+code at all); those are extracted paste-ready below.
+
+### `leap_display_names_additions_proposed.csv` — paste-ready
+
+The 114 codes canonical `leap_display_names` is missing entirely, in
+`leap_display_names` sheet format (`code_type`, `code`, `auto_name`,
+`leap_display_name`, `Note`), reusing the legacy `sector_fuel_code_to_name`
+display name. Breakdown: 84 `ninth_sector`, 15 `esto_flow`, 8 `esto_product`,
+7 `ninth_fuel`. These are the power/CHP/heat-plant/own-use sector codes the
+electricity/heat interim workflow needs (e.g. `09_01_01_coal_power -> Coal`,
+`09_02_01_coal -> Coal CHP`). Review, then paste the four sheet columns into
+`leap_display_names` in the leap_mappings workbook. The extra
+`legacy_name_reused_by_canonical_codes` column is informational (drop on paste).
+
+### `independent_product_mapping_additions_proposed.csv` — paste-ready
+
+The 9 aggregate `esto_product -> 9th_fuel` rows absent from canonical's
+`ninth fuel to esto product` sheet (`01 Coal -> 01_coal`,
+`06 Crude oil & NGL`, `07 Petroleum products`, `08 Gas`, `12 Solar`,
+`15.04 Black liqour`, etc.). These feed the interim parent-code fallback. Lower
+priority than the labels — they are aggregate labels canonical otherwise
+represents via detailed codes, so confirm each is wanted before adding.
 
 ## `canonical_independent_product_mapping_diff.csv` (C5 relationships)
 
