@@ -63,6 +63,11 @@ EXCLUDED_ESTO_PREFIXES = ["19", "20", "21"]
 SAVE_PROJECTION_DIAGNOSTICS = False
 PROJECTION_DIAGNOSTICS_PATH = REPO_ROOT / "outputs" / "ninth_supply_projection_fallbacks.csv"
 SUPPLY_PROJECTION_LOOKUP = None
+# Keep supply projection splitting identical to transformation: preserve target
+# signs wherever a same-sign base-year pool exists and fail on any loss of source
+# energy during allocation.
+PROJECTION_SIGN_STABLE_MODE = "all"
+PROJECTION_STRICT_CONSERVATION = True
 
 
 #%%
@@ -140,6 +145,8 @@ def prepare_supply_assets(
         mapping_path=NINTH_TO_ESTO_MAPPING_PATH,
         base_year=BASE_YEAR,
         projection_years=PROJECTION_YEAR_RANGE,
+        sign_stable_flows=PROJECTION_SIGN_STABLE_MODE,
+        strict_conservation=PROJECTION_STRICT_CONSERVATION,
     )
     projection_lookup = build_projection_lookup(projection_df)
     global SUPPLY_PROJECTION_LOOKUP
