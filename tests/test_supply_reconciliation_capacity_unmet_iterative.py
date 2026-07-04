@@ -450,6 +450,33 @@ def test_save_year_balance_tables_writes_csv_and_archives_old_dates(tmp_path: Pa
     assert paths[0].read_text(encoding="utf-8") == existing_text
 
 
+def test_generated_balance_workbook_names_keep_requested_scenarios(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import codebase.supply_reconciliation_balance_tables as balance_tables
+
+    monkeypatch.setattr(
+        balance_tables,
+        "BALANCE_DEMAND_REF_WORKBOOK_PATH",
+        tmp_path / "reduced_20_USA_REF_EBal_2022_2023.xlsx",
+    )
+    monkeypatch.setattr(
+        balance_tables,
+        "BALANCE_DEMAND_TGT_WORKBOOK_PATH",
+        tmp_path / "reduced_20_USA_TGT_EBal_2022_2023.xlsx",
+    )
+
+    assert balance_tables._balance_export_parts_for_scenario("Reference") == (
+        "unknown_date",
+        "REFERENCE",
+    )
+    assert balance_tables._balance_export_parts_for_scenario("Target") == (
+        "unknown_date",
+        "TARGET",
+    )
+
+
 def test_capacity_unmet_iterative_allocates_and_persists(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     reconciliation = _minimal_reconciliation_df()
     state_path = tmp_path / "state.json"

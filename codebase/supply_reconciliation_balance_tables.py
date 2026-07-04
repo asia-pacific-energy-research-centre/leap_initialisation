@@ -460,10 +460,22 @@ def _balance_export_parts_for_scenario(scenario: object) -> tuple[str, str]:
     """Return filename provenance for Reference/Target balance-demand source workbooks."""
     scenario_key = str(scenario or "").strip().lower()
     if scenario_key == "reference":
-        return _balance_export_filename_parts(BALANCE_DEMAND_REF_WORKBOOK_PATH)
-    if scenario_key == "target":
-        return _balance_export_filename_parts(BALANCE_DEMAND_TGT_WORKBOOK_PATH)
-    return "unknown_date", _safe_filename_token(scenario).upper()
+        date_id, scenario_code = _balance_export_filename_parts(
+            BALANCE_DEMAND_REF_WORKBOOK_PATH
+        )
+    elif scenario_key == "target":
+        date_id, scenario_code = _balance_export_filename_parts(
+            BALANCE_DEMAND_TGT_WORKBOOK_PATH
+        )
+    else:
+        return "unknown_date", _safe_filename_token(scenario).upper()
+
+    # Compressed preflight workbooks intentionally have generated filenames
+    # rather than production LEAP-export names. Preserve unknown date provenance,
+    # but never collapse distinct requested scenarios into ``unknown_scenario``.
+    if scenario_code == "unknown_scenario":
+        scenario_code = _safe_filename_token(scenario).upper()
+    return date_id, scenario_code
 
 
 def _zero_small_numeric_values(
