@@ -382,6 +382,109 @@ Exporting results is required before every reconciliation pass. Results must be 
 
 > If you are exporting for the first time, choose Level 2 unless there is a specific reason to need Level 4. Level 4 significantly increases export time and file size.
 
+## 9c. Fast preflight checks
+
+The full `baseline_seed` and `results_update` runs are slow: every economy runs the
+whole supply/transformation/transfers pipeline across all projection years, and a
+full LEAP energy-balance export alone typically takes **3–4 hours** (§9b). A code or
+data regression that only surfaces late in a full run is expensive to discover. Two
+complementary *compressed* preflights exercise most of the major code paths in a few
+minutes each, so run them before committing to the long runs. **Neither preflight
+performs any LEAP import, branch creation/fill, or live LEAP results scraping**, and
+both isolate all state and outputs from production.
+
+### The two preflights
+
+**1. Compressed projection preflight** (`run_preflight_compressed_projection`)
+
+A fast approximation of the **baseline-seed** integration path.
+
+- Uses `00_APEC` and the configured ESTO base year plus one compressed future year
+  (`BASE_YEAR + 1`), where the future year is the signed sum of every 9th Outlook
+  projection year and scenario.
+- Exercises source mappings, transformations, transfers, supply workflows, workbook
+  construction, and future-only category coverage.
+- Uses projection-only demand; does **not** read real LEAP balance exports and does
+  **not** validate real LEAP results or per-economy/year behaviour.
+
+**2. Compressed results-update preflight** (`run_preflight_compressed_results_update`)
+
+A fast approximation of the **results-update** integration path.
+
+- Uses `20_USA` and the base year plus one compressed future year.
+- Reads temporary **reduced** LEAP REF/TGT balance workbooks built from the real
+  `20_USA` balance-export structure: `EBal|<base>` copied verbatim, and a synthetic
+  `EBal|<base+1>` that is the signed sum of every post-base-year source sheet (the
+  REF synthetic sheet is built only from REF, the TGT only from TGT — and the Target
+  workbook not having a literal `EBal|2023` does not matter because the synthetic
+  sheet is constructed from all post-base-year sheets).
+- Exercises real LEAP balance conversion, balance-demand mapping, results-update
+  demand sourcing, issue classification, and downstream reconciliation wiring.
+- Does **not** verify individual-year trajectories and does **not** replace a
+  complete results-update run.
+
+> The results-update preflight uses the *existing* real `20_USA` balance-export
+> structure, **not** a newly recalculated LEAP model corresponding to the compressed
+> inputs. It is therefore a strong structural and integration test, not a numerical
+> reproduction of a genuine two-year LEAP run.
+
+### Recommended order before full runs
+
+```text
+Compressed projection preflight
+→ compressed results-update preflight
+→ full baseline_seed when needed
+→ import / recalculate / export in LEAP
+→ full results_update
+```
+
+### Notebook toggles
+
+In `supply_reconciliation_workflow.py`:
+
+| Toggle | Default | Effect |
+|---|---|---|
+| `RUN_PREFLIGHT_COMPRESSED_PROJECTION` | `True` | Run the projection preflight before the main run |
+| `PREFLIGHT_COMPRESSED_PROJECTION_ONLY` | `False` | Stop after the preflights (skip the main run) |
+| `PREFLIGHT_COMPRESSED_FAIL_FAST` | `False` | Raise immediately if the projection preflight fails |
+| `RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE` | `False` | Run the results-update preflight before the main run |
+| `PREFLIGHT_COMPRESSED_RESULTS_UPDATE_ONLY` | `False` | Stop after the preflights (skip the main run) |
+| `PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST` | `False` | Raise immediately if the results-update preflight fails |
+
+Either preflight can be enabled independently, run in preflight-only mode, and be
+configured fail-fast or warning-and-continue. The results-update preflight is off by
+default so it does not lengthen every run; enable it (ideally right before a full
+`results_update`) when you want the balance-export integration check.
+
+### Output locations
+
+Each preflight writes only under its own isolated root; production outputs and the
+production source workbooks/iterative state are never touched:
+
+- Projection: `outputs/leap_exports/supply_reconciliation/preflight_compressed_projection/`
+- Results-update: `outputs/leap_exports/supply_reconciliation/preflight_compressed_results_update/`
+  (temporary reduced REF/TGT workbooks under `runtime/reduced_balance_workbooks/`,
+  compressed sources under `runtime/compressed_sources/`, and the balance-demand
+  issue report under `checks/`). The results-update preflight always writes a
+  deterministic issue report — all issue rows if any exist, otherwise a header-only
+  CSV showing zero issues — and prints a compact summary (total, actionable, ignored,
+  counts by reason, unique sector/fuel keys, `Total` fuel rows, and unresolved rows).
+
+### How failures affect continuation
+
+With `*_FAIL_FAST = False` (default), a failing preflight prints a warning, the main
+run still proceeds, and the deferred preflight error is re-raised after the main run
+completes so it cannot be silently ignored. With `*_FAIL_FAST = True` (or either
+`*_ONLY` toggle set), a failing preflight raises immediately. A failed preflight
+always restores normal state. Unresolved demand-relevant leaf mapping rows keep the
+results-update preflight failing whenever `BALANCE_DEMAND_FAIL_ON_MAPPING_ISSUES` is
+`True`.
+
+> Together these are the recommended fast integration checks before the long-running
+> full baseline-seed and results-update runs. They verify most major code paths, but
+> they do **not** prove every economy, year, economy-specific rule, LEAP import, or
+> iterative convergence behaviour.
+
 ## 10. Why the LEAP API is not used as the main method
 
 The preferred workflow is still the workbook import/export method. Direct LEAP API automation has been investigated, but the API has been unreliable enough that it can create difficult-to-diagnose problems.

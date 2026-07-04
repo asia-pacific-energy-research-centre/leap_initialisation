@@ -4,6 +4,7 @@
 
 from pathlib import Path
 import hashlib
+import re
 
 import pandas as pd
 
@@ -24,6 +25,62 @@ BREAKDOWN_KEY_COLUMNS = (
     "sector_context",
     "year",
 )
+
+# Bump when the breakdown/lineage/diagnostic column contract changes so that a
+# schema change is visible in the outputs and content-derived IDs stay stable
+# across runs (mirrors leap_mappings' BREAKDOWN_SCHEMA_VERSION convention).
+BREAKDOWN_SCHEMA_VERSION = "2.0.0"
+
+# Year-type labels. A real annual balance is ``actual``; the compressed
+# results-update preflight fabricates a signed-sum synthetic ``BASE_YEAR + 1``
+# whose total must never be read as a real annual balance, so it is flagged.
+YEAR_TYPE_ACTUAL = "actual"
+YEAR_TYPE_COMPRESSED_PROJECTION = "compressed_projection"
+
+# The "actual" side of this check is the demand this repository builds and hands
+# to LEAP (the aggregated-demand dummy plus any detailed sector rows the
+# workflow itself generates). It is NOT the LEAP balance readback. These labels
+# make that provenance explicit in the lineage drill-down.
+PRODUCED_DEMAND_SYSTEM = "PRODUCED_DEMAND"
+
+
+def _leading_numeric_code(label: object) -> str | None:
+    """Return the leading dotted numeric code from an ESTO product label."""
+    match = re.match(r"^\s*(\d+(?:\.\d+)*)\b", str(label))
+    return match.group(1) if match else None
+
+
+def _find_parent_product_codes(product_labels: pd.Series) -> set[str]:
+    """Find codes with at least one structurally deeper product in the data."""
+    codes = {
+        code
+        for code in product_labels.map(_leading_numeric_code).tolist()
+        if code is not None
+    }
+    return {
+        code
+        for code in codes
+        if any(other != code and other.startswith(f"{code}.") for other in codes)
+    }
+
+
+def _parent_product_mask(product_labels: pd.Series, parent_codes: set[str]) -> pd.Series:
+    """Identify rows whose product code is a structural parent."""
+    return product_labels.map(_leading_numeric_code).isin(parent_codes)
+
+
+def _label_year_types(
+    rows: pd.DataFrame,
+    compressed_projection_years: set[int] | None,
+) -> pd.DataFrame:
+    """Attach a ``year_type`` column marking synthetic compressed years."""
+    output = rows.copy()
+    years = pd.to_numeric(output["year"], errors="coerce")
+    output["year_type"] = YEAR_TYPE_ACTUAL
+    if compressed_projection_years:
+        flagged = {int(year) for year in compressed_projection_years}
+        output.loc[years.isin(flagged), "year_type"] = YEAR_TYPE_COMPRESSED_PROJECTION
+    return output
 
 
 def build_raw_demand_conservation_reference(
@@ -70,6 +127,17 @@ def build_raw_demand_conservation_reference(
         excluded_sectors=excluded_sectors,
         use_sector_branches=False,
     )
+    # Some ESTO parent products are incorrectly labelled is_subtotal=False.
+    # Infer structural parents from the loaded product hierarchy and remove
+    # them only from this independent reference; produced demand is unchanged.
+    parent_product_codes = (
+        _find_parent_product_codes(esto["products"])
+        if "products" in esto.columns
+        else set()
+    )
+    base = base[
+        ~_parent_product_mask(base["fuel_code"], parent_product_codes)
+    ].copy()
     parts: list[pd.DataFrame] = []
     for scenario in scenarios:
         scenario_label = str(scenario).strip()
@@ -179,6 +247,7 @@ def build_balance_demand_conservation_breakdown(
     resolved_provenance: pd.DataFrame | None = None,
     source_scope_audit: pd.DataFrame | None = None,
     resolved_scope_audit: pd.DataFrame | None = None,
+    compressed_projection_years: set[int] | None = None,
 ) -> pd.DataFrame:
     """Explain the total gap as mapping loss plus product-level resolution gaps.
 
@@ -276,11 +345,14 @@ def build_balance_demand_conservation_breakdown(
         "difference",
         *provenance_columns,
     ]
-    return (
+    breakdown = (
         pd.concat([mapping_bridge[columns], product_bridge[columns]], ignore_index=True)
         .sort_values([*BREAKDOWN_KEY_COLUMNS, "breakdown_stage", "component"])
         .reset_index(drop=True)
     )
+    breakdown["schema_version"] = BREAKDOWN_SCHEMA_VERSION
+    breakdown = _label_year_types(breakdown, compressed_projection_years)
+    return breakdown
 
 
 def build_balance_demand_conservation_lineage(
@@ -291,8 +363,13 @@ def build_balance_demand_conservation_lineage(
     resolved_provenance: pd.DataFrame | None = None,
     source_scope_audit: pd.DataFrame | None = None,
     resolved_scope_audit: pd.DataFrame | None = None,
+    compressed_projection_years: set[int] | None = None,
 ) -> pd.DataFrame:
-    """Return honest stage rows without inventing unavailable cross-stage links."""
+    """Return honest stage rows without inventing unavailable cross-stage links.
+
+    The ``actual_resolved`` stage is this repository's produced demand (what it
+    hands to LEAP), not a LEAP balance readback; its labels reflect that.
+    """
     source_columns = [
         "economy", "scenario", "year", "source_system", "source_row_id",
         "source_sector_or_flow", "source_fuel_or_product", "reference_total",
@@ -331,11 +408,11 @@ def build_balance_demand_conservation_lineage(
         ["economy", "scenario", "year", "esto_product", "resolved_total"]
     ].copy().rename(columns={"resolved_total": "value"})
     actual["lineage_stage"] = "actual_resolved"
-    actual["source_system"] = "LEAP_BALANCE"
+    actual["source_system"] = PRODUCED_DEMAND_SYSTEM
     actual["source_sector_or_flow"] = ""
     actual["source_fuel_or_product"] = ""
-    actual["value_classification"] = "exact_aggregated"
-    actual["mapping_status"] = "resolved_but_source_link_not_retained"
+    actual["value_classification"] = "produced_demand_may_include_estimates"
+    actual["mapping_status"] = "produced_demand_source_link_not_retained"
     actual["allocation_share"] = pd.NA
     actual["linked_source_row_id"] = ""
     actual["row_id"] = _deterministic_row_ids(
@@ -396,7 +473,7 @@ def build_balance_demand_conservation_lineage(
     if resolved_scope_audit is not None and not resolved_scope_audit.empty:
         branch = resolved_scope_audit.copy()
         branch["lineage_stage"] = "actual_resolved_branch"
-        branch["source_system"] = "LEAP_BALANCE"
+        branch["source_system"] = PRODUCED_DEMAND_SYSTEM
         branch["source_sector_or_flow"] = branch["leap_branch"]
         branch["source_fuel_or_product"] = branch["esto_product"]
         branch["value"] = branch["branch_contribution_value"]
@@ -422,7 +499,10 @@ def build_balance_demand_conservation_lineage(
             ~branch["included"], "included"
         )
         parts.append(branch[columns])
-    return pd.concat(parts, ignore_index=True)
+    lineage = pd.concat(parts, ignore_index=True)
+    lineage["schema_version"] = BREAKDOWN_SCHEMA_VERSION
+    lineage = _label_year_types(lineage, compressed_projection_years)
+    return lineage
 
 
 def write_balance_demand_conservation_table(rows: pd.DataFrame, output_path: Path | str) -> Path:
@@ -437,13 +517,21 @@ def build_balance_demand_conservation_diagnostics(
     reference_rows: pd.DataFrame,
     resolved_rows: pd.DataFrame,
     tolerance_pj: float = 1e-6,
+    compressed_projection_years: set[int] | None = None,
 ) -> pd.DataFrame:
     """Return an outer-join conservation comparison at sector/product/year level.
 
-    Inputs must already represent the intended comparison surface. In particular,
-    subtotal and deliberately excluded rows should be removed by their source
-    workflows rather than inferred here. This keeps the check independent of the
-    mapping and subtotal rules that it is intended to verify.
+    The ``reference`` side is the independent ESTO/9th target and the
+    ``resolved`` side is the demand this repository produces and hands to LEAP
+    (never the LEAP balance readback). Inputs must already represent the intended
+    comparison surface: subtotal and deliberately excluded rows should be removed
+    by their source workflows rather than inferred here. This keeps the check
+    independent of the mapping and subtotal rules that it is intended to verify.
+
+    An *empty* comparison is treated as a failure, never a silent pass
+    (harmonized with leap_mappings' "empty is not a pass" rule).
+    ``compressed_projection_years`` flags synthetic compressed years via a
+    ``year_type`` column.
     """
     if tolerance_pj < 0:
         raise ValueError("tolerance_pj must be non-negative")
@@ -461,6 +549,27 @@ def build_balance_demand_conservation_diagnostics(
         rows=resolved_rows,
         value_column="resolved_total",
     )
+    if reference.empty and resolved.empty:
+        # Empty is not a pass: emit an explicit failing sentinel row so an empty
+        # comparison can never be mistaken for conservation holding.
+        return pd.DataFrame(
+            [
+                {
+                    **{column: "" for column in CONSERVATION_KEY_COLUMNS[:-1]},
+                    "year": pd.NA,
+                    "year_type": YEAR_TYPE_ACTUAL,
+                    "reference_total": 0.0,
+                    "resolved_total": 0.0,
+                    "difference": 0.0,
+                    "absolute_difference": 0.0,
+                    "status": "failed_empty",
+                    "reason": "no_reference_or_resolved_rows_to_compare",
+                    "is_mismatch": True,
+                    "tolerance_pj": float(tolerance_pj),
+                    "schema_version": BREAKDOWN_SCHEMA_VERSION,
+                }
+            ]
+        )
     diagnostics = reference.merge(
         resolved,
         on=list(CONSERVATION_KEY_COLUMNS),
@@ -481,9 +590,19 @@ def build_balance_demand_conservation_diagnostics(
         & diagnostics["absolute_difference"].gt(float(tolerance_pj))
     )
     diagnostics.loc[value_mismatch, "status"] = "value_mismatch"
+    diagnostics["reason"] = ""
+    diagnostics.loc[diagnostics["status"].eq("missing_resolved"), "reason"] = (
+        "reference_present_but_produced_demand_absent"
+    )
+    diagnostics.loc[diagnostics["status"].eq("unexpected_resolved"), "reason"] = (
+        "produced_demand_present_but_no_reference"
+    )
+    diagnostics.loc[value_mismatch, "reason"] = "produced_demand_differs_from_reference"
     diagnostics["is_mismatch"] = diagnostics["status"].ne("match")
     diagnostics["tolerance_pj"] = float(tolerance_pj)
+    diagnostics["schema_version"] = BREAKDOWN_SCHEMA_VERSION
     diagnostics = diagnostics.drop(columns="_merge")
+    diagnostics = _label_year_types(diagnostics, compressed_projection_years)
     return diagnostics.sort_values(list(CONSERVATION_KEY_COLUMNS)).reset_index(drop=True)
 
 
@@ -757,6 +876,16 @@ def _build_raw_source_scope_audit(
     configured = esto_flows.map(lambda flow: aggregated._esto_flow_is_excluded(flow, excluded))
     esto_work.loc[configured, ["included", "exclusion_reason"]] = [
         False, "configured_detailed_sector_exclusion"
+    ]
+    # Structural-parent evidence is the most specific reason for false-flagged
+    # rows, so apply it last if another scope rule also excludes the row.
+    parent_product_codes = _find_parent_product_codes(esto_products)
+    mis_flagged_parent = (
+        ~esto_work["is_subtotal"].astype(bool)
+        & _parent_product_mask(esto_products, parent_product_codes)
+    )
+    esto_work.loc[mis_flagged_parent, ["included", "exclusion_reason"]] = [
+        False, "mis_flagged_parent_subtotal"
     ]
     esto_audit = pd.DataFrame(
         {

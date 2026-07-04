@@ -2745,7 +2745,30 @@ def run_results_linked_transformation_supply_workflow(
             sector_demand_table["economy"].isin(economy_list)
         ].copy()
         demand_table = demand_table[demand_table["economy"].isin(economy_list)].copy()
-    from codebase.aggregated_demand_workflow import ESTO_BASE_DATA_PATH, PROJECTION_DATA_PATH
+    from codebase.aggregated_demand_workflow import (
+        ESTO_BASE_DATA_PATH,
+        PROJECTION_DATA_PATH,
+        build_aggregated_demand_as_dummy,
+    )
+
+    # The compressed results-update preflight overrides FINAL_YEAR to BASE_YEAR+1,
+    # a signed-sum synthetic projection year. Flag it as a compressed projection
+    # so its total is never mistaken for a real annual balance in the outputs.
+    conservation_compressed_years = (
+        {int(BASE_YEAR) + 1} if int(FINAL_YEAR) == int(BASE_YEAR) + 1 else None
+    )
+
+    # Names shared by the diagnostic and the breakdown/lineage drill-down. The
+    # "actual" side of this conservation check is the demand THIS repository
+    # builds and hands to LEAP (the aggregated-demand dummy plus any detailed
+    # sector rows the workflow itself generates) -- identical in baseline_seed
+    # and results_update, and never sourced from the LEAP balance readback.
+    raw_demand_reference = pd.DataFrame()
+    source_scope_audit = pd.DataFrame()
+    produced_demand = pd.DataFrame()
+    produced_demand_provenance = pd.DataFrame()
+    conservation_exclusions = None
+    conservation_scenarios: list[str] = []
 
     try:
         conservation_exclusions = resolve_effective_aggregated_demand_exclusions(
@@ -2779,14 +2802,43 @@ def run_results_linked_transformation_supply_workflow(
             if raw_reference_with_scope
             else pd.DataFrame()
         )
-        resolved_demand_totals, resolved_scope_audit = prepare_reconciliation_sector_demand_totals(
-            sector_demand_table,
-            excluded_sectors=conservation_exclusions,
+        # Produced-demand "actual" side: same builder the LEAP import workbook is
+        # generated from, so the check compares our produced demand against the
+        # ESTO/9th target. The identical ``excluded_sectors`` are applied to both
+        # sides so the "already modelled" detailed sectors drop symmetrically.
+        produced_demand_with_provenance = [
+            build_aggregated_demand_as_dummy(
+                economy=economy,
+                scenarios=conservation_scenarios,
+                base_year=BASE_YEAR,
+                final_year=FINAL_YEAR,
+                data_path=PROJECTION_DATA_PATH,
+                esto_data_path=ESTO_BASE_DATA_PATH,
+                exclude_own_use_td_losses=bool(AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES),
+                excluded_sectors=conservation_exclusions,
+                use_sector_branches=False,
+                return_provenance=True,
+            )
+            for economy in economy_list
+        ]
+        produced_demand = (
+            pd.concat([item[0] for item in produced_demand_with_provenance], ignore_index=True)
+            if produced_demand_with_provenance
+            else pd.DataFrame()
+        )
+        produced_demand_provenance = (
+            pd.concat([item[1] for item in produced_demand_with_provenance], ignore_index=True)
+            if produced_demand_with_provenance
+            else pd.DataFrame()
+        )
+        produced_demand_totals = prepare_reconciliation_demand_totals(
+            produced_demand,
             collapse_products=True,
         )
         balance_demand_conservation = build_balance_demand_conservation_diagnostics(
             raw_demand_reference,
-            resolved_demand_totals,
+            produced_demand_totals,
+            compressed_projection_years=conservation_compressed_years,
         )
     except Exception as exc:
         print(f"[WARN] Balance-demand conservation diagnostic could not run: {exc}")
@@ -2802,78 +2854,40 @@ def run_results_linked_transformation_supply_workflow(
         "[INFO] Wrote diagnostic-only balance-demand conservation check: "
         f"{balance_demand_conservation_path} ({mismatch_count} mismatch row(s))."
     )
+    print(
+        "[INFO] Conservation 'actual' side is this repo's produced demand "
+        "(aggregated-demand dummy + detailed sector rows); it does NOT involve "
+        "the LEAP balance readback. Reference is the independent ESTO/9th target."
+    )
     balance_demand_breakdown_path = None
     balance_demand_lineage_path = None
     try:
-        from codebase.aggregated_demand_workflow import build_aggregated_demand_as_dummy
-
-        expected_mapped_with_provenance = [
-            build_aggregated_demand_as_dummy(
-                economy=economy,
-                scenarios=conservation_scenarios,
-                base_year=BASE_YEAR,
-                final_year=FINAL_YEAR,
-                data_path=PROJECTION_DATA_PATH,
-                esto_data_path=ESTO_BASE_DATA_PATH,
-                exclude_own_use_td_losses=bool(AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES),
-                excluded_sectors=conservation_exclusions,
-                use_sector_branches=False,
-                return_provenance=True,
-            )
-            for economy in economy_list
-        ]
-        expected_mapped_demand = (
-            pd.concat([item[0] for item in expected_mapped_with_provenance], ignore_index=True)
-            if expected_mapped_with_provenance
-            else pd.DataFrame()
-        )
-        expected_mapping_provenance = (
-            pd.concat([item[1] for item in expected_mapped_with_provenance], ignore_index=True)
-            if expected_mapped_with_provenance
-            else pd.DataFrame()
-        )
-        resolved_mapping_provenance = balance_matching_diagnostics.copy()
-        if not resolved_mapping_provenance.empty:
-            from codebase.aggregated_demand_workflow import _esto_flow_is_excluded
-
-            excluded_codes = {
-                str(value).strip()
-                for value in (conservation_exclusions or [])
-                if str(value).strip()
-            }
-            resolved_mapping_provenance = resolved_mapping_provenance[
-                ~resolved_mapping_provenance["esto_flow"].map(
-                    lambda flow: _esto_flow_is_excluded(flow, excluded_codes)
-                )
-            ].copy()
-            resolved_mapping_provenance["source_system"] = "LEAP_BALANCE"
-            resolved_mapping_provenance["source_fuel_or_product"] = (
-                resolved_mapping_provenance["leap_fuel_name_raw"]
-                if "leap_fuel_name_raw" in resolved_mapping_provenance.columns
-                else ""
-            )
-        resolved_demand_by_product, resolved_scope_audit = prepare_reconciliation_sector_demand_totals(
-            sector_demand_table,
-            excluded_sectors=conservation_exclusions,
+        # Actual side per product = the same produced demand, decomposed by
+        # esto_product. Both the "expected" and "actual/resolved" sides of the
+        # drill-down are our produced demand; there is no LEAP readback stage.
+        resolved_demand_by_product = prepare_reconciliation_demand_totals(
+            produced_demand,
             collapse_products=False,
         )
         balance_demand_breakdown = build_balance_demand_conservation_breakdown(
             reference_rows=raw_demand_reference,
-            expected_mapped_rows=expected_mapped_demand,
+            expected_mapped_rows=produced_demand,
             resolved_rows=resolved_demand_by_product,
-            expected_provenance=expected_mapping_provenance,
-            resolved_provenance=resolved_mapping_provenance,
+            expected_provenance=produced_demand_provenance,
+            resolved_provenance=produced_demand_provenance,
             source_scope_audit=source_scope_audit,
-            resolved_scope_audit=resolved_scope_audit,
+            resolved_scope_audit=None,
+            compressed_projection_years=conservation_compressed_years,
         )
         balance_demand_lineage = build_balance_demand_conservation_lineage(
             reference_rows=raw_demand_reference,
-            expected_mapped_rows=expected_mapped_demand,
+            expected_mapped_rows=produced_demand,
             resolved_rows=resolved_demand_by_product,
-            expected_provenance=expected_mapping_provenance,
-            resolved_provenance=resolved_mapping_provenance,
+            expected_provenance=produced_demand_provenance,
+            resolved_provenance=produced_demand_provenance,
             source_scope_audit=source_scope_audit,
-            resolved_scope_audit=resolved_scope_audit,
+            resolved_scope_audit=None,
+            compressed_projection_years=conservation_compressed_years,
         )
         checks_dir = _resolve(RESULTS_CHECKS_DIR)
         balance_demand_breakdown_path = write_balance_demand_conservation_table(

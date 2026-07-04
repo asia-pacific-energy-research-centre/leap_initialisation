@@ -488,6 +488,102 @@ issues, not one:
   rollup-resolution fallback (proven via the Road transport case). No mapping
   workbook rows were edited.
 
+## INIT-009: Two complementary compressed preflights before the long baseline-seed and results-update runs
+
+**Status:** Confirmed
+**Owner:** leap_initialisation
+**Type:** Integration test / run-workflow boundary
+**Affected areas:**
+`codebase/functions/supply_preflight.py`
+(`run_preflight_compressed_projection`, `run_preflight_compressed_results_update`,
+`_create_preflight_compressed_source_files`, `_build_reduced_preflight_balance_workbook`,
+`_sum_future_balance_grids`, `_broadcast_config_overrides`,
+`_finalize_balance_demand_issue_report`);
+`codebase/supply_reconciliation_workflow.py` (`run_with_config` preflight toggles);
+real `20_USA` LEAP balance-export workbooks under
+`data/leap balances exports/20_USA/` (read only — never edited here);
+isolated outputs under
+`outputs/leap_exports/supply_reconciliation/preflight_compressed_results_update/`.
+
+### Situation
+
+Full `baseline_seed` and `results_update` runs are slow (whole pipeline per
+economy across all years; a full LEAP energy-balance export alone takes 3–4
+hours). A regression that only surfaces late in a full run is expensive to find.
+The pre-existing `run_preflight_compressed_projection` is a fast 00_APEC
+baseline-seed integration check, but it uses projection-only demand and never
+reads real LEAP balance exports, so the entire results-update balance path
+(balance conversion, balance-demand mapping, issue classification,
+results-update demand sourcing) was unexercised by any fast check.
+
+### Decision
+
+Maintain **two complementary** compressed preflights and present them together as
+the fast checks before the long runs:
+
+1. **Compressed projection preflight** — 00_APEC, ESTO base year + one compressed
+   future year of signed-summed 9th projection activity; exercises the
+   baseline-seed path; no real LEAP exports.
+2. **Compressed results-update preflight** — 20_USA, base year + one compressed
+   future year, reading temporary **reduced** REF/TGT balance workbooks
+   (`EBal|<base>` verbatim + synthetic `EBal|<base+1>` = signed sum of every
+   post-base-year source sheet); exercises the results-update path in
+   `CAPACITY_UNMET_PASS_MODE = "results_update"`.
+
+**Why one cannot replace the other:** the projection preflight deliberately has no
+dependency on real LEAP exports (so it stays fast and always runnable) and only
+proves the baseline-seed sizing path; the results-update preflight only proves the
+LEAP-export/results-update path and depends on the real 20_USA balance structure.
+Each covers code the other does not.
+
+**Why synthetic future values use signed sums:** the balance rows carry signed
+conventions (exports, bunkers, stock changes, transformation inputs are negative),
+so the synthetic future sheet must preserve signs to remain a valid balance the
+existing reader can convert. Absolute values would corrupt the balance.
+
+**Why absolute sums are diagnostics only:** signed summation can hide a category
+whose positive and negative future contributions cancel to zero. A separate
+abs-sum diagnostic (a sidecar CSV, never the balance sheet itself) exposes those
+categories without polluting the signed synthetic values.
+
+**Why all state and outputs are isolated:** the preflight forces a two-year,
+single-economy, results_update, cache-off, LEAP-import-off configuration across
+many modules. Config values are broadcast to every consuming module and restored
+in `finally` (even on failure), and every output/runtime/checks directory plus the
+temporary reduced workbooks live under a dedicated preflight root, so a subsequent
+production run is unaffected and the production source workbooks and iterative
+state are never modified.
+
+### Limitations
+
+The results-update preflight uses the *existing* real 20_USA balance-export
+structure, not a newly recalculated LEAP model matching the compressed inputs. It
+is a strong structural and integration test, not a numerical reproduction of a
+genuine two-year LEAP run. Neither preflight proves every economy, year,
+economy-specific rule, LEAP import, or iterative convergence behaviour, and neither
+performs any LEAP import or live results scraping.
+
+### Removal / change conditions
+
+Retire or fold together the two preflights only if the full runs become cheap
+enough that a fast approximation is no longer worthwhile, or if a genuine
+two-year recalculated 20_USA LEAP export becomes available (which would let the
+results-update preflight become a numerical check rather than a structural one).
+If the balance reader's expected sheet structure changes,
+`_sum_future_balance_grids` / `_build_reduced_preflight_balance_workbook` must be
+revalidated against it.
+
+### History
+
+- 2026-07-03: Added the compressed results-update preflight
+  (`run_preflight_compressed_results_update`) alongside the existing compressed
+  projection preflight, with reduced REF/TGT balance workbooks (signed synthetic
+  future sheet + abs-sum diagnostic), scenario-separated 9th compression,
+  isolated broadcast state management, a deterministic balance-demand issue report
+  using the current schema (`issue_fuel_is_non_actionable`, `demand_relevant`,
+  `demand_relevance_basis`), and `run_with_config` toggles. No source workbooks or
+  mapping workbook rows were edited.
+
 ## End-to-end run report
 
 Append a dated subsection after each end-to-end run. Report:

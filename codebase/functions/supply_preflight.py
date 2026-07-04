@@ -907,6 +907,9 @@ def _create_preflight_compressed_source_files(
     *,
     output_dir: Path | str,
     scenario_names: Iterable[str],
+    preserve_source_scenarios: bool = False,
+    economy_filter: Iterable[str] | None = None,
+    file_prefix: str = "preflight",
 ) -> dict[str, object]:
     """
     Create preflight source files where BASE_YEAR+1 compresses all projection years.
@@ -914,8 +917,26 @@ def _create_preflight_compressed_source_files(
     The ESTO file is copied unchanged so BASE_YEAR remains the configured
     observed year. The ninth file is reduced to non-year columns plus one
     compressed projection year equal to the signed sum across all projection
-    years and all source scenarios. A companion diagnostics CSV stores abs_sum
-    so future-year activity hidden by signed cancellation is still visible.
+    years. A companion diagnostics CSV stores abs_sum so future-year activity
+    hidden by signed cancellation is still visible.
+
+    Two scenario modes are supported:
+
+    * ``preserve_source_scenarios=False`` (default, used by the baseline
+      compressed-projection preflight): future years are summed across *all*
+      source scenarios and the single combined series is replicated into each
+      requested output scenario. This is fine for the 00_APEC baseline-seed
+      approximation, which never compares Reference against Target.
+    * ``preserve_source_scenarios=True`` (used by the compressed
+      results-update preflight): the source ``scenarios`` column is normalized
+      to ``reference``/``target`` and the compression is grouped *within* each
+      scenario, so Reference source rows compress into Reference and Target
+      source rows compress into Target. Reference and Target are never summed
+      together and replicated.
+
+    ``economy_filter`` optionally restricts the compressed ninth output to a
+    subset of economies (e.g. ``["20_USA"]``) so the results-update preflight
+    stays fast and scoped.
     """
     source_cfg = workflow_cfg.get_energy_source_config()
     base_year = int(source_cfg.esto_base_year)
@@ -923,14 +944,22 @@ def _create_preflight_compressed_source_files(
     out_dir = _resolve(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    esto_out = out_dir / f"preflight_esto_base_{base_year}.csv"
-    ninth_out = out_dir / f"preflight_ninth_projection_compressed_{compressed_year}.csv"
-    abs_diag_out = out_dir / f"preflight_ninth_projection_compressed_abs_sum_{compressed_year}.csv"
+    esto_out = out_dir / f"{file_prefix}_esto_base_{base_year}.csv"
+    ninth_out = out_dir / f"{file_prefix}_ninth_projection_compressed_{compressed_year}.csv"
+    abs_diag_out = out_dir / f"{file_prefix}_ninth_projection_compressed_abs_sum_{compressed_year}.csv"
 
     shutil.copy2(source_cfg.esto_base_table_path, esto_out)
 
+    economy_filter_set = {
+        str(item).strip()
+        for item in (economy_filter or [])
+        if str(item or "").strip()
+    }
+
     header = pd.read_csv(source_cfg.ninth_projection_table_path, nrows=0)
     ninth_columns = list(header.columns)
+    if "scenarios" not in ninth_columns:
+        raise KeyError("Configured ninth projection table is missing required 'scenarios' column.")
     year_cols = sorted(
         [
             col
@@ -945,10 +974,15 @@ def _create_preflight_compressed_source_files(
             f"year columns after base_year={base_year} in {source_cfg.ninth_projection_table_path}."
         )
     non_year_cols = [col for col in ninth_columns if col not in year_cols]
-    group_cols = [col for col in non_year_cols if col != "scenarios"]
-    if "scenarios" not in ninth_columns:
-        raise KeyError("Configured ninth projection table is missing required 'scenarios' column.")
-    usecols = [*group_cols, *year_cols]
+    if preserve_source_scenarios:
+        # Keep 'scenarios' in the grouping so Reference and Target stay separate.
+        group_cols = list(non_year_cols)
+    else:
+        group_cols = [col for col in non_year_cols if col != "scenarios"]
+    # Always read the full set of non-year columns so economy filtering and
+    # scenario normalisation have the columns they need regardless of mode.
+    usecols = [*non_year_cols, *year_cols]
+    value_cols = [str(compressed_year), f"{compressed_year}_abs_sum"]
     grouped_parts: list[pd.DataFrame] = []
     for chunk in pd.read_csv(
         source_cfg.ninth_projection_table_path,
@@ -956,39 +990,45 @@ def _create_preflight_compressed_source_files(
         low_memory=False,
         chunksize=200_000,
     ):
+        if economy_filter_set and "economy" in chunk.columns:
+            chunk = chunk[chunk["economy"].astype(str).str.strip().isin(economy_filter_set)]
+            if chunk.empty:
+                continue
         values = chunk[year_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
         work = chunk[group_cols].copy()
+        if preserve_source_scenarios:
+            work["scenarios"] = work["scenarios"].map(_scenario_to_ninth_label)
         work[str(compressed_year)] = values.sum(axis=1)
         work[f"{compressed_year}_abs_sum"] = values.abs().sum(axis=1)
         grouped_parts.append(
-            work.groupby(group_cols, dropna=False, as_index=False)[
-                [str(compressed_year), f"{compressed_year}_abs_sum"]
-            ].sum()
+            work.groupby(group_cols, dropna=False, as_index=False)[value_cols].sum()
         )
     if grouped_parts:
         grouped = (
             pd.concat(grouped_parts, ignore_index=True)
-            .groupby(group_cols, dropna=False, as_index=False)[
-                [str(compressed_year), f"{compressed_year}_abs_sum"]
-            ]
+            .groupby(group_cols, dropna=False, as_index=False)[value_cols]
             .sum()
         )
     else:
-        grouped = pd.DataFrame(columns=[*group_cols, str(compressed_year), f"{compressed_year}_abs_sum"])
+        grouped = pd.DataFrame(columns=[*group_cols, *value_cols])
 
-    csv_scenarios = sorted(
-        {
-            _scenario_to_ninth_label(scenario)
-            for scenario in scenario_names
-            if str(scenario or "").strip().lower() not in {"current accounts", "current account"}
-        }
-    ) or ["reference"]
-    parts = []
-    for csv_scenario in csv_scenarios:
-        scenario_frame = grouped.copy()
-        scenario_frame["scenarios"] = csv_scenario
-        parts.append(scenario_frame)
-    compressed = pd.concat(parts, ignore_index=True)
+    if preserve_source_scenarios:
+        # 'scenarios' is already a grouping column with normalized labels.
+        compressed = grouped
+    else:
+        csv_scenarios = sorted(
+            {
+                _scenario_to_ninth_label(scenario)
+                for scenario in scenario_names
+                if str(scenario or "").strip().lower() not in {"current accounts", "current account"}
+            }
+        ) or ["reference"]
+        parts = []
+        for csv_scenario in csv_scenarios:
+            scenario_frame = grouped.copy()
+            scenario_frame["scenarios"] = csv_scenario
+            parts.append(scenario_frame)
+        compressed = pd.concat(parts, ignore_index=True)
 
     # Restore a familiar column order for downstream readers.
     ordered_non_year = []
@@ -998,7 +1038,7 @@ def _create_preflight_compressed_source_files(
         elif col in compressed.columns:
             ordered_non_year.append(col)
     for col in compressed.columns:
-        if col not in ordered_non_year and col not in {str(compressed_year), f"{compressed_year}_abs_sum"}:
+        if col not in ordered_non_year and col not in set(value_cols):
             ordered_non_year.append(col)
     compressed[[*ordered_non_year, str(compressed_year)]].to_csv(ninth_out, index=False)
     compressed[[*ordered_non_year, f"{compressed_year}_abs_sum"]].rename(
@@ -1202,6 +1242,715 @@ def run_preflight_compressed_projection(
         print("[INFO] preflight_compressed_projection completed.")
         return result
     finally:
+        _restore_preflight_state(state)
+
+
+# =============================================================================
+# Compressed results-update preflight
+# =============================================================================
+#
+# The compressed *results-update* preflight complements the compressed
+# *projection* preflight above. Where the projection preflight exercises the
+# baseline_seed path with synthetic 00_APEC projection-only demand, this one
+# exercises the majority of the results_update path against the *real* 20_USA
+# LEAP balance-export structure -- but compressed to only two effective years
+# (the ESTO base year and a synthetic BASE_YEAR+1) so it runs in minutes.
+#
+# It builds temporary two-sheet reduced REF/TGT balance workbooks
+# (EBal|<base> copied verbatim, EBal|<base+1> a signed sum of every
+# post-base-year source sheet), then runs the workflow in results_update mode
+# with all LEAP imports/scraping/caching disabled and every output redirected
+# into an isolated preflight root. See
+# docs/supply_reconciliation_workflow_guide.md ("Fast preflight checks") and
+# docs/special_rules_and_design_decisions.md (INIT entry) for the rationale.
+
+
+def _is_numeric_cell(value: object) -> bool:
+    """Return True for a real numeric cell (excludes bools, NaN, and text)."""
+    import numbers
+
+    if value is None or isinstance(value, bool):
+        return False
+    if isinstance(value, numbers.Real):
+        # NaN is the only Real that is not equal to itself.
+        return value == value
+    return False
+
+
+def _normalize_balance_grid_label(value: object) -> str:
+    """Collapse a balance-sheet label the same way the LEAP balance reader does."""
+    return " ".join(str(value if value is not None else "").strip().lower().split())
+
+
+def _read_balance_sheet_grid(workbook_path: Path | str, sheet_name: str) -> list[list[object]]:
+    """Return a LEAP balance sheet as a plain 2D grid (blanks -> None)."""
+    raw = pd.read_excel(_resolve(workbook_path), sheet_name=sheet_name, header=None)
+    grid = raw.astype(object).where(pd.notna(raw), None).values.tolist()
+    return grid
+
+
+def _detect_balance_header_row(grid: list[list[object]]) -> int:
+    """Return the 0-indexed header row (first row within the top 8 whose col0 is blank)."""
+    for idx in range(min(8, len(grid))):
+        first_cell = grid[idx][0] if grid[idx] else None
+        if first_cell is None or not str(first_cell).strip():
+            return idx
+    # Fall back to the conventional LEAP balance header row.
+    return 2 if len(grid) > 2 else 0
+
+
+def _balance_fuel_columns(grid: list[list[object]], header_row_idx: int) -> dict[str, int]:
+    """Map each non-empty fuel header label to its column index (must be unique)."""
+    header = grid[header_row_idx] if header_row_idx < len(grid) else []
+    fuel_columns: dict[str, int] = {}
+    for col_idx, value in enumerate(header):
+        if col_idx == 0:
+            continue
+        label = _normalize_balance_grid_label(value)
+        if not label:
+            continue
+        if label in fuel_columns:
+            raise ValueError(
+                f"Duplicate fuel column label {label!r} in a future balance sheet header; "
+                "cannot align fuel columns safely."
+            )
+        fuel_columns[label] = col_idx
+    return fuel_columns
+
+
+def _sum_future_balance_grids(
+    future_grids: list[tuple[int, list[list[object]]]],
+) -> tuple[list[list[object]], list[list[object]], str]:
+    """Signed-sum future balance grids into one synthetic grid + an abs-sum grid.
+
+    Real 20_USA balance sheets share an identical balance-row sequence across
+    years but carry a *variable* set of fuel columns, so the summation:
+
+    * proves every future sheet has the *same* balance-row identities (col0)
+      below the header row -- rows are then matched positionally (the safe,
+      unambiguous key, since indented/non-indented labels can repeat);
+    * unions the fuel columns by their unique header labels and matches each
+      future sheet's fuels by label, so a fuel absent from one year simply
+      contributes zero rather than being dropped or positionally corrupted.
+
+    Structural cells (metadata rows, the fuel header row, and col0 labels) come
+    from the first future grid (the template). Signs are preserved in
+    ``signed_grid``; ``abs_grid`` sums absolute values so categories hidden by
+    signed cancellation stay visible. A structural mismatch (differing balance
+    rows or duplicate identifying labels) raises a clear diagnostic rather than
+    summing by position blindly.
+    """
+    if not future_grids:
+        raise ValueError("Cannot build a synthetic future balance sheet from zero future sheets.")
+
+    header_idx = _detect_balance_header_row(future_grids[0][1])
+    template = future_grids[0][1]
+    n_rows = len(template)
+
+    # 1. Prove the balance-row sequence (col0 at/below the header) is identical
+    #    across every future sheet before matching rows positionally.
+    template_row_labels = [_normalize_balance_grid_label(row[0]) for row in template[header_idx + 1 :]]
+    for year, grid in future_grids:
+        if _detect_balance_header_row(grid) != header_idx or len(grid) != n_rows:
+            raise ValueError(
+                f"Future balance sheet EBal|{year} has a different row/header layout than the "
+                f"template (rows={len(grid)} vs {n_rows}); refusing to sum by position blindly."
+            )
+        grid_row_labels = [_normalize_balance_grid_label(row[0]) for row in grid[header_idx + 1 :]]
+        if grid_row_labels != template_row_labels:
+            first_diff = next(
+                (
+                    idx
+                    for idx, (a, b) in enumerate(zip(template_row_labels, grid_row_labels))
+                    if a != b
+                ),
+                min(len(template_row_labels), len(grid_row_labels)),
+            )
+            raise ValueError(
+                f"Future balance sheet EBal|{year} balance-row identities differ from the "
+                f"template (first difference at data row {first_diff}); cannot align rows "
+                "safely. Refusing to invent or discard unmatched rows silently."
+            )
+
+    # 2. Union the fuel columns by their unique header labels (template order
+    #    first, then any additional fuels seen only in later years).
+    fuel_columns_by_grid: list[dict[str, int]] = [
+        _balance_fuel_columns(grid, header_idx) for _, grid in future_grids
+    ]
+    canonical_fuels: list[str] = []
+    seen_fuels: set[str] = set()
+    fuel_label_source: dict[str, object] = {}
+    for (year, grid), fuel_columns in zip(future_grids, fuel_columns_by_grid):
+        for label, col_idx in fuel_columns.items():
+            if label not in seen_fuels:
+                seen_fuels.add(label)
+                canonical_fuels.append(label)
+                # Preserve the original (un-normalized) header text for display.
+                fuel_label_source[label] = grid[header_idx][col_idx]
+    out_cols = 1 + len(canonical_fuels)
+    all_identical = all(
+        list(fuel_columns.keys()) == canonical_fuels for fuel_columns in fuel_columns_by_grid
+    )
+    method = "positional_identical" if all_identical else "label_union_aligned"
+
+    # 3. Build structural scaffold (metadata + header + col0 labels) from template.
+    signed_grid: list[list[object]] = []
+    abs_grid: list[list[object]] = []
+    for r in range(n_rows):
+        signed_row: list[object] = [None] * out_cols
+        # col0 structural label (metadata rows keep their own text).
+        signed_row[0] = template[r][0] if template[r] else None
+        signed_grid.append(signed_row)
+        abs_grid.append(list(signed_row))
+    # Rewrite the header row with the canonical fuel labels.
+    for fuel_idx, label in enumerate(canonical_fuels):
+        signed_grid[header_idx][fuel_idx + 1] = fuel_label_source[label]
+        abs_grid[header_idx][fuel_idx + 1] = fuel_label_source[label]
+    # Copy metadata rows above the header verbatim (padded to out_cols).
+    for r in range(header_idx):
+        for c in range(1, out_cols):
+            value = template[r][c] if c < len(template[r]) else None
+            signed_grid[r][c] = value
+            abs_grid[r][c] = value
+
+    # 4. Sum numeric data cells across future years, matched by fuel label.
+    for r in range(header_idx + 1, n_rows):
+        for fuel_idx, label in enumerate(canonical_fuels):
+            out_col = fuel_idx + 1
+            signed = 0.0
+            absolute = 0.0
+            saw_number = False
+            for (year, grid), fuel_columns in zip(future_grids, fuel_columns_by_grid):
+                col_idx = fuel_columns.get(label)
+                if col_idx is None:
+                    continue
+                cell = grid[r][col_idx] if col_idx < len(grid[r]) else None
+                if _is_numeric_cell(cell):
+                    saw_number = True
+                    signed += float(cell)
+                    absolute += abs(float(cell))
+            if saw_number:
+                signed_grid[r][out_col] = signed
+                abs_grid[r][out_col] = absolute
+    return signed_grid, abs_grid, method
+
+
+def _write_balance_grids_workbook(
+    output_path: Path,
+    ordered_sheets: list[tuple[str, list[list[object]]]],
+) -> None:
+    """Write ordered (sheet_name, grid) pairs to a plain .xlsx for the balance reader."""
+    import numbers as _numbers
+
+    import openpyxl
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    for sheet_name, grid in ordered_sheets:
+        ws = wb.create_sheet(title=sheet_name)
+        for row in grid:
+            ws.append(
+                [
+                    float(cell)
+                    if (isinstance(cell, _numbers.Real) and not isinstance(cell, bool))
+                    else cell
+                    for cell in row
+                ]
+            )
+    wb.save(output_path)
+    wb.close()
+
+
+def _write_balance_abs_sum_diagnostic(diagnostic_path: Path, abs_grid: list[list[object]]) -> None:
+    """Write the signed-cancellation abs-sum diagnostic grid as a separate CSV."""
+    diagnostic_path.parent.mkdir(parents=True, exist_ok=True)
+    frame = pd.DataFrame(abs_grid)
+    frame.to_csv(diagnostic_path, index=False, header=False)
+
+
+def _build_reduced_preflight_balance_workbook(
+    *,
+    source_path: Path | str,
+    output_path: Path,
+    base_year: int,
+    synthetic_year: int,
+    scenario_code: str,
+    abs_diagnostic_path: Path,
+) -> dict[str, object]:
+    """Build a two-sheet reduced LEAP balance workbook for the results-update preflight.
+
+    The reduced workbook contains exactly:
+
+    * ``EBal|<base_year>`` -- copied verbatim from the source workbook.
+    * ``EBal|<synthetic_year>`` -- a synthetic future balance sheet built as the
+      signed sum of every source ``EBal|YYYY`` sheet where ``YYYY > base_year``.
+
+    The source workbook is never modified. A separate abs-sum diagnostic CSV is
+    written alongside so signed cancellation stays visible.
+    """
+    import openpyxl
+
+    source = _resolve(source_path)
+    if not source.exists():
+        raise FileNotFoundError(f"Missing source LEAP balance workbook: {source}")
+
+    wb = openpyxl.load_workbook(source, read_only=True, data_only=True)
+    try:
+        ebal_years: dict[int, str] = {}
+        for name in wb.sheetnames:
+            if not str(name).strip().lower().startswith("ebal|"):
+                continue
+            try:
+                year = int(str(name).split("|", 1)[1])
+            except (ValueError, IndexError):
+                continue
+            ebal_years[year] = name
+    finally:
+        wb.close()
+
+    if base_year not in ebal_years:
+        raise ValueError(
+            f"Source workbook {source.name} has no EBal|{base_year} sheet; cannot build the "
+            f"reduced {scenario_code} preflight workbook."
+        )
+    future_years = sorted(year for year in ebal_years if year > base_year)
+    if not future_years:
+        raise ValueError(
+            f"Source workbook {source.name} has no post-base-year EBal|YYYY sheets "
+            f"(base_year={base_year}); cannot build a synthetic future balance sheet."
+        )
+
+    base_grid = _read_balance_sheet_grid(source, ebal_years[base_year])
+    future_grids = [(year, _read_balance_sheet_grid(source, ebal_years[year])) for year in future_years]
+    signed_grid, abs_grid, method = _sum_future_balance_grids(future_grids)
+
+    base_sheet_name = f"EBal|{base_year}"
+    synthetic_sheet_name = f"EBal|{synthetic_year}"
+    _write_balance_grids_workbook(
+        output_path,
+        [
+            (base_sheet_name, base_grid),
+            (synthetic_sheet_name, signed_grid),
+        ],
+    )
+    _write_balance_abs_sum_diagnostic(abs_diagnostic_path, abs_grid)
+
+    print(
+        f"[INFO] Built reduced {scenario_code} preflight balance workbook {output_path.name}: "
+        f"sheets=[{base_sheet_name}, {synthetic_sheet_name}], synthetic sheet summed "
+        f"{len(future_years)} source sheets (EBal|{future_years[0]}..EBal|{future_years[-1]}) "
+        f"via {method}. Abs-sum diagnostic: {abs_diagnostic_path.name}."
+    )
+    return {
+        "workbook_path": output_path,
+        "abs_diagnostic_path": abs_diagnostic_path,
+        "sheet_names": [base_sheet_name, synthetic_sheet_name],
+        "source_path": source,
+        "future_years": future_years,
+        "sum_method": method,
+        "scenario_code": scenario_code,
+    }
+
+
+# --- Cross-module config broadcast -------------------------------------------
+#
+# Config values such as RESULTS_CHECKS_DIR, ECONOMIES, CAPACITY_UNMET_PASS_MODE
+# and BALANCE_DEMAND_REF_WORKBOOK_PATH are pulled into many modules via
+# `from supply_reconciliation_config import *`, so each consuming module holds
+# its own copy. To redirect the whole results_update pipeline into an isolated
+# preflight scope we broadcast the overrides to every already-imported
+# `codebase.*` module that defines the name, and snapshot the prior values so
+# they can be restored exactly (including after a failed preflight).
+
+_BROADCAST_OVERRIDE_MISSING = object()
+
+
+def _broadcast_config_overrides(overrides: dict[str, object]) -> list[tuple[str, str, object]]:
+    """Set config overrides on every loaded codebase module that defines them.
+
+    Returns a snapshot list of ``(module_name, attribute, previous_value)`` for
+    restoration. Only names that already exist on a module are overridden, so no
+    spurious attributes are created.
+    """
+    snapshot: list[tuple[str, str, object]] = []
+    for module_name, module in list(sys.modules.items()):
+        if module is None:
+            continue
+        if module_name != "codebase" and not module_name.startswith("codebase."):
+            continue
+        module_dict = getattr(module, "__dict__", None)
+        if module_dict is None:
+            continue
+        for name, value in overrides.items():
+            if name in module_dict:
+                snapshot.append((module_name, name, module_dict[name]))
+                module_dict[name] = value
+    return snapshot
+
+
+def _restore_config_overrides(snapshot: list[tuple[str, str, object]]) -> None:
+    """Restore module attributes captured by _broadcast_config_overrides."""
+    for module_name, name, previous in reversed(snapshot):
+        module = sys.modules.get(module_name)
+        if module is not None:
+            setattr(module, name, previous)
+
+
+def _apply_preflight_results_update_state(
+    *,
+    source_files: dict[str, object],
+    reduced_ref_path: Path,
+    reduced_tgt_path: Path,
+    preflight_root: Path,
+    scenarios: list[str],
+    economy: str,
+) -> list[tuple[str, str, object]]:
+    """Patch config for the compressed two-year 20_USA results-update preflight.
+
+    Mirrors the compressed-projection preflight's two-year source setup (compressed
+    ESTO/9th + module reloads) but additionally routes the balance-demand loader to
+    the temporary reduced REF/TGT workbooks, forces results_update mode, and
+    broadcasts every isolation/routing override across all consuming modules.
+    Returns the broadcast snapshot for restoration.
+    """
+    base_year = int(source_files["base_year"])
+    compressed_year = int(source_files["compressed_year"])
+
+    workflow_cfg.ENERGY_SOURCE_ESTO_BASE_TABLE_PATH = str(source_files["esto_path"])
+    workflow_cfg.ENERGY_SOURCE_ESTO_BASE_YEAR = base_year
+    workflow_cfg.ENERGY_SOURCE_NINTH_PROJECTION_TABLE_PATH = str(source_files["ninth_path"])
+    workflow_cfg.ENERGY_SOURCE_PROJECTION_START_YEAR = compressed_year
+    workflow_cfg.ENERGY_SOURCE_PROJECTION_FINAL_YEAR = compressed_year
+    workflow_cfg.GLOBAL_FINAL_YEAR = compressed_year
+    workflow_cfg.TRANSFORMATION_EXPORT_FINAL_YEAR = compressed_year
+    workflow_cfg.MINOR_DEMAND_EXPORT_FINAL_YEAR = compressed_year
+
+    importlib.reload(supply_data_pipeline)
+    importlib.reload(transformation_workflow.core)
+    importlib.reload(transformation_workflow)
+    importlib.reload(transfers_workflow)
+    importlib.reload(electricity_heat_interim_workflow)
+    importlib.reload(other_loss_own_use_proxy_workflow)
+
+    workbooks_dir = preflight_root / "workbooks"
+    overrides: dict[str, object] = {
+        # --- scope ---
+        "ECONOMIES": [economy],
+        "SCENARIOS": list(scenarios),
+        "FINAL_YEAR": compressed_year,
+        "BALANCE_EXPORT_YEARS": [base_year, compressed_year],
+        # --- isolated outputs / runtime / checks ---
+        "OUTPUT_DIR": preflight_root,
+        "EXPORT_OUTPUT_DIR": workbooks_dir,
+        "TRANSFORMATION_EXPORT_OUTPUT_DIR": workbooks_dir,
+        "YEARLY_BALANCE_DIR": preflight_root / "yearly_balance_tables",
+        "CONVENTIONAL_BALANCE_DIR": preflight_root / "conventional_balance_tables",
+        "RESULTS_CHECKS_DIR": preflight_root / "checks",
+        "RESULTS_RUNTIME_DIR": preflight_root / "runtime",
+        "RESULTS_SINGLE_FILE_NAME": "preflight_compressed_results_update_run.xlsx",
+        # --- disable LEAP imports / branch creation / scraping / caches ---
+        "LEAP_IMPORT_SUPPLY_TO_LEAP": False,
+        "LEAP_IMPORT_TRANSFORMATION_TO_LEAP": False,
+        "LEAP_IMPORT_TRANSFERS_TO_LEAP": False,
+        "LEAP_IMPORT_CREATE_BRANCHES": False,
+        "LEAP_IMPORT_FILL_BRANCHES": False,
+        "LEAP_IMPORT_INCLUDE_CURRENT_ACCOUNTS": False,
+        "AGGREGATED_DEMAND_INCLUDE_IN_LEAP_IMPORT": False,
+        "OTHER_LOSS_OWN_USE_INCLUDE_IN_LEAP_IMPORT": False,
+        "ZERO_OTHER_DEMAND_INCLUDE_IN_LEAP_IMPORT": False,
+        "RUN_LEAP_FUEL_BRANCH_PROBE_AT_START": False,
+        "SCRAPE_LEAP_RESULTS": False,
+        "TRANSFORMATION_SUPPLY_CACHE_ENABLED": False,
+        "SKIP_ECONOMIES_WITH_EXISTING_EXPORTS": False,
+        # --- results_update pass semantics ---
+        "CAPACITY_UNMET_PASS_MODE": "results_update",
+        "USE_AGGREGATED_DEMAND_AS_DUMMY": False,
+        "OTHER_LOSS_OWN_USE_PROXY_STAGE": "second",
+        "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT": False,
+        "RUN_ELECTRICITY_HEAT_INTERIM": False,
+        # --- balance-demand routing to the temporary reduced workbooks ---
+        "BALANCE_DEMAND_REF_WORKBOOK_PATH": reduced_ref_path,
+        "BALANCE_DEMAND_TGT_WORKBOOK_PATH": reduced_tgt_path,
+        "BALANCE_DEMAND_EXPORTS_ROOT": preflight_root / "reduced_balance_exports",
+        "DIRECT_DEMAND_PROJECTION_ECONOMY": economy,
+        "DIRECT_DEMAND_BASE_ECONOMY": economy.replace("_", ""),
+        "DIRECT_DEMAND_BASE_YEAR": base_year,
+        "DIRECT_DEMAND_PROJECTION_YEARS": (compressed_year,),
+        "BALANCE_DEMAND_BASE_TABLE_PATH": source_files["esto_path"],
+        "BALANCE_DEMAND_PROJECTION_TABLE_PATH": source_files["ninth_path"],
+        "DIRECT_DEMAND_BASE_TABLE_PATH": source_files["esto_path"],
+        "DIRECT_DEMAND_PROJECTION_TABLE_PATH": source_files["ninth_path"],
+    }
+    return _broadcast_config_overrides(overrides)
+
+
+_BALANCE_DEMAND_ISSUE_SCHEMA_COLUMNS = [
+    "reason",
+    "details",
+    "scenario",
+    "year",
+    "source_sheet",
+    "leap_sector_name_full_path",
+    "leap_flow",
+    "leap_flow_name",
+    "leap_product",
+    "leap_product_name",
+    "mapping_failed",
+    "mapping_key_sector",
+    "mapping_key_fuel",
+    "mapping_candidate_rule",
+    "esto_flow",
+    "esto_product",
+    "value_petajoule",
+    "severity",
+    "source_workbook",
+    "economy",
+    "issue_sector_key",
+    "issue_fuel_key",
+    "issue_fuel_is_non_actionable",
+    "pair_is_demand",
+    "sector_is_demand",
+    "pair_scope_matched",
+    "sector_scope_matched",
+    "demand_relevant",
+    "demand_relevance_basis",
+]
+
+
+def _finalize_balance_demand_issue_report(
+    *,
+    checks_dir: Path,
+    run_error: Exception | None = None,
+) -> dict[str, object]:
+    """Guarantee a deterministic issue-report artifact and print a compact summary.
+
+    The results_update runner only writes the balance-demand issue CSV when issues
+    exist. This helper reads that CSV if present, otherwise writes a header-only CSV
+    using the current schema (never leaving a stale report), then prints a compact
+    summary of the demand-mapping outcome.
+    """
+    checks_dir = _resolve(checks_dir)
+    report_path = checks_dir / RESULTS_BALANCE_DEMAND_ISSUES_FILENAME
+
+    if report_path.exists() and report_path.stat().st_size > 0:
+        try:
+            issues = pd.read_csv(report_path)
+        except pd.errors.EmptyDataError:
+            issues = pd.DataFrame(columns=_BALANCE_DEMAND_ISSUE_SCHEMA_COLUMNS)
+    else:
+        issues = pd.DataFrame(columns=_BALANCE_DEMAND_ISSUE_SCHEMA_COLUMNS)
+        checks_dir.mkdir(parents=True, exist_ok=True)
+        issues.to_csv(report_path, index=False)
+        print(
+            f"[INFO] No balance-demand mapping issues: wrote header-only report to {report_path}."
+        )
+
+    def _bool_series(frame: pd.DataFrame, column: str) -> pd.Series:
+        if column not in frame.columns:
+            return pd.Series([False] * len(frame), index=frame.index)
+        return frame[column].map(
+            lambda v: str(v).strip().lower() in {"true", "1", "1.0", "yes"}
+            if not isinstance(v, bool)
+            else v
+        ).fillna(False).astype(bool)
+
+    total_rows = int(len(issues))
+    demand_relevant_mask = _bool_series(issues, "demand_relevant")
+    non_actionable_mask = _bool_series(issues, "issue_fuel_is_non_actionable")
+    actionable_rows = int(demand_relevant_mask.sum())
+    ignored_rows = int(total_rows - actionable_rows)
+
+    reason_counts: dict[str, int] = {}
+    if "reason" in issues.columns and total_rows:
+        reason_counts = {
+            str(reason): int(count)
+            for reason, count in issues["reason"].fillna("(none)").value_counts().items()
+        }
+
+    unique_sector_fuel_keys = 0
+    if {"issue_sector_key", "issue_fuel_key"}.issubset(issues.columns) and total_rows:
+        unique_sector_fuel_keys = int(
+            issues[["issue_sector_key", "issue_fuel_key"]]
+            .fillna("")
+            .astype(str)
+            .drop_duplicates()
+            .shape[0]
+        )
+
+    total_fuel_rows = 0
+    if "issue_fuel_key" in issues.columns and total_rows:
+        total_fuel_rows = int(
+            issues["issue_fuel_key"].map(_normalize_balance_grid_label).eq("total").sum()
+        )
+
+    # Known-label-exception rescues and rollup-resolved rows are recorded as
+    # resolution bases rather than as issues; surface them from any available
+    # resolution/basis column so successful rescues stay visible.
+    known_label_exception_rescues = 0
+    rollup_resolved_rows = 0
+    basis_text_cols = [
+        col
+        for col in ("demand_relevance_basis", "mapping_candidate_rule", "details", "reason")
+        if col in issues.columns
+    ]
+    if basis_text_cols and total_rows:
+        joined = issues[basis_text_cols].fillna("").astype(str).agg(" ".join, axis=1).str.lower()
+        known_label_exception_rescues = int(
+            joined.str.contains("known").__and__(joined.str.contains("label")).sum()
+        )
+        rollup_resolved_rows = int(joined.str.contains("rollup").sum())
+
+    # Unresolved rows: demand-relevant, non-rescued mapping failures that remain.
+    unresolved_rows = actionable_rows
+
+    print("[INFO] Compressed results-update preflight balance-demand summary:")
+    print(f"  - report: {report_path}")
+    print(f"  - total issue rows:              {total_rows}")
+    print(f"  - actionable demand issue rows:  {actionable_rows}")
+    print(f"  - ignored / non-demand rows:     {ignored_rows}")
+    print(f"  - non-actionable-fuel rows:      {int(non_actionable_mask.sum())}")
+    print(f"  - unique sector/fuel keys:       {unique_sector_fuel_keys}")
+    print(f"  - 'Total' fuel rows:             {total_fuel_rows}")
+    print(f"  - known-label-exception rescues: {known_label_exception_rescues}")
+    print(f"  - rollup-resolved rows:          {rollup_resolved_rows}")
+    print(f"  - unresolved demand-relevant:    {unresolved_rows}")
+    if reason_counts:
+        counts_text = ", ".join(f"{reason}: {count}" for reason, count in reason_counts.items())
+        print(f"  - counts by reason:              {counts_text}")
+    if run_error is not None:
+        print(f"  - NOTE: the workflow raised before completing: {run_error}")
+
+    return {
+        "report_path": report_path,
+        "total_issue_rows": total_rows,
+        "actionable_demand_issue_rows": actionable_rows,
+        "ignored_non_demand_rows": ignored_rows,
+        "unique_sector_fuel_keys": unique_sector_fuel_keys,
+        "total_fuel_rows": total_fuel_rows,
+        "known_label_exception_rescues": known_label_exception_rescues,
+        "rollup_resolved_rows": rollup_resolved_rows,
+        "unresolved_demand_relevant_rows": unresolved_rows,
+        "reason_counts": reason_counts,
+    }
+
+
+def run_preflight_compressed_results_update(
+    *,
+    scenario_names: Iterable[str] | None = None,
+) -> dict[str, object]:
+    """Run a compressed two-year 20_USA results-update integration preflight.
+
+    Builds temporary reduced REF/TGT LEAP balance workbooks (real 20_USA balance
+    structure, two effective years) and runs the workflow in results_update mode
+    with LEAP imports/scraping/caches disabled and every output isolated. State is
+    snapshotted and restored in ``finally`` so a normal production run afterwards is
+    unaffected -- even if the preflight fails.
+    """
+    economy = "20_USA"
+    scenario_list = workflow_common.normalize_workflow_scenarios(scenario_names, SCENARIOS)
+    # The balance-demand comparison only understands Reference/Target.
+    scenario_list = [s for s in scenario_list if str(s).strip().lower() in {"reference", "target"}]
+    if not scenario_list:
+        scenario_list = ["Reference", "Target"]
+
+    source_cfg = workflow_cfg.get_energy_source_config()
+    base_year = int(source_cfg.esto_base_year)
+    synthetic_year = base_year + 1
+
+    preflight_root = _resolve(OUTPUT_DIR) / "preflight_compressed_results_update"
+    runtime_dir = preflight_root / "runtime"
+    source_dir = runtime_dir / "compressed_sources"
+    reduced_dir = runtime_dir / "reduced_balance_workbooks"
+
+    print(
+        "[INFO] Starting preflight_compressed_results_update: "
+        f"economies=['{economy}'], scenarios={scenario_list}, "
+        f"years={base_year}-{synthetic_year} (real reduced LEAP balance structure)."
+    )
+
+    # Build temporary reduced REF/TGT workbooks from the production source workbooks
+    # (read-only). The REF synthetic sheet is built only from REF; TGT only from TGT.
+    reduced_ref = _build_reduced_preflight_balance_workbook(
+        source_path=BALANCE_DEMAND_REF_WORKBOOK_PATH,
+        output_path=reduced_dir / f"reduced_{economy}_REF_EBal_{base_year}_{synthetic_year}.xlsx",
+        base_year=base_year,
+        synthetic_year=synthetic_year,
+        scenario_code="REF",
+        abs_diagnostic_path=reduced_dir / f"reduced_{economy}_REF_abs_sum_{synthetic_year}.csv",
+    )
+    reduced_tgt = _build_reduced_preflight_balance_workbook(
+        source_path=BALANCE_DEMAND_TGT_WORKBOOK_PATH,
+        output_path=reduced_dir / f"reduced_{economy}_TGT_EBal_{base_year}_{synthetic_year}.xlsx",
+        base_year=base_year,
+        synthetic_year=synthetic_year,
+        scenario_code="TGT",
+        abs_diagnostic_path=reduced_dir / f"reduced_{economy}_TGT_abs_sum_{synthetic_year}.csv",
+    )
+
+    # Scenario-separated compressed ESTO/9th sources for 20_USA (Reference stays
+    # Reference, Target stays Target -- never summed together and replicated).
+    source_files = _create_preflight_compressed_source_files(
+        output_dir=source_dir,
+        scenario_names=scenario_list,
+        preserve_source_scenarios=True,
+        economy_filter=[economy],
+        file_prefix="preflight_results_update",
+    )
+    print(
+        "[INFO] Compressed scenario-separated 9th source written to "
+        f"{source_files['ninth_path']} "
+        f"(abs-sum diagnostics: {source_files['ninth_abs_diagnostics_path']})."
+    )
+
+    checks_dir = preflight_root / "checks"
+
+    # Late import (avoids the supply_reconciliation_workflow <-> supply_preflight cycle).
+    from codebase.supply_reconciliation_workflow import (
+        run_results_linked_transformation_supply_workflow,
+    )
+
+    state = _snapshot_preflight_state()
+    broadcast_snapshot: list[tuple[str, str, object]] | None = None
+    try:
+        broadcast_snapshot = _apply_preflight_results_update_state(
+            source_files=source_files,
+            reduced_ref_path=reduced_ref["workbook_path"],
+            reduced_tgt_path=reduced_tgt["workbook_path"],
+            preflight_root=preflight_root,
+            scenarios=scenario_list,
+            economy=economy,
+        )
+        run_error: Exception | None = None
+        try:
+            result = run_results_linked_transformation_supply_workflow(
+                economies=[economy],
+                scenario_names=scenario_list,
+                export_dataset_key=EXPORT_DATASET_KEY,
+                include_leap_import=False,
+                import_scenarios=[],
+                scrape_leap_results=False,
+            )
+        except Exception as exc:  # noqa: BLE001 — still finalize the deterministic report
+            run_error = exc
+            _finalize_balance_demand_issue_report(checks_dir=checks_dir, run_error=exc)
+            raise
+        report_summary = _finalize_balance_demand_issue_report(checks_dir=checks_dir)
+        result["preflight_results_update_report_summary"] = report_summary
+        result["preflight_results_update_reduced_ref"] = reduced_ref
+        result["preflight_results_update_reduced_tgt"] = reduced_tgt
+        result["preflight_results_update_compressed_ninth_path"] = source_files["ninth_path"]
+        result["preflight_results_update_compressed_abs_diagnostics_path"] = source_files[
+            "ninth_abs_diagnostics_path"
+        ]
+        result["preflight_results_update_base_year"] = base_year
+        result["preflight_results_update_synthetic_year"] = synthetic_year
+        result["preflight_results_update_scenarios"] = scenario_list
+        print("[INFO] preflight_compressed_results_update completed.")
+        return result
+    finally:
+        if broadcast_snapshot is not None:
+            _restore_config_overrides(broadcast_snapshot)
         _restore_preflight_state(state)
 
 

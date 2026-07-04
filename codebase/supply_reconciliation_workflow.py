@@ -223,6 +223,7 @@ from codebase.functions.supply_preflight import (  # noqa: F401
     _restore_preflight_state,
     _apply_preflight_compressed_state,
     run_preflight_compressed_projection,
+    run_preflight_compressed_results_update,
 )
 from codebase.functions.supply_demand_mapping import (  # noqa: F401
     _normalize_sector_match_key,
@@ -644,27 +645,32 @@ _PRESET_BASELINE_SEED = {
     "SKIP_ECONOMIES_WITH_EXISTING_EXPORTS": False,
 }
 
-_PRESET_PATCH_BASELINE_SEEDS = {
-    # --- Pass mode ---
-    # When RUN_MODE == "patch_baseline_seeds", run_with_config() skips the full
-    # supply/transformation workflow entirely and just patches existing
-    # leap_import_baseline_seed_* files via patch_baseline_seeds.run_patch().
-    "RUN_MODE": "patch_baseline_seeds",
-    # Module name(s) from patch_baseline_seeds.MODULE_REGISTRY.  Accepts a single
-    # string or a list to patch multiple modules in sequence, e.g.:
-    #   "oil_refineries" | ["aggregated_demand", "power_interim"]
-    # Available: "oil_refineries", "lng", "hydrogen", "transformation" (all),
-    #            "supply", "transfers", "power_interim", "aggregated_demand",
-    #            "losses_own_use".
-    "PATCH_MODULE": ["losses_own_use"],
-    # None = all economies found in the baseline seed directory, or a list of
-    # economy tokens to limit scope, e.g. ["20_USA", "01_AUS"].
-    "PATCH_ECONOMIES": None,
-    # Re-run the upstream source workflow before patching so workbook-based
-    # modules (power_interim, transfers, etc.) always patch from fresh data.
-    # Set False to patch from whatever workbooks are already on disk.
-    "PATCH_RUN_WORKFLOW": True,
-}
+# DO NOT USE — patch_baseline_seeds patch path is unverified against the current
+# baseline-seed / update process and can silently write stale or mismatched rows
+# (e.g. "losses_own_use" has no upstream regen wired up, per-economy failures are
+# only printed rather than raised). Re-enable only after auditing patch_baseline_seeds.py
+# against the current full workflow.
+# _PRESET_PATCH_BASELINE_SEEDS = {
+#     # --- Pass mode ---
+#     # When RUN_MODE == "patch_baseline_seeds", run_with_config() skips the full
+#     # supply/transformation workflow entirely and just patches existing
+#     # leap_import_baseline_seed_* files via patch_baseline_seeds.run_patch().
+#     "RUN_MODE": "patch_baseline_seeds",
+#     # Module name(s) from patch_baseline_seeds.MODULE_REGISTRY.  Accepts a single
+#     # string or a list to patch multiple modules in sequence, e.g.:
+#     #   "oil_refineries" | ["aggregated_demand", "power_interim"]
+#     # Available: "oil_refineries", "lng", "hydrogen", "transformation" (all),
+#     #            "supply", "transfers", "power_interim", "aggregated_demand",
+#     #            "losses_own_use".
+#     "PATCH_MODULE": ["losses_own_use"],
+#     # None = all economies found in the baseline seed directory, or a list of
+#     # economy tokens to limit scope, e.g. ["20_USA", "01_AUS"].
+#     "PATCH_ECONOMIES": None,
+#     # Re-run the upstream source workflow before patching so workbook-based
+#     # modules (power_interim, transfers, etc.) always patch from fresh data.
+#     # Set False to patch from whatever workbooks are already on disk.
+#     "PATCH_RUN_WORKFLOW": True,
+# }
 
 _PRESET_RESULTS_UPDATE = {
     # Set True to run only preflight_compressed_projection for this preset.
@@ -707,8 +713,9 @@ _PRESET_RESULTS_UPDATE = {
     "SKIP_ECONOMIES_WITH_EXISTING_EXPORTS": False,
 }
 
-# ← change this to switch presets (use _PRESET_PATCH_BASELINE_SEEDS to just
-# patch existing baseline seed files instead of running the full workflow)
+# ← change this to switch presets. _PRESET_PATCH_BASELINE_SEEDS is currently
+# commented out above — do not use it until the patch path has been audited
+# against the current baseline-seed/update workflow.
 ACTIVE_PRESET = _PRESET_BASELINE_SEED#_PRESET_BASELINE_SEED
 
 # Default run mode; presets other than _PRESET_PATCH_BASELINE_SEEDS don't set
@@ -729,6 +736,15 @@ RUN_PREFLIGHT_COMPRESSED_PROJECTION = True
 PREFLIGHT_COMPRESSED_INCLUDE_CURRENT_ACCOUNTS = True
 PREFLIGHT_COMPRESSED_PROJECTION_ONLY = False
 PREFLIGHT_COMPRESSED_FAIL_FAST = False
+# Compressed results-update preflight (complements the projection preflight):
+# runs the majority of the results_update path against real 20_USA LEAP balance
+# structure compressed to two effective years, with LEAP imports/scraping/caches
+# disabled and all outputs isolated. Off by default so it does not lengthen every
+# run; enable it (ideally before a full results_update) with RUN_PREFLIGHT_...=True.
+# See docs/supply_reconciliation_workflow_guide.md ("Fast preflight checks").
+RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE = False
+PREFLIGHT_COMPRESSED_RESULTS_UPDATE_ONLY = False
+PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST = False
 # Unpack preset — does not overwrite ECONOMIES/SCENARIOS set above. Presets can
 # override the defaults immediately above, including PREFLIGHT_* toggles.
 globals().update(ACTIVE_PRESET)
@@ -828,6 +844,11 @@ def _run_with_config_inner() -> dict[str, object]:
     include_leap_import = analysis_write_mode == "api"
     preflight_result: dict[str, object] | None = None
     preflight_error: Exception | None = None
+    results_update_preflight_result: dict[str, object] | None = None
+    results_update_preflight_error: Exception | None = None
+    stop_after_preflight = bool(PREFLIGHT_COMPRESSED_PROJECTION_ONLY) or bool(
+        PREFLIGHT_COMPRESSED_RESULTS_UPDATE_ONLY
+    )
     if bool(RUN_PREFLIGHT_COMPRESSED_PROJECTION):
         try:
             preflight_result = run_preflight_compressed_projection(
@@ -835,7 +856,7 @@ def _run_with_config_inner() -> dict[str, object]:
             )
         except Exception as exc:
             preflight_error = exc
-            if bool(PREFLIGHT_COMPRESSED_PROJECTION_ONLY) or bool(PREFLIGHT_COMPRESSED_FAIL_FAST):
+            if stop_after_preflight or bool(PREFLIGHT_COMPRESSED_FAIL_FAST):
                 if bool(COMPLETION_BEEP_ON_ERROR):
                     _emit_completion_beep(success=False)
                 raise
@@ -844,9 +865,31 @@ def _run_with_config_inner() -> dict[str, object]:
                 "PREFLIGHT_COMPRESSED_FAIL_FAST=False so the full economy run will continue. "
                 f"The preflight error will be re-raised after the main run completes: {exc}"
             )
-        if bool(PREFLIGHT_COMPRESSED_PROJECTION_ONLY):
-            _emit_completion_beep(success=True, style="chime")
-            return {"preflight_compressed_projection": preflight_result}
+
+    if bool(RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE):
+        try:
+            results_update_preflight_result = run_preflight_compressed_results_update(
+                scenario_names=SCENARIOS,
+            )
+        except Exception as exc:
+            results_update_preflight_error = exc
+            if stop_after_preflight or bool(PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST):
+                if bool(COMPLETION_BEEP_ON_ERROR):
+                    _emit_completion_beep(success=False)
+                raise
+            print(
+                "[WARN] preflight_compressed_results_update failed, but "
+                "PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST=False so the full economy run "
+                "will continue. The preflight error will be re-raised after the main run "
+                f"completes: {exc}"
+            )
+
+    if stop_after_preflight:
+        _emit_completion_beep(success=True, style="chime")
+        return {
+            "preflight_compressed_projection": preflight_result,
+            "preflight_compressed_results_update": results_update_preflight_result,
+        }
 
     if int(supply_data_pipeline.EXPORT_FINAL_YEAR) > int(LEAP_IMPORT_MAX_YEAR):
         print(
@@ -878,6 +921,8 @@ def _run_with_config_inner() -> dict[str, object]:
         f"BALANCE_DEMAND_FAIL_ON_MAPPING_ISSUES={BALANCE_DEMAND_FAIL_ON_MAPPING_ISSUES}, "
         f"RUN_PREFLIGHT_COMPRESSED_PROJECTION={RUN_PREFLIGHT_COMPRESSED_PROJECTION}, "
         f"PREFLIGHT_COMPRESSED_FAIL_FAST={PREFLIGHT_COMPRESSED_FAIL_FAST}, "
+        f"RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE={RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE}, "
+        f"PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST={PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST}, "
         f"ENABLE_WORKFLOW_TIMING={ENABLE_WORKFLOW_TIMING}, "
         f"WRITE_WORKFLOW_TIMING_CSV={WRITE_WORKFLOW_TIMING_CSV}, "
         f"KEEP_ALL_ZERO_SUPPLY_ROWS={KEEP_ALL_ZERO_SUPPLY_ROWS}, "
@@ -900,15 +945,21 @@ def _run_with_config_inner() -> dict[str, object]:
     _emit_completion_beep(success=True, style="chime")
     if preflight_result is not None:
         output["preflight_compressed_projection"] = preflight_result
+    if results_update_preflight_result is not None:
+        output["preflight_compressed_results_update"] = results_update_preflight_result
     if preflight_error is not None:
         output["preflight_compressed_projection_error"] = str(preflight_error)
+    if results_update_preflight_error is not None:
+        output["preflight_compressed_results_update_error"] = str(results_update_preflight_error)
+    if preflight_error is not None or results_update_preflight_error is not None:
         if bool(COMPLETION_BEEP_ON_ERROR):
             _emit_completion_beep(success=False)
+        deferred = preflight_error or results_update_preflight_error
         raise RuntimeError(
-            "preflight_compressed_projection failed, but the main economy run completed. "
+            "A compressed preflight failed, but the main economy run completed. "
             "Review the preflight outputs and diagnostics before LEAP import. "
-            f"Original preflight error: {preflight_error}"
-        ) from preflight_error
+            f"Original preflight error: {deferred}"
+        ) from deferred
     return output
 
 #%%
