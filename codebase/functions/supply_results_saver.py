@@ -234,10 +234,14 @@ from codebase.functions.balance_demand_conservation import (
     write_balance_demand_conservation_table,
 )
 from codebase.functions.supply_conservation import (
-    build_baseline_supply_source_preservation,
+    build_baseline_supply_conservation_artifacts,
     build_results_update_closure_diagnostics,
     find_exported_supply_products,
     write_supply_diagnostic,
+)
+from codebase.functions.transformation_conservation import (
+    build_raw_transformation_output_reference,
+    build_transformation_output_conservation,
 )
 from codebase.functions.supply_leap_io import (
     _build_supply_measures_for_trade_mode,
@@ -2978,6 +2982,11 @@ def run_results_linked_transformation_supply_workflow(
                 print(f"[WARN] Could not write transformation/supply cache: {_cache_exc}.")
     timer.lap("build transformation and supply inputs")
     baseline_supply_preservation_path: Path | None = None
+    baseline_supply_preservation_breakdown_path: Path | None = None
+    baseline_supply_preservation_lineage_path: Path | None = None
+    transformation_output_conservation_path: Path | None = None
+    transformation_output_conservation_breakdown_path: Path | None = None
+    transformation_output_conservation_lineage_path: Path | None = None
     results_update_closure_path: Path | None = None
     reconciliation_table = build_reconciliation_table(
         demand_table,
@@ -3310,7 +3319,8 @@ def run_results_linked_transformation_supply_workflow(
                 [path for _, path in export_paths],
                 assets[1],
             )
-            baseline_supply_preservation = build_baseline_supply_source_preservation(
+            baseline_supply_preservation, supply_breakdown, supply_lineage = (
+                build_baseline_supply_conservation_artifacts(
                 assets=assets,
                 supply_projection_table=supply_projection_table,
                 supply_primary_table=supply_primary_table,
@@ -3318,11 +3328,22 @@ def run_results_linked_transformation_supply_workflow(
                 base_year=BASE_YEAR,
                 final_year=FINAL_YEAR,
                 included_esto_products=exported_supply_products,
+                )
             )
             baseline_supply_preservation_path = write_supply_diagnostic(
                 baseline_supply_preservation,
                 _resolve(RESULTS_CHECKS_DIR)
                 / "supply_reconciliation_baseline_supply_source_preservation.csv",
+            )
+            baseline_supply_preservation_breakdown_path = write_supply_diagnostic(
+                supply_breakdown,
+                _resolve(RESULTS_CHECKS_DIR)
+                / "supply_reconciliation_baseline_supply_source_preservation_breakdown.csv",
+            )
+            baseline_supply_preservation_lineage_path = write_supply_diagnostic(
+                supply_lineage,
+                _resolve(RESULTS_CHECKS_DIR)
+                / "supply_reconciliation_baseline_supply_source_preservation_lineage.csv",
             )
             mismatch_count = int(baseline_supply_preservation["is_mismatch"].sum())
             print(
@@ -3331,6 +3352,46 @@ def run_results_linked_transformation_supply_workflow(
             )
         except Exception as exc:
             print(f"[WARN] Baseline supply source preservation diagnostic could not run: {exc}")
+        try:
+            raw_esto, _ = supply_data_pipeline.resolve_dataset(assets[0], "esto")
+            raw_ninth, _ = supply_data_pipeline.resolve_dataset(assets[0], "ninth")
+            transformation_reference = build_raw_transformation_output_reference(
+                esto=raw_esto,
+                ninth=raw_ninth,
+                economies=economy_list,
+                scenarios=export_scenario_list,
+                base_year=BASE_YEAR,
+                final_year=FINAL_YEAR,
+            )
+            transformation_totals, transformation_breakdown, transformation_lineage = (
+                build_transformation_output_conservation(
+                    reference_rows=transformation_reference,
+                    process_records=transformation_process_records,
+                    scenarios=export_scenario_list,
+                )
+            )
+            transformation_output_conservation_path = write_supply_diagnostic(
+                transformation_totals,
+                _resolve(RESULTS_CHECKS_DIR)
+                / "supply_reconciliation_transformation_output_conservation.csv",
+            )
+            transformation_output_conservation_breakdown_path = write_supply_diagnostic(
+                transformation_breakdown,
+                _resolve(RESULTS_CHECKS_DIR)
+                / "supply_reconciliation_transformation_output_conservation_breakdown.csv",
+            )
+            transformation_output_conservation_lineage_path = write_supply_diagnostic(
+                transformation_lineage,
+                _resolve(RESULTS_CHECKS_DIR)
+                / "supply_reconciliation_transformation_output_conservation_lineage.csv",
+            )
+            mismatch_count = int(transformation_totals["is_mismatch"].sum())
+            print(
+                "[INFO] Wrote diagnostic-only transformation output conservation check: "
+                f"{transformation_output_conservation_path} ({mismatch_count} mismatch row(s))."
+            )
+        except Exception as exc:
+            print(f"[WARN] Transformation output conservation diagnostic could not run: {exc}")
     demand_zeroing_paths: list[Path] = []
     if ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT and USE_AGGREGATED_DEMAND_AS_DUMMY:
         demand_zeroing_paths = build_other_demand_zeroing_workbooks(
@@ -3660,6 +3721,11 @@ def run_results_linked_transformation_supply_workflow(
         "balance_demand_conservation_breakdown_csv": balance_demand_breakdown_path,
         "balance_demand_conservation_lineage_csv": balance_demand_lineage_path,
         "baseline_supply_source_preservation_csv": baseline_supply_preservation_path,
+        "baseline_supply_source_preservation_breakdown_csv": baseline_supply_preservation_breakdown_path,
+        "baseline_supply_source_preservation_lineage_csv": baseline_supply_preservation_lineage_path,
+        "transformation_output_conservation_csv": transformation_output_conservation_path,
+        "transformation_output_conservation_breakdown_csv": transformation_output_conservation_breakdown_path,
+        "transformation_output_conservation_lineage_csv": transformation_output_conservation_lineage_path,
         "results_update_closure_csv": results_update_closure_path,
         "source_diagnostics_csv": source_diagnostics_path,
         "leap_import_result": leap_import_result,

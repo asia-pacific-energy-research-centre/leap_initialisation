@@ -6,10 +6,73 @@ import pandas as pd
 import pytest
 
 from codebase.functions.supply_conservation import (
+    build_baseline_supply_conservation_artifacts,
     build_baseline_supply_source_preservation,
     build_results_update_closure_diagnostics,
     find_exported_supply_products,
 )
+
+
+def _supply_fixture():
+    esto = pd.DataFrame([
+        {"economy": "20USA", "flows": "01 Production", "products": "01 Coal", "is_subtotal": False, 2022: 10.0},
+        {"economy": "20USA", "flows": "02 Imports", "products": "01 Coal", "is_subtotal": False, 2022: 5.0},
+        {"economy": "20USA", "flows": "03 Exports", "products": "01 Coal", "is_subtotal": False, 2022: -2.0},
+    ])
+    ninth = pd.DataFrame([
+        {"economy": "20_USA", "sectors": "01_production", "fuels": "01_coal", "subtotal_results": False, 2023: 12.0},
+        {"economy": "20_USA", "sectors": "02_imports", "fuels": "01_coal", "subtotal_results": False, 2023: 6.0},
+        {"economy": "20_USA", "sectors": "03_exports", "fuels": "01_coal", "subtotal_results": False, 2023: -3.0},
+    ])
+    assets = ({"esto": (esto, [2022]), "ninth": (ninth, [2023])}, {}, {}, None, None)
+    projection = pd.DataFrame([
+        {"economy": "20_USA", "esto_product": "01 Coal", "year": 2022, "projected_imports": 5.0, "projected_exports": 2.0},
+        {"economy": "20_USA", "esto_product": "01 Coal", "year": 2023, "projected_imports": 6.0, "projected_exports": 3.0},
+    ])
+    primary = pd.DataFrame([
+        {"economy": "20_USA", "esto_product": "01 Coal", "year": 2022, "production": 10.0},
+        {"economy": "20_USA", "esto_product": "01 Coal", "year": 2023, "production": 12.0},
+    ])
+    return assets, projection, primary
+
+
+def test_supply_artifacts_pass_and_breakdown_reproduces_headline():
+    assets, projection, primary = _supply_fixture()
+    totals, breakdown, lineage = build_baseline_supply_conservation_artifacts(
+        assets, projection, primary, ["20_USA"], 2022, 2023
+    )
+
+    assert not totals["is_mismatch"].any()
+    assert breakdown["breakdown_remainder"].abs().max() == pytest.approx(0.0)
+    assert {"row_id", "schema_version", "value_classification"}.issubset(lineage.columns)
+    export_reference = lineage[(lineage.stage == "reference") & (lineage.flow == "exports")]
+    assert set(export_reference["value"]) == {2.0, 3.0}
+
+
+def test_supply_dropped_product_is_localized_and_aggregate_is_excluded():
+    assets, projection, primary = _supply_fixture()
+    esto = assets[0]["esto"][0]
+    assets[0]["esto"] = (pd.concat([esto, pd.DataFrame([
+        {"economy": "20USA", "flows": "01 Production", "products": "02 Parent", "is_subtotal": False, 2022: 4.0},
+        {"economy": "20USA", "flows": "01 Production", "products": "02.01 Child", "is_subtotal": False, 2022: 4.0},
+    ])], ignore_index=True), [2022])
+    totals, breakdown, lineage = build_baseline_supply_conservation_artifacts(
+        assets, projection, primary, ["20_USA"], 2022, 2023
+    )
+
+    row = totals[(totals.flow == "production") & (totals.year == 2022)].iloc[0]
+    assert row.difference == pytest.approx(-4.0)
+    assert ((lineage.source_product == "02 Parent") & (lineage.exclusion_reason == "structural_parent_aggregate")).any()
+    assert ((breakdown.source_product == "02.01 Child") & (breakdown.difference == -4.0)).any()
+
+
+def test_supply_empty_comparison_fails():
+    assets = ({"esto": (pd.DataFrame(columns=["economy", "flows", "products", 2022]), [2022]),
+               "ninth": (pd.DataFrame(columns=["economy", "sectors", "fuels", 2023]), [2023])}, {}, {}, None, None)
+    empty_projection = pd.DataFrame(columns=["economy", "esto_product", "year", "projected_imports", "projected_exports"])
+    empty_primary = pd.DataFrame(columns=["economy", "esto_product", "year", "production"])
+    with pytest.raises(ValueError, match="empty"):
+        build_baseline_supply_conservation_artifacts(assets, empty_projection, empty_primary, ["20_USA"], 2022, 2023)
 
 
 def test_results_update_closure_passes_balanced_row():

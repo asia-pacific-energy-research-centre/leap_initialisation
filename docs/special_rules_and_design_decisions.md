@@ -596,3 +596,32 @@ Append a dated subsection after each end-to-end run. Report:
 - the next decisions requiring human guidance.
 
 Also report coverage, dropped rows, source-versus-output totals, hierarchy consistency, mapping cardinality where mappings are consumed, and semantic review of reconciliation behaviour. A successful process exit is not evidence that the model output is correct.
+# Internal supply and transformation conservation diagnostics
+
+Baseline-seed verification compares independent raw ESTO/9th reference energy
+with the values built by this repository before LEAP export. It never uses a
+LEAP balance readback and never changes an export value to obtain a match.
+
+Supply is compared by `economy / flow / year`. Production and imports must be
+positive. Raw balance exports must be non-positive and are converted to positive
+export magnitude exactly once. Structurally aggregate products and flagged
+subtotals are excluded and retained in lineage with their scope reason. The
+headline CSV is pass/fail; its breakdown and lineage CSVs localise product rows
+and prove that their signed contributions reproduce each headline difference.
+
+Transformation v1 compares positive transformation output energy at the
+reliable shared grain `economy / scenario / all transformation outputs / all
+fuels / year`. Raw ESTO base-year and 9th projection rows are independent of the
+produced side, which is read from final pre-export transformation process
+records. Negative feedstock and auxiliary inputs, zero skeletons, aggregate
+parents, and own-use/loss proxy values are not outputs. Finer raw modules and
+fuels remain in lineage because source and LEAP module definitions are not
+consistently one-to-one; no allocation shares are invented.
+
+This proves that output energy was not dropped or duplicated during
+construction. It does not prove LEAP round-trip fidelity, convergence,
+efficiency, or the full transformation identity. Transformation v2 is deferred:
+`feedstock input + applicable auxiliary/loss energy -> output through configured
+efficiency`. Before v2, each module must specify whether losses are embedded in
+its efficiency or supplied by `other_loss_own_use_proxy`, to prevent the same
+loss energy being counted twice.
