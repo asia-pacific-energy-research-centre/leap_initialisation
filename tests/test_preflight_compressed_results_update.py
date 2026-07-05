@@ -26,6 +26,7 @@ import pandas as pd
 import pytest
 
 import codebase.functions.supply_preflight as sp
+from codebase.configuration import workflow_config as workflow_cfg
 
 
 # --- Grid summation: signs, abs diagnostics, structural mismatch --------------
@@ -292,6 +293,41 @@ def test_issue_report_summary_counts_actionable_and_ignored(tmp_path) -> None:
 # --- End-to-end orchestration (heavy builders + runner stubbed; opt-in) -------
 
 _SMOKE_ENABLED = os.environ.get("RUN_PREFLIGHT_RU_SMOKE") == "1"
+
+
+@pytest.mark.skipif(not _SMOKE_ENABLED, reason="runs preflight orchestration; set RUN_PREFLIGHT_RU_SMOKE=1")
+def test_projection_preflight_routing_and_restoration(tmp_path, monkeypatch) -> None:
+    import codebase.supply_reconciliation_workflow as workflow
+    import codebase.functions.supply_results_saver as srs
+
+    monkeypatch.setattr(
+        sp,
+        "_create_preflight_compressed_source_files",
+        lambda **k: {
+            "esto_path": tmp_path / "esto.csv",
+            "ninth_path": tmp_path / "ninth.csv",
+            "ninth_abs_diagnostics_path": tmp_path / "ninth_abs.csv",
+            "base_year": 2022,
+            "compressed_year": 2023,
+        },
+    )
+    observed: dict[str, object] = {}
+
+    def _fake_runner(**kwargs):
+        observed["output_dir"] = srs.OUTPUT_DIR
+        observed["export_output_dir"] = srs.EXPORT_OUTPUT_DIR
+        observed["cache"] = srs.TRANSFORMATION_SUPPLY_CACHE_ENABLED
+        return {}
+
+    monkeypatch.setattr(workflow, "run_results_linked_transformation_supply_workflow", _fake_runner)
+    production_output_dir = srs.OUTPUT_DIR
+
+    sp.run_preflight_compressed_projection(scenario_names=["Reference", "Target"])
+
+    assert "preflight_compressed_projection" in str(observed["output_dir"])
+    assert "preflight_compressed_projection" in str(observed["export_output_dir"])
+    assert observed["cache"] is False
+    assert srs.OUTPUT_DIR == production_output_dir
 
 
 @pytest.mark.skipif(not _SMOKE_ENABLED, reason="runs preflight orchestration; set RUN_PREFLIGHT_RU_SMOKE=1")

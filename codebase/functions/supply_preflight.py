@@ -1126,7 +1126,7 @@ def _apply_preflight_compressed_state(
     source_files: dict[str, object],
     preflight_root: Path,
     scenarios: list[str],
-) -> None:
+) -> list[tuple[str, str, object]]:
     """Patch module globals for the compressed two-year preflight run."""
     base_year = int(source_files["base_year"])
     compressed_year = int(source_files["compressed_year"])
@@ -1149,8 +1149,7 @@ def _apply_preflight_compressed_state(
     importlib.reload(electricity_heat_interim_workflow)
     importlib.reload(other_loss_own_use_proxy_workflow)
 
-    globals().update(
-        {
+    overrides: dict[str, object] = {
             "ECONOMIES": ["00_APEC"],
             "SCENARIOS": list(scenarios),
             "FINAL_YEAR": compressed_year,
@@ -1182,8 +1181,8 @@ def _apply_preflight_compressed_state(
             "DIRECT_DEMAND_PROJECTION_YEARS": (compressed_year,),
             "BALANCE_DEMAND_BASE_TABLE_PATH": source_files["esto_path"],
             "BALANCE_DEMAND_PROJECTION_TABLE_PATH": source_files["ninth_path"],
-        }
-    )
+    }
+    return _broadcast_config_overrides(overrides)
 
 
 def run_preflight_compressed_projection(
@@ -1227,8 +1226,9 @@ def run_preflight_compressed_projection(
     )
 
     state = _snapshot_preflight_state()
+    broadcast_snapshot: list[tuple[str, str, object]] | None = None
     try:
-        _apply_preflight_compressed_state(
+        broadcast_snapshot = _apply_preflight_compressed_state(
             source_files=source_files,
             preflight_root=preflight_root,
             scenarios=scenario_list,
@@ -1246,6 +1246,8 @@ def run_preflight_compressed_projection(
         print("[INFO] preflight_compressed_projection completed.")
         return result
     finally:
+        if broadcast_snapshot is not None:
+            _restore_config_overrides(broadcast_snapshot)
         _restore_preflight_state(state)
 
 
