@@ -165,7 +165,11 @@ def build_supply_sector_config(
     """Build sector config entries for every ESTO fuel product."""
     workbook_path = None
     for path in code_to_name_paths:
-        if config_table_exists(path, sheet_name="ESTO"):
+        if Path(path).name == "outlook_mappings_master.xlsx":
+            if config_table_exists(path, sheet_name="leap_combined_esto"):
+                workbook_path = path
+                break
+        elif config_table_exists(path, sheet_name="ESTO"):
             workbook_path = path
             break
     if not workbook_path:
@@ -174,6 +178,57 @@ def build_supply_sector_config(
         )
         return {}
     try:
+        if Path(workbook_path).name == "outlook_mappings_master.xlsx":
+            combined = read_config_table(
+                workbook_path, sheet_name="leap_combined_esto", dtype=str
+            ).fillna("")
+            display = read_config_table(
+                workbook_path, sheet_name="leap_display_names", dtype=str
+            ).fillna("")
+            pairs = read_config_table(
+                workbook_path, sheet_name="ninth_pairs_to_esto_pairs", dtype=str
+            ).fillna("")
+
+            products = combined["esto_product"].astype(str).str.strip()
+            products = products[products.ne("")]
+            if exclude_prefixes:
+                products = products[
+                    ~products.str.startswith(tuple(exclude_prefixes), na=False)
+                ]
+
+            product_names = display[
+                display["code_type"].astype(str).str.strip().eq("esto_product")
+            ].copy()
+            name_lookup = _build_mapping_from_leap_display_names(product_names)
+
+            product_to_ninth: dict[str, str | None] = {}
+            for product, group in pairs.groupby("esto_product", dropna=False):
+                ninth_fuels = sorted(
+                    {
+                        str(value).strip()
+                        for value in group["9th_fuel"].tolist()
+                        if str(value).strip()
+                    }
+                )
+                product_to_ninth[str(product).strip()] = (
+                    ninth_fuels[0] if len(ninth_fuels) == 1 else None
+                )
+
+            config = {
+                product: {
+                    "dataset_key": dataset_key,
+                    "fuel_label_esto": product,
+                    "fuel_code_ninth": product_to_ninth.get(product),
+                    "fuel_name": name_lookup.get(product, product),
+                }
+                for product in sorted(set(products))
+            }
+            print(
+                f"Built supply config for {len(config)} ESTO products from "
+                f"outlook_mappings_master.xlsx (excluding prefixes {exclude_prefixes})."
+            )
+            return config
+
         df = read_config_table(workbook_path, sheet_name="ESTO", dtype=str)
         df = df[df["products"].notna()].copy()
         df["products"] = df["products"].astype(str).str.strip()

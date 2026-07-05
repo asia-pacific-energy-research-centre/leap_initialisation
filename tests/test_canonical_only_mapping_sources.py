@@ -38,6 +38,18 @@ def test_projection_modules_point_directly_to_canonical_pairs_sheet() -> None:
     assert transformation_analysis_utils.NINTH_TO_ESTO_MAPPING_PATH == expected
 
 
+def test_supply_sector_config_uses_canonical_product_columns() -> None:
+    from codebase.functions.supply_config_builder import build_supply_sector_config
+
+    config = build_supply_sector_config(
+        [OUTLOOK_MAPPINGS_MASTER_PATH],
+        exclude_prefixes=["19", "20", "21"],
+    )
+
+    assert "07.99 PetProd nonspecified" in config
+    assert config["07.99 PetProd nonspecified"]["fuel_name"] == "PetProd nonspecified"
+
+
 def test_production_allocator_keeps_other_products_separate_from_unallocated() -> None:
     from codebase.functions.ninth_projection_mapping import build_esto_projection_table
 
