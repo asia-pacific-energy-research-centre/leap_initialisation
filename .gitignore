@@ -101,6 +101,8 @@ cover/
 
 # Django stuff:
 *.log
+*.pid
+outputs/logs/*_run_metadata.txt
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
