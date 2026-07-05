@@ -32,7 +32,7 @@ from codebase.supply_reconciliation_config import (
 from codebase.utilities.workflow_utils import _resolve
 from codebase.utilities import workflow_common
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP_EXPORTS_ROOT
-from codebase.utilities.master_config import MASTER_CONFIG_PATH, config_table_exists, read_config_table
+from codebase.utilities.master_config import config_table_exists, read_config_table
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.configuration.all_products_and_flows import ESTO_PRODUCT_LIST, ESTO_SECTORS
 from codebase.configuration.known_leap_label_exceptions import KNOWN_LEAP_LABEL_EXCEPTIONS
@@ -46,6 +46,7 @@ from codebase.mappings.canonical_mapping import (
     load_fuel_aliases,
     load_sheet_map,
 )
+from codebase.mappings.canonical_loaders import load_leap_display_names
 from codebase.functions import supply_data_pipeline, leap_api, patch_baseline_seeds
 from codebase.functions.analysis_input_write_dispatcher import get_analysis_input_write_mode
 from codebase import (
@@ -820,17 +821,17 @@ def _pick_single_mapping_value(values: pd.Series, *, preferred: object = "") -> 
 
 
 def _build_codebook_name_to_esto_flow_lookup(codebook_path: Path | str) -> dict[str, str]:
+    del codebook_path
     try:
-        codebook = read_config_table(codebook_path, sheet_name="code_to_name").fillna("")
+        codebook = load_leap_display_names().fillna("")
     except Exception:
         return {}
     lookup: dict[str, str] = {}
     for _, row in codebook.iterrows():
-        esto_column = str(row.get("esto_column", "")).strip().lower()
-        if esto_column != "flows":
+        if str(row.get("code_type", "")).strip().lower() != "esto_flow":
             continue
-        esto_label = str(row.get("esto_label", "")).strip()
-        name = str(row.get("name", "")).strip()
+        esto_label = str(row.get("code", "")).strip()
+        name = str(row.get("leap_display_name", "") or row.get("auto_name", "")).strip()
         if name and esto_label:
             lookup[name.lower()] = esto_label
     return lookup
@@ -1416,8 +1417,9 @@ def load_balance_demand_inputs(
             projection_ninth_df = _load_projection_only_ninth_table()
         return projection_ninth_df.copy()
 
-    for economy in economy_list:
-        economy_text = str(economy or "").strip()
+    def _build_economy_demand(
+        economy_text: str,
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         if allow_projection_only_without_balance_exports:
             # baseline_seed always sizes supply off the 9th projection-only demand,
             # never off a specific LEAP run's own balance export, even when one
@@ -1436,11 +1438,7 @@ def load_balance_demand_inputs(
                 "[INFO] baseline_seed pass: using 9th projection-only demand for "
                 f"{economy_text} (LEAP balance exports, if any, are ignored for this pass)."
             )
-            comparison_long_parts.append(comparison_long)
-            mapping_status_parts.append(mapping_status)
-            issue_parts.append(issues)
-            matching_diagnostics_parts.append(matching_diagnostics)
-            continue
+            return comparison_long, mapping_status, issues, matching_diagnostics
 
         ref_workbook_path, tgt_workbook_path = _resolve_balance_demand_workbooks_for_economy(economy_text)
         base_economy = (
@@ -1506,10 +1504,35 @@ def load_balance_demand_inputs(
                 matching_diagnostics = matching_diagnostics[
                     matching_diagnostics["scenario"].astype(str).str.strip().str.lower().isin(scenario_set)
                 ].copy()
-        comparison_long_parts.append(comparison_long)
-        mapping_status_parts.append(mapping_status)
-        issue_parts.append(issues)
-        matching_diagnostics_parts.append(matching_diagnostics)
+        return comparison_long, mapping_status, issues, matching_diagnostics
+
+    # Per-economy resilience: one economy's demand-mapping failure must not abort
+    # the whole run's mapping load (which happens once, before the per-economy
+    # export loop, so a raise here would kill output for every economy). With
+    # THROW_ERROR_AFTER_RUN enabled, defer the error and skip that economy — it
+    # simply contributes no demand rows, leaving its reconciliation degenerate,
+    # while the other economies still build. With the flag off, this raises
+    # immediately as before.
+    for economy in economy_list:
+        economy_text = str(economy or "").strip()
+        try:
+            economy_comparison_long, economy_mapping_status, economy_issues, economy_matching_diagnostics = (
+                _build_economy_demand(economy_text)
+            )
+        except Exception as exc:
+            workflow_common.defer_or_raise(
+                exc, context=f"load_balance_demand_inputs:{economy_text}"
+            )
+            print(
+                f"[WARN] load_balance_demand_inputs: skipping economy {economy_text} "
+                "due to deferred error — it will contribute no demand rows, so its "
+                "reconciliation output will be degenerate. Review before trusting it."
+            )
+            continue
+        comparison_long_parts.append(economy_comparison_long)
+        mapping_status_parts.append(economy_mapping_status)
+        issue_parts.append(economy_issues)
+        matching_diagnostics_parts.append(economy_matching_diagnostics)
 
     comparison_long = pd.concat(comparison_long_parts, ignore_index=True) if comparison_long_parts else pd.DataFrame()
     mapping_status = pd.concat(mapping_status_parts, ignore_index=True) if mapping_status_parts else pd.DataFrame()

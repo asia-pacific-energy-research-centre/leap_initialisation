@@ -29,6 +29,69 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 _TIMING_HISTORY_KEEP = 20
 
 
+# ---------------------------------------------------------------------------
+# Deferred-error registry (THROW_ERROR_AFTER_RUN)
+# ---------------------------------------------------------------------------
+# Long unattended multi-economy/multi-scenario runs (e.g. an overnight
+# baseline-seed run across 21 economies x 3 scenarios) should not be aborted
+# partway through by a single economy's data problem. When THROW_ERROR_AFTER_RUN
+# is enabled, call sites that would normally `raise` should instead call
+# `defer_or_raise()`: it prints a loud [WARN] immediately (so a human or agent
+# monitoring the log can judge whether the deferred issue is fatal to the
+# output) and records the exception, letting the run continue. The top-level
+# entry point (supply_reconciliation_workflow.run_with_config) calls
+# `raise_deferred_errors()` once ALL economies and scenarios have finished, so
+# the run still fails loudly overall -- just not before producing output.
+#
+# When THROW_ERROR_AFTER_RUN is False (the default), defer_or_raise() raises
+# immediately, matching prior behavior exactly.
+THROW_ERROR_AFTER_RUN = False
+_DEFERRED_ERRORS: list[tuple[str, Exception]] = []
+
+
+def clear_deferred_errors() -> None:
+    """Reset the deferred-error registry. Call once at the start of a run."""
+    _DEFERRED_ERRORS.clear()
+
+
+def get_deferred_errors() -> list[tuple[str, Exception]]:
+    """Return the (context, exception) pairs recorded so far this run."""
+    return list(_DEFERRED_ERRORS)
+
+
+def defer_or_raise(exc: Exception, *, context: str) -> None:
+    """Raise ``exc`` immediately, unless THROW_ERROR_AFTER_RUN is enabled.
+
+    When deferred, prints a `[WARN]` with ``context`` and the exception so the
+    problem is visible in logs at the time it happened, then records it for
+    `raise_deferred_errors()` to surface once the full run completes.
+    """
+    if not THROW_ERROR_AFTER_RUN:
+        raise exc
+    print(
+        f"[WARN] Deferred error ({context}) — continuing because "
+        f"THROW_ERROR_AFTER_RUN=True. Review this before trusting the output: "
+        f"{exc!r}"
+    )
+    _DEFERRED_ERRORS.append((context, exc))
+
+
+def raise_deferred_errors() -> None:
+    """Raise an aggregated error if any were deferred this run; otherwise no-op.
+
+    Call once after ALL economies and ALL scenarios have finished processing.
+    """
+    if not _DEFERRED_ERRORS:
+        return
+    summary = "; ".join(f"[{context}] {exc!r}" for context, exc in _DEFERRED_ERRORS)
+    count = len(_DEFERRED_ERRORS)
+    raise RuntimeError(
+        f"{count} error(s) were deferred via THROW_ERROR_AFTER_RUN and the run "
+        f"completed anyway. Review outputs for the affected economies/scenarios "
+        f"before trusting them. Deferred errors: {summary}"
+    ) from _DEFERRED_ERRORS[0][1]
+
+
 def _detect_git_commit(repo_root: Path) -> str:
     try:
         result = subprocess.run(
@@ -649,6 +712,76 @@ def validate_export_region(export_path: Path, sheet_name: str, region: str) -> N
         raise ValueError(
             f"Requested region '{region}' not present in {export_path.name}; available: {regions}"
         )
+
+
+def diagnose_missing_canonical_branches(
+    export_path: Path | str,
+    sheet_name: str,
+    workflow_name: str,
+    full_model_export_path: Path | str | None = None,
+    full_model_sheet: str | None = None,
+    output_dir: Path | str | None = None,
+) -> Path | None:
+    """Flag generated branch paths absent from the canonical full model export.
+
+    This is purely informational: the canonical export is used only as a
+    validation reference here (never to generate branch paths), and a
+    mismatch never raises. Writes a diagnostics CSV when mismatches are
+    found and returns its path, or None if there was nothing to flag.
+    """
+    canonical_path = Path(full_model_export_path or fuel_catalog_preflight.DEFAULT_FULL_MODEL_EXPORT_PATH)
+    canonical_sheet = full_model_sheet or fuel_catalog_preflight.DEFAULT_FULL_MODEL_EXPORT_SHEET
+    try:
+        generated_df = fuel_catalog_preflight._read_branch_variable_rows(export_path, sheet_name=sheet_name)
+        canonical_df = fuel_catalog_preflight._read_branch_variable_rows(canonical_path, sheet_name=canonical_sheet)
+    except Exception as exc:
+        print(f"[WARN] {workflow_name}: canonical-branch diagnostic failed to read workbooks: {exc}")
+        return None
+    if generated_df.empty:
+        return None
+    if canonical_df.empty:
+        print(
+            f"[WARN] {workflow_name}: canonical export at {canonical_path} is missing/empty; "
+            "skipping missing-branch diagnostic."
+        )
+        return None
+
+    canonical_branches = {
+        str(value).strip() for value in canonical_df.get("Branch Path", pd.Series(dtype=str)).dropna()
+    }
+    rows: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for _, row in generated_df.iterrows():
+        branch_path = str(row.get("Branch Path", "")).strip()
+        if not branch_path or branch_path in canonical_branches:
+            continue
+        scenario = str(row.get("Scenario", "")).strip()
+        key = (branch_path, scenario)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append(
+            {
+                "workflow": workflow_name,
+                "generated_branch_path": branch_path,
+                "scenario": scenario,
+                "variable": str(row.get("Variable", "")).strip(),
+                "source_file": Path(export_path).name,
+                "reason": "generated branch not found in canonical export (full model export.xlsx)",
+            }
+        )
+    if not rows:
+        return None
+
+    out_dir = Path(output_dir) if output_dir else Path(export_path).parent / "diagnostics"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"missing_canonical_branches_{workflow_name}.csv"
+    pd.DataFrame(rows).to_csv(out_path, index=False)
+    print(
+        f"[WARN] {workflow_name}: {len(rows)} generated branch path(s) not found in canonical "
+        f"export; see {out_path}"
+    )
+    return out_path
 
 
 def find_latest_export_workbook(

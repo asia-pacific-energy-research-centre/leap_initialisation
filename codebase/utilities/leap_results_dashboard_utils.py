@@ -25,7 +25,11 @@ from typing import Optional, Sequence
 
 import pandas as pd
 
-from codebase.utilities.master_config import config_table_exists, read_config_table
+from codebase.utilities.master_config import (
+    OUTLOOK_MAPPINGS_MASTER_PATH,
+    config_table_exists,
+    read_config_table,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -51,12 +55,52 @@ DEFAULT_SHEET_MAP = Path("config/leap_results_sheet_map.csv")
 DEFAULT_BACKUP_LEAP_MAPPINGS = Path("config/backup_leap_mappings.xlsx")
 DEFAULT_EXPLICIT_LEAP_MAPPINGS = Path("config/leap_results_explicit_mappings.csv")
 DEFAULT_EXPLICIT_LEAP_REASSIGNMENTS = Path("config/leap_results_explicit_reassignments.csv")
-DEFAULT_CODEBOOK = Path("config/sector_fuel_codes_to_names.xlsx")
+DEFAULT_CODEBOOK = OUTLOOK_MAPPINGS_MASTER_PATH
 DEFAULT_NINTH_FUEL_PAIRS = Path("config/ninth_sector_fuel_pairs.csv")
-DEFAULT_NINTH_TO_ESTO = Path("config/ninth_pairs_to_esto_pairs.xlsx")
+DEFAULT_NINTH_TO_ESTO = (OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs")
 
 def _safe_read_codebook_sheet(codebook_path: Path, sheet_name: str) -> pd.DataFrame:
     try:
+        if Path(codebook_path).name == OUTLOOK_MAPPINGS_MASTER_PATH.name and sheet_name == "code_to_name":
+            names = read_config_table(
+                OUTLOOK_MAPPINGS_MASTER_PATH,
+                sheet_name="leap_display_names",
+                dtype=str,
+            ).fillna("")
+            pairs = read_config_table(
+                OUTLOOK_MAPPINGS_MASTER_PATH,
+                sheet_name="ninth_pairs_to_esto_pairs",
+                dtype=str,
+            ).fillna("")
+            name_lookup = {
+                (str(row.get("code_type", "")).strip(), str(row.get("code", "")).strip()):
+                str(row.get("leap_display_name", "") or row.get("auto_name", "")).strip()
+                for _, row in names.iterrows()
+            }
+            rows = []
+            for _, row in pairs.iterrows():
+                ninth_sector = str(row.get("9th_sector", "")).strip()
+                ninth_fuel = str(row.get("9th_fuel", "")).strip()
+                esto_flow = str(row.get("esto_flow", "")).strip()
+                esto_product = str(row.get("esto_product", "")).strip()
+                rows.extend([
+                    {"9th_label": ninth_sector, "9th_column": "sectors", "esto_label": esto_flow,
+                     "esto_column": "flows", "name": name_lookup.get(("esto_flow", esto_flow), "")},
+                    {"9th_label": ninth_fuel, "9th_column": "fuels", "esto_label": esto_product,
+                     "esto_column": "products", "name": name_lookup.get(("esto_product", esto_product), "")},
+                ])
+            return pd.DataFrame(rows).drop_duplicates().reset_index(drop=True)
+        if Path(codebook_path).name == OUTLOOK_MAPPINGS_MASTER_PATH.name and sheet_name == "ESTO_LEAP_names":
+            combined = read_config_table(
+                OUTLOOK_MAPPINGS_MASTER_PATH,
+                sheet_name="leap_combined_esto",
+                dtype=str,
+            ).fillna("")
+            return pd.DataFrame({
+                "category": "products",
+                "leap_name": combined["raw_leap_fuel_name"],
+                "original_label": combined["esto_product"],
+            }).drop_duplicates().reset_index(drop=True)
         return read_config_table(codebook_path, sheet_name=sheet_name)
     except (FileNotFoundError, ValueError) as exc:
         print(f"[WARN] Codebook read failed for sheet {sheet_name!r} in {codebook_path}: {exc}")
@@ -681,7 +725,7 @@ def _normalize_label(value: object) -> str:
 
 
 def load_canonical_pairs(
-    path: Path = DEFAULT_NINTH_TO_ESTO,
+    path=DEFAULT_NINTH_TO_ESTO,
     *,
     strict: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:

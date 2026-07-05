@@ -1,5 +1,17 @@
 # Canonical mapping migration — working notes
 
+Migration status: completed for runtime reads. Mapping semantics now come from
+`leap_mappings/config/outlook_mappings_master.xlsx`; non-mapping operational
+tables are standalone CSV files under `config/runtime_tables/`.
+`config/master_config.xlsx` is no longer read at runtime. Compatibility aliases
+for historical filenames resolve their mapping content from the canonical
+workbook.
+
+The canonical petroleum split is enforced: `07_x_other_petroleum_products`
+maps to `07.17 Other products`, while only
+`07_petroleum_products_unallocated` maps to
+`07.99 PetProd nonspecified`.
+
 Task: migrate all supply-reconciliation mapping usage in `leap_initialisation`
 onto the canonical workbook
 `leap_mappings/config/outlook_mappings_master.xlsx` (sheets

@@ -23,7 +23,7 @@ def _safe_read_codebook_sheet(codebook_path: Path, sheet_name: str) -> pd.DataFr
 DEFAULT_SHEET_MAP = Path("config/leap_results_sheet_map.csv")
 DEFAULT_BACKUP_LEAP_MAPPINGS = Path("config/backup_leap_mappings.xlsx")
 DEFAULT_CODEBOOK = OUTLOOK_MAPPINGS_MASTER_PATH
-DEFAULT_NINTH_TO_ESTO = OUTLOOK_MAPPINGS_MASTER_PATH
+DEFAULT_NINTH_TO_ESTO = (OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs")
 
 SECTOR_COLUMNS = ["sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"]
 PARENT_CODE_MATCH_PREFIX = "parent_code_match_"
@@ -239,17 +239,15 @@ def build_flow_sector_crosswalk(canonical_pairs: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_sector_to_esto_flow_lookup(codebook_path: Path = DEFAULT_CODEBOOK) -> dict[str, str]:
-    df = _safe_read_codebook_sheet(codebook_path, "code_to_name")
-    if df.empty:
-        return {}
+    del codebook_path
+    df, _conflicts = load_canonical_pairs(
+        (OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs")
+    )
     lookup: dict[str, str] = {}
-    valid_cols = {c.lower() for c in SECTOR_COLUMNS}
-    for _, row in df.iterrows():
-        ninth = clean_token(row.get("9th_label")).lower()
-        ninth_col = clean_token(row.get("9th_column")).lower()
-        esto = clean_token(row.get("esto_label"))
-        if ninth and ninth_col in valid_cols and esto:
-            lookup[ninth] = esto
+    for ninth_sector, group in df.groupby("9th_sector", sort=False):
+        flows = sorted({clean_token(value) for value in group["esto_flow"] if clean_token(value)})
+        if len(flows) == 1:
+            lookup[clean_token(ninth_sector).lower()] = flows[0]
     return lookup
 
 
@@ -257,43 +255,20 @@ def build_leap_label_crosswalk(
     codebook_path: Path = DEFAULT_CODEBOOK,
     override_path: Path | str | None = DEFAULT_BACKUP_LEAP_MAPPINGS,
 ) -> pd.DataFrame:
-    leap_df = _safe_read_codebook_sheet(codebook_path, "ESTO_LEAP_names")
+    leap_df = _safe_read_codebook_sheet(codebook_path, "leap_combined_esto")
     if leap_df.empty:
         return pd.DataFrame(columns=["leap_label", "leap_label_norm", "esto_product", "mapping_source"])
-    leap_df = leap_df[leap_df["category"].astype(str).str.strip().str.lower() == "products"].copy()
     rows: list[dict[str, str]] = []
     for _, row in leap_df.iterrows():
-        leap_label = clean_token(row.get("leap_name"))
-        esto_product = clean_token(row.get("original_label"))
+        leap_label = clean_token(row.get("raw_leap_fuel_name"))
+        esto_product = clean_token(row.get("esto_product"))
         if leap_label and esto_product:
             rows.append(
                 {
                     "leap_label": leap_label,
                     "leap_label_norm": normalize_label(leap_label),
                     "esto_product": esto_product,
-                    "mapping_source": "codebook_fallback",
-                }
-            )
-
-    code_df = _safe_read_codebook_sheet(codebook_path, "code_to_name")
-    if code_df.empty:
-        return pd.DataFrame(columns=["leap_label", "leap_label_norm", "esto_product", "mapping_source"])
-    code_rows = code_df.copy()
-    if "esto_column" in code_rows.columns:
-        code_rows = code_rows[code_rows["esto_column"].astype(str).str.strip().str.lower() == "products"]
-    code_rows = code_rows[["name", "esto_label"]].copy()
-    code_rows["name"] = code_rows["name"].map(clean_token)
-    code_rows["esto_label"] = code_rows["esto_label"].map(clean_token)
-    for _, row in code_rows.iterrows():
-        leap_label = row["name"]
-        esto_product = row["esto_label"]
-        if leap_label and esto_product:
-            rows.append(
-                {
-                    "leap_label": leap_label,
-                    "leap_label_norm": normalize_label(leap_label),
-                    "esto_product": esto_product,
-                    "mapping_source": "codebook_fallback",
+                    "mapping_source": "canonical_leap_combined_esto",
                 }
             )
 

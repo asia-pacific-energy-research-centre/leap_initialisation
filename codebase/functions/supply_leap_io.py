@@ -32,7 +32,6 @@ from codebase.supply_reconciliation_config import (
 from codebase.utilities.workflow_utils import _resolve
 from codebase.utilities import workflow_common
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP_EXPORTS_ROOT
-from codebase.utilities.master_config import MASTER_CONFIG_PATH, config_table_exists, read_config_table
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.configuration.all_products_and_flows import ESTO_PRODUCT_LIST, ESTO_SECTORS
 from codebase.mappings.canonical_mapping import (
@@ -1803,6 +1802,27 @@ def write_per_economy_combined_workbooks(
             errors="ignore",
         )
 
+        # Surface unresolved -1 sentinel IDs loudly. These never raise on their
+        # own (the row is still written), so without this warning an economy can
+        # silently ship rows LEAP cannot resolve. Count per ID column so the log
+        # tells you whether it's a branch, variable, or scenario lookup miss.
+        for _id_col in ("BranchID", "VariableID", "ScenarioID"):
+            if _id_col not in combined.columns:
+                continue
+            _sentinel = pd.to_numeric(combined[_id_col], errors="coerce") == -1
+            _n_sentinel = int(_sentinel.sum())
+            if _n_sentinel:
+                _sample_branches = (
+                    combined.loc[_sentinel, "Branch Path"].astype(str).head(5).tolist()
+                    if "Branch Path" in combined.columns
+                    else []
+                )
+                print(
+                    f"[WARN] [{econ_token}] {_n_sentinel} row(s) have unresolved {_id_col}=-1 "
+                    f"(label not found in ID lookup); these will import into LEAP as -1. "
+                    f"Sample branches: {_sample_branches}"
+                )
+
         # Enforce column order: IDs → metadata → Expression → year cols → Level cols
         _meta = ["BranchID", "VariableID", "ScenarioID", "RegionID",
                  "Branch Path", "Variable", "Scenario", "Region",
@@ -1860,7 +1880,8 @@ def write_per_economy_combined_workbooks(
     blocking = consolidated[
         consolidated.get("blocking", pd.Series(False, index=consolidated.index)).fillna(False)
     ] if not consolidated.empty else pd.DataFrame()
-    if not blocking.empty:
+
+    if not blocking.empty and not workflow_common.THROW_ERROR_AFTER_RUN:
         counts = blocking.groupby(["economy", "rule_id"], dropna=False).size()
         summary = ", ".join(
             f"{economy}/{rule_id}={count}"
@@ -1871,6 +1892,8 @@ def write_per_economy_combined_workbooks(
             f"blocking findings remain ({summary}). Diagnostics: {consolidated_path}"
         )
 
+    # In deferred-error mode, write the prepared workbooks for diagnosis and
+    # register the blocking error for the workflow's final summary.
     for econ_token, full_df, out_path in prepared_workbooks:
         for existing in out_dir.glob(f"leap_import_baseline_seed_{econ_token}_*.xlsx"):
             archive_dir = out_dir / "archive"
@@ -1881,6 +1904,28 @@ def write_per_economy_combined_workbooks(
             full_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
         print(f"[INFO] Wrote baseline seed for economy={econ_token} -> {out_path.name} (stamp={run_stamp})")
         written.append(out_path)
+
+    if not blocking.empty:
+        counts = blocking.groupby(["economy", "rule_id"], dropna=False).size()
+        summary = ", ".join(
+            f"{economy}/{rule_id}={count}"
+            for (economy, rule_id), count in counts.items()
+        )
+        blocked_economies = sorted({str(e) for e in blocking["economy"].tolist()})
+        print(
+            f"[WARN] Baseline-seed workbooks were written for {len(written)} economy/economies, "
+            f"but consolidated blocking findings remain for {blocked_economies} ({summary}). "
+            f"These economies' workbooks may contain unresolved -1 BranchID/VariableID/"
+            f"ScenarioID rows or other blocking issues -- review before LEAP import. "
+            f"Diagnostics: {consolidated_path}"
+        )
+        workflow_common.defer_or_raise(
+            BaselineSeedValidationError(
+                "Consolidated blocking findings remain after writing baseline-seed "
+                f"workbooks ({summary}). Diagnostics: {consolidated_path}"
+            ),
+            context=f"write_per_economy_combined_workbooks:{blocked_economies}",
+        )
 
     return written
 

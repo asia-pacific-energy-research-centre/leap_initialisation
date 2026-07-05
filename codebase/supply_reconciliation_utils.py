@@ -6,9 +6,11 @@ from typing import Iterable
 import pandas as pd
 
 from codebase import transformation_workflow
-from codebase.functions import supply_data_pipeline
 from codebase.functions.supply_export_rows import coerce_value_by_year
-from codebase.utilities.master_config import MASTER_CONFIG_PATH, config_table_exists, read_config_table
+from codebase.mappings.canonical_loaders import (
+    load_leap_display_names,
+    load_ninth_pairs_to_esto_pairs,
+)
 
 
 def _canonical_transformation_fuel_label(label: str) -> str:
@@ -39,15 +41,23 @@ def _canonical_transformation_fuel_label(label: str) -> str:
 
 
 def _load_code_to_name_table() -> pd.DataFrame:
-    """Load the code-to-name workbook used across supply/transformation workflows."""
-    for workbook_path in supply_data_pipeline.CODE_TO_NAME_PATHS:
-        if not config_table_exists(workbook_path, sheet_name="code_to_name"):
-            continue
-        return read_config_table(workbook_path, sheet_name="code_to_name", dtype=str).fillna("")
-    raise FileNotFoundError(
-        "No code-to-name table found via the configured legacy workbook paths or "
-        f"{MASTER_CONFIG_PATH} for {supply_data_pipeline.CODE_TO_NAME_PATHS}"
+    """Build the legacy lookup shape from canonical names and pair mappings."""
+    names = load_leap_display_names().fillna("")
+    product_names = names[names["code_type"].astype(str).eq("esto_product")].copy()
+    product_names = product_names.rename(
+        columns={"code": "esto_label", "leap_display_name": "name"}
     )
+    pairs, _conflicts = load_ninth_pairs_to_esto_pairs(detect_conflicts=False)
+    bridge = pairs[["9th_fuel", "esto_product"]].drop_duplicates().rename(
+        columns={"9th_fuel": "9th_label", "esto_product": "esto_label"}
+    )
+    table = product_names[["esto_label", "name"]].merge(
+        bridge,
+        on="esto_label",
+        how="left",
+    )
+    table["code"] = table["esto_label"]
+    return table.fillna("")
 
 
 def _normalize_label_for_lookup(value: object) -> str:

@@ -14,6 +14,7 @@ from codebase.functions.leap_series_comparison import (
     ComparisonRunConfig,
     run_leap_series_comparison,
 )
+from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -54,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--ninth-to-esto-mapping-path",
-        default="config/ninth_pairs_to_esto_pairs.xlsx",
+        default=str(OUTLOOK_MAPPINGS_MASTER_PATH),
         help="Path to 9th<->ESTO mapping file used for projection allocation.",
     )
 

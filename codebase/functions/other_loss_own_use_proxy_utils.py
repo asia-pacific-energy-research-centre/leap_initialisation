@@ -1225,6 +1225,180 @@ def _mapped_expected_fuels(
     return mapped
 
 
+def _row_sector_code(row: pd.Series) -> str:
+    """Return the deepest non-placeholder 9th sector code for a row."""
+    for column in ["sub4sectors", "sub3sectors", "sub2sectors", "sub1sectors", "sectors"]:
+        value = str(row.get(column, "") or "").strip()
+        if value and value.lower() != "x":
+            return value
+    return ""
+
+
+def _row_fuel_code(row: pd.Series) -> str:
+    """Return the most specific 9th fuel code for a row."""
+    subfuel = str(row.get("subfuels", "") or "").strip()
+    if subfuel and subfuel.lower() != "x":
+        return subfuel
+    fuel = str(row.get("fuels", "") or "").strip()
+    if fuel and fuel.lower() != "x":
+        return fuel
+    return ""
+
+
+def build_proxy_source_coverage_gaps(
+    *,
+    esto_data: pd.DataFrame,
+    ninth_data: pd.DataFrame,
+    configs: Sequence[Mapping[str, object]],
+    base_year: int,
+    final_year: int,
+) -> pd.DataFrame:
+    """Find nonzero ESTO/9th rows that are not covered by any proxy config.
+
+    The scan is intentionally narrow: it only considers 10.x ESTO flows and
+    10_x ninth sectors, because those are the other-loss / own-use branches
+    this workflow is meant to cover.
+    """
+    rows: list[dict[str, object]] = []
+
+    def _sorted_join(values: Sequence[str]) -> str:
+        cleaned = sorted({str(value).strip() for value in values if str(value).strip()})
+        return "; ".join(cleaned)
+
+    def _match_esto_config(row_flow: str, row_product: str, config: Mapping[str, object]) -> tuple[bool, bool]:
+        target_flows = {str(flow).strip() for flow in config.get("esto_target_flows", []) if str(flow).strip()}
+        if row_flow not in target_flows:
+            return False, False
+        esto_cfg = config.get("activity_sources", {}).get("esto", {})
+        prefixes = list(esto_cfg.get("product_prefixes", []))
+        exact_products = {str(item).strip() for item in esto_cfg.get("include_exact_products", []) if str(item).strip()}
+        exclude_products = {str(item).strip().lower() for item in esto_cfg.get("exclude_products", []) if str(item).strip()}
+        if row_product and row_product.lower() in exclude_products:
+            return True, False
+        if prefixes or exact_products:
+            if _has_prefix(row_product, prefixes) or row_product in exact_products:
+                return True, True
+            return True, False
+        return True, True
+
+    def _match_ninth_config(row_sector: str, row_fuel: str, config: Mapping[str, object]) -> tuple[bool, bool]:
+        target_sectors = {str(sector).strip() for sector in config.get("ninth_target_sectors", []) if str(sector).strip()}
+        if row_sector not in target_sectors:
+            return False, False
+        ninth_cfg = config.get("activity_sources", {}).get("ninth", {})
+        fuels = {str(item).strip().lower() for item in ninth_cfg.get("fuels", []) if str(item).strip()}
+        subfuels = {str(item).strip().lower() for item in ninth_cfg.get("subfuels", []) if str(item).strip()}
+        exclude_fuels = {str(item).strip().lower() for item in ninth_cfg.get("exclude_fuels", []) if str(item).strip()}
+        exclude_subfuels = {str(item).strip().lower() for item in ninth_cfg.get("exclude_subfuels", []) if str(item).strip()}
+        if row_fuel and row_fuel.lower() in exclude_fuels.union(exclude_subfuels):
+            return True, False
+        if fuels or subfuels:
+            if row_fuel.lower() in fuels or row_fuel.lower() in subfuels:
+                return True, True
+            return True, False
+        return True, True
+
+    esto_years = [year for year in _year_columns(esto_data) if int(year) <= int(base_year)]
+    if esto_years and not esto_data.empty and "flows" in esto_data.columns:
+        esto_subset = esto_data[esto_data["flows"].astype(str).str.startswith("10.")].copy()
+        if "is_subtotal" in esto_subset.columns:
+            subtotal_text = esto_subset["is_subtotal"].fillna(False).astype(str).str.strip().str.lower()
+            esto_subset = esto_subset[~subtotal_text.isin({"true", "1", "yes"})].copy()
+        for _, row in esto_subset.iterrows():
+            flow_text = str(row.get("flows", "") or "").strip()
+            if not flow_text:
+                continue
+            values = pd.to_numeric(row[esto_years], errors="coerce").fillna(0.0)
+            nonzero_years = [year for year in esto_years if float(values.get(year, 0.0)) != 0.0]
+            if not nonzero_years:
+                continue
+            product_text = str(row.get("products", "") or "").strip()
+            matching_processes: list[str] = []
+            covered = False
+            matched_flow = False
+            for config in configs:
+                flow_match, config_covers_row = _match_esto_config(flow_text, product_text, config)
+                if flow_match:
+                    matched_flow = True
+                    matching_processes.append(str(config.get("process_key", "")).strip())
+                    if config_covers_row:
+                        covered = True
+            if covered:
+                continue
+            rows.append(
+                {
+                    "source_dataset": "esto",
+                    "source_code": flow_text,
+                    "fuel_code": product_text,
+                    "nonzero_years": _sorted_join(str(year) for year in nonzero_years),
+                    "first_nonzero_year": min(nonzero_years),
+                    "last_nonzero_year": max(nonzero_years),
+                    "total_abs_value": float(values.abs().sum()),
+                    "matching_process_keys": _sorted_join(matching_processes),
+                    "gap_type": "missing_fuel_from_proxy_config" if matched_flow else "missing_sector_from_proxy_config",
+                }
+            )
+
+    projection_years = [year for year in range(int(base_year) + 1, int(final_year) + 1) if year in ninth_data.columns]
+    if projection_years and not ninth_data.empty:
+        ninth_subset = ninth_data.copy()
+        if "scenarios" in ninth_subset.columns:
+            ninth_subset = ninth_subset[ninth_subset["scenarios"].astype(str).str.lower() == "target"].copy()
+        ninth_subset = _drop_ninth_subtotals(ninth_subset)
+        for _, row in ninth_subset.iterrows():
+            sector_code = _row_sector_code(row)
+            if not sector_code or not sector_code.startswith("10_"):
+                continue
+            values = pd.to_numeric(row[projection_years], errors="coerce").fillna(0.0)
+            nonzero_years = [year for year in projection_years if float(values.get(year, 0.0)) != 0.0]
+            if not nonzero_years:
+                continue
+            fuel_code = _row_fuel_code(row)
+            matching_processes: list[str] = []
+            covered = False
+            matched_sector = False
+            for config in configs:
+                sector_match, config_covers_row = _match_ninth_config(sector_code, fuel_code, config)
+                if sector_match:
+                    matched_sector = True
+                    matching_processes.append(str(config.get("process_key", "")).strip())
+                    if config_covers_row:
+                        covered = True
+            if covered:
+                continue
+            rows.append(
+                {
+                    "source_dataset": "ninth",
+                    "source_code": sector_code,
+                    "fuel_code": fuel_code,
+                    "nonzero_years": _sorted_join(str(year) for year in nonzero_years),
+                    "first_nonzero_year": min(nonzero_years),
+                    "last_nonzero_year": max(nonzero_years),
+                    "total_abs_value": float(values.abs().sum()),
+                    "matching_process_keys": _sorted_join(matching_processes),
+                    "gap_type": "missing_fuel_from_proxy_config" if matched_sector else "missing_sector_from_proxy_config",
+                }
+            )
+
+    columns = [
+        "source_dataset",
+        "source_code",
+        "fuel_code",
+        "nonzero_years",
+        "first_nonzero_year",
+        "last_nonzero_year",
+        "total_abs_value",
+        "matching_process_keys",
+        "gap_type",
+    ]
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(rows, columns=columns).sort_values(
+        ["source_dataset", "source_code", "fuel_code"],
+        kind="mergesort",
+    )
+
+
 def build_proxy_fuel_set_verification(
     *,
     esto_data: pd.DataFrame,

@@ -109,9 +109,9 @@ COVERAGE_EXCLUSION_COLUMNS = [
 
 #%%
 def _find_repo_root(start_path: Path) -> Path:
-    """Find the leap_utilities repo root from a nested workflow path."""
+    """Find the repository root from a nested workflow path."""
     for candidate in [start_path, *start_path.parents]:
-        if (candidate / "AGENTS.md").exists() and (candidate / "config" / "leap_mappings.xlsx").exists():
+        if (candidate / "AGENTS.md").exists():
             return candidate
     raise FileNotFoundError(f"Could not find repo root above: {start_path}")
 
@@ -221,25 +221,25 @@ def nearest_parent_name(component_codes: list[str], code_to_name: dict[str, str]
     return fallback_name
 
 
-def load_code_name_lookups(master_config_path: Path) -> tuple[dict[str, str], dict[str, str]]:
-    """Load ESTO flow and product code-to-name labels from master_config if available."""
+def load_code_name_lookups(canonical_mapping_path: Path) -> tuple[dict[str, str], dict[str, str]]:
+    """Load ESTO flow/product labels from canonical ``leap_display_names``."""
     flow_lookup: dict[str, str] = {}
     product_lookup: dict[str, str] = {}
     try:
-        labels_df = pd.read_excel(master_config_path, sheet_name="sector_fuel_code_to_name")
+        labels_df = pd.read_excel(canonical_mapping_path, sheet_name="leap_display_names")
     except Exception:
         return flow_lookup, product_lookup
     for _, row in labels_df.iterrows():
-        label = row.get("esto_label", "")
-        name = row.get("name", "")
-        label_type = normalise_text(row.get("esto_column", "")).lower()
+        label = row.get("code", "")
+        name = row.get("leap_display_name", "")
+        label_type = normalise_text(row.get("code_type", "")).lower()
         code, parsed_name = split_code_name(label)
         clean_name = normalise_text(name) or parsed_name
         if not code or not clean_name:
             continue
-        if label_type == "flows":
+        if label_type == "esto_flow":
             flow_lookup[code] = clean_name
-        elif label_type == "products":
+        elif label_type == "esto_product":
             product_lookup[code] = clean_name
     return flow_lookup, product_lookup
 
@@ -1066,7 +1066,7 @@ def run_common_esto_structure_workflow(
     coverage_exclusions_path: Path,
     common_esto_overrides_path: Path,
     common_esto_label_overrides_path: Path,
-    master_config_path: Path,
+    canonical_mapping_path: Path,
     output_dir: Path,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, pd.DataFrame]]:
     """Build the common ESTO structure and QA outputs."""
@@ -1074,7 +1074,7 @@ def run_common_esto_structure_workflow(
     exclusions_df = read_table_if_exists(coverage_exclusions_path, COVERAGE_EXCLUSION_COLUMNS)
     overrides_df = read_table_if_exists(common_esto_overrides_path, OVERRIDE_COLUMNS)
     label_overrides_df = read_table_if_exists(common_esto_label_overrides_path, LABEL_OVERRIDE_COLUMNS)
-    flow_code_to_name, product_code_to_name = load_code_name_lookups(master_config_path)
+    flow_code_to_name, product_code_to_name = load_code_name_lookups(canonical_mapping_path)
 
     common_frames: list[pd.DataFrame] = []
     map_frames: list[pd.DataFrame] = []
@@ -1120,7 +1120,7 @@ RELATIONSHIPS_PATH = RELATIONSHIP_DIR / "energy_balance_relationships.csv"
 COVERAGE_EXCLUSIONS_PATH = RELATIONSHIP_DIR / "coverage_exclusions.csv"
 COMMON_ESTO_OVERRIDES_PATH = RELATIONSHIP_DIR / "common_esto_overrides.csv"
 COMMON_ESTO_LABEL_OVERRIDES_PATH = RELATIONSHIP_DIR / "common_esto_label_overrides.csv"
-MASTER_CONFIG_PATH = REPO_ROOT / "config" / "master_config.xlsx"
+CANONICAL_MAPPING_PATH = REPO_ROOT.parent / "leap_mappings" / "config" / "outlook_mappings_master.xlsx"
 OUTPUT_DIR = REPO_ROOT / "results" / "common_esto"
 
 RUN_BUILD_COMMON_ESTO_STRUCTURE = True
@@ -1133,7 +1133,7 @@ try:
             coverage_exclusions_path=COVERAGE_EXCLUSIONS_PATH,
             common_esto_overrides_path=COMMON_ESTO_OVERRIDES_PATH,
             common_esto_label_overrides_path=COMMON_ESTO_LABEL_OVERRIDES_PATH,
-            master_config_path=MASTER_CONFIG_PATH,
+            canonical_mapping_path=CANONICAL_MAPPING_PATH,
             output_dir=OUTPUT_DIR,
         )
 except Exception as exc:

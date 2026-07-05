@@ -45,6 +45,7 @@ from codebase.functions.ninth_projection_mapping import (
 )
 from codebase.utilities.output_paths import STANDALONE_LEAP_EXPORTS_ROOT
 from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
+from codebase.utilities import workflow_common
 
 # ── Data sources ──────────────────────────────────────────────────────────────
 DATA_DIR = REPO_ROOT / "data"
@@ -1272,6 +1273,25 @@ def save_aggregated_demand_as_leap_workbook(
         export_df.insert(3, "RegionID", 1)
         matched = int((export_df["BranchID"] != -1).sum())
         print(f"[INFO] Merged IDs: {matched}/{len(export_df)} rows matched BranchID.")
+        # Surface unresolved -1 sentinel IDs loudly for every ID column (not just
+        # BranchID). These never raise on their own — the row is still written —
+        # so without this warning an economy silently ships rows LEAP cannot
+        # resolve. Mirrors the same check in supply_leap_io.write_per_economy_combined_workbooks.
+        for _id_col in ("BranchID", "VariableID", "ScenarioID"):
+            if _id_col not in export_df.columns:
+                continue
+            _n_sentinel = int((export_df[_id_col] == -1).sum())
+            if _n_sentinel:
+                _sample_branches = (
+                    export_df.loc[export_df[_id_col] == -1, "Branch Path"].astype(str).head(5).tolist()
+                    if "Branch Path" in export_df.columns
+                    else []
+                )
+                print(
+                    f"[WARN] aggregated demand: {_n_sentinel} row(s) have unresolved {_id_col}=-1 "
+                    f"(label not found in ID lookup); these will import into LEAP as -1. "
+                    f"Sample branches: {_sample_branches}"
+                )
     elif id_lookup_resolved is not None:
         print(f"[WARN] id_lookup_path not found, skipping ID merge: {id_lookup_resolved}")
 
@@ -1308,6 +1328,14 @@ def save_aggregated_demand_as_leap_workbook(
         full_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
 
     print(f"[INFO] Saved {len(rows)} aggregated demand rows to {output_path}")
+    try:
+        workflow_common.diagnose_missing_canonical_branches(
+            export_path=output_path,
+            sheet_name="LEAP",
+            workflow_name="aggregated_demand_workflow",
+        )
+    except Exception as exc:
+        print(f"[WARN] aggregated_demand_workflow: canonical-branch diagnostic failed: {exc}")
     return output_path
 
 

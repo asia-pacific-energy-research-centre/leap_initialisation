@@ -14,6 +14,7 @@ except Exception as exc:
 
 from codebase.utilities import workflow_common
 from codebase.configuration import workflow_config as workflow_cfg
+from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
 from codebase.functions.esto_data_utils import (
     add_all_economy_total,
     build_dataset_map,
@@ -44,10 +45,9 @@ ESTO_DATA_PATH = ENERGY_SOURCE_CONFIG.esto_base_table_path
 NINTH_DATA_PATH = ENERGY_SOURCE_CONFIG.ninth_projection_table_path
 CONFIG_DIR = REPO_ROOT / "config"
 SUBTOTAL_MAPPING_PATH = CONFIG_DIR / "ESTO_subtotal_mapping.xlsx"
-NINTH_TO_ESTO_MAPPING_PATH = CONFIG_DIR / "ninth_pairs_to_esto_pairs.xlsx"
+NINTH_TO_ESTO_MAPPING_PATH = (OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs")
 CODE_TO_NAME_PATHS = [
-    CONFIG_DIR / "sector_fuel_codes_to_names.updated.xlsx",
-    CONFIG_DIR / "sector_fuel_codes_to_names.xlsx",
+    OUTLOOK_MAPPINGS_MASTER_PATH,
 ]
 
 BASE_YEAR = ENERGY_SOURCE_CONFIG.esto_base_year

@@ -34,7 +34,7 @@ from codebase.supply_reconciliation_config import (
 from codebase.utilities.workflow_utils import _resolve
 from codebase.utilities import workflow_common
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP_EXPORTS_ROOT
-from codebase.utilities.master_config import MASTER_CONFIG_PATH, config_table_exists, read_config_table
+from codebase.utilities.master_config import config_table_exists, read_config_table
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.configuration.all_products_and_flows import ESTO_PRODUCT_LIST, ESTO_SECTORS
 from codebase.mappings.canonical_mapping import (
@@ -3259,14 +3259,31 @@ def run_results_linked_transformation_supply_workflow(
             )
         econ_agg_demand: list[Path] = []
         if WRITE_AGGREGATED_DEMAND_WORKBOOK and USE_AGGREGATED_DEMAND_AS_DUMMY:
-            econ_agg_demand = build_aggregated_demand_workbooks_for_results_supply(
-                economies=[economy],
-                scenarios=export_scenario_list,
-                output_dir=EXPORT_OUTPUT_DIR,
-                region=LEAP_IMPORT_REGION,
-                excluded_sectors=_effective_agg_demand_excluded,
-                use_sector_branches=bool(AGGREGATED_DEMAND_USE_SECTOR_BRANCHES),
-            )
+            # The combined supply/transformation workbook for this economy is
+            # already written to disk above. The aggregated-demand workbook is a
+            # separate LEAP-import artifact, so a failure building it (e.g. a
+            # missing ESTO column or an economy absent from the projection data)
+            # should not discard this economy's core export. Defer it so the
+            # economy keeps its main output and, under THROW_ERROR_AFTER_RUN, the
+            # whole run continues; with the flag off it raises immediately as before.
+            try:
+                econ_agg_demand = build_aggregated_demand_workbooks_for_results_supply(
+                    economies=[economy],
+                    scenarios=export_scenario_list,
+                    output_dir=EXPORT_OUTPUT_DIR,
+                    region=LEAP_IMPORT_REGION,
+                    excluded_sectors=_effective_agg_demand_excluded,
+                    use_sector_branches=bool(AGGREGATED_DEMAND_USE_SECTOR_BRANCHES),
+                )
+            except Exception as _agg_exc:
+                print(
+                    f"[WARN] [{economy}] aggregated-demand workbook failed to build; "
+                    f"the economy's combined supply/transformation export is unaffected. "
+                    f"Error: {_agg_exc!r}"
+                )
+                workflow_common.defer_or_raise(
+                    _agg_exc, context=f"aggregated_demand:{economy}"
+                )
         print(f"[INFO] [{economy}] all exports complete.")
         return {
             "economy": economy,

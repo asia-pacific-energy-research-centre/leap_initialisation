@@ -88,7 +88,6 @@ def _resolve(path: Path | str) -> Path:
 
 
 MAPPING_WORKBOOK_PATH = OUTLOOK_MAPPINGS_MASTER_PATH
-MASTER_CONFIG_PATH = _resolve("config/master_config.xlsx")
 CODEBOOK_PATH = OUTLOOK_MAPPINGS_MASTER_PATH
 ESTO_TABLE_PATH = _resolve("data/00APEC_2025_low_with_subtotals.csv")
 NINTH_TABLE_PATH = _resolve("data/merged_file_energy_ALL_20251106.csv")
@@ -113,7 +112,7 @@ TRIO_PRESENCE_OUTPUT_NOTE = (
 
 ESTO_SHEET = "leap_combined_esto"
 NINTH_SHEET = "leap_combined_ninth"
-SECTOR_FUEL_CODE_TO_NAME_SHEET = "sector_fuel_code_to_name"
+SECTOR_FUEL_CODE_TO_NAME_SHEET = "leap_display_names"
 NINTH_PAIRS_TO_ESTO_PAIRS_SHEET = "ninth_pairs_to_esto_pairs"
 
 BASE_YEAR = 2022
@@ -1023,11 +1022,31 @@ def _read_xlsx_sheet_values_xml(workbook_path: Path, sheet_name: str) -> list[tu
         return rows
 
 
-def _read_master_config_sheet(sheet_name: str) -> pd.DataFrame:
-    """Read one sheet from config/master_config.xlsx."""
-    if not MASTER_CONFIG_PATH.exists():
-        raise FileNotFoundError(f"Missing master config workbook: {MASTER_CONFIG_PATH}")
-    return pd.read_excel(MASTER_CONFIG_PATH, sheet_name=sheet_name, dtype=object).fillna("")
+def _read_canonical_sheet(sheet_name: str) -> pd.DataFrame:
+    """Read one sheet from the canonical Outlook mapping workbook."""
+    if not MAPPING_WORKBOOK_PATH.exists():
+        raise FileNotFoundError(f"Missing canonical mapping workbook: {MAPPING_WORKBOOK_PATH}")
+    return pd.read_excel(MAPPING_WORKBOOK_PATH, sheet_name=sheet_name, dtype=object).fillna("")
+
+
+def _canonical_display_names_as_researcher_rows() -> pd.DataFrame:
+    """Convert canonical display-name rows to the legacy researcher export shape."""
+    source = _read_canonical_sheet(SECTOR_FUEL_CODE_TO_NAME_SHEET)
+    rows: list[dict[str, str]] = []
+    target_column = {
+        "ninth_sector": "9th_sector",
+        "ninth_fuel": "9th_fuel",
+        "esto_flow": "esto_flow",
+        "esto_product": "esto_product",
+    }
+    for _, row in source.iterrows():
+        code_type = str(row.get("code_type", "")).strip().lower()
+        column = target_column.get(code_type)
+        code = str(row.get("code", "")).strip()
+        name = str(row.get("leap_display_name", "") or row.get("auto_name", "")).strip()
+        if column and code:
+            rows.append({column: code, "name": name})
+    return pd.DataFrame(rows)
 
 
 def build_researcher_mappings_workbook(
@@ -1047,9 +1066,9 @@ def build_researcher_mappings_workbook(
 
     esto = _compute_pair_cardinality(_read_mapping_sheet(ESTO_SHEET), "esto_flow", "esto_product")
     ninth = _compute_pair_cardinality(_read_mapping_sheet(NINTH_SHEET), "ninth_sector", "ninth_fuel")
-    code_to_name = _read_master_config_sheet(SECTOR_FUEL_CODE_TO_NAME_SHEET)
+    code_to_name = _canonical_display_names_as_researcher_rows()
     ninth_to_esto = _pair_cardinality_for_columns(
-        _read_master_config_sheet(NINTH_PAIRS_TO_ESTO_PAIRS_SHEET),
+        _read_canonical_sheet(NINTH_PAIRS_TO_ESTO_PAIRS_SHEET),
         source_cols=["9th_sector", "9th_fuel"],
         target_cols=["esto_flow", "esto_product"],
     )
@@ -1071,10 +1090,7 @@ def build_researcher_mappings_workbook(
         ),
         SECTOR_FUEL_CODE_TO_NAME_SHEET: _researcher_export_frame(
             code_to_name,
-            column_rename={
-                "9th_label": "9th_fuel",
-                "esto_label": "esto_product",
-            },
+            column_rename={},
             include_name=True,
         ),
         NINTH_PAIRS_TO_ESTO_PAIRS_SHEET: _researcher_export_frame(
@@ -1100,7 +1116,7 @@ def build_mapping_conflicts_workbook(
     output_path = _resolve(output_path)
     esto_sheet = _compute_pair_cardinality(_read_mapping_sheet(ESTO_SHEET), "esto_flow", "esto_product")
     ninth_sheet = _compute_pair_cardinality(_read_mapping_sheet(NINTH_SHEET), "ninth_sector", "ninth_fuel")
-    ninth_to_esto_pairs = _read_master_config_sheet(NINTH_PAIRS_TO_ESTO_PAIRS_SHEET)
+    ninth_to_esto_pairs = _read_canonical_sheet(NINTH_PAIRS_TO_ESTO_PAIRS_SHEET)
     report_sheets = build_mapping_conflict_report(esto_sheet, ninth_sheet, ninth_to_esto_pairs)
     _write_mapping_conflict_report(report_sheets, output_path)
     return {
@@ -1189,7 +1205,7 @@ def run_workflow(*, error_on_gaps: bool = True, check_raw_leap_coverage: bool = 
     mapping_conflict_report = build_mapping_conflict_report(
         refreshed_esto,
         refreshed_ninth,
-        _read_master_config_sheet(NINTH_PAIRS_TO_ESTO_PAIRS_SHEET),
+        _read_canonical_sheet(NINTH_PAIRS_TO_ESTO_PAIRS_SHEET),
     )
     _write_mapping_refresh_report(
         gaps=gaps,

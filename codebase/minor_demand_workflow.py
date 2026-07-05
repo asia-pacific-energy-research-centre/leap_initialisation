@@ -34,7 +34,11 @@ from collections.abc import Mapping, Sequence
 
 import pandas as pd
 
-from codebase.utilities.master_config import config_table_exists, read_config_table
+from codebase.utilities.master_config import (
+    OUTLOOK_MAPPINGS_MASTER_PATH,
+    config_table_exists,
+    read_config_table,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 try:
@@ -118,7 +122,7 @@ ENERGY_SOURCE_CONFIG = workflow_cfg.get_energy_source_config()
 ESTO_DATA_PATH = str(ENERGY_SOURCE_CONFIG.esto_base_table_path)
 NINTH_DATA_PATH = str(ENERGY_SOURCE_CONFIG.ninth_projection_table_path)
 # Use merged_file_energy_ALL_20251106.csv and merged_file_energy_00_APEC_20251106 for exact 9th edition projection matching.
-NINTH_TO_ESTO_MAPPING_PATH = "config/ninth_pairs_to_esto_pairs.xlsx"
+NINTH_TO_ESTO_MAPPING_PATH = (OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs")
 ESTO_SUBTOTAL_MAPPING_PATH = "config/ESTO_subtotal_mapping.xlsx"
 REFERENCE_CACHE_DIR = "data/.cache/minor_demand_reference_tables"
 LEAP_TEMPLATE_PATH = "data/industry export.xlsx"
@@ -442,13 +446,18 @@ def load_ninth_data(path: str = NINTH_DATA_PATH) -> pd.DataFrame:
     return df
 
 
-def load_mapping(path: str = NINTH_TO_ESTO_MAPPING_PATH) -> pd.DataFrame:
+def load_mapping(
+    path: str | Path | tuple[str | Path, str] = NINTH_TO_ESTO_MAPPING_PATH,
+) -> pd.DataFrame:
     """
     Load the 9th↔ESTO mapping file.
 
     We only keep the columns we need for minor demand mapping.
     """
-    mapping = read_config_table(path, dtype=str).fillna("")
+    if isinstance(path, tuple):
+        mapping = read_config_table(path[0], sheet_name=path[1], dtype=str).fillna("")
+    else:
+        mapping = read_config_table(path, dtype=str).fillna("")
     keep_cols = ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]
     mapping = mapping[[col for col in keep_cols if col in mapping.columns]].copy()
     for col in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:

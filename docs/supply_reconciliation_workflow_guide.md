@@ -94,11 +94,9 @@ economy. The writer validates all economies before replacing any final seed.
 Default scenario coverage is Current Accounts 2022 and Reference/Target
 2023–2060; both endpoints are configurable in `workflow_config.py`.
 
-Production-readiness dependency: some supporting producers still use the
-legacy `leap_mappings.xlsx`/`master_config.xlsx` inputs. They can reproduce the
-current legacy mapping basis, but migration to
-`leap_mappings/config/outlook_mappings_master.xlsx` waits on mapping pipeline
-task M2 and initialisation refactor Phase 3. Treat that migration plus a clean
+Mapping inputs for supporting producers and reconciliation now come from
+`leap_mappings/config/outlook_mappings_master.xlsx`. Operational configuration
+that is not a semantic mapping is stored in `config/runtime_tables/`. Treat a clean
 non-importing `20_USA` qualification run as the final gates before declaring
 the baseline seed fully canonical.
 

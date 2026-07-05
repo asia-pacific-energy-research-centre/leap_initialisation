@@ -1,0 +1,14 @@
+﻿domain,code,resolved_level,hierarchy_behavior,parent_code,notes
+fuel,01_x_thermal_coal,1,parent_aggregate,,Aggregate thermal coal bucket; allow more specific 01_* children to replace it in the same rendered comparator group.
+fuel,06_x_other_hydrocarbons,1,catch_all,,Aggregate catch-all bucket; do not infer parent-child from code shape alone.
+fuel,07_x_jet_fuel,1,catch_all,,Aggregate catch-all bucket; do not infer parent-child from code shape alone.
+fuel,07_x_other_petroleum_products,1,catch_all,,Aggregate catch-all bucket; do not infer parent-child from code shape alone.
+fuel,12_x_other_solar,1,leaf_bucket,,Treat as a leaf bucket unless explicit lineage says otherwise.
+fuel,16_x_ammonia,1,leaf_bucket,,Treat as a leaf bucket unless explicit lineage says otherwise.
+fuel,16_x_efuel,1,leaf_bucket,,Treat as a leaf bucket unless explicit lineage says otherwise.
+fuel,16_x_hydrogen,1,leaf_bucket,,Treat as a leaf bucket unless explicit lineage says otherwise.
+fuel,17_x_green_electricity,1,leaf_bucket,,Treat as a leaf bucket unless explicit lineage says otherwise.
+fuel,01_coal_unallocated,1,catch_all,,Unallocated bucket; keep separate from specific children unless explicit lineage is provided.
+fuel,15_solid_biomass_unallocated,1,catch_all,,Unallocated bucket; keep separate from specific children unless explicit lineage is provided.
+fuel,16_others_unallocated,1,catch_all,,Unallocated bucket; keep separate from specific children unless explicit lineage is provided.
+sector,09_x_heat_plants,1,catch_all,,Aggregate catch-all sector; do not infer parent-child from code shape alone.

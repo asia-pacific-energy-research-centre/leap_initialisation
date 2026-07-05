@@ -7,7 +7,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from codebase.utilities.master_config import config_table_exists, read_config_table
+from codebase.utilities.master_config import (
+    OUTLOOK_MAPPINGS_MASTER_PATH,
+    config_table_exists,
+    read_config_table,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -115,7 +119,12 @@ def build_views(
 ) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    canonical_pairs, canonical_conflicts = load_canonical_pairs(canonical_pairs_path, strict=False)
+    pair_ref = (
+        (canonical_pairs_path, "ninth_pairs_to_esto_pairs")
+        if Path(canonical_pairs_path).name == OUTLOOK_MAPPINGS_MASTER_PATH.name
+        else canonical_pairs_path
+    )
+    canonical_pairs, canonical_conflicts = load_canonical_pairs(pair_ref, strict=False)
     _safe_write_csv(canonical_pairs, output_dir / "canonical_pairs_clean.csv")
     _safe_write_csv(build_product_fuel_crosswalk(canonical_pairs), output_dir / "canonical_product_fuel_crosswalk.csv")
     _safe_write_csv(build_flow_sector_crosswalk(canonical_pairs), output_dir / "canonical_flow_sector_crosswalk.csv")
@@ -445,8 +454,8 @@ def build_views(
 
 def run_mapping_views_workflow(
     *,
-    canonical_pairs_path: Path | str = Path("config/ninth_pairs_to_esto_pairs.xlsx"),
-    codebook_path: Path | str = Path("config/sector_fuel_codes_to_names.xlsx"),
+    canonical_pairs_path: Path | str = OUTLOOK_MAPPINGS_MASTER_PATH,
+    codebook_path: Path | str = OUTLOOK_MAPPINGS_MASTER_PATH,
     sheet_map_path: Path | str = Path("config/leap_results_sheet_map.csv"),
     override_path: Path | str = Path("config/backup_leap_mappings.xlsx"),
     leap_long_path: Path | str | None = None,

@@ -170,14 +170,11 @@ template availability are confirmed. That run must produce a candidate with no
 blocking consolidated findings and then be compared structurally and
 numerically with the June backup. A 21-economy qualification remains deferred.
 
-One cross-repository dependency remains before the result can be called fully
-canonical: aggregated demand and own-use/loss still read `leap_mappings.xlsx`,
-and interim display-name resolution still reads `master_config.xlsx`. The new
-canonical `leap_mappings/config/outlook_mappings_master.xlsx` must first be
-connected and qualified by mapping task M2, then these initialisation producers
-must be migrated under Phase 3. Until then this repository can reproduce the
-legacy mapping basis with stronger workbook safety, but cannot claim that all
-mapping semantics are newer or better than legacy.
+Runtime mapping inputs are now canonical. Aggregated demand, own-use/loss,
+projection allocation, and display-name resolution use
+`leap_mappings/config/outlook_mappings_master.xlsx`. Non-mapping operational
+tables formerly bundled in `master_config.xlsx` are standalone CSV files under
+`config/runtime_tables/`.
 
 ## June fixture provenance and deferred work
 

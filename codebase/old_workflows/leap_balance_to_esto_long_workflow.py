@@ -28,6 +28,7 @@ from codebase.utilities.leap_results_dashboard_balance import (  # noqa: E402
     convert_leap_balances_to_esto_long_table,
 )
 from codebase.utilities.leap_balance_export_resolver import resolve_balance_export_workbook  # noqa: E402
+from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH  # noqa: E402
 from codebase.utilities.workflow_common import archive_config_dir_once_per_day  # noqa: E402
 from codebase.utilities.workflow_outputs import build_workflow_output_layout, write_output_manifest  # noqa: E402
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT  # noqa: E402
@@ -72,7 +73,7 @@ KNOWN_ISSUES_CONFIG_PATH = _resolve("config/leap_results_balance_known_issues.js
 CHART_NAVIGATION_GUIDE_PATH = _resolve("config/leap_comparison_dashboard_template_v2.json")
 
 LEAP_TO_ESTO_MAPPING = (_resolve("config/leap_mappings.xlsx"), "leap_combined_esto")
-NINTH_TO_ESTO_MAPPING = (_resolve("config/master_config.xlsx"), "ninth_pairs_to_esto_pairs")
+NINTH_TO_ESTO_MAPPING = (OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs")
 CODEBOOK_PATH = _resolve("config/sector_fuel_codes_to_names.xlsx")
 SHEET_MAP_PATH = _resolve("config/leap_results_sheet_map.csv")
 BACKUP_MAPPINGS_PATH = _resolve("config/backup_leap_mappings.xlsx")

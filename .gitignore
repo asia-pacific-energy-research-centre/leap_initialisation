@@ -207,3 +207,5 @@ cython_debug/
 # Track files directly under config/, including workbook configs, but keep subfolders ignored.
 !config/*
 config/*/
+!config/runtime_tables/
+!config/runtime_tables/*.csv

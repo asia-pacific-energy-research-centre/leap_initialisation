@@ -58,10 +58,9 @@ DEFAULT_TGT_WORKBOOK_PATH = resolve_balance_export_workbook(
     date_id=DEFAULT_TGT_BALANCE_EXPORT_DATE_ID,
 )
 # Canonical 9th-pair -> ESTO-pair mapping (leap_mappings/config/outlook_mappings_master.xlsx).
-# Migrated off the local config/master_config.xlsx copy so all balance-conversion
-# and balance-demand consumers read the single canonical source of truth.
+# All balance-conversion and balance-demand consumers use the canonical source of truth.
 DEFAULT_MAPPING_PAIRS_PATH = (OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs")
-DEFAULT_CODEBOOK_PATH = REPO_ROOT / "config/sector_fuel_codes_to_names.xlsx"
+DEFAULT_CODEBOOK_PATH = OUTLOOK_MAPPINGS_MASTER_PATH
 
 DEFAULT_SHEET_MAP_PATH = REPO_ROOT / "config/leap_results_sheet_map.csv"
 DEFAULT_BACKUP_MAPPINGS_PATH = REPO_ROOT / "config/backup_leap_mappings.xlsx"
@@ -672,18 +671,18 @@ def _list_balance_sheets(workbook_path: Path) -> list[str]:
 
 
 def _load_codebook_name_maps(codebook_path: Path) -> tuple[dict[str, str], dict[str, str]]:
-    codebook = read_config_table(codebook_path, sheet_name="code_to_name", dtype=str).fillna("")
+    codebook = read_config_table(codebook_path, sheet_name="leap_display_names", dtype=str).fillna("")
     flow_map: dict[str, str] = {}
     fuel_map: dict[str, str] = {}
     for _, row in codebook.iterrows():
-        ninth_label = _clean_token(row.get("9th_label", ""))
-        name = _clean_token(row.get("name", ""))
-        ninth_column = _normalize_text(row.get("9th_column", ""))
+        code_type = _normalize_text(row.get("code_type", ""))
+        ninth_label = _clean_token(row.get("code", ""))
+        name = _clean_token(row.get("leap_display_name", "") or row.get("auto_name", ""))
         if not ninth_label or not name:
             continue
-        if ninth_column in {"sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"}:
+        if code_type == "ninth_sector":
             flow_map[ninth_label] = name
-        if ninth_column in {"fuels", "subfuels"}:
+        if code_type == "ninth_fuel":
             fuel_map[ninth_label] = name
     return flow_map, fuel_map
 
@@ -4219,7 +4218,7 @@ def load_balance_leap_long(
     mapping_pairs_file, mapping_pairs_sheet = split_config_table_ref(mapping_pairs)
     if not config_table_exists(mapping_pairs_file, sheet_name=mapping_pairs_sheet):
         raise FileNotFoundError(f"Missing required input: {mapping_pairs}")
-    if not config_table_exists(codebook, sheet_name="code_to_name"):
+    if not config_table_exists(codebook, sheet_name="leap_display_names"):
         raise FileNotFoundError(f"Missing required input: {codebook}")
 
     extracted_ref = _extract_balance_workbook(
@@ -8089,7 +8088,7 @@ def load_balance_leap_long_esto_axis(
     mapping_pairs_file, mapping_pairs_sheet = split_config_table_ref(mapping_pairs)
     if not config_table_exists(mapping_pairs_file, sheet_name=mapping_pairs_sheet):
         raise FileNotFoundError(f"Missing required input: {mapping_pairs}")
-    if not config_table_exists(codebook, sheet_name="code_to_name"):
+    if not config_table_exists(codebook, sheet_name="leap_display_names"):
         raise FileNotFoundError(f"Missing required input: {codebook}")
 
     extracted_ref = _extract_balance_workbook(

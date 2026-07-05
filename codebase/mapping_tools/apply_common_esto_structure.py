@@ -44,7 +44,7 @@ ACTIVE_COMPONENT_ABS_TOLERANCE = 0.0
 def _find_repo_root(start_path: Path) -> Path:
     """Find the leap_utilities repo root from a nested workflow path."""
     for candidate in [start_path, *start_path.parents]:
-        if (candidate / "AGENTS.md").exists() and (candidate / "config" / "leap_mappings.xlsx").exists():
+        if (candidate / "AGENTS.md").exists():
             return candidate
     raise FileNotFoundError(f"Could not find repo root above: {start_path}")
 

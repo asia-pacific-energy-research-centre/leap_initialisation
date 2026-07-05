@@ -98,6 +98,7 @@ from codebase.functions.other_loss_own_use_proxy_utils import (
     _nonzero_fuels_from_ninth_activity,
     _mapped_expected_fuels,
     build_proxy_fuel_set_verification,
+    build_proxy_source_coverage_gaps,
     filter_detail_to_validated_output_fuels,
     build_branch_path,
     build_year_rows,
@@ -1073,6 +1074,7 @@ def assemble_proxy_workbook(
     summary_path = output_dir / "proxy_activity_summary.csv"
     leap_activity_path = output_dir / "leap_balance_activity_source.csv"
     fuel_set_verification_path = output_dir / "proxy_fuel_set_verification.csv"
+    source_coverage_gaps_path = output_dir / "proxy_source_coverage_gaps.csv"
     output_fuel_validation_path = output_dir / "proxy_output_fuel_esto_validation.csv"
     output_fuel_candidate_validation_path = output_dir / "proxy_output_fuel_esto_validation_all_candidates.csv"
     activity_source_warnings_path = output_dir / "proxy_activity_source_warnings.csv"
@@ -1186,6 +1188,33 @@ def assemble_proxy_workbook(
         fuel_mapping_lookup=fuel_mapping_lookup,
     )
     _write_csv_with_locked_file_fallback(fuel_set_verification, fuel_set_verification_path)
+    source_coverage_gaps = build_proxy_source_coverage_gaps(
+        esto_data=esto_data,
+        ninth_data=ninth_data,
+        configs=configs,
+        base_year=EXPORT_BASE_YEAR,
+        final_year=EXPORT_FINAL_YEAR,
+    )
+    _write_csv_with_locked_file_fallback(source_coverage_gaps, source_coverage_gaps_path)
+    if not source_coverage_gaps.empty:
+        print(
+            "\n[WARN] Found nonzero ESTO/9th 10.x rows that are not fully covered by PROXY_CONFIG."
+        )
+        print(
+            f"[WARN] Source coverage gaps: {len(source_coverage_gaps)} "
+            f"(details saved to {source_coverage_gaps_path})"
+        )
+        for _, row in source_coverage_gaps.head(20).iterrows():
+            print(
+                "  - {dataset}: {code} / {fuel} ({gap_type})".format(
+                    dataset=str(row.get("source_dataset") or "").strip(),
+                    code=str(row.get("source_code") or "").strip(),
+                    fuel=str(row.get("fuel_code") or "").strip(),
+                    gap_type=str(row.get("gap_type") or "").strip(),
+                )
+            )
+        if len(source_coverage_gaps) > 20:
+            print(f"  ... plus {len(source_coverage_gaps) - 20} more source coverage gap(s)")
     (
         detail_df.groupby(["process_key", "process_label", "year"], as_index=False)["proxy_activity"]
         .max()

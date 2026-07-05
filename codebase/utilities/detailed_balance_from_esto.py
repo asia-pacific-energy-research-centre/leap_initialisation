@@ -9,12 +9,16 @@ from typing import Iterable
 import openpyxl
 import pandas as pd
 
-from codebase.utilities.master_config import config_table_exists, read_config_table
+from codebase.utilities.master_config import (
+    OUTLOOK_MAPPINGS_MASTER_PATH,
+    config_table_exists,
+    read_config_table,
+)
 
 
 DEFAULT_TEMPLATE_PATH = Path("data/detailed balance table output example.xlsx")
 DEFAULT_ESTOPATH = Path("data/00APEC_2024_low_with_subtotals.csv")
-DEFAULT_CODEBOOK_PATH = Path("config/sector_fuel_codes_to_names.xlsx")
+DEFAULT_CODEBOOK_PATH = OUTLOOK_MAPPINGS_MASTER_PATH
 
 DEFAULT_SHEET_NAME = "Energy Balance"
 DEFAULT_ECONOMY = "20USA"

@@ -486,6 +486,15 @@ def assemble_transformation_workbook(
             scenario_list,
             in_scope_sector_titles=core.get_analyzed_sector_titles(),
         )
+        if export_path:
+            try:
+                workflow_common.diagnose_missing_canonical_branches(
+                    export_path=Path(export_path),
+                    sheet_name=SHEET_NAME,
+                    workflow_name="transformation_workflow",
+                )
+            except Exception as exc:
+                print(f"[WARN] transformation_workflow: canonical-branch diagnostic failed: {exc}")
         return [Path(export_path)] if export_path else []
     finally:
         core.FEEDSTOCK_METHOD = original_feedstock_method

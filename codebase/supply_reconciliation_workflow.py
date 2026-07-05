@@ -70,11 +70,6 @@ import pandas as pd
 from openpyxl.styles import Font, PatternFill
 
 from codebase.configuration import workflow_config as workflow_cfg
-from codebase.utilities.master_config import (
-    MASTER_CONFIG_PATH,
-    config_table_exists,
-    read_config_table,
-)
 from codebase.configuration.all_products_and_flows import ESTO_PRODUCT_LIST, ESTO_SECTORS
 from codebase.mappings.canonical_mapping import (
     DEFAULT_BACKUP_LEAP_MAPPINGS,
@@ -548,8 +543,13 @@ def run_results_linked_supply_workflow(*args, **kwargs):
 # , "02_BD", "03_CDA", "04_CHL", "05_PRC", "06_HKC", "07_INA", 
 # "08_JPN", "09_ROK", "10_MAS", "11_MEX", "12_NZ", "13_PNG", "14_PE", 
 # "15_PHL", "16_RUS", "17_SGP", "18_CT", "19_THA", "20_USA", "21_VN"---------------------------------------------------------------------------
-ECONOMIES = ["01_AUS", "02_BD", "03_CDA", "04_CHL", "05_PRC", "06_HKC", "07_INA", 
-"08_JPN", "09_ROK", "10_MAS", "11_MEX", "12_NZ", "13_PNG", "14_PE", "15_PHL", "16_RUS", "17_SGP", "18_CT", "19_THA", "20_USA", "21_VN"]
+ECONOMIES_RUN_ORDER = [
+    "21_VN", "20_USA", "19_THA", "05_PRC", "13_PNG", "15_PHL", "12_NZ",
+    "11_MEX", "10_MAS", "02_BD", "01_AUS",#the rest dont contain actual leap araeas yet
+    "03_CDA", "04_CHL", "06_HKC", "07_INA", "08_JPN", "09_ROK",
+    "14_PE", "16_RUS", "17_SGP", "18_CT",
+]
+ECONOMIES = ECONOMIES_RUN_ORDER
 # [, "20_USA"
 #     "01_AUS", "02_BD", "05_PRC", "10_MAS", "12_NZ", "15_PHL", "13_PNG", "19_THA", "05_PRC", "21_VN",
 # ]
@@ -745,6 +745,14 @@ PREFLIGHT_COMPRESSED_FAIL_FAST = False
 RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE = False
 PREFLIGHT_COMPRESSED_RESULTS_UPDATE_ONLY = False
 PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST = False
+# When True, chokepoints that would otherwise abort the ENTIRE run (all
+# economies, all scenarios) instead print a [WARN] and continue, deferring the
+# failure to a single aggregated error raised only after every economy and
+# scenario has been processed. Use this for long unattended overnight runs
+# where partial-but-flawed output is more useful than no output. Leave False
+# for interactive runs where you want to stop and fix problems immediately.
+# See codebase/utilities/workflow_common.py (defer_or_raise/raise_deferred_errors).
+THROW_ERROR_AFTER_RUN = True
 # Unpack preset — does not overwrite ECONOMIES/SCENARIOS set above. Presets can
 # override the defaults immediately above, including PREFLIGHT_* toggles.
 globals().update(ACTIVE_PRESET)
@@ -837,6 +845,9 @@ def _run_with_config_inner() -> dict[str, object]:
         for _mod in _modules:
             patch_baseline_seeds.run_patch(_mod, PATCH_ECONOMIES, run_workflow=_run_workflow)
         return {}
+
+    workflow_common.THROW_ERROR_AFTER_RUN = bool(THROW_ERROR_AFTER_RUN)
+    workflow_common.clear_deferred_errors()
 
     _run_leap_display_name_preflight()
 
@@ -951,15 +962,42 @@ def _run_with_config_inner() -> dict[str, object]:
         output["preflight_compressed_projection_error"] = str(preflight_error)
     if results_update_preflight_error is not None:
         output["preflight_compressed_results_update_error"] = str(results_update_preflight_error)
-    if preflight_error is not None or results_update_preflight_error is not None:
+
+    # Surface every failure mode that survived a completed run, so nothing is
+    # silently dropped: compressed-preflight errors AND THROW_ERROR_AFTER_RUN
+    # deferred errors. Attach all of them to output first, then raise once —
+    # combining messages if both kinds are present, since only one exception
+    # can propagate.
+    preflight_deferred = preflight_error or results_update_preflight_error
+    _deferred_errors = workflow_common.get_deferred_errors()
+    if _deferred_errors:
+        output["deferred_errors"] = [
+            f"[{context}] {exc!r}" for context, exc in _deferred_errors
+        ]
+
+    if preflight_deferred is not None or _deferred_errors:
         if bool(COMPLETION_BEEP_ON_ERROR):
             _emit_completion_beep(success=False)
-        deferred = preflight_error or results_update_preflight_error
-        raise RuntimeError(
-            "A compressed preflight failed, but the main economy run completed. "
-            "Review the preflight outputs and diagnostics before LEAP import. "
-            f"Original preflight error: {deferred}"
-        ) from deferred
+        if preflight_deferred is not None and _deferred_errors:
+            _deferred_summary = "; ".join(
+                f"[{context}] {exc!r}" for context, exc in _deferred_errors
+            )
+            raise RuntimeError(
+                "A compressed preflight failed AND "
+                f"{len(_deferred_errors)} error(s) were deferred via "
+                "THROW_ERROR_AFTER_RUN, but the main economy run completed. "
+                "Review the preflight outputs, diagnostics, and affected "
+                "economies/scenarios before LEAP import. "
+                f"Original preflight error: {preflight_deferred}. "
+                f"Deferred errors: {_deferred_summary}"
+            ) from preflight_deferred
+        if preflight_deferred is not None:
+            raise RuntimeError(
+                "A compressed preflight failed, but the main economy run completed. "
+                "Review the preflight outputs and diagnostics before LEAP import. "
+                f"Original preflight error: {preflight_deferred}"
+            ) from preflight_deferred
+        workflow_common.raise_deferred_errors()
     return output
 
 #%%

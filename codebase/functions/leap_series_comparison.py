@@ -7,7 +7,11 @@ from typing import Any
 
 import pandas as pd
 
-from codebase.utilities.master_config import config_table_exists, read_config_table
+from codebase.utilities.master_config import (
+    OUTLOOK_MAPPINGS_MASTER_PATH,
+    config_table_exists,
+    read_config_table,
+)
 
 from codebase.functions.leap_excel_io import read_export_sheet
 from codebase.functions.leap_expressions import expression_to_series
@@ -99,16 +103,14 @@ class TransportResultsComparisonConfig:
     region: str
     branch_sector_mapping_csv: str | Path = Path()
     fuel_aliases_csv: str | Path = Path()
-    code_to_name_path: str | Path = Path("config") / "sector_fuel_codes_to_names.xlsx"
+    code_to_name_path: str | Path = OUTLOOK_MAPPINGS_MASTER_PATH
     code_to_name_sheet: str = "code_to_name"
     esto_data_path: str | Path = Path("data") / "00APEC_2024_low.csv"
     ninth_data_path: str | Path = (
         Path("data") / "merged_file_energy_ALL_20251106.csv"
     )
     subtotal_mapping_path: str | Path = Path("config") / "ESTO_subtotal_mapping.xlsx"
-    ninth_to_esto_mapping_path: str | Path = (
-        Path("config") / "ninth_pairs_to_esto_pairs.xlsx"
-    )
+    ninth_to_esto_mapping_path: str | Path = OUTLOOK_MAPPINGS_MASTER_PATH
     base_year: int = 2022
     projection_start_year: int = 2023
     projection_end_year: int = 2060
@@ -347,10 +349,12 @@ def _load_ninth_data(ninth_data_path: Path, esto_path: Path | None = None) -> pd
 
 
 def _load_mapping_pairs(mapping_path: Path) -> pd.DataFrame:
-    if mapping_path.suffix.lower() in {".xlsx", ".xls"}:
-        df = read_config_table(mapping_path, dtype=str).fillna("")
-    else:
-        df = read_config_table(mapping_path, dtype=str).fillna("")
+    sheet_name = (
+        "ninth_pairs_to_esto_pairs"
+        if mapping_path.name == OUTLOOK_MAPPINGS_MASTER_PATH.name
+        else None
+    )
+    df = read_config_table(mapping_path, sheet_name=sheet_name, dtype=str).fillna("")
     for col in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()

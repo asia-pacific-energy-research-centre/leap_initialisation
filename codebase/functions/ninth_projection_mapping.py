@@ -564,7 +564,7 @@ def allocate_ninth_projection_to_esto(
 def build_esto_projection_table(
     ninth_data: pd.DataFrame,
     esto_data: pd.DataFrame,
-    mapping_path: str | Path,
+    mapping_path: str | Path | tuple[str | Path, str],
     base_year: int,
     projection_years: Sequence[int],
     scenario: str = DEFAULT_SCENARIO,
@@ -581,10 +581,17 @@ def build_esto_projection_table(
         strict_conservation:
             If True, raise ValueError when allocated totals do not match source totals.
     """
-    mapping_path = Path(mapping_path)
-    if not config_table_exists(mapping_path):
+    if isinstance(mapping_path, tuple):
+        mapping_file, mapping_sheet = Path(mapping_path[0]), str(mapping_path[1])
+    else:
+        mapping_file, mapping_sheet = Path(mapping_path), None
+    if not config_table_exists(mapping_file, mapping_sheet):
         return pd.DataFrame(), pd.DataFrame()
-    mapping_df = read_config_table(mapping_path, dtype=str).fillna("")
+    mapping_df = read_config_table(
+        mapping_file,
+        sheet_name=mapping_sheet,
+        dtype=str,
+    ).fillna("")
     if mapping_df.empty:
         return pd.DataFrame(), pd.DataFrame()
     ninth_filtered = filter_ninth_projection_rows(ninth_data, scenario=scenario)

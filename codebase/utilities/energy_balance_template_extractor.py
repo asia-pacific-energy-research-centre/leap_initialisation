@@ -10,10 +10,11 @@ import pandas as pd
 
 from codebase.utilities.master_config import (
     LEAP_MAPPINGS_REPO_ROOT,
-    MASTER_CONFIG_PATH,
+    OUTLOOK_MAPPINGS_MASTER_PATH,
     config_table_exists,
     read_config_table,
 )
+from codebase.mappings.canonical_loaders import load_leap_display_names
 from codebase.utilities.workflow_outputs import build_workflow_output_layout, write_output_manifest
 
 
@@ -402,34 +403,33 @@ class TemplateBalanceExtractor:
             if value not in lookup[key]:
                 lookup[key].append(value)
 
-        codebook = read_config_table(self.codebook_path, sheet_name="code_to_name", dtype=str).fillna("")
+        codebook = load_leap_display_names().fillna("")
         for _, row in codebook.iterrows():
-            name = _normalize_text(row.get("name", ""))
-            ninth_label = str(row.get("9th_label", "")).strip()
-            ninth_column = _normalize_text(row.get("9th_column", ""))
-            esto_label = str(row.get("esto_label", "")).strip()
-            esto_column = _normalize_text(row.get("esto_column", ""))
-            if not name:
+            name = _normalize_text(row.get("leap_display_name", "") or row.get("auto_name", ""))
+            code = str(row.get("code", "")).strip()
+            code_type = _normalize_text(row.get("code_type", ""))
+            if not (name and code):
                 continue
-            if ninth_label and ninth_column in SECTOR_COLUMNS:
-                self._flow_name_to_codes.setdefault(name, []).append(ninth_label)
-            if ninth_label and ninth_column in FUEL_COLUMNS:
-                self._fuel_name_to_codes.setdefault(name, []).append(ninth_label)
-            if esto_label and esto_column in EXPECTED_FLOW_COLUMNS:
-                self._flow_name_to_esto.setdefault(name, []).append(esto_label)
-            if esto_label and esto_column in EXPECTED_PRODUCT_COLUMNS:
-                self._fuel_name_to_esto.setdefault(name, []).append(esto_label)
-
-        esto_leap = read_config_table(self.codebook_path, sheet_name="ESTO_LEAP_names", dtype=str).fillna("")
-        for _, row in esto_leap.iterrows():
-            category = _normalize_text(row.get("category", ""))
-            leap_name = _normalize_text(row.get("leap_name", ""))
-            esto_label = str(row.get("original_label", "")).strip()
-            if category == "products" and leap_name and esto_label:
-                self._fuel_name_to_esto.setdefault(leap_name, []).append(esto_label)
+            if code_type == "ninth_sector":
+                self._flow_name_to_codes.setdefault(name, []).append(code)
+            elif code_type == "ninth_fuel":
+                self._fuel_name_to_codes.setdefault(name, []).append(code)
+            elif code_type == "esto_flow":
+                self._flow_name_to_esto.setdefault(name, []).append(code)
+            elif code_type == "esto_product":
+                self._fuel_name_to_esto.setdefault(name, []).append(code)
 
         if not self.explicit_pair_mappings_only:
-            pairs = read_config_table(self.mapping_pairs_path, dtype=str).fillna("")
+            mapping_sheet = (
+                "ninth_pairs_to_esto_pairs"
+                if Path(self.mapping_pairs_path).name == OUTLOOK_MAPPINGS_MASTER_PATH.name
+                else None
+            )
+            pairs = read_config_table(
+                self.mapping_pairs_path,
+                sheet_name=mapping_sheet,
+                dtype=str,
+            ).fillna("")
             for _, row in pairs.iterrows():
                 sector = str(row.get("9th_sector", "")).strip()
                 fuel = str(row.get("9th_fuel", "")).strip()
@@ -566,30 +566,8 @@ class TemplateBalanceExtractor:
             }
 
         def load_ninth_subtotal_lookup() -> dict[tuple[str, str], bool]:
-            for sheet_name in ["ninth_pair_subtotal_mapping", "ninth_end_node_sector_fuel_subtotal_mapping"]:
-                try:
-                    subtotals = read_config_table(MASTER_CONFIG_PATH, sheet_name=sheet_name, dtype=str).fillna("")
-                except Exception:
-                    continue
-                sector_col = next(
-                    (col for col in ["ninth_sector", "9th_sector", "sector", "sectors"] if col in subtotals.columns),
-                    "",
-                )
-                fuel_col = next(
-                    (col for col in ["ninth_fuel", "9th_fuel", "fuel", "fuels", "subfuels"] if col in subtotals.columns),
-                    "",
-                )
-                subtotal_col = next(
-                    (col for col in ["is_subtotal", "ninth_is_subtotal", "subtotal_results", "subtotal"] if col in subtotals.columns),
-                    "",
-                )
-                if not (sector_col and fuel_col and subtotal_col):
-                    continue
-                return {
-                    (clean(row.get(sector_col, "")), clean(row.get(fuel_col, ""))): truthy(row.get(subtotal_col, False))
-                    for _, row in subtotals.iterrows()
-                    if clean(row.get(sector_col, "")) and clean(row.get(fuel_col, ""))
-                }
+            # Authored ``ninth_pair_is_subtotal`` values are read directly from
+            # the canonical pair sheets below. No legacy subtotal lookup applies.
             return {}
 
         esto_subtotal_lookup = load_esto_subtotal_lookup()
@@ -2019,8 +1997,8 @@ def run_template_balance_extraction(
     workbook_path: str | Path,
     output_dir: str | Path,
     template_sheet: str = "Targt Energy Balance 18",
-    mapping_pairs_path: str | Path = "config/ninth_pairs_to_esto_pairs.xlsx",
-    codebook_path: str | Path = "config/sector_fuel_codes_to_names.xlsx",
+    mapping_pairs_path: str | Path = OUTLOOK_MAPPINGS_MASTER_PATH,
+    codebook_path: str | Path = OUTLOOK_MAPPINGS_MASTER_PATH,
     include_zero_values: bool = True,
     sheet_name_filter: list[str] | None = None,
     convert_units_to_petajoule: bool = True,

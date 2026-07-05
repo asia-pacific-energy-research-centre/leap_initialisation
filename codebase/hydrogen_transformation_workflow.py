@@ -484,6 +484,15 @@ def assemble_hydrogen_workbook(
             core.EXPORT_MODEL_NAME,
             scenario_list,
         )
+        if export_path:
+            try:
+                workflow_common.diagnose_missing_canonical_branches(
+                    export_path=Path(export_path),
+                    sheet_name=SHEET_NAME,
+                    workflow_name="hydrogen_transformation_workflow",
+                )
+            except Exception as exc:
+                print(f"[WARN] hydrogen_transformation_workflow: canonical-branch diagnostic failed: {exc}")
         return [Path(export_path)] if export_path else []
     finally:
         core.FEEDSTOCK_METHOD = original_feedstock_method
