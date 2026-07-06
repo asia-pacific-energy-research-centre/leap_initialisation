@@ -65,6 +65,9 @@ PROJECTION_END_YEAR = 2060
 if ENERGY_SOURCE_CONFIG.projection_final_year is not None:
     PROJECTION_END_YEAR = int(ENERGY_SOURCE_CONFIG.projection_final_year)
 
+# Soften the first post-base-year point when the ninth series jumps above ESTO.
+FIRST_PROJECTION_YEAR_BLEND_WEIGHT = 0.5
+
 # ── LEAP branch / export settings ─────────────────────────────────────────────
 DEMAND_BRANCH_ROOT = r"Demand\All demand aggregated"
 VARIABLE_NAME = "Total Energy"
@@ -277,6 +280,66 @@ def _sector_exclusion_suffix(excluded_sectors: list[str] | None) -> str:
             parts.append(short)
     # Sort so the suffix is deterministic regardless of input order
     return ("_no_" + "_".join(sorted(parts))) if parts else ""
+
+
+def _apply_first_projection_year_bridge(
+    demand_df: pd.DataFrame,
+    *,
+    base_year: int = BASE_YEAR,
+    projection_start_year: int = PROJECTION_START_YEAR,
+    blend_weight: float = FIRST_PROJECTION_YEAR_BLEND_WEIGHT,
+) -> pd.DataFrame:
+    """Blend the first projection year toward the base year for upward jumps.
+
+    The ESTO base year and ninth projection start can come from slightly
+    different source vintages. When the first projected year is materially
+    above the base year, this helper softens only that point:
+
+        blended = base + blend_weight * (projection - base)
+
+    Flat, declining, and zero-base series are left unchanged.
+    """
+    if demand_df is None or demand_df.empty:
+        return demand_df
+    if blend_weight <= 0:
+        return demand_df.copy()
+
+    working = demand_df.copy()
+    group_cols = [col for col in working.columns if col not in {"year", "value"}]
+    if not group_cols:
+        return working
+
+    adjusted_groups: list[pd.DataFrame] = []
+    adjusted_count = 0
+    for _, grp in working.groupby(group_cols, dropna=False, sort=False):
+        grp = grp.copy()
+        year_series = pd.to_numeric(grp["year"], errors="coerce")
+        base_mask = year_series.eq(int(base_year))
+        projection_mask = year_series.eq(int(projection_start_year))
+        if not base_mask.any() or not projection_mask.any():
+            adjusted_groups.append(grp)
+            continue
+
+        base_value = float(pd.to_numeric(grp.loc[base_mask, "value"], errors="coerce").fillna(0.0).sum())
+        projection_value = float(
+            pd.to_numeric(grp.loc[projection_mask, "value"], errors="coerce").fillna(0.0).sum()
+        )
+        if base_value <= 0 or projection_value <= base_value:
+            adjusted_groups.append(grp)
+            continue
+
+        blended_value = base_value + (projection_value - base_value) * float(blend_weight)
+        if abs(blended_value - projection_value) > 1e-12:
+            grp.loc[projection_mask, "value"] = blended_value
+            adjusted_count += 1
+        adjusted_groups.append(grp)
+
+    if adjusted_count:
+        print(
+            "[INFO] Applied first projection-year bridge to "
+            f"{adjusted_count} demand series (blend weight={blend_weight:.2f})."
+        )
+    return pd.concat(adjusted_groups, ignore_index=True) if adjusted_groups else working
 
 
 def resolve_active_branch_excluded_sectors(
@@ -982,6 +1045,12 @@ def build_aggregated_demand(
         result[out_cols]
         .sort_values(out_cols[:-1])
         .reset_index(drop=True)
+    )
+    result = _apply_first_projection_year_bridge(
+        result,
+        base_year=base_year,
+        projection_start_year=PROJECTION_START_YEAR,
+        blend_weight=FIRST_PROJECTION_YEAR_BLEND_WEIGHT,
     )
     if return_provenance:
         return result, pd.concat(provenance_parts, ignore_index=True)

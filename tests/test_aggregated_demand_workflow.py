@@ -16,6 +16,7 @@ import pytest
 import codebase.aggregated_demand_workflow as aggregated_demand_workflow
 import codebase.functions.supply_reconciliation_tables as supply_reconciliation_tables
 from codebase.aggregated_demand_workflow import (
+    _apply_first_projection_year_bridge,
     _extract_contextual_projection_years,
     _esto_flow_is_excluded,
     _sector_exclusion_suffix,
@@ -75,6 +76,70 @@ def test_contextual_projection_uses_same_sector_esto_fuel_shares(monkeypatch):
     assert set(provenance["allocation_method"]) == {"proportional_esto_base_year"}
     shares = provenance.set_index("esto_product")["share"].to_dict()
     assert shares == pytest.approx({"p1": 0.25, "p2": 0.75})
+
+
+def test_first_projection_year_bridge_softens_only_upward_jumps():
+    raw = pd.DataFrame(
+        [
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "leap_fuel_name": "Electricity",
+                "year": 2022,
+                "value": 100.0,
+            },
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "leap_fuel_name": "Electricity",
+                "year": 2023,
+                "value": 160.0,
+            },
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "leap_fuel_name": "Gas",
+                "year": 2022,
+                "value": 50.0,
+            },
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "leap_fuel_name": "Gas",
+                "year": 2023,
+                "value": 40.0,
+            },
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "leap_fuel_name": "Hydrogen",
+                "year": 2022,
+                "value": 0.0,
+            },
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "leap_fuel_name": "Hydrogen",
+                "year": 2023,
+                "value": 30.0,
+            },
+        ]
+    )
+
+    bridged = _apply_first_projection_year_bridge(
+        raw,
+        base_year=2022,
+        projection_start_year=2023,
+        blend_weight=0.5,
+    )
+
+    values = (
+        bridged.set_index(["leap_fuel_name", "year"])["value"]
+        .to_dict()
+    )
+    assert values[("Electricity", 2023)] == pytest.approx(130.0)
+    assert values[("Gas", 2023)] == pytest.approx(40.0)
+    assert values[("Hydrogen", 2023)] == pytest.approx(30.0)
 from codebase.supply_reconciliation_config import (
     DETAILED_DEMAND_BRANCHES_ACTIVE,
     LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
