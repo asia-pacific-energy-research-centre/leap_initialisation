@@ -67,6 +67,7 @@ if ENERGY_SOURCE_CONFIG.projection_final_year is not None:
 
 # Soften the first post-base-year point when the ninth series jumps above ESTO.
 FIRST_PROJECTION_YEAR_BLEND_WEIGHT = 0.5
+APPLY_FIRST_PROJECTION_YEAR_BRIDGE_DEFAULT = False
 
 # ── LEAP branch / export settings ─────────────────────────────────────────────
 DEMAND_BRANCH_ROOT = r"Demand\All demand aggregated"
@@ -288,6 +289,7 @@ def _apply_first_projection_year_bridge(
     base_year: int = BASE_YEAR,
     projection_start_year: int = PROJECTION_START_YEAR,
     blend_weight: float = FIRST_PROJECTION_YEAR_BLEND_WEIGHT,
+    enabled: bool = APPLY_FIRST_PROJECTION_YEAR_BRIDGE_DEFAULT,
 ) -> pd.DataFrame:
     """Blend the first projection year toward the base year for upward jumps.
 
@@ -299,7 +301,7 @@ def _apply_first_projection_year_bridge(
 
     Flat, declining, and zero-base series are left unchanged.
     """
-    if demand_df is None or demand_df.empty:
+    if not enabled or demand_df is None or demand_df.empty:
         return demand_df
     if blend_weight <= 0:
         return demand_df.copy()
@@ -897,6 +899,7 @@ def build_aggregated_demand(
     excluded_sectors: list[str] | None = None,
     use_sector_branches: bool = False,
     return_provenance: bool = False,
+    apply_first_projection_year_bridge: bool = APPLY_FIRST_PROJECTION_YEAR_BRIDGE_DEFAULT,
 ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """
     Build aggregated demand by LEAP fuel for one economy and scenario.
@@ -1051,6 +1054,7 @@ def build_aggregated_demand(
         base_year=base_year,
         projection_start_year=PROJECTION_START_YEAR,
         blend_weight=FIRST_PROJECTION_YEAR_BLEND_WEIGHT,
+        enabled=apply_first_projection_year_bridge,
     )
     if return_provenance:
         return result, pd.concat(provenance_parts, ignore_index=True)
@@ -1069,6 +1073,7 @@ def build_aggregated_demand_all_scenarios(
     excluded_sectors: list[str] | None = None,
     use_sector_branches: bool = False,
     return_provenance: bool = False,
+    apply_first_projection_year_bridge: bool = APPLY_FIRST_PROJECTION_YEAR_BRIDGE_DEFAULT,
 ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """Build aggregated demand for all LEAP scenarios and return combined DataFrame."""
     parts = [
@@ -1084,6 +1089,7 @@ def build_aggregated_demand_all_scenarios(
             excluded_sectors=excluded_sectors,
             use_sector_branches=use_sector_branches,
             return_provenance=return_provenance,
+            apply_first_projection_year_bridge=apply_first_projection_year_bridge,
         )
         for s in scenarios
     ]
@@ -1107,6 +1113,7 @@ def build_aggregated_demand_as_dummy(
     excluded_sectors: list[str] | None = None,
     use_sector_branches: bool = False,
     return_provenance: bool = False,
+    apply_first_projection_year_bridge: bool = APPLY_FIRST_PROJECTION_YEAR_BRIDGE_DEFAULT,
 ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """
     Return aggregated demand data in the format expected by load_results_demand_table
@@ -1141,6 +1148,7 @@ def build_aggregated_demand_as_dummy(
         excluded_sectors=excluded_sectors,
         use_sector_branches=use_sector_branches,
         return_provenance=return_provenance,
+        apply_first_projection_year_bridge=apply_first_projection_year_bridge,
     )
     long, provenance = built if return_provenance else (built, pd.DataFrame())
     if long.empty:
@@ -1232,9 +1240,11 @@ def save_aggregated_demand_as_leap_workbook(
     fuel_mappings_path: Path = FUEL_MAPPINGS_PATH,
     model_name: str = "",
     exclude_own_use_td_losses: bool = False,
-    id_lookup_path: Path | str | None = None,
+    id_lookup_path: Path | str | None = FULL_MODEL_EXPORT_PATH,
     excluded_sectors: list[str] | None = None,
     use_sector_branches: bool = False,
+    demand: pd.DataFrame | None = None,
+    apply_first_projection_year_bridge: bool = APPLY_FIRST_PROJECTION_YEAR_BRIDGE_DEFAULT,
 ) -> Path | None:
     """
     Build aggregated demand and save as a LEAP-importable workbook (LEAP + FOR_VIEWING sheets).
@@ -1251,18 +1261,20 @@ def save_aggregated_demand_as_leap_workbook(
     from that file (a LEAP full export with header=2). RegionID is always set to 1.
     """
     use_scenarios = scenarios if scenarios is not None else list(LEAP_SCENARIOS)
-    demand = build_aggregated_demand_all_scenarios(
-        economy=economy,
-        scenarios=use_scenarios,
-        base_year=base_year,
-        final_year=final_year,
-        data_path=data_path,
-        esto_data_path=esto_data_path,
-        fuel_mappings_path=fuel_mappings_path,
-        exclude_own_use_td_losses=exclude_own_use_td_losses,
-        excluded_sectors=excluded_sectors,
-        use_sector_branches=use_sector_branches,
-    )
+    if demand is None:
+        demand = build_aggregated_demand_all_scenarios(
+            economy=economy,
+            scenarios=use_scenarios,
+            base_year=base_year,
+            final_year=final_year,
+            data_path=data_path,
+            esto_data_path=esto_data_path,
+            fuel_mappings_path=fuel_mappings_path,
+            exclude_own_use_td_losses=exclude_own_use_td_losses,
+            excluded_sectors=excluded_sectors,
+            use_sector_branches=use_sector_branches,
+            apply_first_projection_year_bridge=apply_first_projection_year_bridge,
+        )
     if demand.empty:
         print("[INFO] save_aggregated_demand_as_leap_workbook: no demand data — workbook not written.")
         return None
@@ -1685,6 +1697,8 @@ def main(
     output_dir: Path | None = None,
     excluded_sectors: list[str] | None = None,
     use_sector_branches: bool = USE_SECTOR_BRANCHES,
+    id_lookup_path: Path | str | None = FULL_MODEL_EXPORT_PATH,
+    apply_first_projection_year_bridge: bool = APPLY_FIRST_PROJECTION_YEAR_BRIDGE_DEFAULT,
 ) -> None:
     """
     Run the aggregated demand workflow for one economy and save to Excel.
@@ -1720,6 +1734,7 @@ def main(
         fuel_mappings_path=FUEL_MAPPINGS_PATH,
         excluded_sectors=excluded_sectors,
         use_sector_branches=use_sector_branches,
+        apply_first_projection_year_bridge=apply_first_projection_year_bridge,
     )
 
     fuels_found = sorted(demand["leap_fuel_name"].unique())
@@ -1739,7 +1754,23 @@ def main(
     filename = f"aggregated_demand_{econ_token}_{scenario_token}{exclusion_suffix}{sector_suffix}.xlsx"
     output_path = out_dir / filename
 
-    save_to_leap_export(demand, output_path=output_path, use_sector_branches=use_sector_branches)
+    save_aggregated_demand_as_leap_workbook(
+        economy=economy,
+        output_path=output_path,
+        scenarios=use_scenarios,
+        region=DEFAULT_EXPORT_REGION,
+        base_year=BASE_YEAR,
+        final_year=final_year,
+        data_path=PROJECTION_DATA_PATH,
+        esto_data_path=ESTO_BASE_DATA_PATH,
+        fuel_mappings_path=FUEL_MAPPINGS_PATH,
+        model_name="",
+        exclude_own_use_td_losses=False,
+        id_lookup_path=id_lookup_path,
+        excluded_sectors=excluded_sectors,
+        use_sector_branches=use_sector_branches,
+        demand=demand,
+    )
     print(f"[INFO] Done.")
 
 

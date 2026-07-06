@@ -131,6 +131,7 @@ def test_first_projection_year_bridge_softens_only_upward_jumps():
         base_year=2022,
         projection_start_year=2023,
         blend_weight=0.5,
+        enabled=True,
     )
 
     values = (
@@ -140,6 +141,78 @@ def test_first_projection_year_bridge_softens_only_upward_jumps():
     assert values[("Electricity", 2023)] == pytest.approx(130.0)
     assert values[("Gas", 2023)] == pytest.approx(40.0)
     assert values[("Hydrogen", 2023)] == pytest.approx(30.0)
+
+
+def test_build_aggregated_demand_bridge_mode_switch(monkeypatch):
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "20_USA",
+                "flows": "14.02 Construction",
+                "products": "p1",
+                "is_subtotal": False,
+                "2022": 100.0,
+            }
+        ]
+    )
+    projected = pd.DataFrame(
+        [
+            {
+                "economy": "20_USA",
+                "leap_fuel_name": "Fuel A",
+                "year": 2023,
+                "value": 160.0,
+            }
+        ]
+    )
+    monkeypatch.setattr(
+        aggregated_demand_workflow,
+        "_load_esto_base_csv",
+        lambda *args, **kwargs: esto.copy(),
+    )
+    monkeypatch.setattr(
+        aggregated_demand_workflow,
+        "_load_demand_csv",
+        lambda *args, **kwargs: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        aggregated_demand_workflow,
+        "load_fuel_mapping",
+        lambda *args, **kwargs: {"p1": "Fuel A"},
+    )
+    monkeypatch.setattr(
+        aggregated_demand_workflow,
+        "_extract_contextual_projection_years",
+        lambda *args, **kwargs: (projected.copy(), pd.DataFrame()),
+    )
+
+    off = aggregated_demand_workflow.build_aggregated_demand(
+        economy="20_USA",
+        scenario="Reference",
+        base_year=2022,
+        final_year=2023,
+        data_path="unused.csv",
+        esto_data_path="unused.csv",
+        fuel_mappings_path="unused.xlsx",
+        apply_first_projection_year_bridge=False,
+    )
+    on = aggregated_demand_workflow.build_aggregated_demand(
+        economy="20_USA",
+        scenario="Reference",
+        base_year=2022,
+        final_year=2023,
+        data_path="unused.csv",
+        esto_data_path="unused.csv",
+        fuel_mappings_path="unused.xlsx",
+        apply_first_projection_year_bridge=True,
+    )
+
+    off_values = off.set_index("year")["value"].to_dict()
+    on_values = on.set_index("year")["value"].to_dict()
+    assert off_values[2022] == pytest.approx(100.0)
+    assert off_values[2023] == pytest.approx(160.0)
+    assert on_values[2022] == pytest.approx(100.0)
+    assert on_values[2023] == pytest.approx(130.0)
 from codebase.supply_reconciliation_config import (
     DETAILED_DEMAND_BRANCHES_ACTIVE,
     LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
