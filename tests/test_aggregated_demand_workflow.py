@@ -151,7 +151,7 @@ def test_first_projection_year_bridge_applies_same_offset_to_all_projection_year
         raw,
         base_year=2022,
         projection_start_year=2023,
-        blend_weight=0.5,
+        blend_weight=0.0,
         enabled=True,
     )
 
@@ -159,8 +159,8 @@ def test_first_projection_year_bridge_applies_same_offset_to_all_projection_year
         bridged.set_index(["leap_fuel_name", "year"])["value"]
         .to_dict()
     )
-    assert values[("Electricity", 2023)] == pytest.approx(130.0)
-    assert values[("Electricity", 2024)] == pytest.approx(140.0)
+    assert values[("Electricity", 2023)] == pytest.approx(100.0)
+    assert values[("Electricity", 2024)] == pytest.approx(110.0)
     assert values[("Electricity", 2025)] == pytest.approx(0.0)
     assert values[("Gas", 2023)] == pytest.approx(40.0)
     assert values[("Gas", 2024)] == pytest.approx(45.0)
@@ -243,8 +243,8 @@ def test_build_aggregated_demand_bridge_mode_switch(monkeypatch):
     assert off_values[2023] == pytest.approx(160.0)
     assert off_values[2024] == pytest.approx(170.0)
     assert on_values[2022] == pytest.approx(100.0)
-    assert on_values[2023] == pytest.approx(130.0)
-    assert on_values[2024] == pytest.approx(140.0)
+    assert on_values[2023] == pytest.approx(100.0)
+    assert on_values[2024] == pytest.approx(110.0)
 from codebase.supply_reconciliation_config import (
     DETAILED_DEMAND_BRANCHES_ACTIVE,
     LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,

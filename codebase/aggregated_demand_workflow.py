@@ -65,8 +65,9 @@ PROJECTION_END_YEAR = 2060
 if ENERGY_SOURCE_CONFIG.projection_final_year is not None:
     PROJECTION_END_YEAR = int(ENERGY_SOURCE_CONFIG.projection_final_year)
 
-# Soften the first post-base-year point when the ninth series jumps above ESTO.
-FIRST_PROJECTION_YEAR_BLEND_WEIGHT = 0.5
+# Full-gap bridge: if enabled, the first projected year is pulled back to the
+# base-year level and the same absolute reduction is applied to all future years.
+FIRST_PROJECTION_YEAR_BLEND_WEIGHT = 0.0
 APPLY_FIRST_PROJECTION_YEAR_BRIDGE_DEFAULT = False
 
 # ── LEAP branch / export settings ─────────────────────────────────────────────
@@ -307,7 +308,7 @@ def _apply_first_projection_year_bridge(
     """
     if not enabled or demand_df is None or demand_df.empty:
         return demand_df
-    if blend_weight <= 0:
+    if blend_weight < 0:
         return demand_df.copy()
 
     working = demand_df.copy()
@@ -1386,6 +1387,11 @@ def save_aggregated_demand_as_leap_workbook(
                 )
     elif id_lookup_resolved is not None:
         print(f"[WARN] id_lookup_path not found, skipping ID merge: {id_lookup_resolved}")
+
+    spacer_col = ""
+    if spacer_col not in export_df.columns:
+        insert_at = export_df.columns.get_loc("Expression") + 1
+        export_df.insert(insert_at, spacer_col, "")
 
     max_levels = min(8, export_df["Branch Path"].str.split("\\").str.len().max())
     for i in range(1, max_levels + 1):
