@@ -737,9 +737,52 @@ def normalize_process_efficiency_to_percent(value_by_year, input_scale="ratio"):
             else:
                 normalized[year] = fallback
         cleaned = normalized
-        return cleaned
+        return cap_process_efficiency_value_by_year(cleaned)
     except Exception as exc:
         print(f"Failed to normalize process efficiency to percent: {exc}")
+        _try_debug_breakpoint()
+        raise
+
+
+def _process_efficiency_ceiling_percent():
+    """Return the configured maximum process-efficiency percent."""
+    ceiling = getattr(_wf_cfg_rb, "TRANSFORMATION_PROCESS_EFFICIENCY_MAX_PERCENT", 1000.0)
+    return float(ceiling)
+
+
+def _process_efficiency_ceiling_enabled():
+    """Return whether process-efficiency values should be clipped."""
+    return bool(getattr(_wf_cfg_rb, "TRANSFORMATION_CLIP_PROCESS_EFFICIENCY_TO_MAX", True))
+
+
+def cap_process_efficiency_value(value, ceiling=None):
+    """Clip a single process-efficiency value when the ceiling flag is enabled."""
+    try:
+        if value is None or pd.isna(value):
+            return value
+        if not _process_efficiency_ceiling_enabled():
+            return float(value)
+        max_value = _process_efficiency_ceiling_percent() if ceiling is None else float(ceiling)
+        numeric_value = float(value)
+        return min(numeric_value, max_value)
+    except Exception as exc:
+        print(f"Failed to cap process efficiency value: {exc}")
+        _try_debug_breakpoint()
+        raise
+
+
+def cap_process_efficiency_value_by_year(value_by_year, ceiling=None):
+    """Clip a year->value process-efficiency map when the ceiling flag is enabled."""
+    try:
+        if not isinstance(value_by_year, dict):
+            return cap_process_efficiency_value(value_by_year, ceiling=ceiling)
+        max_value = _process_efficiency_ceiling_percent() if ceiling is None else float(ceiling)
+        return {
+            int(year): cap_process_efficiency_value(value, ceiling=max_value)
+            for year, value in value_by_year.items()
+        }
+    except Exception as exc:
+        print(f"Failed to cap process efficiency values by year: {exc}")
         _try_debug_breakpoint()
         raise
 
@@ -1122,6 +1165,7 @@ def build_transformation_detail_table(process_records, code_to_name_mapping):
                 efficiency_value = summarize_numeric_value(
                     efficiency_data, summary="mean"
                 )
+                efficiency_value = cap_process_efficiency_value(efficiency_value)
                 rows.append(
                     {
                         "economy": economy,
@@ -1774,6 +1818,7 @@ def build_transformation_log_rows(
                     efficiency_by_year,
                     input_scale=record.get("efficiency_scale", "ratio"),
                 )
+                efficiency_by_year = cap_process_efficiency_value_by_year(efficiency_by_year)
                 rows.extend(
                     build_year_rows(
                         process_branch_path,
