@@ -415,3 +415,84 @@ def test_results_update_preflight_routing_and_restoration(tmp_path, monkeypatch,
     assert srs.CAPACITY_UNMET_PASS_MODE == prod_pass_mode
     assert srs.ECONOMIES == prod_econ
     assert sdm.BALANCE_DEMAND_REF_WORKBOOK_PATH == prod_ref_wb
+
+
+def test_projection_preflight_reloads_aggregated_demand_workflow(tmp_path, monkeypatch) -> None:
+    # Regression for the aggregated-demand module leak: if its module-level
+    # year bounds are contaminated during the preflight window, the restore
+    # path must reload the module so later calls see the full projection range
+    # again instead of inheriting the compressed horizon.
+    import codebase.supply_reconciliation_workflow as workflow
+
+    def _fake_create_sources(**kwargs):
+        return {
+            "esto_path": tmp_path / "esto.csv",
+            "ninth_path": tmp_path / "ninth.csv",
+            "ninth_abs_diagnostics_path": tmp_path / "ninth_abs.csv",
+            "base_year": 2022,
+            "compressed_year": 2023,
+        }
+
+    monkeypatch.setattr(sp, "_create_preflight_compressed_source_files", _fake_create_sources)
+    monkeypatch.setattr(
+        sp,
+        "_build_reduced_preflight_balance_workbook",
+        lambda **k: {
+            "workbook_path": tmp_path / f"reduced_{k['scenario_code']}.xlsx",
+            "sheet_names": ["EBal|2022", "EBal|2023"],
+            "future_years": [2023, 2024],
+            "sum_method": "label_union_aligned",
+            "scenario_code": k["scenario_code"],
+        },
+    )
+
+    observed_final_years: list[int] = []
+    full_projection_year = int(
+        workflow_cfg.get_energy_source_config().projection_final_year or 2060
+    )
+
+    def _fake_save_aggregated_demand_as_leap_workbook(**kwargs):
+        observed_final_years.append(int(kwargs["final_year"]))
+        return Path(kwargs["output_path"])
+
+    def _fake_runner(**kwargs):
+        import codebase.aggregated_demand_workflow as aggregated_demand_workflow
+
+        monkeypatch.setattr(
+            aggregated_demand_workflow,
+            "PROJECTION_END_YEAR",
+            2023,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            aggregated_demand_workflow,
+            "save_aggregated_demand_as_leap_workbook",
+            _fake_save_aggregated_demand_as_leap_workbook,
+        )
+        workflow.build_aggregated_demand_workbooks_for_results_supply(
+            economies=["20_USA"],
+            scenarios=["Reference"],
+            output_dir=tmp_path / "preflight_outputs",
+        )
+        return {}
+
+    monkeypatch.setattr(workflow, "run_results_linked_transformation_supply_workflow", _fake_runner)
+
+    sp.run_preflight_compressed_projection(scenario_names=["Reference"])
+
+    assert observed_final_years == [2023]
+
+    import codebase.aggregated_demand_workflow as aggregated_demand_workflow
+
+    monkeypatch.setattr(
+        aggregated_demand_workflow,
+        "save_aggregated_demand_as_leap_workbook",
+        _fake_save_aggregated_demand_as_leap_workbook,
+    )
+    workflow.build_aggregated_demand_workbooks_for_results_supply(
+        economies=["20_USA"],
+        scenarios=["Reference"],
+        output_dir=tmp_path / "post_preflight_outputs",
+    )
+
+    assert observed_final_years == [2023, full_projection_year]

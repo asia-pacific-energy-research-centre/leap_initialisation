@@ -47,6 +47,7 @@ from codebase.mappings.canonical_mapping import (
 from codebase.functions import supply_data_pipeline, leap_api, patch_baseline_seeds
 from codebase.functions.analysis_input_write_dispatcher import get_analysis_input_write_mode
 from codebase import (
+    aggregated_demand_workflow,
     electricity_heat_interim_workflow,
     other_loss_own_use_proxy_workflow,
     transformation_workflow,
@@ -1113,6 +1114,7 @@ def _restore_preflight_state(state: dict[str, object]) -> None:
     for name, value in state.get("globals", {}).items():
         globals()[name] = value
     importlib.reload(supply_data_pipeline)
+    importlib.reload(aggregated_demand_workflow)
     importlib.reload(transformation_workflow.core)
     importlib.reload(transformation_workflow)
     importlib.reload(transfers_workflow)
@@ -1142,6 +1144,7 @@ def _apply_preflight_compressed_state(
     workflow_cfg.BASELINE_SEED_VALIDATION_FINAL_YEAR = compressed_year
 
     importlib.reload(supply_data_pipeline)
+    importlib.reload(aggregated_demand_workflow)
     importlib.reload(transformation_workflow.core)
     importlib.reload(transformation_workflow)
     importlib.reload(transfers_workflow)
@@ -1637,6 +1640,7 @@ def _apply_preflight_results_update_state(
     workflow_cfg.BASELINE_SEED_VALIDATION_FINAL_YEAR = compressed_year
 
     importlib.reload(supply_data_pipeline)
+    importlib.reload(aggregated_demand_workflow)
     importlib.reload(transformation_workflow.core)
     importlib.reload(transformation_workflow)
     importlib.reload(transfers_workflow)
