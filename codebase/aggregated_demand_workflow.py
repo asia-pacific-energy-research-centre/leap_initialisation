@@ -291,14 +291,18 @@ def _apply_first_projection_year_bridge(
     blend_weight: float = FIRST_PROJECTION_YEAR_BLEND_WEIGHT,
     enabled: bool = APPLY_FIRST_PROJECTION_YEAR_BRIDGE_DEFAULT,
 ) -> pd.DataFrame:
-    """Blend the first projection year toward the base year for upward jumps.
+    """Reduce the first projection year and carry the same offset forward.
 
     The ESTO base year and ninth projection start can come from slightly
     different source vintages. When the first projected year is materially
-    above the base year, this helper softens only that point:
+    above the base year, this helper computes a reduction from the first
+    projected year and applies the same absolute reduction to every projected
+    year in the series.
 
-        blended = base + blend_weight * (projection - base)
+        reduced = base + blend_weight * (projection - base)
+        offset = projection - reduced
 
+    Each projected year is then reduced by ``offset`` and clipped at zero.
     Flat, declining, and zero-base series are left unchanged.
     """
     if not enabled or demand_df is None or demand_df.empty:
@@ -330,9 +334,16 @@ def _apply_first_projection_year_bridge(
             adjusted_groups.append(grp)
             continue
 
-        blended_value = base_value + (projection_value - base_value) * float(blend_weight)
-        if abs(blended_value - projection_value) > 1e-12:
-            grp.loc[projection_mask, "value"] = blended_value
+        adjusted_first_year = base_value + (projection_value - base_value) * float(blend_weight)
+        reduction_amount = max(projection_value - adjusted_first_year, 0.0)
+        if reduction_amount <= 0:
+            adjusted_groups.append(grp)
+            continue
+
+        future_mask = year_series.ge(int(projection_start_year))
+        future_values = pd.to_numeric(grp.loc[future_mask, "value"], errors="coerce").fillna(0.0)
+        grp.loc[future_mask, "value"] = (future_values - reduction_amount).clip(lower=0.0)
+        if future_mask.any():
             adjusted_count += 1
         adjusted_groups.append(grp)
 

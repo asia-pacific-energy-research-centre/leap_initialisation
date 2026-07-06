@@ -78,7 +78,7 @@ def test_contextual_projection_uses_same_sector_esto_fuel_shares(monkeypatch):
     assert shares == pytest.approx({"p1": 0.25, "p2": 0.75})
 
 
-def test_first_projection_year_bridge_softens_only_upward_jumps():
+def test_first_projection_year_bridge_applies_same_offset_to_all_projection_years():
     raw = pd.DataFrame(
         [
             {
@@ -98,6 +98,20 @@ def test_first_projection_year_bridge_softens_only_upward_jumps():
             {
                 "economy": "20_USA",
                 "scenario": "Reference",
+                "leap_fuel_name": "Electricity",
+                "year": 2024,
+                "value": 170.0,
+            },
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "leap_fuel_name": "Electricity",
+                "year": 2025,
+                "value": 0.0,
+            },
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
                 "leap_fuel_name": "Gas",
                 "year": 2022,
                 "value": 50.0,
@@ -108,6 +122,13 @@ def test_first_projection_year_bridge_softens_only_upward_jumps():
                 "leap_fuel_name": "Gas",
                 "year": 2023,
                 "value": 40.0,
+            },
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "leap_fuel_name": "Gas",
+                "year": 2024,
+                "value": 45.0,
             },
             {
                 "economy": "20_USA",
@@ -139,7 +160,10 @@ def test_first_projection_year_bridge_softens_only_upward_jumps():
         .to_dict()
     )
     assert values[("Electricity", 2023)] == pytest.approx(130.0)
+    assert values[("Electricity", 2024)] == pytest.approx(140.0)
+    assert values[("Electricity", 2025)] == pytest.approx(0.0)
     assert values[("Gas", 2023)] == pytest.approx(40.0)
+    assert values[("Gas", 2024)] == pytest.approx(45.0)
     assert values[("Hydrogen", 2023)] == pytest.approx(30.0)
 
 
@@ -162,6 +186,12 @@ def test_build_aggregated_demand_bridge_mode_switch(monkeypatch):
                 "leap_fuel_name": "Fuel A",
                 "year": 2023,
                 "value": 160.0,
+            },
+            {
+                "economy": "20_USA",
+                "leap_fuel_name": "Fuel A",
+                "year": 2024,
+                "value": 170.0,
             }
         ]
     )
@@ -190,7 +220,7 @@ def test_build_aggregated_demand_bridge_mode_switch(monkeypatch):
         economy="20_USA",
         scenario="Reference",
         base_year=2022,
-        final_year=2023,
+        final_year=2024,
         data_path="unused.csv",
         esto_data_path="unused.csv",
         fuel_mappings_path="unused.xlsx",
@@ -200,7 +230,7 @@ def test_build_aggregated_demand_bridge_mode_switch(monkeypatch):
         economy="20_USA",
         scenario="Reference",
         base_year=2022,
-        final_year=2023,
+        final_year=2024,
         data_path="unused.csv",
         esto_data_path="unused.csv",
         fuel_mappings_path="unused.xlsx",
@@ -211,8 +241,10 @@ def test_build_aggregated_demand_bridge_mode_switch(monkeypatch):
     on_values = on.set_index("year")["value"].to_dict()
     assert off_values[2022] == pytest.approx(100.0)
     assert off_values[2023] == pytest.approx(160.0)
+    assert off_values[2024] == pytest.approx(170.0)
     assert on_values[2022] == pytest.approx(100.0)
     assert on_values[2023] == pytest.approx(130.0)
+    assert on_values[2024] == pytest.approx(140.0)
 from codebase.supply_reconciliation_config import (
     DETAILED_DEMAND_BRANCHES_ACTIVE,
     LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
