@@ -61,6 +61,7 @@ HYDROGEN_DISPLAY_NAME_OVERRIDES = {
     "16_x_hydrogen": "Hydrogen",
     "16_x_ammonia": "Ammonia",
     "16_x_efuel": "Efuel",
+    "17_x_green_electricity": "Green electricity",
     "electrolysers_non_green": "Electrolysers (non-green electricity)",
 }
 

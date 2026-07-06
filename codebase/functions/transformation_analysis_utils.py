@@ -1289,6 +1289,10 @@ def _build_mapping_from_leap_display_names(mapping_df: "pd.DataFrame") -> dict:
         name = str(name).strip()
         if name:
             mapping[code] = name
+    # Canonical override: the workbook currently carries an auto-derived
+    # "Electricity" label for electrolyser feedstock, but the canonical LEAP
+    # branch path uses "Green electricity" under Hydrogen transformation.
+    mapping["17_x_green_electricity"] = "Green electricity"
     return mapping
 
 
