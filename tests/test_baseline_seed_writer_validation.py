@@ -326,4 +326,28 @@ def test_missing_configured_producer_for_economy_blocks_final_write(
     assert coverage["source_workflow"].tolist() == ["transformation_workflow"]
 
 
+def test_final_writer_can_skip_validation_for_side_combines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
+    _write_leap_workbook(source, [_row("Data(2023,1)")])
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io._load_reference_export_data",
+        lambda: pd.DataFrame(),
+    )
+
+    written = write_per_economy_combined_workbooks(
+        economies=["20_USA"],
+        output_dir=tmp_path / "output",
+        source_workbooks_by_workflow={"supply_workflow": [source]},
+        enforce_validation=False,
+    )
+
+    assert len(written) == 1
+    assert written[0].exists()
+    output = pd.read_excel(written[0], sheet_name="LEAP", header=2)
+    assert output["Branch Path"].iloc[0] == "Resources\\Primary\\Natural gas"
+
+
 #%%
