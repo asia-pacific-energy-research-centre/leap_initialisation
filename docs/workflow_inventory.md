@@ -60,7 +60,6 @@ supply-reconciliation loop.
 - `baseline_seed_comparison_workflow.py`
 - `outlook_mapping_maintenance_workflow.py`
 - `transformation_entry.py`
-- `minor_demand_workflow.py`
 
 ### 4. Legacy / Archive
 
@@ -85,6 +84,7 @@ entry points.
 - `codebase/old_workflows/leap_results_variable_probe_workflow.py`
 - `codebase/old_workflows/transformation_leap_probe_workflow.py`
 - `codebase/old_workflows/unmet_requirements_results_probe_workflow.py`
+- `minor_demand_workflow.py`
 
 ## Layout Note
 
