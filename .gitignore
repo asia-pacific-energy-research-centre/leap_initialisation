@@ -206,8 +206,22 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# Track files directly under config/, including workbook configs, but keep subfolders ignored.
+# Track files directly under config, but keep generated data and output trees out of git.
 !config/*
 config/*/
 !config/runtime_tables/
 !config/runtime_tables/*.csv
+
+# Repository outputs and large source data are restored from shared archives.
+data/*
+!data/README.md
+!data/**/README.md
+!data/**/.gitkeep
+outputs/
+results/
+intermediate_data/
+tmp/
+!outputs/.gitkeep
+!results/.gitkeep
+!intermediate_data/.gitkeep
+!tmp/.gitkeep
