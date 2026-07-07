@@ -29,23 +29,42 @@ separately below.
 | `outlook_mapping_maintenance_workflow.py` | Maintenance workflow for the Outlook mapping workbook. It recomputes audit columns and produces mapping QA outputs. |
 | `transformation_entry.py` | Convenience entrypoint used by the full-model notebook to run transformation-related workflow pieces together. |
 
-## What Each Core Workflow Covers
+## Workflow Buckets
 
-This section repeats the active workflows in a more conversational form.
+### 1. Reconciliation Loop
 
-- `supply_reconciliation_workflow.py`: the iterative repair loop that keeps LEAP supply and transformation branches aligned with expected balances.
-- `supply_workflow.py`: the lightweight supply-only path when reconciliation is not needed.
-- `transformation_workflow.py`: the main transformation seed builder for the non-hydrogen modules.
-- `hydrogen_transformation_workflow.py`: the hydrogen-only transformation builder.
-- `transfers_workflow.py`: the transfer-process builder.
-- `aggregated_demand_workflow.py`: the combined demand proxy branch builder.
-- `electricity_heat_interim_workflow.py`: the interim power and heat branch builder.
-- `other_loss_own_use_proxy_workflow.py`: the own-use/loss proxy builder.
-- `refining_workflow.py`: the refining-specific branch builder.
-- `minor_demand_workflow.py`: the minor-demand scaffold for agriculture, fishing, and non-specified others.
-- `baseline_seed_comparison_workflow.py`: the baseline-seed review/comparison tool.
-- `outlook_mapping_maintenance_workflow.py`: the mapping QA and maintenance tool.
-- `transformation_entry.py`: the notebook-friendly orchestration entrypoint.
+These workflows are part of the supply reconciliation cycle itself.
+
+- `supply_reconciliation_workflow.py`
+
+### 2. Initialisation-Only, But Required
+
+These workflows are not iterated inside the reconciliation loop, but their
+outputs are part of the final baseline seed or the broader full-model
+initialisation path.
+
+- `supply_workflow.py`
+- `transformation_workflow.py`
+- `hydrogen_transformation_workflow.py`
+- `transfers_workflow.py`
+- `aggregated_demand_workflow.py`
+- `electricity_heat_interim_workflow.py`
+- `other_loss_own_use_proxy_workflow.py`
+- `refining_workflow.py`
+- `minor_demand_workflow.py`
+
+### 3. Standalone / Convenience / QA
+
+These are useful supporting workflows, but they are not part of the main
+reconciliation loop.
+
+- `baseline_seed_comparison_workflow.py`
+- `outlook_mapping_maintenance_workflow.py`
+- `transformation_entry.py`
+
+### 4. Legacy / Archive
+
+These are retained for reference only.
 
 ## Archived Or Legacy Workflows
 
@@ -73,4 +92,3 @@ Several of these workflows are imported directly by tests, notebooks, and
 supporting modules. Moving them into a new subfolder would require a
 compatibility plan, not just a file move, because the current module names are
 part of the runtime contract.
-
