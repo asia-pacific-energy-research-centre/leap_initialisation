@@ -40,8 +40,8 @@ These workflows are part of the supply reconciliation cycle itself.
 ### 2. Initialisation-Only, But Required
 
 These workflows are not iterated inside the reconciliation loop, but their
-outputs are part of the final baseline seed or the broader full-model
-initialisation path.
+outputs are part of the supply-reconciliation initialization chain and final
+baseline seed.
 
 - `supply_workflow.py`
 - `transformation_workflow.py`
@@ -51,16 +51,16 @@ initialisation path.
 - `electricity_heat_interim_workflow.py`
 - `other_loss_own_use_proxy_workflow.py`
 - `refining_workflow.py`
-- `minor_demand_workflow.py`
 
 ### 3. Standalone / Convenience / QA
 
 These are useful supporting workflows, but they are not part of the main
-reconciliation loop.
+supply-reconciliation loop.
 
 - `baseline_seed_comparison_workflow.py`
 - `outlook_mapping_maintenance_workflow.py`
 - `transformation_entry.py`
+- `minor_demand_workflow.py`
 
 ### 4. Legacy / Archive
 
