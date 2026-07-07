@@ -652,6 +652,33 @@ def load_ninth_data(path: Path | str = NINTH_DATA_PATH) -> pd.DataFrame:
     return _drop_ninth_subtotals(df)
 
 
+def _append_aggregate_economy_rows(
+    df: pd.DataFrame,
+    *,
+    economy_label: str,
+) -> pd.DataFrame:
+    """Append rows that sum all member economies for an aggregate preflight."""
+    if df.empty or "economy" not in df.columns:
+        return df
+    year_cols = [col for col in df.columns if str(col).isdigit()]
+    if not year_cols:
+        return df
+    normalized_label = _normalize_economy(economy_label)
+    if "economy_key" in df.columns and df["economy_key"].eq(normalized_label).any():
+        return df
+    group_cols = [
+        col
+        for col in df.columns
+        if col not in {*year_cols, "economy", "economy_key"}
+    ]
+    totals = df.groupby(group_cols, dropna=False)[year_cols].sum().reset_index()
+    totals["economy"] = normalized_label
+    if "economy_key" in df.columns:
+        totals["economy_key"] = normalized_label
+    totals = totals.reindex(columns=df.columns)
+    return pd.concat([df, totals], ignore_index=True)
+
+
 def load_output_fuel_validation_esto_tables(
     paths: Sequence[Path | str] = OUTPUT_FUEL_VALIDATION_ESTO_PATHS,
 ) -> list[tuple[str, pd.DataFrame]]:
@@ -1033,6 +1060,22 @@ def assemble_proxy_workbook(
     region = region or EXPORT_REGION
     esto_data = load_esto_data()
     ninth_data = load_ninth_data()
+    is_aggregate, aggregate_label, _ = workflow_common.resolve_aggregate_economy(
+        [economy],
+        aggregate_label=economy,
+    )
+    if is_aggregate:
+        esto_data = _append_aggregate_economy_rows(
+            esto_data,
+            economy_label=aggregate_label,
+        )
+        ninth_data = _append_aggregate_economy_rows(
+            ninth_data,
+            economy_label=aggregate_label,
+        )
+        # Validation snapshots contain member economies rather than a literal
+        # aggregate row, so validate aggregate output fuels across all members.
+        output_scope = "all_economies"
     leap_balance_activity = pd.DataFrame()
     if str(activity_source_mode or "").strip().lower() in {"second", "second_run", "leap", "leap_balance", "leap_outputs"}:
         balance_path = resolve_leap_balance_workbook_path(

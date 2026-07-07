@@ -767,15 +767,34 @@ class _TeeWriter:
     def __init__(self, file_obj, stream):
         self._file = file_obj
         self._stream = stream
+        self._stream_available = True
+
+    def _disable_unavailable_stream(self, exc):
+        if not self._stream_available:
+            return
+        self._stream_available = False
+        self._file.write(
+            "\n[WARN] Console output became unavailable; continuing with file logging only: "
+            f"{exc!r}\n"
+        )
+        self._file.flush()
 
     def write(self, data):
         self._file.write(data)
-        self._stream.write(data)
+        if self._stream_available:
+            try:
+                self._stream.write(data)
+            except (OSError, UnicodeError) as exc:
+                self._disable_unavailable_stream(exc)
         return len(data)
 
     def flush(self):
         self._file.flush()
-        self._stream.flush()
+        if self._stream_available:
+            try:
+                self._stream.flush()
+            except (OSError, UnicodeError) as exc:
+                self._disable_unavailable_stream(exc)
 
     def isatty(self):
         return False
