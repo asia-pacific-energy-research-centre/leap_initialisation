@@ -127,6 +127,12 @@ vocabularies (source→ESTO in mappings; source→produced-demand in
 initialisation). The goal is matching conventions and output semantics, not
 shared implementation.
 
+For any LEAP-side terminology or behaviour that is not obvious from the
+workflow code itself, use the local manual clone at
+`C:\Users\Work\github\LEAP_manual` as the tie-breaker reference. The most
+useful sections are `08 - Transformation`, `10 - Resources`, `18 - Expressions`,
+and `21.1 - API`.
+
 ## Implementation
 
 - `codebase/functions/balance_demand_conservation.py` — builder functions. They

@@ -4,6 +4,12 @@ Work in `C:\Users\Work\github\leap_initialisation`. `leap_mappings` and
 `leap_dashboard` are sibling repos at `C:\Users\Work\github\leap_mappings` and
 `C:\Users\Work\github\leap_dashboard`.
 
+If you need LEAP-side semantics while deciding whether a mapping issue is a
+real modelling rule or a repo-specific fix, consult the local manual clone at
+`C:\Users\Work\github\LEAP_manual` first. The sections most likely to matter
+here are `08 - Transformation`, `10 - Resources`, `18 - Expressions`, and
+`21.1 - API`.
+
 ## Background
 
 During a 20_USA baseline_seed run, `supply_reconciliation_balance_demand_issues.csv`

@@ -11,6 +11,12 @@ artifacts, then propose the smallest reliable implementation for
 `leap_mappings`. Do not force the initialisation design onto the mappings
 pipeline where the semantics differ. Do not modify either mapping workbook.
 
+For LEAP-side semantics that are not already encoded in code or workbook
+structure, use the local manual clone at `C:\Users\Work\github\LEAP_manual`
+as the reference point before proposing new mapping behavior. The sections
+most likely to matter are `08 - Transformation`, `10 - Resources`,
+`18 - Expressions`, and `21.1 - API`.
+
 Read and follow both repositories' `AGENTS.md` files and:
 
 - `leap_initialisation/docs/balance_demand_conservation_check.md`
@@ -228,4 +234,3 @@ Return a concrete implementation plan for `leap_mappings` containing:
 
 Be explicit about gaps. A smaller honest diagnostic is preferred to a complete-
 looking lineage table reconstructed from insufficient data.
-

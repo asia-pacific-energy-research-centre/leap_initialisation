@@ -46,10 +46,11 @@ This guide is based on the documented workflow logic. It should be checked again
 - [14. Practical checklist before running](#14-practical-checklist-before-running)
 - [15. Practical checklist after running](#15-practical-checklist-after-running)
 - [16. When the process is finished](#16-when-the-process-is-finished)
+- [17. How to use the rule findings files](#17-how-to-use-the-rule-findings-files)
 
 ### Code reference
 
-- [17. Code reference](#17-code-reference)
+- [18. Code reference](#18-code-reference)
 
 ---
 
@@ -69,6 +70,8 @@ In short: this workflow only initialises and adjusts supply, transformation, and
 Once initialisation is complete, no sector is adjusted through this workflow — all further changes are made directly in LEAP. Only if a sector becomes significantly muddled would reinitialisation be worth considering, and even then the most practical approach is usually to apply the latest initialisation workflow output for the affected sectors and fuels rather than re-running the full process.
 
 **Mapping reference.** The fuel and sector mappings used to connect LEAP outputs to ESTO and 9th Outlook comparison data are maintained in the `leap_mappings` repository. See `leap_mappings/docs/mappings_system.md` for the canonical reference on how LEAP branches, ESTO flows, and 9th Outlook sectors correspond to each other. Workflow scripts in this repository should draw on those mappings rather than defining fuel or sector relationships internally.
+
+For LEAP-side terminology and modelling semantics, use the local reference clone at `C:\Users\Work\github\LEAP_manual` as the secondary reference. In practice, the sections that matter most for this workflow are `08 - Transformation`, `10 - Resources`, `18 - Expressions`, and `21.1 - API`.
 
 ### The initialisation workflow scripts
 
@@ -656,7 +659,105 @@ The process is finished when:
 
 The final model should be usable by other researchers without needing them to understand every detail of the reconciliation loop.
 
-## 17. Code reference
+## 17. How to use the rule findings files
+
+The baseline-seed validation step writes rule findings files that are meant to be read, filtered, and fixed. They are not just audit output. If a run fails late in the process, these files are usually the fastest way to find the exact branches, workbooks, and workflows that need attention.
+
+The main location is:
+
+- `outputs/leap_exports/supply_reconciliation/preflight_compressed_projection/workbooks/supporting_files/baseline_seed_validation/`
+
+For a specific economy, look for files named like:
+
+- `combined_st_00_APEC_Target_Reference_Current_Accounts_rule_findings.csv`
+
+The short `combined_st_...` stem is the per-economy combined seed workbook stem. The validation folder may also contain related helper files such as duplicate-group diagnostics and documented exclusions, depending on the run mode and what the validator needed to write.
+
+### What the files mean
+
+- `*_rule_findings.csv` is the main file to inspect first. It lists every rule hit, with one row per finding.
+- `*_duplicate_groups.csv` groups logical duplicates that need attention together.
+- `*_issue_groups.csv` groups downstream symptoms that share the same missing canonical branch root cause. This is the clearest file when `SEED-011` and `SEED-003`/`SEED-004`/`SEED-005` all point at the same branch.
+- `*_documented_exclusions.csv` records rows that were explicitly excluded from blocking because a documented exception or ignore rule applied.
+- `baseline_seed_*_consolidated_rule_findings.csv` combines the findings from all economies and producers into one run-level report.
+- `baseline_seed_*_consolidated_issue_groups.csv` is the run-level grouped summary for the same root-cause cases.
+
+The most useful columns are:
+
+- `rule_id` - the validation rule that fired, such as `SEED-003`, `SEED-004`, `SEED-011`, or `SEED-012`.
+- `blocking` - whether the finding prevents final import workbook creation.
+- `branch` or `Branch Path` - the LEAP branch that needs attention.
+- `variable` or `Variable` - the LEAP variable on that branch.
+- `scenario` - `Current Accounts`, `Reference`, or `Target`.
+- `region` - the economy code.
+- `source_workflow` - the workflow that wrote the row, which tells you where to fix the source logic.
+- `source_file` - the exact workbook that produced the row.
+- `evidence` - the key clue used by the validator, such as the ID pair, duplicate signature, or missing producer path.
+- `message` - the human-readable reason for the finding.
+
+### How to triage them
+
+Start with the consolidated report if you want the run-wide picture, then drop into the per-economy `*_rule_findings.csv` files for the actual fix work.
+
+1. Filter to `blocking = True`.
+2. Group by `rule_id` so you can see which rules dominate the failure.
+3. Sort by `source_workflow` and `source_file` to find the upstream workbook that owns the problem.
+4. Use `branch` and `variable` to locate the exact LEAP path.
+5. If the problem is a duplicate, use the duplicate-group file rather than trying to fix rows one by one.
+6. If the problem is coverage-related, check whether the workflow was expected to produce that economy or scenario at all.
+
+For quick inspection in Excel or a notebook, the same pattern works well:
+
+```python
+#%%
+import pandas as pd
+
+path = r"C:\Users\Work\github\leap_initialisation\outputs\leap_exports\supply_reconciliation\preflight_compressed_projection\workbooks\supporting_files\baseline_seed_validation\combined_st_00_APEC_Target_Reference_Current_Accounts_rule_findings.csv"
+df = pd.read_csv(path)
+
+blocking = df[df["blocking"] == True]
+top_rules = blocking.groupby("rule_id").size().sort_values(ascending=False)
+top_sources = blocking.groupby(["source_workflow", "source_file"]).size().sort_values(ascending=False)
+#%%
+```
+
+### Rule-specific guidance
+
+`SEED-003` and `SEED-004` are the first place to look when a row is clearly on the right branch but still fails validation. They usually mean the workflow wrote a branch with missing canonical IDs, and the `source_workflow` / `source_file` columns tell you which generator produced it. `SEED-003` is the missing-ID case; `SEED-004` is the same row class when the expression is nonzero or unparseable, so it needs a source fix rather than a data patch.
+
+`SEED-005` is the zero-expression version of the missing-ID problem. These rows often look harmless, but they still need review because they are usually reset rows or placeholders that must be traced back to the owning workflow.
+
+`SEED-006`, `SEED-007`, and `SEED-008` are share-group rules. If these fire, the issue is usually not in the reconciliation step itself. It is normally in the workflow that assembled the output/process/feedstock share table. The useful clue is the `branch` plus the `source_workflow`, which points to the specific sector workflow that needs a logic fix.
+
+`SEED-011` means the branch path is not present in the canonical full-model export. For these rows, do not start by editing the seed file. First confirm whether the branch should exist at all. If it should, the issue is usually an upstream model-structure gap or a naming mismatch. If it should not, the row belongs in the ignore or exclusion path instead.
+
+`SEED-012` is a producer/economy coverage rule. It means a configured producer workflow did not provide a readable workbook for that economy. The `source_workflow` and `source_file` columns are the first check, but the real fix is usually to confirm whether that workflow is supposed to run for the economy and whether its output was produced in the normal location.
+
+### Where to inspect the exact issue
+
+The exact issue is usually not in the combined findings file itself. Use it as the index, then jump to the source workbook named in `source_file`.
+
+For example, when the findings show rows like:
+
+- `Transformation\CHP interim\Processes\CHP interim\Feedstock Fuels\Ammonia`
+- `Transformation\Electricity interim\Processes\Electricity interim\Feedstock Fuels\Ammonia`
+- `Transformation\Electricity interim\Processes\Electricity interim\Feedstock Fuels\Other hydrocarbons`
+
+the problem is usually in `electricity_heat_interim_workflow.py` or its generated workbook, not in the reconciliation writer. The findings tell you which branch is bad; the source workbook shows the bad row and its expression.
+
+For `SEED-011`, compare the branch name against the canonical full-model export. For `SEED-012`, compare the configured producer list against the actual per-economy workbook inventory. Those two rules are often “system-level” failures that explain many downstream rows at once.
+
+If you want a fast workflow, use this order:
+
+1. Open the consolidated findings file.
+2. Filter to the top blocking `rule_id`.
+3. Open the per-economy findings file for the same rule.
+4. Use `source_workflow` and `source_file` to open the producing workbook.
+5. Fix the producing workflow, rerun, and confirm the finding disappears.
+
+See also `docs/baseline_seed_rule_inventory.md` for the canonical rule descriptions and the validation implementation in `codebase/functions/baseline_seed_validation.py` for the exact rule logic.
+
+## 18. Code reference
 
 ```text
 Main settings in supply_reconciliation_workflow.py

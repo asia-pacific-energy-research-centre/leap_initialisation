@@ -6,6 +6,8 @@ Make the balance-demand conservation check always answer **one** question — *"
 
 Keep everything already built (breakdown CSV, lineage CSV, totals diagnostic CSV, scope audits, value classifications). This is a **realignment of what the "actual" side is compared against**, not a rewrite.
 
+If a decision depends on LEAP semantics rather than the repository's own mapping or conservation code, check the local manual clone at `C:\Users\Work\github\LEAP_manual` before inferring a new rule. The most useful sections here are `08 - Transformation`, `10 - Resources`, `18 - Expressions`, and `21.1 - API`.
+
 ## Why (read this so you don't reintroduce the problem)
 
 There are two genuinely different questions, and the current check blurs them:

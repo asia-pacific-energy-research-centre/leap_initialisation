@@ -5,6 +5,12 @@ initialisation workflows. Legacy behaviour is evidence, not authority. Only
 items classified as `confirmed_rule` or `confirmed_exception` are enforced by
 the baseline-seed validators.
 
+When a rule question is about LEAP behaviour rather than repo-specific mapping
+data, cross-check the local manual clone at `C:\Users\Work\github\LEAP_manual`
+before inferring a new modelling rule. The most useful sections here are
+`08 - Transformation`, `10 - Resources`, `18 - Expressions`, and
+`21.1 - API`.
+
 ## Comparator gap assessment
 
 Before this work, `baseline_seed_comparison_workflow.py` checked file inventory,

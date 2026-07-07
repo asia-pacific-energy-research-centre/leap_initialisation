@@ -4,6 +4,8 @@ This is the decision log for `leap_initialisation`. Record rules whose correct b
 
 Cross-repository decisions use a `CROSS-###` ID and have one authoritative entry in the repository that owns the implementation. Other affected repositories should link to that entry instead of copying it.
 
+For LEAP semantics and terminology, use the local reference clone at `C:\Users\Work\github\LEAP_manual`. The most useful sections for this repo are `08 - Transformation`, `10 - Resources`, `18 - Expressions`, and `21.1 - API`; consult them before inventing a modelling rule that is not already established by source data or canonical mappings.
+
 ## INIT-001: Aggregate fuel labels are not LEAP template branches
 
 **Status:** Confirmed
@@ -254,6 +256,20 @@ diagnostics, and no invalid final workbook is written or substituted.
 
 - 2026-06-28: Confirmed deferred, consolidated reporting for long-running baseline-seed production.
 - 2026-06-28: Final baseline-seed writing now validates every requested economy first, writes consolidated findings, and performs no archive or final-write action when any economy remains blocking.
+- 2026-07-07: **Known deviation, unreviewed.** `codebase/configuration/workflow_config.py`
+  currently sets `BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True`,
+  which makes `write_per_economy_combined_workbooks` downgrade every blocking
+  finding to a warning and write the workbook anyway -- the exact behavior this
+  rule prohibits. It was found already set (uncommitted) while fixing SEED-006/
+  007/008 share-group generation and left in place at the user's explicit
+  instruction pending review, rather than silently reverted or silently kept.
+  It currently causes 3 known failures in
+  `tests/test_baseline_seed_writer_validation.py` (writer-level blocking
+  tests unrelated to SEED-006/007/008). The SEED-006/007/008 generation fix
+  itself was verified independently of this flag, via
+  `save_combined_supply_transformation_export`, which does not read the flag
+  and enforces `raise_on_blocking=True` by default. Revert the flag to
+  `False` to restore this rule's guarantee in full.
 
 ## INIT-006: Baseline-seed scenario windows and refining capacity policy
 
