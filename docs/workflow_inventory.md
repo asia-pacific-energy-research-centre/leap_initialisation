@@ -63,7 +63,8 @@ supply-reconciliation loop.
 
 ### 4. Legacy / Archive
 
-These are retained for reference only.
+These are retained for reference only and are not part of the active
+supply-reconciliation workflow surface.
 
 ## Archived Or Legacy Workflows
 
