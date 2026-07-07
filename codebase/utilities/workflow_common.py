@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import re
 import subprocess
 import sys
@@ -541,7 +542,33 @@ def format_filename_segment(value: str | None) -> str:
     if not text:
         return ""
     sanitized = re.sub(r"[^A-Za-z0-9_-]+", "_", text)
-    return sanitized.strip("_") or text
+    sanitized = sanitized.strip("_") or text
+    if len(sanitized) <= 48:
+        return sanitized
+    digest = hashlib.sha1(sanitized.encode("utf-8")).hexdigest()[:8]
+    prefix = sanitized[:39].rstrip("_-")
+    return f"{prefix}_{digest}"
+
+
+def compact_filename_segment(
+    value: str | None,
+    *,
+    max_length: int = 48,
+    hash_length: int = 8,
+) -> str:
+    """Return a stable, Windows-friendly filename segment.
+
+    If the sanitized value is longer than ``max_length``, keep the front of the
+    label and append a short hash suffix so the name stays readable but compact.
+    """
+    text = format_filename_segment(value)
+    if not text or len(text) <= max_length:
+        return text
+    hash_length = max(4, min(int(hash_length), max_length - 2))
+    digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:hash_length]
+    keep = max_length - hash_length - 1
+    prefix = max(1, keep)
+    return f"{text[:prefix].rstrip('_-')}_{digest}"
 
 
 def normalize_scenarios(scenarios: str | Iterable[str] | None) -> list[str]:

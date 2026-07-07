@@ -159,7 +159,7 @@ EXPORT_OUTPUT_DIR = OUTPUT_DIR / "workbooks"  # supply+transformation+transfer L
 EXPORT_FILENAME_TEMPLATE = supply_data_pipeline.EXPORT_FILENAME_TEMPLATE
 TRANSFORMATION_EXPORT_OUTPUT_DIR = EXPORT_OUTPUT_DIR
 TRANSFORMATION_EXPORT_FILENAME_TEMPLATE = transformation_workflow.core.EXPORT_FILENAME_TEMPLATE
-COMBINED_EXPORT_FILENAME_TEMPLATE = "combined_supply_transformation_leap_imports_{economy}_{scenario}.xlsx"
+COMBINED_EXPORT_FILENAME_TEMPLATE = "combined_st_{economy}_{scenario}.xlsx"
 
 # LEAP results workbook discovery and refinery fallback settings.
 LEAP_RESULTS_TABLES_DIR = REPO_ROOT / "data" / "leap results tables"
@@ -221,7 +221,7 @@ OTHER_LOSS_OWN_USE_LEAP_BALANCE_SCENARIO = "Target"
 OTHER_LOSS_OWN_USE_LEAP_BALANCE_DATE_ID = None
 
 # Results packaging controls.
-RESULTS_SINGLE_FILE_NAME = "supply_reconciliation_run.xlsx"
+RESULTS_SINGLE_FILE_NAME = "supply_recon_run.xlsx"
 RESULTS_SINGLE_FILE_OUTPUT = True
 RESULTS_SINGLE_FILE_ARCHIVE_MIN_HOURS = 24
 RESULTS_SINGLE_FILE_ARCHIVE_EVERY_RUN = True

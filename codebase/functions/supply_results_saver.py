@@ -1039,8 +1039,9 @@ def _resolve_results_single_file_name(
         if safe_mode and not stem.lower().endswith(f"_{safe_mode}".lower()):
             stem = f"{stem}_{safe_mode}"
     if economies:
-        economy_token = "-".join(
-            re.sub(r"[^A-Za-z0-9_]+", "", str(e)) for e in economies if str(e).strip()
+        economy_token = workflow_common.compact_filename_segment(
+            "-".join(re.sub(r"[^A-Za-z0-9_]+", "", str(e)) for e in economies if str(e).strip()),
+            max_length=32,
         )
         if economy_token:
             stem = f"{stem}_{economy_token}"
