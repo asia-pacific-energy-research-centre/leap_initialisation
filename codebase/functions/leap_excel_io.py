@@ -56,6 +56,120 @@ def write_export_sheet(path, sheet_name, header_rows, columns, data):
         output.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
 
 
+def attach_export_ids(
+    export_df: pd.DataFrame,
+    reference_export_path: Path | str | None,
+    *,
+    sheet_name: str = "Export",
+) -> pd.DataFrame:
+    """Attach LEAP ID columns using a reference export workbook.
+
+    Rows that are not found in the reference workbook are kept and receive -1
+    IDs. This mirrors the consolidated reconciliation output behavior.
+    """
+    id_cols = ["BranchID", "VariableID", "ScenarioID", "RegionID"]
+    key_cols = ["Branch Path", "Variable", "Scenario", "Region"]
+    out = export_df.copy()
+
+    if not reference_export_path:
+        for col in id_cols:
+            out[col] = -1
+        return out[[*id_cols, *[col for col in out.columns if col not in id_cols]]]
+
+    path = Path(reference_export_path)
+    if not path.exists():
+        print(f"[WARN] ID lookup workbook not found, using -1 IDs: {path}")
+        for col in id_cols:
+            out[col] = -1
+        return out[[*id_cols, *[col for col in out.columns if col not in id_cols]]]
+
+    try:
+        reference = pd.read_excel(path, sheet_name=sheet_name, header=2)
+    except Exception as exc:
+        print(f"[WARN] Failed reading ID lookup workbook {path.name}: {exc}")
+        for col in id_cols:
+            out[col] = -1
+        return out[[*id_cols, *[col for col in out.columns if col not in id_cols]]]
+
+    required_cols = [*id_cols, *key_cols]
+    missing_cols = [col for col in required_cols if col not in reference.columns]
+    if missing_cols:
+        print(
+            "[WARN] ID lookup workbook is missing expected columns; using -1 IDs: "
+            f"{missing_cols}"
+        )
+        for col in id_cols:
+            out[col] = -1
+        return out[[*id_cols, *[col for col in out.columns if col not in id_cols]]]
+
+    def _norm_text(value: object) -> str:
+        if value is None or pd.isna(value):
+            return ""
+        return str(value).strip().lower()
+
+    source = reference[required_cols].copy()
+    for col in id_cols:
+        source[col] = pd.to_numeric(source[col], errors="coerce").astype("Int64")
+    for col in key_cols:
+        source[f"__k_{col}"] = source[col].map(_norm_text)
+        out[f"__k_{col}"] = out[col].map(_norm_text)
+
+    source = source.drop_duplicates(subset=[f"__k_{col}" for col in key_cols], keep="first")
+    source = source[[*id_cols, *[f"__k_{col}" for col in key_cols]]]
+
+    merged = out.merge(
+        source,
+        how="left",
+        left_on=[f"__k_{col}" for col in key_cols],
+        right_on=[f"__k_{col}" for col in key_cols],
+    )
+
+    if merged["BranchID"].isna().any():
+        fallback_source = reference[required_cols].copy()
+        for col in ["Branch Path", "Variable"]:
+            fallback_source[f"__k_{col}"] = fallback_source[col].map(_norm_text)
+        fallback_source = fallback_source.drop_duplicates(
+            subset=["__k_Branch Path", "__k_Variable"],
+            keep="first",
+        )
+        fallback_map = (
+            fallback_source
+            .set_index(["__k_Branch Path", "__k_Variable"])[id_cols]
+            .apply(lambda row: tuple(row.values.tolist()), axis=1)
+            .to_dict()
+        )
+        fallback_mask = merged["BranchID"].isna()
+        if fallback_mask.any():
+            fallback_ids = merged.loc[
+                fallback_mask,
+                ["__k_Branch Path", "__k_Variable"],
+            ].apply(
+                lambda row: fallback_map.get(
+                    (row["__k_Branch Path"], row["__k_Variable"]),
+                    (pd.NA, pd.NA, pd.NA, pd.NA),
+                ),
+                axis=1,
+            )
+            fallback_values = pd.DataFrame(
+                fallback_ids.tolist(),
+                columns=id_cols,
+                index=merged.index[fallback_mask],
+            )
+            for col in id_cols:
+                merged.loc[fallback_mask, col] = fallback_values[col].values
+
+    for col in id_cols:
+        merged[col] = pd.to_numeric(merged[col], errors="coerce").fillna(-1).astype(int)
+
+    matched = int((merged["BranchID"] != -1).sum())
+    total = int(len(merged))
+    print(f"[INFO] Attached LEAP IDs from {path.name}: matched {matched}/{total} rows.")
+
+    merged = merged.drop(columns=[f"__k_{col}" for col in key_cols], errors="ignore")
+    merged = merged[[*id_cols, *[col for col in merged.columns if col not in id_cols]]]
+    return merged
+
+
 def create_import_instructions_sheet(writer):
     """Create instructions sheet inside the Excel file."""
     instructions = pd.DataFrame({
@@ -123,6 +237,7 @@ def finalise_export_df(log_df, scenario, region, base_year, final_year
     pivot_index_cols = ["Branch_Path", "Scenario", "Measure", "Units", "Scale", "Per..."]
     pivot_key_cols = pivot_index_cols + ["Date"]
     duplicate_mask = log_df.duplicated(subset=pivot_key_cols, keep=False)
+    duplicate_contributions = pd.DataFrame()
     if duplicate_mask.any():
         duplicate_count = int(duplicate_mask.sum())
         duplicate_groups = (
@@ -131,16 +246,62 @@ def finalise_export_df(log_df, scenario, region, base_year, final_year
             .agg(row_count=("Value", "size"), summed_value=("Value", "sum"))
             .sort_values(["row_count", "Branch_Path", "Measure", "Date"], ascending=[False, True, True, True])
         )
-        print(
-            "[WARN] Found "
-            f"{duplicate_count} duplicate export log row(s) across "
-            f"{len(duplicate_groups)} branch/scenario/variable/year key(s); summing before pivot."
-        )
+        share_group_mask = duplicate_groups["Measure"].astype(str).str.endswith("Share")
+        expected_share_groups = duplicate_groups[share_group_mask]
+        unexpected_groups = duplicate_groups[~share_group_mask]
+        if not expected_share_groups.empty:
+            print(
+                "[INFO] Aggregating expected share contributions across "
+                f"{len(expected_share_groups)} branch/scenario/variable/year key(s)."
+            )
+        if not unexpected_groups.empty:
+            print(
+                "[WARN] Found duplicate non-share export rows across "
+                f"{len(unexpected_groups)} branch/scenario/variable/year key(s); "
+                "summing before pivot."
+            )
         print(duplicate_groups.head(10).to_string(index=False))
+        duplicate_contributions = log_df.loc[
+            duplicate_mask, pivot_key_cols + ["Value"]
+        ].copy()
+        grouped_contributions = duplicate_contributions.groupby(
+            pivot_key_cols, dropna=False
+        )["Value"]
+        duplicate_contributions["contribution_number"] = grouped_contributions.cumcount() + 1
+        duplicate_contributions["contribution_count"] = grouped_contributions.transform("size")
+        duplicate_contributions["summed_value"] = grouped_contributions.transform("sum")
+        duplicate_contributions["duplicate_type"] = duplicate_contributions["Measure"].apply(
+            lambda value: "expected_share_contribution"
+            if str(value).endswith("Share")
+            else "unexpected_non_share_duplicate"
+        )
         log_df = (
             log_df.groupby(pivot_key_cols, dropna=False, as_index=False)
             .agg(Value=("Value", "sum"))
         )
+
+    invalid_share_totals = pd.DataFrame()
+    share_rows = log_df[log_df["Measure"].astype(str).str.endswith("Share")].copy()
+    if not share_rows.empty:
+        share_rows["Parent_Branch_Path"] = (
+            share_rows["Branch_Path"].astype(str).str.rsplit("\\", n=1).str[0]
+        )
+        share_group_cols = [
+            "Parent_Branch_Path", "Scenario", "Measure", "Units", "Scale", "Per...", "Date"
+        ]
+        share_totals = (
+            share_rows.groupby(share_group_cols, dropna=False, as_index=False)
+            .agg(share_total=("Value", "sum"), sibling_count=("Branch_Path", "nunique"))
+        )
+        invalid_share_totals = share_totals[
+            (share_totals["share_total"] - 100.0).abs() > 1e-6
+        ].copy()
+        if not invalid_share_totals.empty:
+            print(
+                "[WARN] Found "
+                f"{len(invalid_share_totals)} share parent/scenario/variable/year group(s) "
+                "whose aggregated sibling total is not 100%."
+            )
 
     pivot_df = (
         log_df.pivot(
@@ -150,6 +311,8 @@ def finalise_export_df(log_df, scenario, region, base_year, final_year
         )
         .reset_index()
     )
+    pivot_df.attrs["duplicate_export_contributions"] = duplicate_contributions
+    pivot_df.attrs["invalid_share_totals"] = invalid_share_totals
     
     #now replace back the na values
     for col in ['Units', 'Scale', 'Per...']:
@@ -245,6 +408,34 @@ def save_export_files(leap_export_df, export_df_for_viewing, leap_export_filenam
     
     leap_export_df2 = leap_export_df.copy()
     export_df_for_viewing2 = export_df_for_viewing.copy()
+
+    diagnostics_dir = Path(leap_export_filename).parent / "supporting_files" / "diagnostics"
+    diagnostic_stem = Path(leap_export_filename).stem
+    for attr_name, suffix in (
+        ("duplicate_export_contributions", "duplicate_export_contributions"),
+        ("invalid_share_totals", "invalid_share_totals"),
+    ):
+        diagnostic = leap_export_df.attrs.get(attr_name)
+        if not isinstance(diagnostic, pd.DataFrame) or diagnostic.empty:
+            diagnostic = export_df_for_viewing.attrs.get(attr_name)
+        if isinstance(diagnostic, pd.DataFrame) and not diagnostic.empty:
+            diagnostics_dir.mkdir(parents=True, exist_ok=True)
+            diagnostic_path = diagnostics_dir / f"{diagnostic_stem}_{suffix}.csv"
+            diagnostic.to_csv(diagnostic_path, index=False)
+            print(f"[INFO] Wrote export aggregation diagnostic: {diagnostic_path}")
+
+    def _ensure_level_spacer(df: pd.DataFrame) -> pd.DataFrame:
+        if "Expression" not in df.columns:
+            return df
+        if "" in df.columns:
+            return df
+        insert_at = df.columns.get_loc("Expression") + 1
+        df = df.copy()
+        df.insert(insert_at, "", pd.NA)
+        return df
+
+    leap_export_df2 = _ensure_level_spacer(leap_export_df2)
+    export_df_for_viewing2 = _ensure_level_spacer(export_df_for_viewing2)
     
     # Create header rows with all columns from the dataframe
     # Row 0: Area and Version info

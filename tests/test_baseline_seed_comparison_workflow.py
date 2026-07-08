@@ -241,6 +241,19 @@ def test_aggregated_demand_patch_scope_does_not_strip_entire_demand_tree() -> No
     ]
 
 
+def test_transfers_patch_scope_covers_every_transfer_process_title() -> None:
+    # strip_prefixes must cover every sector title the transfers workflow can
+    # produce, otherwise a patch leaves stale rows behind (and drops new rows,
+    # since _patch_one also filters incoming rows to the active prefixes).
+    from codebase.transfers_workflow import get_transfer_sector_titles
+
+    resolved = MODULE_REGISTRY["transfers"].resolve_strip_prefixes()
+    expected = {f"Transformation\\{title}" for title in get_transfer_sector_titles()}
+    assert expected == set(resolved)
+    # The static display list must not drift from the runtime source either.
+    assert set(MODULE_REGISTRY["transfers"].strip_prefixes) == expected
+
+
 def test_missing_id_zero_exception_requires_rule_and_key_scope() -> None:
     row = _row("Resources\\Coal", "Imports", "Data(2022,0)")
     row["VariableID"] = -1

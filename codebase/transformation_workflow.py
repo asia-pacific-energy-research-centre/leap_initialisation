@@ -43,6 +43,7 @@ LEAP_API_AVAILABLE = leap_api.is_available()
 SHEET_NAME = workflow_cfg.TRANSFORMATION_WORKFLOW_SHEET_NAME
 EXPORT_FILENAME_PREFIX = workflow_cfg.TRANSFORMATION_WORKFLOW_EXPORT_FILENAME_PREFIX
 DEFAULT_SCENARIOS = list(workflow_cfg.TRANSFORMATION_WORKFLOW_DEFAULT_SCENARIOS)
+EXPORT_ID_LOOKUP_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 # Projection allocation behavior is configured in
 # `codebase/transformation_analysis_utils.py`:
 # - `PROJECTION_SIGN_STABLE_MODE`: "all" | "selected" | "off"
@@ -431,6 +432,7 @@ def assemble_transformation_workbook(
     scenarios: Sequence[str] | None = None,
     export_output_dir: Path | str | None = None,
     filename_template: str | None = None,
+    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
     feedstock_method: str | None = None,
     aggregate_economy_label: str | None = None,
     build_export: bool = core.BUILD_LEAP_EXPORT,
@@ -484,6 +486,7 @@ def assemble_transformation_workbook(
             export_filename,
             core.EXPORT_MODEL_NAME,
             scenario_list,
+            id_lookup_path=id_lookup_path,
             in_scope_sector_titles=core.get_analyzed_sector_titles(),
         )
         if export_path:
@@ -510,6 +513,7 @@ def run_transformation_export_and_import(
     create_branches: bool = True,
     fill_branches: bool = True,
     aggregate_economy_label: str | None = None,
+    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
     feedstock_method: str | None = None,
     **export_kwargs,
 ) -> list[Path]:
@@ -520,6 +524,7 @@ def run_transformation_export_and_import(
         scenarios=scenarios,
         export_output_dir=export_kwargs.get("export_output_dir"),
         filename_template=export_kwargs.get("filename_template"),
+        id_lookup_path=export_kwargs.get("id_lookup_path", id_lookup_path),
         feedstock_method=feedstock_method,
         aggregate_economy_label=aggregate_economy_label,
         build_export=export_kwargs.get("build_export", core.BUILD_LEAP_EXPORT),
@@ -645,6 +650,7 @@ def run_transformation_pipeline(
     create_branches: bool = True,
     fill_branches: bool = True,
     aggregate_economy_label: str | None = None,
+    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
     **export_kwargs,
 ) -> list[Path]:
     return run_transformation_export_and_import(
@@ -657,6 +663,7 @@ def run_transformation_pipeline(
         create_branches=create_branches,
         fill_branches=fill_branches,
         aggregate_economy_label=aggregate_economy_label,
+        id_lookup_path=id_lookup_path,
         **export_kwargs,
     )
 

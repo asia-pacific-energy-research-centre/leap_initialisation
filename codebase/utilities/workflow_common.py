@@ -13,6 +13,7 @@ from typing import Callable, Iterable, Sequence
 
 import pandas as pd
 
+from codebase.functions.baseline_seed_validation import _is_ignored_full_model_export_branch_path
 from codebase.functions.leap_core import (
     connect_to_leap,
     create_branches_from_export_file,
@@ -780,7 +781,7 @@ def diagnose_missing_canonical_branches(
     seen: set[tuple[str, str]] = set()
     for _, row in generated_df.iterrows():
         branch_path = str(row.get("Branch Path", "")).strip()
-        if not branch_path or branch_path in canonical_branches:
+        if not branch_path or branch_path in canonical_branches or _is_ignored_full_model_export_branch_path(branch_path):
             continue
         scenario = str(row.get("Scenario", "")).strip()
         key = (branch_path, scenario)

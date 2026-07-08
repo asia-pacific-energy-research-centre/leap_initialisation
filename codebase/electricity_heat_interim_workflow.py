@@ -76,6 +76,7 @@ EXPORT_FILENAME_PREFIX = "electricity_heat_interim"
 EXPORT_FILENAME_TEMPLATE = "electricity_heat_interim_{economy}_{scenario}.xlsx"
 EXPORT_FILENAME_FALLBACK = "electricity_heat_interim_export.xlsx"
 DEFAULT_SCENARIOS = list(workflow_cfg.TRANSFORMATION_WORKFLOW_DEFAULT_SCENARIOS)
+EXPORT_ID_LOOKUP_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 
 # ---------------------------------------------------------------------------
 # Module definitions
@@ -167,6 +168,7 @@ POWER_INTERIM_NEVER_OUTPUT_LABELS: frozenset[str] = frozenset({
     "Modern renewables",
     "Petroleum products",
     "Coal",
+    "Coal products",
     "Gas",
     "Solid biomass",
     # "Solar" is NOT here: the raw "Solar" label (from 12_solar / 12_solar_unallocated)
@@ -967,7 +969,7 @@ def get_all_power_sector_feedstocks(
                     "economy": economy,
                     "module": module_name,
                     "fuel_label": label_str,
-                    "fuel_name": core.map_code_label(label_str, core.code_to_name_mapping),
+                    "fuel_name": _safe_power_interim_display_label(label_str),
                     "total_pj": round(abs(all_total), 4),
                     "in_ninth": bool(abs(all_total - proj_total) > 1e-6),
                     "in_esto": bool(abs(proj_total) > 1e-6),
@@ -1048,11 +1050,11 @@ def build_interim_branch_catalog(
     for module_name in INTERIM_MODULES:
         module_fuels = feedstock_df[feedstock_df["module"] == module_name]
         seen_fuel_names: set[str] = set()
-        for raw_fuel_name in module_fuels["fuel_name"].unique():
-            # Apply the same display-label normalization used when writing computation rows
-            # so the catalog zero-fill uses the same branch names (e.g. "Solar nonspecified"
-            # not "Unallocated Solar") and skips aggregate labels like "Petroleum products".
-            fuel_name = _safe_power_interim_display_label(raw_fuel_name)
+        for fuel_name in module_fuels["fuel_name"].unique():
+            # fuel_name is already resolved through _safe_power_interim_display_label
+            # in get_all_power_sector_feedstocks, so the same branch names are used here
+            # (e.g. "Solar nonspecified" not "Unallocated Solar") and aggregate labels
+            # like "Petroleum products" are already normalized before this check.
             if not fuel_name or fuel_name in POWER_INTERIM_NEVER_OUTPUT_LABELS:
                 continue
             if fuel_name in seen_fuel_names:
@@ -1111,6 +1113,7 @@ def assemble_electricity_heat_interim_workbook(
     economies: Iterable[str] | None = None,
     scenarios: Sequence[str] | None = None,
     export_output_dir: Path | str | None = None,
+    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
 ) -> list[Path]:
     """Build rows for all three interim modules, write one LEAP workbook per economy."""
     economy_list = list(economies or core.ECONOMIES_TO_ANALYZE)
@@ -1147,6 +1150,7 @@ def assemble_electricity_heat_interim_workbook(
             export_filename,
             core.EXPORT_MODEL_NAME,
             scenario_list,
+            id_lookup_path=id_lookup_path,
             full_branch_catalog_df=branch_catalog,
             in_scope_sector_titles=in_scope,
         )
@@ -1210,6 +1214,7 @@ def run_electricity_heat_interim_export_and_import(
     region: str | None = None,
     create_branches: bool = True,
     fill_branches: bool = True,
+    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
     **export_kwargs,
 ) -> list[Path]:
     """Run exports and optionally push the interim workbook into LEAP."""
@@ -1217,6 +1222,7 @@ def run_electricity_heat_interim_export_and_import(
         economies=economies,
         scenarios=scenarios,
         export_output_dir=export_kwargs.get("export_output_dir"),
+        id_lookup_path=export_kwargs.get("id_lookup_path", id_lookup_path),
     )
     if not exports or not include_leap_import:
         return exports

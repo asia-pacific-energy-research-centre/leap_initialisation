@@ -14,7 +14,11 @@ from typing import Sequence
 import pandas as pd
 
 from codebase.utilities.master_config import config_table_exists, read_config_table
-from codebase.functions.leap_excel_io import finalise_export_df, save_export_files
+from codebase.functions.leap_excel_io import (
+    attach_export_ids,
+    finalise_export_df,
+    save_export_files,
+)
 from codebase.functions.leap_core import sanitize_leap_branch_path
 from codebase.functions.esto_data_utils import (
     _extract_numeric_segments,
@@ -2082,7 +2086,8 @@ def build_aux_fuel_zero_rows(
     """
     Return zero-value rows for any catalog fuel branches not already set.
 
-    Covers Auxiliary Fuels (Auxiliary Fuel Use) and Feedstock Fuels (Feedstock Fuel Share).
+    Covers Auxiliary Fuels (Auxiliary Fuel Use), Feedstock Fuels (Feedstock Fuel Share),
+    and Output Fuels (Output Share).
 
     Two tiers of zero-fill:
 
@@ -2093,8 +2098,9 @@ def build_aux_fuel_zero_rows(
 
     2. In-scope sector titles (from in_scope_sector_titles): sectors this workflow is
        responsible for but where some or all economies had no ESTO data (so no process records
-       were produced).  All catalog branches under these sectors that weren't written in tier 1
-       are cleared to 0.  No 100.0 fallback here — we have no data to anchor a share.
+       were produced).  Feedstock Fuel Share and Output Share both get the same 100.0 fallback
+       as the tier-1 share logic when a sector has no recorded data, so LEAP still receives a
+       valid anchor branch instead of an all-zero share set.
 
     NOTE (part-2 limitation): On re-runs after a LEAP model solve, auxiliary fuel use
     values are reported by LEAP as transformation inputs in the energy balance, not as
@@ -2428,6 +2434,61 @@ def build_aux_fuel_zero_rows(
                                 }
                             )
 
+        # Output Share is sector-scoped rather than process-scoped.  If a sector had
+        # no recorded output data this run, anchor the first output fuel at 100.0 so
+        # LEAP still gets a valid share group, mirroring the feedstock fallback.
+        output_share_measure = "Output Share"
+        output_share_sectors_with_data: set[str] = set()
+        for ex_m, _ex_sc, ex_bp in existing:
+            if ex_m != output_share_measure:
+                continue
+            bp_parts = ex_bp.split("\\")
+            if len(bp_parts) >= 2:
+                output_share_sectors_with_data.add(bp_parts[1])
+
+        output_fuel_catalog = full_branch_catalog_df[
+            full_branch_catalog_df["fuel_group"].astype(str).str.strip() == "Output Fuels"
+        ]
+        if not output_fuel_catalog.empty:
+            for scenario in scenarios:
+                years = _years_for_scenario(scenario)
+                sector_branch_map: dict[str, list[str]] = {}
+                for _, catalog_row in output_fuel_catalog.iterrows():
+                    branch_path = str(catalog_row.get("branch_path", "")).strip()
+                    if not branch_path:
+                        continue
+                    bp_parts = branch_path.split("\\")
+                    sector = bp_parts[1] if len(bp_parts) >= 2 else ""
+                    if not sector or sector in output_share_sectors_with_data:
+                        continue
+                    if not any(
+                        branch_path.startswith("Transformation\\" + title + "\\")
+                        for title in in_scope_sector_titles
+                    ):
+                        continue
+                    sector_branch_map.setdefault(sector, []).append(branch_path)
+
+                for _sector, branches in sector_branch_map.items():
+                    first_unset = True
+                    for branch_path in branches:
+                        if (output_share_measure, scenario, branch_path) in existing:
+                            continue
+                        value = 100.0 if first_unset else 0.0
+                        first_unset = False
+                        for year in years:
+                            zero_rows.append(
+                                {
+                                    "Branch_Path": branch_path,
+                                    "Scenario": scenario,
+                                    "Measure": output_share_measure,
+                                    "Units": "%",
+                                    "Scale": "Share",
+                                    "Per...": "",
+                                    "Date": year,
+                                    "Value": value,
+                                }
+                            )
+
     # Tier-1 extension: zero Output Share for catalog fuels not set this run,
     # under sectors where we did write at least one Output Share row.
     # This clears stale non-zero shares (e.g. kerosene at 0.1 left over in LEAP)
@@ -2484,6 +2545,7 @@ def save_transformation_export(
     output_filename,
     model_name,
     scenarios,
+    id_lookup_path: Path | str | None = None,
     full_branch_catalog_df=None,
     in_scope_sector_titles: set[str] | None = None,
 ):
@@ -2553,6 +2615,12 @@ def save_transformation_export(
             print("No export dataframe created for LEAP export.")
             return None
         leap_expression_df = build_expression_export_df(export_df)
+        if id_lookup_path is not None:
+            leap_expression_df = attach_export_ids(
+                leap_expression_df,
+                id_lookup_path,
+                sheet_name="Export",
+            )
         os.makedirs(output_dir, exist_ok=True)
         export_path = os.path.join(output_dir, output_filename)
         save_export_files(

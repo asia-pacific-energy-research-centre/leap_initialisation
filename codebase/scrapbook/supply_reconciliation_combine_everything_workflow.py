@@ -79,7 +79,13 @@ def _build_source_workbooks_for_economy(economy: str) -> tuple[dict[str, list[Pa
         else:
             transformation_paths.append(path)
 
+    # transfers_workflow legitimately produces no file for an economy with zero
+    # nonzero transfer flows (see "No nonzero transfer flows for <economy>" in
+    # the run log) -- only treat it as missing/blocking when some but not all
+    # scenarios have a file, which signals a real gap rather than an economy
+    # with no transfers at all.
     transfer_paths: list[Path] = []
+    transfer_missing_scenarios: list[str] = []
     for scenario in SCENARIOS:
         scenario_token = _scenario_token(scenario)
         path = _latest_matching_file(
@@ -87,9 +93,11 @@ def _build_source_workbooks_for_economy(economy: str) -> tuple[dict[str, list[Pa
             f"transfer_leap_imports_{economy}_{scenario_token}.xlsx",
         )
         if path is None:
-            missing.append(f"transfers_workflow:{scenario}")
+            transfer_missing_scenarios.append(scenario)
         else:
             transfer_paths.append(path)
+    if transfer_paths and transfer_missing_scenarios:
+        missing.extend(f"transfers_workflow:{s}" for s in transfer_missing_scenarios)
 
     aggregated_demand = _latest_matching_file(
         WORKBOOKS_DIR,
@@ -105,20 +113,31 @@ def _build_source_workbooks_for_economy(economy: str) -> tuple[dict[str, list[Pa
     if other_loss is None:
         missing.append("other_loss_own_use_proxy_workflow")
 
+    electricity_heat_interim = _latest_matching_file(
+        WORKBOOKS_DIR,
+        f"electricity_heat_interim_{economy}_*.xlsx",
+    )
+    if electricity_heat_interim is None:
+        missing.append("electricity_heat_interim_workflow")
+
     if missing:
         return {}, missing
 
     assert supply is not None
     assert aggregated_demand is not None
     assert other_loss is not None
+    assert electricity_heat_interim is not None
 
-    return {
+    source_map = {
         "supply_workflow": [supply],
         "transformation_workflow": transformation_paths,
-        "transfers_workflow": transfer_paths,
         "aggregated_demand_workflow": [aggregated_demand],
         "other_loss_own_use_proxy_workflow": [other_loss],
-    }, []
+        "electricity_heat_interim_workflow": [electricity_heat_interim],
+    }
+    if transfer_paths:
+        source_map["transfers_workflow"] = transfer_paths
+    return source_map, []
 
 
 def discover_complete_economies(economies: list[str] | None = None) -> tuple[list[str], dict[str, list[str]]]:

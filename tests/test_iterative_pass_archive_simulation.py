@@ -131,7 +131,7 @@ def _build_process_records(reconciliation: pd.DataFrame) -> list[dict]:
     OIL_REFINERY_PRODUCTS = {
         # 06.xx refinery-derived
         "06.03 Refinery feedstocks",
-        "06.04 Additives/  oxygenates",
+        "06.04 Additives/ oxygenates",
         "06.05 Other hydrocarbons",
         # 07.xx full petroleum slate
         "07.01 Motor gasoline",

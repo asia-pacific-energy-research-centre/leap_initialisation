@@ -24,7 +24,7 @@ ESTO_PRODUCT_LIST = [
     '06.01 Crude oil',
     '06.02 Natural gas liquids',
     '06.03 Refinery feedstocks',
-    '06.04 Additives/  oxygenates',
+    '06.04 Additives/ oxygenates',
     '06.05 Other hydrocarbons',
     '07 Petroleum products',
     '07.01 Motor gasoline',
@@ -570,7 +570,7 @@ NINTH_SUB4SECTORS = [
 
 #NAME MAPPINGS:
 # 9th_label	9th_column	esto_label	esto_column	name
-# 		06.04 Additives/  oxygenates	products	Additives/  oxygenates
+# 		06.04 Additives/ oxygenates	products	Additives/  oxygenates
 # 09_01_01_03_advultracritical	sub3sectors			Advanced ultra-supercritical coal power
 # 18_01_01_03_advultracritical	sub3sectors			Advanced ultra-supercritical coal power (electricity output)
 # 16_02_03_agriculture	sub2sectors	16.03 Agriculture	flows	Agriculture

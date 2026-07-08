@@ -30,6 +30,10 @@ SHARE_VARIABLE_RULE_IDS = {
     "Process Share": "SEED-007",
     "Feedstock Fuel Share": "SEED-008",
 }
+SHARE_ROOT_CAUSE_RULE_IDS = set(SHARE_VARIABLE_RULE_IDS.values())
+MISSING_BRANCH_ROOT_CAUSE_RULE_IDS = {"SEED-003", "SEED-004", "SEED-005", "SEED-011"}
+PRODUCER_COVERAGE_ROOT_CAUSE_RULE_IDS = {"SEED-012"}
+IGNORED_FULL_MODEL_EXPORT_BRANCH_LABELS = {"abc do not use"}
 
 # When a share group is all-zero in one scenario, borrow the genuine profile from
 # another scenario (first match wins) before falling back to a synthetic anchor.
@@ -139,6 +143,258 @@ class ValidationResult:
         return self.findings[self.findings["blocking"].fillna(False)].copy()
 
 
+def _empty_missing_branch_issue_groups() -> pd.DataFrame:
+    return pd.DataFrame(columns=[
+        "issue_group_id",
+        "issue_group_type",
+        "economy",
+        "Branch Path",
+        "Variable",
+        "Scenario",
+        "Region",
+        "source_workflow",
+        "source_file",
+        "primary_rule_id",
+        "member_rule_ids",
+        "member_count",
+        "blocking_count",
+        "blocking",
+        "summary",
+        "evidence",
+    ])
+
+
+def _issue_group_frame(columns: list[str]) -> pd.DataFrame:
+    return pd.DataFrame(columns=columns)
+
+
+def build_missing_branch_issue_groups(findings: pd.DataFrame) -> pd.DataFrame:
+    """Summarize missing-branch findings into one row per root cause.
+
+    The raw findings are preserved, but this grouped view makes it easier to
+    see when SEED-003/004/005 are downstream symptoms of the same missing
+    canonical branch that triggers SEED-011.
+    """
+    if findings.empty:
+        return _empty_missing_branch_issue_groups()
+
+    required_columns = {"rule_id", *LOGICAL_KEY_COLUMNS, SOURCE_WORKFLOW_COLUMN, SOURCE_FILE_COLUMN}
+    if not required_columns.issubset(findings.columns):
+        return _empty_missing_branch_issue_groups()
+
+    work = findings[findings["rule_id"].isin(MISSING_BRANCH_ROOT_CAUSE_RULE_IDS)].copy()
+    if work.empty:
+        return _empty_missing_branch_issue_groups()
+
+    group_columns = (["economy"] if "economy" in work.columns else []) + [
+        *LOGICAL_KEY_COLUMNS,
+        SOURCE_WORKFLOW_COLUMN,
+        SOURCE_FILE_COLUMN,
+    ]
+    rows: list[dict[str, object]] = []
+    for key, group in work.groupby(group_columns, dropna=False, sort=True):
+        rule_ids = sorted({_text(value) for value in group["rule_id"] if _text(value)})
+        if "SEED-011" not in rule_ids:
+            continue
+        symptom_rule_ids = [rule_id for rule_id in rule_ids if rule_id != "SEED-011"]
+        if not symptom_rule_ids:
+            continue
+
+        key_values = key if isinstance(key, tuple) else (key,)
+        context = dict(zip(group_columns, key_values))
+        evidence_values = sorted({_text(value) for value in group.get("evidence", pd.Series(dtype=object)) if _text(value)})
+        summary = (
+            "Branch is missing from the canonical full-model export; "
+            f"related findings: {'|'.join(rule_ids)}"
+        )
+        rows.append({
+            "issue_group_id": "missing_branch::" + "|".join(
+                _normalized(context.get(column)) for column in group_columns
+            ),
+            "issue_group_type": "missing_branch",
+            "economy": context.get("economy", ""),
+            "Branch Path": context.get("Branch Path", ""),
+            "Variable": context.get("Variable", ""),
+            "Scenario": context.get("Scenario", ""),
+            "Region": context.get("Region", ""),
+            "source_workflow": context.get(SOURCE_WORKFLOW_COLUMN, ""),
+            "source_file": context.get(SOURCE_FILE_COLUMN, ""),
+            "primary_rule_id": "SEED-011",
+            "member_rule_ids": "|".join(rule_ids),
+            "member_count": len(group),
+            "blocking_count": int(group["blocking"].fillna(False).sum()) if "blocking" in group.columns else len(group),
+            "blocking": bool(group["blocking"].fillna(False).any()) if "blocking" in group.columns else True,
+            "summary": summary,
+            "evidence": "|".join(evidence_values),
+        })
+
+    if not rows:
+        return _empty_missing_branch_issue_groups()
+
+    return pd.DataFrame(rows)
+
+
+def build_share_issue_groups(findings: pd.DataFrame) -> pd.DataFrame:
+    """Summarize blocking share findings into one row per share-group issue."""
+    columns = [
+        "issue_group_id",
+        "issue_group_type",
+        "economy",
+        "Branch Path",
+        "Variable",
+        "Scenario",
+        "Region",
+        "year_min",
+        "year_max",
+        "source_workflow",
+        "source_file",
+        "primary_rule_id",
+        "member_rule_ids",
+        "member_count",
+        "blocking_count",
+        "blocking",
+        "summary",
+        "evidence",
+    ]
+    if findings.empty or not {"rule_id", "blocking", "Branch Path", "Variable", "Scenario", "Region"}.issubset(findings.columns):
+        return _issue_group_frame(columns)
+
+    work = findings[
+        findings["rule_id"].isin(SHARE_ROOT_CAUSE_RULE_IDS)
+        & findings.get("blocking", pd.Series(False, index=findings.index)).fillna(False)
+    ].copy()
+    if work.empty:
+        return _issue_group_frame(columns)
+
+    group_columns = ["Branch Path", "Variable", "Scenario", "Region"]
+    if "economy" in work.columns:
+        group_columns = ["economy"] + group_columns
+    rows: list[dict[str, object]] = []
+    for key, group in work.groupby(group_columns, dropna=False, sort=True):
+        key_values = key if isinstance(key, tuple) else (key,)
+        context = dict(zip(group_columns, key_values))
+        rule_ids = sorted({_text(value) for value in group["rule_id"] if _text(value)})
+        years = sorted({
+            year
+            for value in group.get("year", pd.Series(dtype=object))
+            if (year := _int_or_none(value)) is not None
+        })
+        evidence_values = sorted({
+            _text(value)
+            for value in group.get("evidence", pd.Series(dtype=object))
+            if _text(value)
+        })
+        primary_rule_id = rule_ids[0] if rule_ids else ""
+        summary = "Share group does not sum to 100 percent or contains missing/unparseable values."
+        rows.append({
+            "issue_group_id": "share_group::" + "|".join(
+                _normalized(context.get(column))
+                for column in group_columns
+            ),
+            "issue_group_type": "share_group",
+            "economy": context.get("economy", ""),
+            "Branch Path": context.get("Branch Path", ""),
+            "Variable": context.get("Variable", ""),
+            "Scenario": context.get("Scenario", ""),
+            "Region": context.get("Region", ""),
+            "year_min": min(years) if years else "",
+            "year_max": max(years) if years else "",
+            "source_workflow": "|".join(sorted({
+                _text(value)
+                for value in group.get(SOURCE_WORKFLOW_COLUMN, pd.Series(dtype=object))
+                if _text(value)
+            })),
+            "source_file": "|".join(sorted({
+                _text(value)
+                for value in group.get(SOURCE_FILE_COLUMN, pd.Series(dtype=object))
+                if _text(value)
+            })),
+            "primary_rule_id": primary_rule_id,
+            "member_rule_ids": "|".join(rule_ids),
+            "member_count": len(group),
+            "blocking_count": int(group["blocking"].fillna(False).sum()),
+            "blocking": True,
+            "summary": summary,
+            "evidence": "|".join(evidence_values),
+        })
+    return pd.DataFrame(rows, columns=columns)
+
+
+def build_producer_coverage_issue_groups(findings: pd.DataFrame) -> pd.DataFrame:
+    """Summarize producer/economy coverage failures into one row per missing producer."""
+    columns = [
+        "issue_group_id",
+        "issue_group_type",
+        "economy",
+        "source_workflow",
+        "source_file",
+        "primary_rule_id",
+        "member_rule_ids",
+        "member_count",
+        "blocking_count",
+        "blocking",
+        "summary",
+        "evidence",
+    ]
+    if findings.empty or not {"rule_id", "blocking"}.issubset(findings.columns):
+        return _issue_group_frame(columns)
+
+    work = findings[
+        findings["rule_id"].isin(PRODUCER_COVERAGE_ROOT_CAUSE_RULE_IDS)
+        & findings.get("blocking", pd.Series(False, index=findings.index)).fillna(False)
+    ].copy()
+    if work.empty:
+        return _issue_group_frame(columns)
+
+    group_columns = ["economy", SOURCE_WORKFLOW_COLUMN]
+    rows: list[dict[str, object]] = []
+    for key, group in work.groupby(group_columns, dropna=False, sort=True):
+        key_values = key if isinstance(key, tuple) else (key,)
+        context = dict(zip(group_columns, key_values))
+        rule_ids = sorted({_text(value) for value in group["rule_id"] if _text(value)})
+        rows.append({
+            "issue_group_id": "producer_coverage::" + "|".join(
+                _normalized(context.get(column))
+                for column in group_columns
+            ),
+            "issue_group_type": "producer_coverage",
+            "economy": context.get("economy", ""),
+            "source_workflow": context.get(SOURCE_WORKFLOW_COLUMN, ""),
+            "source_file": "|".join(sorted({
+                _text(value)
+                for value in group.get(SOURCE_FILE_COLUMN, pd.Series(dtype=object))
+                if _text(value)
+            })),
+            "primary_rule_id": rule_ids[0] if rule_ids else "",
+            "member_rule_ids": "|".join(rule_ids),
+            "member_count": len(group),
+            "blocking_count": int(group["blocking"].fillna(False).sum()),
+            "blocking": True,
+            "summary": "Configured producer has no readable source workbook for this economy.",
+            "evidence": "|".join(sorted({
+                _text(value)
+                for value in group.get("evidence", pd.Series(dtype=object))
+                if _text(value)
+            })),
+        })
+    return pd.DataFrame(rows, columns=columns)
+
+
+def build_validation_issue_groups(findings: pd.DataFrame) -> pd.DataFrame:
+    """Build the grouped issue view used in diagnostics and console summaries."""
+    frames = [
+        frame for frame in (
+            build_missing_branch_issue_groups(findings),
+            build_share_issue_groups(findings),
+            build_producer_coverage_issue_groups(findings),
+        )
+        if not frame.empty
+    ]
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True, sort=False)
+
+
 def _text(value: object) -> str:
     if value is None or pd.isna(value):
         return ""
@@ -153,6 +409,35 @@ def _normalized(value: object) -> str:
     if isinstance(value, (int, float)):
         return f"{float(value):.12g}"
     return str(value).strip()
+
+
+def _branch_path_tokens(branch_path: object) -> list[str]:
+    text = _text(branch_path).replace("/", "\\")
+    return [
+        _normalized(part).lower()
+        for part in text.split("\\")
+        if _normalized(part)
+    ]
+
+
+def _is_ignored_full_model_export_branch_path(branch_path: object) -> bool:
+    return any(token in IGNORED_FULL_MODEL_EXPORT_BRANCH_LABELS for token in _branch_path_tokens(branch_path))
+
+
+def _exclude_ignored_full_model_export_rows(data: pd.DataFrame) -> pd.DataFrame:
+    if data.empty or "Branch Path" not in data.columns:
+        return data.copy()
+    mask = data["Branch Path"].map(_is_ignored_full_model_export_branch_path)
+    if not bool(mask.any()):
+        return data.copy()
+    return data.loc[~mask].copy()
+
+
+def _int_or_none(value: object) -> int | None:
+    number = pd.to_numeric(value, errors="coerce")
+    if pd.isna(number):
+        return None
+    return int(float(number))
 
 
 def _expression_signature(value: object) -> tuple[str, str]:
@@ -397,10 +682,25 @@ def _zero_capacity_is_explicit(
     region: str,
     years: Iterable[int],
     tolerance: float,
-) -> tuple[bool, str]:
+) -> tuple[str, str]:
+    """Classify the owning capacity/activity evidence for a zero-share group.
+
+    Returns ``(status, reason)`` where ``status`` is one of:
+      - ``"zero"``: the owning Exogenous Capacity rows are present and explicitly
+        zero for every required year.
+      - ``"unavailable"``: no owning Exogenous Capacity data could be found at
+        all (undefined relationship, missing rows, or unparseable values). The
+        share group itself already has no genuine nonzero activity in any
+        scenario (checked by the caller before this runs), so an unmodeled
+        capacity fact is treated the same as a proven-zero one for fallback
+        purposes -- LEAP still needs an importable 100%/0% profile either way.
+      - ``"nonzero"``: capacity is explicitly proven positive while the share
+        group has no activity. This is a genuine data conflict, not an inert
+        branch, so the caller must keep blocking it rather than fall back.
+    """
     capacity_path, prefix_match = _capacity_paths_for_share_group(group_path, variable)
     if not capacity_path:
-        return False, "capacity relationship is undefined"
+        return "unavailable", "capacity relationship is undefined"
     paths = data.get("Branch Path", pd.Series("", index=data.index)).map(_text)
     if prefix_match:
         path_mask = paths.str.lower().str.startswith(capacity_path.lower())
@@ -414,7 +714,7 @@ def _zero_capacity_is_explicit(
     )
     capacity_rows = data[mask]
     if capacity_rows.empty:
-        return False, "relevant Exogenous Capacity row is missing"
+        return "unavailable", "relevant Exogenous Capacity row is missing"
     template_paths = template.get("Branch Path", pd.Series("", index=template.index)).map(_text)
     if prefix_match:
         template_path_mask = template_paths.str.lower().str.startswith(capacity_path.lower())
@@ -433,15 +733,15 @@ def _zero_capacity_is_explicit(
     }
     missing_capacity_paths = sorted(expected_capacity_paths - present_capacity_paths)
     if missing_capacity_paths:
-        return False, f"owning Exogenous Capacity rows are missing: {missing_capacity_paths}"
+        return "unavailable", f"owning Exogenous Capacity rows are missing: {missing_capacity_paths}"
     required_years = [int(year) for year in years]
     for _, row in capacity_rows.iterrows():
         values = _expression_values(row.get("Expression"), required_years)
         if values is None or any(year not in values for year in required_years):
-            return False, "relevant Exogenous Capacity is missing or unparseable"
+            return "unavailable", "relevant Exogenous Capacity is missing or unparseable"
         if any(abs(value) > tolerance for value in values.values()):
-            return False, "relevant Exogenous Capacity is positive or nonzero"
-    return True, "relevant Exogenous Capacity is explicitly zero"
+            return "nonzero", "relevant Exogenous Capacity is positive or nonzero"
+    return "zero", "relevant Exogenous Capacity is explicitly zero"
 
 
 def complete_canonical_share_groups(
@@ -453,7 +753,9 @@ def complete_canonical_share_groups(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Normalize and complete every represented canonical share sibling group."""
     result, _ = resolve_logical_duplicates(data)
+    result = _exclude_ignored_full_model_export_rows(result)
     template = load_template_rows(template_path)
+    template = _exclude_ignored_full_model_export_rows(template)
     template["__parent"] = template["Branch Path"].map(_share_group_path)
     template_shares = template[
         template["Variable"].map(_text).isin(SHARE_VARIABLE_RULE_IDS)
@@ -464,6 +766,7 @@ def complete_canonical_share_groups(
 
     shares["__parent"] = shares["Branch Path"].map(_share_group_path)
     additions: list[pd.Series] = []
+    dropped_indices: list = []
     diagnostics: list[dict[str, object]] = []
     group_columns = ["__parent", "Variable", "Scenario", "Region"]
 
@@ -525,9 +828,31 @@ def complete_canonical_share_groups(
             ))
             continue
 
+        # A generated sibling that has no matching branch anywhere in the
+        # full-model export is not a valid LEAP import target (it fails
+        # SEED-011 on its own) and it is not part of this group's canonical
+        # sibling set either, so it cannot be completed to 100% alongside the
+        # real siblings. Drop it here, at the shared completion step, instead
+        # of letting it reach the workbook: its value is excluded from the
+        # group's total before normalization, and the row is removed so the
+        # exported group contains exactly the canonical siblings.
+        canonical_paths = {_normalized(value).lower() for value in canonical["Branch Path"]}
+        noncanonical_mask = ~group["Branch Path"].map(_normalized).str.lower().isin(canonical_paths)
+        exemplar = group.sort_values("Branch Path", kind="mergesort").iloc[0]
+        if noncanonical_mask.any():
+            for _, row in group[noncanonical_mask].iterrows():
+                diagnostics.append(_finding(
+                    SHARE_VARIABLE_RULE_IDS[variable], "info",
+                    "Removed noncanonical sibling absent from the full-model export; "
+                    "its value is excluded from the group total.",
+                    evidence=_text(row["Branch Path"]),
+                    **group_context,
+                ))
+            dropped_indices.extend(group.index[noncanonical_mask].tolist())
+            group = group[~noncanonical_mask]
+
         present_paths = {_normalized(value).lower() for value in group["Branch Path"]}
         group_additions: list[pd.Series] = []
-        exemplar = group.sort_values("Branch Path", kind="mergesort").iloc[0]
         for _, template_row in canonical.sort_values("Branch Path", kind="mergesort").iterrows():
             if _normalized(template_row["Branch Path"]).lower() in present_paths:
                 continue
@@ -608,11 +933,18 @@ def complete_canonical_share_groups(
                     **group_context,
                 ))
         else:
-            allowed, capacity_evidence = _zero_capacity_is_explicit(
+            capacity_status, capacity_evidence = _zero_capacity_is_explicit(
                 result, template, group_path=group_path, variable=variable, scenario=scenario,
                 region=region, years=years, tolerance=tolerance,
             )
-            if allowed:
+            # A group with no genuine share activity falls back deterministically
+            # whenever capacity is proven zero *or* simply unavailable (no owning
+            # Exogenous Capacity row exists to check): in both cases nothing in the
+            # source data supports a nonzero profile, so LEAP still needs an
+            # importable 100%/0% share. Only an *explicitly nonzero* capacity
+            # paired with zero share activity is a genuine data conflict, so that
+            # case keeps blocking instead of silently fabricating a profile.
+            if capacity_status in ("zero", "unavailable"):
                 # Prefer a genuine profile from another scenario over the synthetic
                 # anchor: with zero capacity the shares are inert, and a borrowed
                 # real profile is more useful if the module is later activated.
@@ -656,7 +988,7 @@ def complete_canonical_share_groups(
                     diagnostics.append(_finding(
                         SHARE_VARIABLE_RULE_IDS[variable], "info",
                         "Borrowed normalized share profile from another scenario for an "
-                        "explicitly zero-capacity group.",
+                        f"inactive group (capacity {capacity_status}).",
                         evidence=f"donor_scenario={borrowed_scenario}; {capacity_evidence}",
                         **group_context,
                     ))
@@ -668,14 +1000,16 @@ def complete_canonical_share_groups(
                     }
                     diagnostics.append(_finding(
                         SHARE_VARIABLE_RULE_IDS[variable], "info",
-                        "Generated deterministic synthetic share anchor for an explicitly zero-capacity group.",
+                        "Generated deterministic synthetic share anchor for an inactive group "
+                        f"(capacity {capacity_status}).",
                         evidence=f"anchor={anchor}; {capacity_evidence}",
                         **group_context,
                     ))
             else:
                 diagnostics.append(_finding(
                     SHARE_VARIABLE_RULE_IDS[variable], "fail",
-                    "Synthetic share fallback is blocked without explicit zero capacity.",
+                    "Synthetic share fallback is blocked: capacity is explicitly nonzero "
+                    "while the share group has no activity.",
                     evidence=capacity_evidence,
                     **group_context,
                 ))
@@ -689,6 +1023,8 @@ def complete_canonical_share_groups(
                 & frame["Region"].map(_normalized).eq(_normalized(region))
             )
             for index in frame[group_mask].index:
+                if index in dropped_indices:
+                    continue
                 path = _text(frame.at[index, "Branch Path"])
                 frame.at[index, "Expression"] = _format_data_expression({year: profiles[year][path] for year in years})
 
@@ -696,6 +1032,8 @@ def complete_canonical_share_groups(
             path = _text(new_row["Branch Path"])
             new_row["Expression"] = _format_data_expression({year: profiles[year][path] for year in years})
 
+    if dropped_indices:
+        result = result.drop(index=dropped_indices)
     if additions:
         result = pd.concat([result, pd.DataFrame(additions)], ignore_index=True, sort=False)
     return result, pd.DataFrame(diagnostics)
@@ -767,10 +1105,14 @@ def _validate_canonical_share_completeness(
     template: pd.DataFrame,
 ) -> list[dict[str, object]]:
     findings: list[dict[str, object]] = []
-    shares = data[data.get("Variable", pd.Series("", index=data.index)).map(_text).isin(SHARE_VARIABLE_RULE_IDS)].copy()
+    shares = _exclude_ignored_full_model_export_rows(
+        data[data.get("Variable", pd.Series("", index=data.index)).map(_text).isin(SHARE_VARIABLE_RULE_IDS)].copy()
+    )
     if shares.empty:
         return findings
-    canonical = template[template["Variable"].map(_text).isin(SHARE_VARIABLE_RULE_IDS)].copy()
+    canonical = _exclude_ignored_full_model_export_rows(
+        template[template["Variable"].map(_text).isin(SHARE_VARIABLE_RULE_IDS)].copy()
+    )
     shares["__parent"] = shares["Branch Path"].map(_share_group_path)
     canonical["__parent"] = canonical["Branch Path"].map(_share_group_path)
     for key, group in shares.groupby(["__parent", "Variable", "Scenario", "Region"], dropna=False, sort=True):
@@ -826,7 +1168,11 @@ def _load_template_paths(template_path: Path) -> set[str]:
     )
     if "Branch Path" not in data:
         raise ValueError(f"Template is missing Branch Path: {template_path}")
-    return {_text(value).lower() for value in data["Branch Path"] if _text(value)}
+    return {
+        _text(value).lower()
+        for value in data["Branch Path"]
+        if _text(value) and not _is_ignored_full_model_export_branch_path(value)
+    }
 
 
 def load_template_rows(template_path: str | Path) -> pd.DataFrame:
@@ -860,6 +1206,7 @@ def enrich_seed_ids_from_template(
     """
     result = data.copy()
     template = load_template_rows(template_path)
+    template = _exclude_ignored_full_model_export_rows(template)
 
     template["__branch_key"] = template["Branch Path"].map(_normalized).str.lower()
     template["__variable_key"] = template["Variable"].map(_normalized).str.lower()
@@ -1173,6 +1520,8 @@ def validate_seed_rows(
         valid_paths = _load_template_paths(path)
         for _, row in resolved.iterrows():
             branch_path = _text(row.get("Branch Path"))
+            if _is_ignored_full_model_export_branch_path(branch_path):
+                continue
             if branch_path and branch_path.lower() not in valid_paths:
                 warning_only = _is_warning_only_aggregated_demand_branch(row)
                 findings.append(_finding(
@@ -1221,6 +1570,7 @@ def prepare_seed_rows_for_write(
     required_scenarios_by_source: Mapping[str, Iterable[str]] | None = None,
     share_tolerance: float = 1e-6,
     exceptions: Iterable[dict[str, object]] | None = None,
+    blocking_findings_are_warnings: bool = False,
     raise_on_blocking: bool = True,
 ) -> ValidationResult:
     """Complete, enrich, validate, and persist diagnostics before any write."""
@@ -1265,12 +1615,29 @@ def prepare_seed_rows_for_write(
         findings=pd.concat(finding_frames, ignore_index=True, sort=False) if finding_frames else pd.DataFrame(),
     )
 
+    if blocking_findings_are_warnings and not result.findings.empty and "blocking" in result.findings.columns:
+        work = result.findings.copy()
+        blocking_mask = work["blocking"].fillna(False)
+        if bool(blocking_mask.any()):
+            work.loc[blocking_mask, "blocking"] = False
+            if "severity" in work.columns:
+                work.loc[blocking_mask, "severity"] = "warning"
+            if "status" in work.columns:
+                work.loc[blocking_mask, "status"] = "warn"
+            result = ValidationResult(
+                resolved_rows=result.resolved_rows,
+                duplicate_groups=result.duplicate_groups,
+                findings=work,
+            )
+
     output_dir = Path(diagnostics_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     findings_path = output_dir / f"{diagnostic_stem}_rule_findings.csv"
     duplicates_path = output_dir / f"{diagnostic_stem}_duplicate_groups.csv"
+    issue_groups_path = output_dir / f"{diagnostic_stem}_issue_groups.csv"
     result.findings.to_csv(findings_path, index=False)
     result.duplicate_groups.to_csv(duplicates_path, index=False)
+    build_validation_issue_groups(result.findings).to_csv(issue_groups_path, index=False)
 
     if raise_on_blocking and not result.blocking_findings.empty:
         rule_counts = result.blocking_findings["rule_id"].value_counts().sort_index()
@@ -1289,6 +1656,10 @@ __all__ = [
     "RuleSpec",
     "ValidationResult",
     "BaselineSeedValidationError",
+    "build_missing_branch_issue_groups",
+    "build_producer_coverage_issue_groups",
+    "build_share_issue_groups",
+    "build_validation_issue_groups",
     "SOURCE_FILE_COLUMN",
     "SOURCE_WORKFLOW_COLUMN",
     "enrich_seed_ids_from_template",

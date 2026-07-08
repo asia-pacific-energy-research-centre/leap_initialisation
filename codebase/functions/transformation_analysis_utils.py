@@ -206,6 +206,23 @@ HYDROGEN_PROCESS_CONFIG = [
     },
 ]
 
+# Hydrogen-specific display names for codes that predate (or are absent from)
+# the shared code-to-name mapping file. Without these, resolve_label_name's
+# generic fallback strips the numeric prefix and title-cases the remainder
+# (e.g. "17_x_green_electricity" -> "X green electricity"), which does not
+# match the canonical "Green electricity" branch in the full-model export and
+# makes the generated Feedstock Fuel Share row invalid. Merged into
+# code_to_name_mapping in prepare_transformation_assets() so both the main
+# transformation workflow and the standalone hydrogen workflow resolve these
+# codes identically.
+HYDROGEN_DISPLAY_NAME_OVERRIDES = {
+    "16_x_hydrogen": "Hydrogen",
+    "16_x_ammonia": "Ammonia",
+    "16_x_efuel": "Efuel",
+    "17_x_green_electricity": "Green electricity",
+    "electrolysers_non_green": "Electrolysers (non-green electricity)",
+}
+
 MAJOR_SECTOR_CONFIG = {
     "lng": {
         "dataset_key": "ninth",
@@ -1770,6 +1787,7 @@ def prepare_transformation_assets() -> None:
     code_to_name_mapping = (
         load_code_to_name_mapping(CODE_TO_NAME_PATHS) if USE_CODE_TO_NAME_MAPPING else {}
     )
+    code_to_name_mapping.update(HYDROGEN_DISPLAY_NAME_OVERRIDES)
     DATASET_MAP = build_dataset_map(
         esto_data,
         esto_year_cols,

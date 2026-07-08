@@ -57,13 +57,12 @@ ANALYSIS_REGISTRY = [
 ]
 
 
-HYDROGEN_DISPLAY_NAME_OVERRIDES = {
-    "16_x_hydrogen": "Hydrogen",
-    "16_x_ammonia": "Ammonia",
-    "16_x_efuel": "Efuel",
-    "17_x_green_electricity": "Green electricity",
-    "electrolysers_non_green": "Electrolysers (non-green electricity)",
-}
+# Canonical source of truth is core.HYDROGEN_DISPLAY_NAME_OVERRIDES, which is
+# also merged into core.code_to_name_mapping directly so the main
+# transformation_workflow.py (which runs hydrogen_transformation as one of its
+# registered analyses) resolves these codes identically. Kept as a module
+# attribute here for backwards compatibility with existing imports.
+HYDROGEN_DISPLAY_NAME_OVERRIDES = core.HYDROGEN_DISPLAY_NAME_OVERRIDES
 
 
 def _build_hydrogen_display_mapping() -> dict:

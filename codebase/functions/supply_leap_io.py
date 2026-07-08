@@ -31,6 +31,7 @@ from codebase.supply_reconciliation_config import (
 )
 from codebase.utilities.workflow_utils import _resolve
 from codebase.utilities import workflow_common
+from codebase.functions.leap_expressions import build_data_expression_from_row
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP_EXPORTS_ROOT
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.configuration.all_products_and_flows import ESTO_PRODUCT_LIST, ESTO_SECTORS
@@ -51,6 +52,8 @@ from codebase.functions.baseline_seed_validation import (
     BaselineSeedValidationError,
     SOURCE_FILE_COLUMN,
     SOURCE_WORKFLOW_COLUMN,
+    build_validation_issue_groups,
+    complete_canonical_share_groups,
     prepare_seed_rows_for_write,
 )
 from codebase.functions.analysis_input_write_dispatcher import get_analysis_input_write_mode
@@ -1591,10 +1594,9 @@ def write_per_economy_combined_workbooks(
             f"Baseline-seed validation_final_year ({coverage_end}) precedes "
             f"validation_base_year ({coverage_start})."
         )
-    configured_exceptions = list(
-        workflow_cfg.BASELINE_SEED_VALIDATION_EXCEPTIONS
-        if validation_exceptions is None
-        else validation_exceptions
+    configured_exceptions = list(validation_exceptions or [])
+    blocking_findings_are_warnings = bool(
+        getattr(workflow_cfg, "BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS", False)
     )
 
     id_lookup_resolved = Path(id_lookup_path) if id_lookup_path is not None else None
@@ -1675,6 +1677,23 @@ def write_per_economy_combined_workbooks(
                 current_frames.append(data)
                 found_sources.add(str(source_workflow))
         return current_frames, found_sources
+
+    def _format_blocking_summary(*, blocking: pd.DataFrame, issue_groups: pd.DataFrame) -> str:
+        grouped_bits: list[str] = []
+        if not issue_groups.empty and "issue_group_type" in issue_groups.columns:
+            issue_group_counts = issue_groups.groupby("issue_group_type", dropna=False).size().sort_index()
+            grouped_bits = [f"{issue_type}={count}" for issue_type, count in issue_group_counts.items()]
+        rule_bits: list[str] = []
+        if not blocking.empty and "rule_id" in blocking.columns:
+            rule_counts = blocking["rule_id"].value_counts().sort_index()
+            rule_bits = [f"{rule_id}={count}" for rule_id, count in rule_counts.items()]
+        if grouped_bits and rule_bits:
+            return f"groups: {', '.join(grouped_bits)}; raw rules: {', '.join(rule_bits)}"
+        if grouped_bits:
+            return f"groups: {', '.join(grouped_bits)}"
+        if rule_bits:
+            return f"raw rules: {', '.join(rule_bits)}"
+        return "no grouped blocking findings"
 
     for economy in economy_list:
         econ_token = workflow_common.format_filename_segment(economy) or economy
@@ -1797,6 +1816,7 @@ def write_per_economy_combined_workbooks(
                 required_years_by_scenario=coverage_years_by_scenario,
                 required_scenarios_by_source=required_scenarios_by_source,
                 exceptions=configured_exceptions,
+                blocking_findings_are_warnings=blocking_findings_are_warnings,
                 raise_on_blocking=False,
             )
             validation_results.append((econ_token, validation))
@@ -1804,11 +1824,69 @@ def write_per_economy_combined_workbooks(
                 columns=[SOURCE_WORKFLOW_COLUMN, SOURCE_FILE_COLUMN, "source_excel_row"],
                 errors="ignore",
             )
+            if blocking_findings_are_warnings and not validation.blocking_findings.empty:
+                rule_counts = validation.blocking_findings["rule_id"].value_counts().sort_index()
+                summary = ", ".join(f"{rule_id}={count}" for rule_id, count in rule_counts.items())
+                print(
+                    f"[WARN] Baseline-seed validation findings were downgraded to warnings "
+                    f"for {econ_token} ({summary})."
+                )
         else:
+            # Merge-only mode skips baseline-seed validation, but two writer
+            # behaviors are still required for a LEAP-importable workbook:
+            #   1. canonical share-group completion, so an inactive plant receives
+            #      a valid 100% profile (first-fuel synthetic anchor for an
+            #      explicitly zero-capacity group, or a borrowed sibling-scenario
+            #      profile) instead of an invalid all-zero share group; and
+            #   2. LEAP ID resolution, since the per-workflow producers ship the
+            #      ID columns empty on purpose for the combine step to fill.
+            # Share completion runs first so any synthesized zero/anchor sibling
+            # rows also get IDs resolved below.
+            if id_lookup_resolved is not None and id_lookup_resolved.exists():
+                present_scenarios = sorted({
+                    str(value).strip()
+                    for value in combined.get("Scenario", pd.Series(dtype=object))
+                    if str(value).strip()
+                })
+                share_years_by_scenario = workflow_cfg.get_baseline_seed_validation_years(
+                    present_scenarios,
+                    base_year=coverage_start,
+                    final_year=coverage_end,
+                )
+                if required_years_by_scenario is not None:
+                    share_years_by_scenario.update({
+                        str(scenario): sorted({int(year) for year in years})
+                        for scenario, years in required_years_by_scenario.items()
+                    })
+                try:
+                    combined, _share_findings = complete_canonical_share_groups(
+                        combined,
+                        template_path=id_lookup_resolved,
+                        required_years_by_scenario=share_years_by_scenario,
+                    )
+                except Exception as exc:
+                    print(
+                        f"[WARN] [{econ_token}] canonical share-group completion "
+                        f"skipped: {exc!r}"
+                    )
+
             combined = combined.drop(
                 columns=[SOURCE_WORKFLOW_COLUMN, SOURCE_FILE_COLUMN, "source_excel_row"],
                 errors="ignore",
             )
+            # Resolve LEAP IDs from the same label lookups the validated path uses;
+            # unresolved labels fall back to the -1 sentinel that the warning loop
+            # below surfaces.
+            if "Branch Path" in combined.columns:
+                combined["BranchID"] = combined["Branch Path"].map(
+                    lambda x: branch_to_id.get(str(x).strip(), -1))
+            if "Variable" in combined.columns:
+                combined["VariableID"] = combined["Variable"].map(
+                    lambda x: variable_to_id.get(str(x).strip(), -1))
+            if "Scenario" in combined.columns:
+                combined["ScenarioID"] = combined["Scenario"].map(
+                    lambda x: scenario_to_id.get(str(x).strip(), -1))
+            combined["RegionID"] = 1
 
         # Surface unresolved -1 sentinel IDs loudly. These never raise on their
         # own (the row is still written), so without this warning an economy can
@@ -1831,7 +1909,12 @@ def write_per_economy_combined_workbooks(
                     f"Sample branches: {_sample_branches}"
                 )
 
-        # Enforce column order: IDs → metadata → Expression → year cols → Level cols
+        # Collapse the wide year columns into a single LEAP Data(...) Expression
+        # for any row that does not already carry one (rows with an existing
+        # Expression are left untouched). The workbook is then split across two
+        # sheets: LEAP carries only the Expression (what LEAP imports), while
+        # FOR_VIEWING keeps the wide year columns for human review. A blank spacer
+        # column separates the value block from the Level columns on both sheets.
         _meta = ["BranchID", "VariableID", "ScenarioID", "RegionID",
                  "Branch Path", "Variable", "Scenario", "Region",
                  "Scale", "Units", "Per...", "Expression"]
@@ -1839,33 +1922,59 @@ def write_per_economy_combined_workbooks(
             [c for c in combined.columns if isinstance(c, (int, float)) and 500 < float(c) < 2200],
             key=float,
         )
+        if "Expression" not in combined.columns:
+            combined["Expression"] = pd.NA
+        if _year_cols:
+            base_year = int(min(_year_cols))
+            ca_labels = {"current accounts", "current account"}
+            def _resolve_expression(row):
+                existing = row.get("Expression")
+                if existing is not None and not (
+                    isinstance(existing, float) and pd.isna(existing)
+                ) and str(existing).strip():
+                    return str(existing)
+                if not any(pd.notna(row.get(year)) for year in _year_cols):
+                    return existing
+                scenario = str(row.get("Scenario", "")).strip().lower()
+                if scenario in ca_labels:
+                    # Current Accounts holds a single historical base-year value;
+                    # emit only that year rather than forward-filling zeros across
+                    # the projection horizon.
+                    return build_data_expression_from_row(row, [base_year])
+                return build_data_expression_from_row(row, _year_cols)
+            combined["Expression"] = combined.apply(_resolve_expression, axis=1)
+
+        _meta_cols = [c for c in _meta if c in combined.columns]
         _level_cols = [c for c in combined.columns if str(c).startswith("Level")]
         _other = [c for c in combined.columns
-                  if c not in _meta and c not in _year_cols and c not in _level_cols]
-        ordered_cols = (
-            [c for c in _meta if c in combined.columns]
-            + _year_cols
-            + _level_cols
-            + _other
-        )
-        combined = combined.reindex(columns=ordered_cols)
-        cols = list(combined.columns)
+                  if c not in _meta_cols and c not in _year_cols and c not in _level_cols]
 
-        preamble_row = {c: pd.NA for c in cols}
-        preamble_row["Branch Path"] = "Area:"
-        preamble_row["Scenario"] = "Ver:"
-        preamble_row["Region"] = "2"
-        blank_row = {c: pd.NA for c in cols}
+        BLANK_SPACER = "__BLANK_SPACER__"
+        leap_ordered = _meta_cols + [BLANK_SPACER] + _level_cols + _other
+        viewing_ordered = _meta_cols + _year_cols + [BLANK_SPACER] + _level_cols + _other
 
-        full_df = pd.concat([
-            pd.DataFrame([preamble_row]),
-            pd.DataFrame([blank_row]),
-            pd.DataFrame([cols], columns=cols),
-            combined,
-        ], ignore_index=True)
+        def _assemble_sheet(ordered_cols):
+            frame = combined.reindex(columns=ordered_cols)
+            # The header row is written as data (header=False), so the spacer's
+            # displayed label is blank while its column name stays unique.
+            display_cols = ["" if c == BLANK_SPACER else c for c in ordered_cols]
+            preamble_row = {c: pd.NA for c in ordered_cols}
+            preamble_row["Branch Path"] = "Area:"
+            preamble_row["Scenario"] = "Ver:"
+            preamble_row["Region"] = "2"
+            blank_row = {c: pd.NA for c in ordered_cols}
+            return pd.concat([
+                pd.DataFrame([preamble_row]),
+                pd.DataFrame([blank_row]),
+                pd.DataFrame([display_cols], columns=ordered_cols),
+                frame,
+            ], ignore_index=True)
+
+        leap_df = _assemble_sheet(leap_ordered)
+        viewing_df = _assemble_sheet(viewing_ordered)
 
         out_path = out_dir / f"leap_import_baseline_seed_{econ_token}_{run_stamp}.xlsx"
-        prepared_workbooks.append((econ_token, full_df, out_path))
+        prepared_workbooks.append((econ_token, leap_df, viewing_df, out_path))
 
     if enforce_validation:
         diagnostics_dir = out_dir / "supporting_files" / "baseline_seed_validation"
@@ -1886,62 +1995,59 @@ def write_per_economy_combined_workbooks(
         )
         consolidated_path = diagnostics_dir / f"baseline_seed_{run_stamp}_consolidated_rule_findings.csv"
         consolidated.to_csv(consolidated_path, index=False)
+        consolidated_issue_groups_path = diagnostics_dir / f"baseline_seed_{run_stamp}_consolidated_issue_groups.csv"
+        build_validation_issue_groups(consolidated).to_csv(consolidated_issue_groups_path, index=False)
         blocking = consolidated[
             consolidated.get("blocking", pd.Series(False, index=consolidated.index)).fillna(False)
         ] if not consolidated.empty else pd.DataFrame()
+        issue_groups = build_validation_issue_groups(blocking)
 
         if not blocking.empty and not workflow_common.THROW_ERROR_AFTER_RUN:
-            counts = blocking.groupby(["economy", "rule_id"], dropna=False).size()
-            summary = ", ".join(
-                f"{economy}/{rule_id}={count}"
-                for (economy, rule_id), count in counts.items()
-            )
+            summary = _format_blocking_summary(blocking=blocking, issue_groups=issue_groups)
             raise BaselineSeedValidationError(
                 "No baseline-seed workbooks were written because consolidated "
-                f"blocking findings remain ({summary}). Diagnostics: {consolidated_path}"
+                f"blocking findings remain ({summary}). Diagnostics: {consolidated_path}; "
+                f"issue groups: {consolidated_issue_groups_path}"
             )
 
         # In deferred-error mode, write the prepared workbooks for diagnosis and
         # register the blocking error for the workflow's final summary.
-        for econ_token, full_df, out_path in prepared_workbooks:
+        for econ_token, leap_df, viewing_df, out_path in prepared_workbooks:
             for existing in out_dir.glob(f"leap_import_baseline_seed_{econ_token}_*.xlsx"):
                 archive_dir = out_dir / "archive"
                 archive_dir.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(existing), str(archive_dir / existing.name))
             with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
-                full_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
-                full_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
+                leap_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
+                viewing_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
             print(f"[INFO] Wrote baseline seed for economy={econ_token} -> {out_path.name} (stamp={run_stamp})")
             written.append(out_path)
 
         if not blocking.empty:
-            counts = blocking.groupby(["economy", "rule_id"], dropna=False).size()
-            summary = ", ".join(
-                f"{economy}/{rule_id}={count}"
-                for (economy, rule_id), count in counts.items()
-            )
+            summary = _format_blocking_summary(blocking=blocking, issue_groups=issue_groups)
             blocked_economies = sorted({str(e) for e in blocking["economy"].tolist()})
             print(
                 f"[WARN] Baseline-seed workbooks were written for {len(written)} economy/economies, "
                 f"but consolidated blocking findings remain for {blocked_economies} ({summary}). "
                 f"These economies' workbooks may contain unresolved -1 BranchID/VariableID/"
                 f"ScenarioID rows or other blocking issues -- review before LEAP import. "
-                f"Diagnostics: {consolidated_path}"
+                f"Diagnostics: {consolidated_path}; issue groups: {consolidated_issue_groups_path}"
             )
             workflow_common.defer_or_raise(
                 BaselineSeedValidationError(
                     "Consolidated blocking findings remain after writing baseline-seed "
-                    f"workbooks ({summary}). Diagnostics: {consolidated_path}"
+                    f"workbooks ({summary}). Diagnostics: {consolidated_path}; "
+                    f"issue groups: {consolidated_issue_groups_path}"
                 ),
                 context=f"write_per_economy_combined_workbooks:{blocked_economies}",
             )
     else:
-        for econ_token, full_df, out_path in prepared_workbooks:
+        for econ_token, leap_df, viewing_df, out_path in prepared_workbooks:
             if out_path.exists():
                 out_path.unlink()
             with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
-                full_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
-                full_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
+                leap_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
+                viewing_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
             print(f"[INFO] Wrote combined workbook for economy={econ_token} -> {out_path.name} (stamp={run_stamp})")
             written.append(out_path)
 

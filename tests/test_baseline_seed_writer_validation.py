@@ -6,7 +6,10 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from codebase.functions.baseline_seed_validation import BaselineSeedValidationError
+from codebase.functions.baseline_seed_validation import (
+    BaselineSeedValidationError,
+    build_validation_issue_groups,
+)
 from codebase.functions.supply_leap_io import write_per_economy_combined_workbooks
 from codebase.configuration.workflow_config import get_baseline_seed_validation_years
 
@@ -160,6 +163,90 @@ def test_writer_accumulates_economy_failures_and_writes_no_final_workbook(
     assert len(consolidated) == 1
     findings = pd.read_csv(consolidated[0])
     assert "05_PRC" in set(findings["economy"])
+
+
+def test_final_writer_writes_grouped_missing_branch_issue_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "electricity_heat_interim_20_USA_Target_Reference_Current_Accounts.xlsx"
+    _write_leap_workbook(source, [{
+        "BranchID": -1,
+        "VariableID": -1,
+        "ScenarioID": -1,
+        "RegionID": -1,
+        "Branch Path": "Transformation\\CHP interim\\Processes\\CHP interim\\Feedstock Fuels\\Ammonia",
+        "Variable": "Imports",
+        "Scenario": "Reference",
+        "Region": "United States",
+        "Scale": "",
+        "Units": "Petajoule",
+        "Per...": "",
+        "Expression": "Data(2023,1)",
+    }])
+    template = tmp_path / "full model export.xlsx"
+    _write_template(template)
+    output_dir = tmp_path / "output"
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io._load_reference_export_data",
+        lambda: pd.DataFrame(),
+    )
+    monkeypatch.setattr("codebase.utilities.workflow_common.THROW_ERROR_AFTER_RUN", True)
+
+    write_per_economy_combined_workbooks(
+        economies=["20_USA"],
+        output_dir=output_dir,
+        id_lookup_path=template,
+        source_workbooks_by_workflow={"electricity_heat_interim_workflow": [source]},
+        required_years_by_scenario={"Reference": [2023]},
+    )
+
+    diagnostics = output_dir / "supporting_files" / "baseline_seed_validation"
+    issue_groups = next(diagnostics.glob("*_issue_groups.csv"))
+    grouped = pd.read_csv(issue_groups)
+    assert len(grouped) == 1
+    assert grouped["primary_rule_id"].iloc[0] == "SEED-011"
+    assert grouped["member_rule_ids"].iloc[0] == "SEED-003|SEED-004|SEED-011"
+    assert "canonical full-model export" in grouped["summary"].iloc[0]
+
+
+def test_grouped_share_issues_collapse_to_one_issue_per_share_group() -> None:
+    findings = pd.DataFrame([
+        {
+            "economy": "20_USA",
+            "rule_id": "SEED-007",
+            "blocking": True,
+            "Branch Path": "Transformation\\Plant",
+            "Variable": "Process Share",
+            "Scenario": "Reference",
+            "Region": "United States",
+            "year": 2023,
+            "source_workflow": "transformation_workflow",
+            "source_file": "transformation_20_USA.xlsx",
+            "evidence": "sum=80",
+        },
+        {
+            "economy": "20_USA",
+            "rule_id": "SEED-007",
+            "blocking": True,
+            "Branch Path": "Transformation\\Plant",
+            "Variable": "Process Share",
+            "Scenario": "Reference",
+            "Region": "United States",
+            "year": 2024,
+            "source_workflow": "transformation_workflow",
+            "source_file": "transformation_20_USA.xlsx",
+            "evidence": "sum=75",
+        },
+    ])
+
+    grouped = build_validation_issue_groups(findings)
+    share = grouped[grouped["issue_group_type"].eq("share_group")]
+    assert len(share) == 1
+    assert share["primary_rule_id"].iloc[0] == "SEED-007"
+    assert share["member_count"].iloc[0] == 2
+    assert share["year_min"].iloc[0] == 2023
+    assert share["year_max"].iloc[0] == 2024
 
 
 def test_final_writer_exposes_key_scoped_zero_reset_exception(

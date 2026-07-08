@@ -87,6 +87,7 @@ TRANSFER_SUBFLOWS = [
 # If True, filter subtotal rows immediately before transfer calculations.
 DROP_SUBTOTALS_FIRST = True
 DEFAULT_SCENARIOS = list(workflow_cfg.TRANSFERS_DEFAULT_SCENARIOS)
+EXPORT_ID_LOOKUP_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 
 # Category templates that help organize transfers when per-economy mappings are missing.
 # These are broad, optional groupings based on the requested breakdowns.
@@ -109,7 +110,7 @@ TRANSFER_CATEGORY_TEMPLATES = [
     {
         "category": "Refinery and blending transfers",
         "inputs": [
-            "06.04 Additives/  oxygenates",
+            "06.04 Additives/ oxygenates",
             "07.03 Naphtha",
             "07 Petroleum products",
             "07.17 Other products",
@@ -177,7 +178,7 @@ TRANSFER_PROCESS_CONFIG: dict[str, dict[str, list[dict]]] = {
             {
                 "process": "Refinery and blending transfers",
                 "inputs": [
-                    "06.04 Additives/  oxygenates",
+                    "06.04 Additives/ oxygenates",
                     "07.03 Naphtha",
                     "07.05 Kerosene type jet fuel",
                     "07.06 Kerosene",
@@ -249,7 +250,7 @@ TRANSFER_PROCESS_CONFIG: dict[str, dict[str, list[dict]]] = {
             {
                 "process": "Refinery and blending transfers",
                 "inputs": [
-                    "06.04 Additives/  oxygenates",
+                    "06.04 Additives/ oxygenates",
                     "07.02 Aviation gasoline",
                     "07.03 Naphtha",
                     "07.05 Kerosene type jet fuel",
@@ -322,7 +323,7 @@ TRANSFER_PROCESS_CONFIG: dict[str, dict[str, list[dict]]] = {
             {
                 "process": "Upstream & refinery transfers",
                 "inputs": [
-                    "06.04 Additives/  oxygenates",
+                    "06.04 Additives/ oxygenates",
                     "07.03 Naphtha",
                     "07.06 Kerosene",
                     "07.08 Fuel oil",
@@ -458,7 +459,7 @@ TRANSFER_PROCESS_CONFIG: dict[str, dict[str, list[dict]]] = {
                     "07.09 LPG"
                 ],
                 "outputs": [
-                    "06.04 Additives/  oxygenates",
+                    "06.04 Additives/ oxygenates",
                     "07.01 Motor gasoline",
                     "07.17 Other products"
                 ]
@@ -466,45 +467,36 @@ TRANSFER_PROCESS_CONFIG: dict[str, dict[str, list[dict]]] = {
         ]
     },
     "20_USA": {
+        # Previously split into "Upstream liquids transfers" and "Refinery and
+        # blending transfers", but the refinery/blending category had a thin
+        # input mapping (input_total ~33) against a much larger output pool,
+        # producing an outlier ~25.6x efficiency ratio. Merged into a single
+        # unallocated process so inputs/outputs balance against the full USA
+        # transfer pool instead (~1.06x once combined).
         "transfer_flows_combined": [
             {
-                "process": "Upstream liquids transfers",
+                "process": "Transfers unallocated",
                 "inputs": [
-                    "06.02 Natural gas liquids"
-                ],
-                "outputs": [
-                    "07.09 LPG",
-                    "07.11 Ethane"
-                ]
-            },
-            {
-                "process": "Refinery and blending transfers",
-                "inputs": [
-                    "06.04 Additives/  oxygenates",
+                    "06.02 Natural gas liquids",
+                    "06.04 Additives/ oxygenates",
                     "07.02 Aviation gasoline",
                     "07.06 Kerosene",
                     "07.08 Fuel oil"
                 ],
                 "outputs": [
+                    "06.03 Refinery feedstocks",
                     "07.01 Motor gasoline",
                     "07.03 Naphtha",
                     "07.05 Kerosene type jet fuel",
                     "07.06 Kerosene",
                     "07.07 Gas/diesel oil",
-                    "06.03 Refinery feedstocks",
+                    "07.09 LPG",
+                    "07.11 Ethane",
                     "07.14 Bitumen",
                     "07.17 Other products"
                 ]
             }
         ],
-        "unallocated_policy": {
-            "enabled": True,
-            "process_name": "Transfers unallocated",
-            # Trigger merge when any configured transfer process exceeds this ratio.
-            "max_efficiency_ratio": 50.0,
-            # When triggered, merge all included transfer categories (not only bad rows).
-            "merge_all_when_triggered": True,
-        },
     },
     "21_VN": {
         "transfer_flows_combined": [
@@ -729,6 +721,7 @@ def save_transfer_export(
     scenarios: list[str] | None = None,
     output_dir: str | None = None,
     filename_template: str | None = None,
+    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
 ) -> str | None:
     """Save a LEAP export workbook for transfer process records."""
     if not process_records:
@@ -754,6 +747,7 @@ def save_transfer_export(
         filename,
         core.EXPORT_MODEL_NAME,
         scenario_list,
+        id_lookup_path=id_lookup_path,
     )
 
 def format_export_filename(
@@ -782,9 +776,17 @@ def assemble_transfer_workbook(
     use_output_targets: bool = False,
     feedstock_method: str | None = None,
     aggregate_economy_label: str | None = None,
+    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
     build_export: bool = core.BUILD_LEAP_EXPORT,
+    full_branch_catalog_df: pd.DataFrame | None = None,
+    in_scope_sector_titles: set[str] | None = None,
 ) -> list[Path]:
-    """Build transfer rows and emit the LEAP workbook."""
+    """Build transfer rows and emit the LEAP workbook.
+
+    Pass full_branch_catalog_df (+ in_scope_sector_titles) to zero-fill every
+    catalog branch owned by the transfers workbook, matching what the full
+    supply reconciliation run produces via save_transfer_exports_with_supply_overrides.
+    """
     if not build_export:
         print("BUILD_LEAP_EXPORT is False; skipping workbook generation.")
         return []
@@ -864,6 +866,9 @@ def assemble_transfer_workbook(
             export_filename,
             core.EXPORT_MODEL_NAME,
             scenario_list,
+            id_lookup_path=id_lookup_path,
+            full_branch_catalog_df=full_branch_catalog_df,
+            in_scope_sector_titles=in_scope_sector_titles,
         )
     finally:
         core.INCLUDE_OUTPUT_SERIES_IN_LEAP_EXPORT = previous_output_setting
@@ -966,6 +971,7 @@ def run_transfer_export_and_import(
     create_branches: bool = True,
     fill_branches: bool = True,
     aggregate_economy_label: str | None = None,
+    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
     feedstock_method: str | None = None,
     **export_kwargs,
 ) -> list[Path]:
@@ -982,6 +988,7 @@ def run_transfer_export_and_import(
         use_output_targets=export_kwargs.get("use_output_targets", False),
         feedstock_method=feedstock_method,
         aggregate_economy_label=aggregate_economy_label,
+        id_lookup_path=export_kwargs.get("id_lookup_path", id_lookup_path),
         build_export=export_kwargs.get("build_export", core.BUILD_LEAP_EXPORT),
     )
     if not exports or not include_leap_import:
@@ -1069,6 +1076,7 @@ def run_transfer_pipeline(
     create_branches: bool = True,
     fill_branches: bool = True,
     aggregate_economy_label: str | None = None,
+    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
     **export_kwargs,
 ) -> list[Path]:
     return run_transfer_export_and_import(
@@ -1081,6 +1089,7 @@ def run_transfer_pipeline(
         create_branches=create_branches,
         fill_branches=fill_branches,
         aggregate_economy_label=aggregate_economy_label,
+        id_lookup_path=id_lookup_path,
         **export_kwargs,
     )
 

@@ -22,7 +22,7 @@
 01 Production,06.01 Crude oil,False
 01 Production,06.02 Natural gas liquids,False
 01 Production,06.03 Refinery feedstocks,False
-01 Production,06.04 Additives/  oxygenates,False
+01 Production,06.04 Additives/ oxygenates,False
 01 Production,06.05 Other hydrocarbons,False
 01 Production,07 Petroleum products,True
 01 Production,07.01 Motor gasoline,False
@@ -100,7 +100,7 @@
 02 Imports,06.01 Crude oil,False
 02 Imports,06.02 Natural gas liquids,False
 02 Imports,06.03 Refinery feedstocks,False
-02 Imports,06.04 Additives/  oxygenates,False
+02 Imports,06.04 Additives/ oxygenates,False
 02 Imports,06.05 Other hydrocarbons,False
 02 Imports,07 Petroleum products,True
 02 Imports,07.01 Motor gasoline,False
@@ -178,7 +178,7 @@
 03 Exports,06.01 Crude oil,False
 03 Exports,06.02 Natural gas liquids,False
 03 Exports,06.03 Refinery feedstocks,False
-03 Exports,06.04 Additives/  oxygenates,False
+03 Exports,06.04 Additives/ oxygenates,False
 03 Exports,06.05 Other hydrocarbons,False
 03 Exports,07 Petroleum products,True
 03 Exports,07.01 Motor gasoline,False
@@ -256,7 +256,7 @@
 04 International marine bunkers,06.01 Crude oil,False
 04 International marine bunkers,06.02 Natural gas liquids,False
 04 International marine bunkers,06.03 Refinery feedstocks,False
-04 International marine bunkers,06.04 Additives/  oxygenates,False
+04 International marine bunkers,06.04 Additives/ oxygenates,False
 04 International marine bunkers,06.05 Other hydrocarbons,False
 04 International marine bunkers,07 Petroleum products,True
 04 International marine bunkers,07.01 Motor gasoline,False
@@ -334,7 +334,7 @@
 05 International aviation bunkers,06.01 Crude oil,False
 05 International aviation bunkers,06.02 Natural gas liquids,False
 05 International aviation bunkers,06.03 Refinery feedstocks,False
-05 International aviation bunkers,06.04 Additives/  oxygenates,False
+05 International aviation bunkers,06.04 Additives/ oxygenates,False
 05 International aviation bunkers,06.05 Other hydrocarbons,False
 05 International aviation bunkers,07 Petroleum products,True
 05 International aviation bunkers,07.01 Motor gasoline,False
@@ -412,7 +412,7 @@
 06 Stock changes,06.01 Crude oil,False
 06 Stock changes,06.02 Natural gas liquids,False
 06 Stock changes,06.03 Refinery feedstocks,False
-06 Stock changes,06.04 Additives/  oxygenates,False
+06 Stock changes,06.04 Additives/ oxygenates,False
 06 Stock changes,06.05 Other hydrocarbons,False
 06 Stock changes,07 Petroleum products,True
 06 Stock changes,07.01 Motor gasoline,False
@@ -490,7 +490,7 @@
 07 Total primary energy supply,06.01 Crude oil,False
 07 Total primary energy supply,06.02 Natural gas liquids,False
 07 Total primary energy supply,06.03 Refinery feedstocks,False
-07 Total primary energy supply,06.04 Additives/  oxygenates,False
+07 Total primary energy supply,06.04 Additives/ oxygenates,False
 07 Total primary energy supply,06.05 Other hydrocarbons,False
 07 Total primary energy supply,07 Petroleum products,True
 07 Total primary energy supply,07.01 Motor gasoline,False
@@ -568,7 +568,7 @@
 08 Transfers,06.01 Crude oil,True
 08 Transfers,06.02 Natural gas liquids,True
 08 Transfers,06.03 Refinery feedstocks,True
-08 Transfers,06.04 Additives/  oxygenates,True
+08 Transfers,06.04 Additives/ oxygenates,True
 08 Transfers,06.05 Other hydrocarbons,True
 08 Transfers,07 Petroleum products,True
 08 Transfers,07.01 Motor gasoline,True
@@ -646,7 +646,7 @@
 08.01 Recycled products,06.01 Crude oil,False
 08.01 Recycled products,06.02 Natural gas liquids,False
 08.01 Recycled products,06.03 Refinery feedstocks,False
-08.01 Recycled products,06.04 Additives/  oxygenates,False
+08.01 Recycled products,06.04 Additives/ oxygenates,False
 08.01 Recycled products,06.05 Other hydrocarbons,False
 08.01 Recycled products,07 Petroleum products,True
 08.01 Recycled products,07.01 Motor gasoline,False
@@ -724,7 +724,7 @@
 08.02 Interproduct transfers,06.01 Crude oil,False
 08.02 Interproduct transfers,06.02 Natural gas liquids,False
 08.02 Interproduct transfers,06.03 Refinery feedstocks,False
-08.02 Interproduct transfers,06.04 Additives/  oxygenates,False
+08.02 Interproduct transfers,06.04 Additives/ oxygenates,False
 08.02 Interproduct transfers,06.05 Other hydrocarbons,False
 08.02 Interproduct transfers,07 Petroleum products,True
 08.02 Interproduct transfers,07.01 Motor gasoline,False
@@ -802,7 +802,7 @@
 08.03 Products transferred,06.01 Crude oil,False
 08.03 Products transferred,06.02 Natural gas liquids,False
 08.03 Products transferred,06.03 Refinery feedstocks,False
-08.03 Products transferred,06.04 Additives/  oxygenates,False
+08.03 Products transferred,06.04 Additives/ oxygenates,False
 08.03 Products transferred,06.05 Other hydrocarbons,False
 08.03 Products transferred,07 Petroleum products,True
 08.03 Products transferred,07.01 Motor gasoline,False
@@ -880,7 +880,7 @@
 08.04 Gas separation,06.01 Crude oil,False
 08.04 Gas separation,06.02 Natural gas liquids,False
 08.04 Gas separation,06.03 Refinery feedstocks,False
-08.04 Gas separation,06.04 Additives/  oxygenates,False
+08.04 Gas separation,06.04 Additives/ oxygenates,False
 08.04 Gas separation,06.05 Other hydrocarbons,False
 08.04 Gas separation,07 Petroleum products,True
 08.04 Gas separation,07.01 Motor gasoline,False
@@ -958,7 +958,7 @@
 08.99 Transfers nonspecified,06.01 Crude oil,False
 08.99 Transfers nonspecified,06.02 Natural gas liquids,False
 08.99 Transfers nonspecified,06.03 Refinery feedstocks,False
-08.99 Transfers nonspecified,06.04 Additives/  oxygenates,False
+08.99 Transfers nonspecified,06.04 Additives/ oxygenates,False
 08.99 Transfers nonspecified,06.05 Other hydrocarbons,False
 08.99 Transfers nonspecified,07 Petroleum products,True
 08.99 Transfers nonspecified,07.01 Motor gasoline,False
@@ -1036,7 +1036,7 @@
 09 Total transformation sector,06.01 Crude oil,True
 09 Total transformation sector,06.02 Natural gas liquids,True
 09 Total transformation sector,06.03 Refinery feedstocks,True
-09 Total transformation sector,06.04 Additives/  oxygenates,True
+09 Total transformation sector,06.04 Additives/ oxygenates,True
 09 Total transformation sector,06.05 Other hydrocarbons,True
 09 Total transformation sector,07 Petroleum products,True
 09 Total transformation sector,07.01 Motor gasoline,True
@@ -1114,7 +1114,7 @@
 09.01 Main activity producer,06.01 Crude oil,True
 09.01 Main activity producer,06.02 Natural gas liquids,True
 09.01 Main activity producer,06.03 Refinery feedstocks,True
-09.01 Main activity producer,06.04 Additives/  oxygenates,True
+09.01 Main activity producer,06.04 Additives/ oxygenates,True
 09.01 Main activity producer,06.05 Other hydrocarbons,True
 09.01 Main activity producer,07 Petroleum products,True
 09.01 Main activity producer,07.01 Motor gasoline,True
@@ -1192,7 +1192,7 @@
 09.01.01 Electricity plants,06.01 Crude oil,False
 09.01.01 Electricity plants,06.02 Natural gas liquids,False
 09.01.01 Electricity plants,06.03 Refinery feedstocks,False
-09.01.01 Electricity plants,06.04 Additives/  oxygenates,False
+09.01.01 Electricity plants,06.04 Additives/ oxygenates,False
 09.01.01 Electricity plants,06.05 Other hydrocarbons,False
 09.01.01 Electricity plants,07 Petroleum products,True
 09.01.01 Electricity plants,07.01 Motor gasoline,False
@@ -1270,7 +1270,7 @@
 09.01.02 CHP plants,06.01 Crude oil,False
 09.01.02 CHP plants,06.02 Natural gas liquids,False
 09.01.02 CHP plants,06.03 Refinery feedstocks,False
-09.01.02 CHP plants,06.04 Additives/  oxygenates,False
+09.01.02 CHP plants,06.04 Additives/ oxygenates,False
 09.01.02 CHP plants,06.05 Other hydrocarbons,False
 09.01.02 CHP plants,07 Petroleum products,True
 09.01.02 CHP plants,07.01 Motor gasoline,False
@@ -1348,7 +1348,7 @@
 09.01.03 Heat plants,06.01 Crude oil,False
 09.01.03 Heat plants,06.02 Natural gas liquids,False
 09.01.03 Heat plants,06.03 Refinery feedstocks,False
-09.01.03 Heat plants,06.04 Additives/  oxygenates,False
+09.01.03 Heat plants,06.04 Additives/ oxygenates,False
 09.01.03 Heat plants,06.05 Other hydrocarbons,False
 09.01.03 Heat plants,07 Petroleum products,True
 09.01.03 Heat plants,07.01 Motor gasoline,False
@@ -1426,7 +1426,7 @@
 09.02 Autoproducers,06.01 Crude oil,True
 09.02 Autoproducers,06.02 Natural gas liquids,True
 09.02 Autoproducers,06.03 Refinery feedstocks,True
-09.02 Autoproducers,06.04 Additives/  oxygenates,True
+09.02 Autoproducers,06.04 Additives/ oxygenates,True
 09.02 Autoproducers,06.05 Other hydrocarbons,True
 09.02 Autoproducers,07 Petroleum products,True
 09.02 Autoproducers,07.01 Motor gasoline,True
@@ -1504,7 +1504,7 @@
 09.02.01 Electricity plants,06.01 Crude oil,False
 09.02.01 Electricity plants,06.02 Natural gas liquids,False
 09.02.01 Electricity plants,06.03 Refinery feedstocks,False
-09.02.01 Electricity plants,06.04 Additives/  oxygenates,False
+09.02.01 Electricity plants,06.04 Additives/ oxygenates,False
 09.02.01 Electricity plants,06.05 Other hydrocarbons,False
 09.02.01 Electricity plants,07 Petroleum products,True
 09.02.01 Electricity plants,07.01 Motor gasoline,False
@@ -1582,7 +1582,7 @@
 09.02.02 CHP plants,06.01 Crude oil,False
 09.02.02 CHP plants,06.02 Natural gas liquids,False
 09.02.02 CHP plants,06.03 Refinery feedstocks,False
-09.02.02 CHP plants,06.04 Additives/  oxygenates,False
+09.02.02 CHP plants,06.04 Additives/ oxygenates,False
 09.02.02 CHP plants,06.05 Other hydrocarbons,False
 09.02.02 CHP plants,07 Petroleum products,True
 09.02.02 CHP plants,07.01 Motor gasoline,False
@@ -1660,7 +1660,7 @@
 09.02.03 Heat plants,06.01 Crude oil,False
 09.02.03 Heat plants,06.02 Natural gas liquids,False
 09.02.03 Heat plants,06.03 Refinery feedstocks,False
-09.02.03 Heat plants,06.04 Additives/  oxygenates,False
+09.02.03 Heat plants,06.04 Additives/ oxygenates,False
 09.02.03 Heat plants,06.05 Other hydrocarbons,False
 09.02.03 Heat plants,07 Petroleum products,True
 09.02.03 Heat plants,07.01 Motor gasoline,False
@@ -1738,7 +1738,7 @@
 09.03 Heat pumps,06.01 Crude oil,False
 09.03 Heat pumps,06.02 Natural gas liquids,False
 09.03 Heat pumps,06.03 Refinery feedstocks,False
-09.03 Heat pumps,06.04 Additives/  oxygenates,False
+09.03 Heat pumps,06.04 Additives/ oxygenates,False
 09.03 Heat pumps,06.05 Other hydrocarbons,False
 09.03 Heat pumps,07 Petroleum products,True
 09.03 Heat pumps,07.01 Motor gasoline,False
@@ -1816,7 +1816,7 @@
 09.04 Electric boilers,06.01 Crude oil,False
 09.04 Electric boilers,06.02 Natural gas liquids,False
 09.04 Electric boilers,06.03 Refinery feedstocks,False
-09.04 Electric boilers,06.04 Additives/  oxygenates,False
+09.04 Electric boilers,06.04 Additives/ oxygenates,False
 09.04 Electric boilers,06.05 Other hydrocarbons,False
 09.04 Electric boilers,07 Petroleum products,True
 09.04 Electric boilers,07.01 Motor gasoline,False
@@ -1894,7 +1894,7 @@
 09.05 Chemical heat for electricity production,06.01 Crude oil,False
 09.05 Chemical heat for electricity production,06.02 Natural gas liquids,False
 09.05 Chemical heat for electricity production,06.03 Refinery feedstocks,False
-09.05 Chemical heat for electricity production,06.04 Additives/  oxygenates,False
+09.05 Chemical heat for electricity production,06.04 Additives/ oxygenates,False
 09.05 Chemical heat for electricity production,06.05 Other hydrocarbons,False
 09.05 Chemical heat for electricity production,07 Petroleum products,True
 09.05 Chemical heat for electricity production,07.01 Motor gasoline,False
@@ -1972,7 +1972,7 @@
 09.06 Gas processing plants,06.01 Crude oil,True
 09.06 Gas processing plants,06.02 Natural gas liquids,True
 09.06 Gas processing plants,06.03 Refinery feedstocks,True
-09.06 Gas processing plants,06.04 Additives/  oxygenates,True
+09.06 Gas processing plants,06.04 Additives/ oxygenates,True
 09.06 Gas processing plants,06.05 Other hydrocarbons,True
 09.06 Gas processing plants,07 Petroleum products,True
 09.06 Gas processing plants,07.01 Motor gasoline,True
@@ -2050,7 +2050,7 @@
 09.06.01 Gas works plants,06.01 Crude oil,False
 09.06.01 Gas works plants,06.02 Natural gas liquids,False
 09.06.01 Gas works plants,06.03 Refinery feedstocks,False
-09.06.01 Gas works plants,06.04 Additives/  oxygenates,False
+09.06.01 Gas works plants,06.04 Additives/ oxygenates,False
 09.06.01 Gas works plants,06.05 Other hydrocarbons,False
 09.06.01 Gas works plants,07 Petroleum products,True
 09.06.01 Gas works plants,07.01 Motor gasoline,False
@@ -2128,7 +2128,7 @@
 09.06.02 Liquefaction/regasification plants,06.01 Crude oil,False
 09.06.02 Liquefaction/regasification plants,06.02 Natural gas liquids,False
 09.06.02 Liquefaction/regasification plants,06.03 Refinery feedstocks,False
-09.06.02 Liquefaction/regasification plants,06.04 Additives/  oxygenates,False
+09.06.02 Liquefaction/regasification plants,06.04 Additives/ oxygenates,False
 09.06.02 Liquefaction/regasification plants,06.05 Other hydrocarbons,False
 09.06.02 Liquefaction/regasification plants,07 Petroleum products,True
 09.06.02 Liquefaction/regasification plants,07.01 Motor gasoline,False
@@ -2206,7 +2206,7 @@
 09.06.03 Natural gas blending plants,06.01 Crude oil,False
 09.06.03 Natural gas blending plants,06.02 Natural gas liquids,False
 09.06.03 Natural gas blending plants,06.03 Refinery feedstocks,False
-09.06.03 Natural gas blending plants,06.04 Additives/  oxygenates,False
+09.06.03 Natural gas blending plants,06.04 Additives/ oxygenates,False
 09.06.03 Natural gas blending plants,06.05 Other hydrocarbons,False
 09.06.03 Natural gas blending plants,07 Petroleum products,True
 09.06.03 Natural gas blending plants,07.01 Motor gasoline,False
@@ -2284,7 +2284,7 @@
 09.06.04 Gas-to-liquids plants,06.01 Crude oil,False
 09.06.04 Gas-to-liquids plants,06.02 Natural gas liquids,False
 09.06.04 Gas-to-liquids plants,06.03 Refinery feedstocks,False
-09.06.04 Gas-to-liquids plants,06.04 Additives/  oxygenates,False
+09.06.04 Gas-to-liquids plants,06.04 Additives/ oxygenates,False
 09.06.04 Gas-to-liquids plants,06.05 Other hydrocarbons,False
 09.06.04 Gas-to-liquids plants,07 Petroleum products,True
 09.06.04 Gas-to-liquids plants,07.01 Motor gasoline,False
@@ -2362,7 +2362,7 @@
 09.07 Oil refineries,06.01 Crude oil,False
 09.07 Oil refineries,06.02 Natural gas liquids,False
 09.07 Oil refineries,06.03 Refinery feedstocks,False
-09.07 Oil refineries,06.04 Additives/  oxygenates,False
+09.07 Oil refineries,06.04 Additives/ oxygenates,False
 09.07 Oil refineries,06.05 Other hydrocarbons,False
 09.07 Oil refineries,07 Petroleum products,True
 09.07 Oil refineries,07.01 Motor gasoline,False
@@ -2440,7 +2440,7 @@
 09.08 Coal transformation,06.01 Crude oil,True
 09.08 Coal transformation,06.02 Natural gas liquids,True
 09.08 Coal transformation,06.03 Refinery feedstocks,True
-09.08 Coal transformation,06.04 Additives/  oxygenates,True
+09.08 Coal transformation,06.04 Additives/ oxygenates,True
 09.08 Coal transformation,06.05 Other hydrocarbons,True
 09.08 Coal transformation,07 Petroleum products,True
 09.08 Coal transformation,07.01 Motor gasoline,True
@@ -2518,7 +2518,7 @@
 09.08.01 Coke ovens,06.01 Crude oil,False
 09.08.01 Coke ovens,06.02 Natural gas liquids,False
 09.08.01 Coke ovens,06.03 Refinery feedstocks,False
-09.08.01 Coke ovens,06.04 Additives/  oxygenates,False
+09.08.01 Coke ovens,06.04 Additives/ oxygenates,False
 09.08.01 Coke ovens,06.05 Other hydrocarbons,False
 09.08.01 Coke ovens,07 Petroleum products,True
 09.08.01 Coke ovens,07.01 Motor gasoline,False
@@ -2596,7 +2596,7 @@
 09.08.02 Blast furnaces,06.01 Crude oil,False
 09.08.02 Blast furnaces,06.02 Natural gas liquids,False
 09.08.02 Blast furnaces,06.03 Refinery feedstocks,False
-09.08.02 Blast furnaces,06.04 Additives/  oxygenates,False
+09.08.02 Blast furnaces,06.04 Additives/ oxygenates,False
 09.08.02 Blast furnaces,06.05 Other hydrocarbons,False
 09.08.02 Blast furnaces,07 Petroleum products,True
 09.08.02 Blast furnaces,07.01 Motor gasoline,False
@@ -2674,7 +2674,7 @@
 09.08.03 Patent fuel plants,06.01 Crude oil,False
 09.08.03 Patent fuel plants,06.02 Natural gas liquids,False
 09.08.03 Patent fuel plants,06.03 Refinery feedstocks,False
-09.08.03 Patent fuel plants,06.04 Additives/  oxygenates,False
+09.08.03 Patent fuel plants,06.04 Additives/ oxygenates,False
 09.08.03 Patent fuel plants,06.05 Other hydrocarbons,False
 09.08.03 Patent fuel plants,07 Petroleum products,True
 09.08.03 Patent fuel plants,07.01 Motor gasoline,False
@@ -2752,7 +2752,7 @@
 09.08.04 BKB/PB plants,06.01 Crude oil,False
 09.08.04 BKB/PB plants,06.02 Natural gas liquids,False
 09.08.04 BKB/PB plants,06.03 Refinery feedstocks,False
-09.08.04 BKB/PB plants,06.04 Additives/  oxygenates,False
+09.08.04 BKB/PB plants,06.04 Additives/ oxygenates,False
 09.08.04 BKB/PB plants,06.05 Other hydrocarbons,False
 09.08.04 BKB/PB plants,07 Petroleum products,True
 09.08.04 BKB/PB plants,07.01 Motor gasoline,False
@@ -2830,7 +2830,7 @@
 09.08.05 Liquefaction (coal to oil),06.01 Crude oil,False
 09.08.05 Liquefaction (coal to oil),06.02 Natural gas liquids,False
 09.08.05 Liquefaction (coal to oil),06.03 Refinery feedstocks,False
-09.08.05 Liquefaction (coal to oil),06.04 Additives/  oxygenates,False
+09.08.05 Liquefaction (coal to oil),06.04 Additives/ oxygenates,False
 09.08.05 Liquefaction (coal to oil),06.05 Other hydrocarbons,False
 09.08.05 Liquefaction (coal to oil),07 Petroleum products,True
 09.08.05 Liquefaction (coal to oil),07.01 Motor gasoline,False
@@ -2908,7 +2908,7 @@
 09.09 Petrochemical industry,06.01 Crude oil,False
 09.09 Petrochemical industry,06.02 Natural gas liquids,False
 09.09 Petrochemical industry,06.03 Refinery feedstocks,False
-09.09 Petrochemical industry,06.04 Additives/  oxygenates,False
+09.09 Petrochemical industry,06.04 Additives/ oxygenates,False
 09.09 Petrochemical industry,06.05 Other hydrocarbons,False
 09.09 Petrochemical industry,07 Petroleum products,True
 09.09 Petrochemical industry,07.01 Motor gasoline,False
@@ -2986,7 +2986,7 @@
 09.10 Biofuels processing,06.01 Crude oil,False
 09.10 Biofuels processing,06.02 Natural gas liquids,False
 09.10 Biofuels processing,06.03 Refinery feedstocks,False
-09.10 Biofuels processing,06.04 Additives/  oxygenates,False
+09.10 Biofuels processing,06.04 Additives/ oxygenates,False
 09.10 Biofuels processing,06.05 Other hydrocarbons,False
 09.10 Biofuels processing,07 Petroleum products,True
 09.10 Biofuels processing,07.01 Motor gasoline,False
@@ -3064,7 +3064,7 @@
 09.11 Charcoal processing,06.01 Crude oil,False
 09.11 Charcoal processing,06.02 Natural gas liquids,False
 09.11 Charcoal processing,06.03 Refinery feedstocks,False
-09.11 Charcoal processing,06.04 Additives/  oxygenates,False
+09.11 Charcoal processing,06.04 Additives/ oxygenates,False
 09.11 Charcoal processing,06.05 Other hydrocarbons,False
 09.11 Charcoal processing,07 Petroleum products,True
 09.11 Charcoal processing,07.01 Motor gasoline,False
@@ -3142,7 +3142,7 @@
 09.12 Non-specified transformation,06.01 Crude oil,False
 09.12 Non-specified transformation,06.02 Natural gas liquids,False
 09.12 Non-specified transformation,06.03 Refinery feedstocks,False
-09.12 Non-specified transformation,06.04 Additives/  oxygenates,False
+09.12 Non-specified transformation,06.04 Additives/ oxygenates,False
 09.12 Non-specified transformation,06.05 Other hydrocarbons,False
 09.12 Non-specified transformation,07 Petroleum products,True
 09.12 Non-specified transformation,07.01 Motor gasoline,False
@@ -3220,7 +3220,7 @@
 10 Losses & own use,06.01 Crude oil,True
 10 Losses & own use,06.02 Natural gas liquids,True
 10 Losses & own use,06.03 Refinery feedstocks,True
-10 Losses & own use,06.04 Additives/  oxygenates,True
+10 Losses & own use,06.04 Additives/ oxygenates,True
 10 Losses & own use,06.05 Other hydrocarbons,True
 10 Losses & own use,07 Petroleum products,True
 10 Losses & own use,07.01 Motor gasoline,True
@@ -3298,7 +3298,7 @@
 10.01 Own Use,06.01 Crude oil,True
 10.01 Own Use,06.02 Natural gas liquids,True
 10.01 Own Use,06.03 Refinery feedstocks,True
-10.01 Own Use,06.04 Additives/  oxygenates,True
+10.01 Own Use,06.04 Additives/ oxygenates,True
 10.01 Own Use,06.05 Other hydrocarbons,True
 10.01 Own Use,07 Petroleum products,True
 10.01 Own Use,07.01 Motor gasoline,True
@@ -3376,7 +3376,7 @@
 "10.01.01 Electricity, CHP and heat plants",06.01 Crude oil,False
 "10.01.01 Electricity, CHP and heat plants",06.02 Natural gas liquids,False
 "10.01.01 Electricity, CHP and heat plants",06.03 Refinery feedstocks,False
-"10.01.01 Electricity, CHP and heat plants",06.04 Additives/  oxygenates,False
+"10.01.01 Electricity, CHP and heat plants",06.04 Additives/ oxygenates,False
 "10.01.01 Electricity, CHP and heat plants",06.05 Other hydrocarbons,False
 "10.01.01 Electricity, CHP and heat plants",07 Petroleum products,True
 "10.01.01 Electricity, CHP and heat plants",07.01 Motor gasoline,False
@@ -3454,7 +3454,7 @@
 10.01.02 Gas works plants,06.01 Crude oil,False
 10.01.02 Gas works plants,06.02 Natural gas liquids,False
 10.01.02 Gas works plants,06.03 Refinery feedstocks,False
-10.01.02 Gas works plants,06.04 Additives/  oxygenates,False
+10.01.02 Gas works plants,06.04 Additives/ oxygenates,False
 10.01.02 Gas works plants,06.05 Other hydrocarbons,False
 10.01.02 Gas works plants,07 Petroleum products,True
 10.01.02 Gas works plants,07.01 Motor gasoline,False
@@ -3532,7 +3532,7 @@
 10.01.03 Liquefaction/regasification plants,06.01 Crude oil,False
 10.01.03 Liquefaction/regasification plants,06.02 Natural gas liquids,False
 10.01.03 Liquefaction/regasification plants,06.03 Refinery feedstocks,False
-10.01.03 Liquefaction/regasification plants,06.04 Additives/  oxygenates,False
+10.01.03 Liquefaction/regasification plants,06.04 Additives/ oxygenates,False
 10.01.03 Liquefaction/regasification plants,06.05 Other hydrocarbons,False
 10.01.03 Liquefaction/regasification plants,07 Petroleum products,True
 10.01.03 Liquefaction/regasification plants,07.01 Motor gasoline,False
@@ -3610,7 +3610,7 @@
 10.01.04 Gas-to-liquids plants,06.01 Crude oil,False
 10.01.04 Gas-to-liquids plants,06.02 Natural gas liquids,False
 10.01.04 Gas-to-liquids plants,06.03 Refinery feedstocks,False
-10.01.04 Gas-to-liquids plants,06.04 Additives/  oxygenates,False
+10.01.04 Gas-to-liquids plants,06.04 Additives/ oxygenates,False
 10.01.04 Gas-to-liquids plants,06.05 Other hydrocarbons,False
 10.01.04 Gas-to-liquids plants,07 Petroleum products,True
 10.01.04 Gas-to-liquids plants,07.01 Motor gasoline,False
@@ -3688,7 +3688,7 @@
 10.01.05 Coke ovens,06.01 Crude oil,False
 10.01.05 Coke ovens,06.02 Natural gas liquids,False
 10.01.05 Coke ovens,06.03 Refinery feedstocks,False
-10.01.05 Coke ovens,06.04 Additives/  oxygenates,False
+10.01.05 Coke ovens,06.04 Additives/ oxygenates,False
 10.01.05 Coke ovens,06.05 Other hydrocarbons,False
 10.01.05 Coke ovens,07 Petroleum products,True
 10.01.05 Coke ovens,07.01 Motor gasoline,False
@@ -3766,7 +3766,7 @@
 10.01.06 Coal mines,06.01 Crude oil,False
 10.01.06 Coal mines,06.02 Natural gas liquids,False
 10.01.06 Coal mines,06.03 Refinery feedstocks,False
-10.01.06 Coal mines,06.04 Additives/  oxygenates,False
+10.01.06 Coal mines,06.04 Additives/ oxygenates,False
 10.01.06 Coal mines,06.05 Other hydrocarbons,False
 10.01.06 Coal mines,07 Petroleum products,True
 10.01.06 Coal mines,07.01 Motor gasoline,False
@@ -3844,7 +3844,7 @@
 10.01.07 Blast furnaces,06.01 Crude oil,False
 10.01.07 Blast furnaces,06.02 Natural gas liquids,False
 10.01.07 Blast furnaces,06.03 Refinery feedstocks,False
-10.01.07 Blast furnaces,06.04 Additives/  oxygenates,False
+10.01.07 Blast furnaces,06.04 Additives/ oxygenates,False
 10.01.07 Blast furnaces,06.05 Other hydrocarbons,False
 10.01.07 Blast furnaces,07 Petroleum products,True
 10.01.07 Blast furnaces,07.01 Motor gasoline,False
@@ -3922,7 +3922,7 @@
 10.01.08 Patent fuel plants,06.01 Crude oil,False
 10.01.08 Patent fuel plants,06.02 Natural gas liquids,False
 10.01.08 Patent fuel plants,06.03 Refinery feedstocks,False
-10.01.08 Patent fuel plants,06.04 Additives/  oxygenates,False
+10.01.08 Patent fuel plants,06.04 Additives/ oxygenates,False
 10.01.08 Patent fuel plants,06.05 Other hydrocarbons,False
 10.01.08 Patent fuel plants,07 Petroleum products,True
 10.01.08 Patent fuel plants,07.01 Motor gasoline,False
@@ -4000,7 +4000,7 @@
 10.01.09 BKB/PB plants,06.01 Crude oil,False
 10.01.09 BKB/PB plants,06.02 Natural gas liquids,False
 10.01.09 BKB/PB plants,06.03 Refinery feedstocks,False
-10.01.09 BKB/PB plants,06.04 Additives/  oxygenates,False
+10.01.09 BKB/PB plants,06.04 Additives/ oxygenates,False
 10.01.09 BKB/PB plants,06.05 Other hydrocarbons,False
 10.01.09 BKB/PB plants,07 Petroleum products,True
 10.01.09 BKB/PB plants,07.01 Motor gasoline,False
@@ -4078,7 +4078,7 @@
 10.01.10 Liquefaction plants (Coal to Oil),06.01 Crude oil,False
 10.01.10 Liquefaction plants (Coal to Oil),06.02 Natural gas liquids,False
 10.01.10 Liquefaction plants (Coal to Oil),06.03 Refinery feedstocks,False
-10.01.10 Liquefaction plants (Coal to Oil),06.04 Additives/  oxygenates,False
+10.01.10 Liquefaction plants (Coal to Oil),06.04 Additives/ oxygenates,False
 10.01.10 Liquefaction plants (Coal to Oil),06.05 Other hydrocarbons,False
 10.01.10 Liquefaction plants (Coal to Oil),07 Petroleum products,True
 10.01.10 Liquefaction plants (Coal to Oil),07.01 Motor gasoline,False
@@ -4156,7 +4156,7 @@
 10.01.11 Oil refineries,06.01 Crude oil,False
 10.01.11 Oil refineries,06.02 Natural gas liquids,False
 10.01.11 Oil refineries,06.03 Refinery feedstocks,False
-10.01.11 Oil refineries,06.04 Additives/  oxygenates,False
+10.01.11 Oil refineries,06.04 Additives/ oxygenates,False
 10.01.11 Oil refineries,06.05 Other hydrocarbons,False
 10.01.11 Oil refineries,07 Petroleum products,True
 10.01.11 Oil refineries,07.01 Motor gasoline,False
@@ -4234,7 +4234,7 @@
 10.01.12 Oil and gas extraction,06.01 Crude oil,False
 10.01.12 Oil and gas extraction,06.02 Natural gas liquids,False
 10.01.12 Oil and gas extraction,06.03 Refinery feedstocks,False
-10.01.12 Oil and gas extraction,06.04 Additives/  oxygenates,False
+10.01.12 Oil and gas extraction,06.04 Additives/ oxygenates,False
 10.01.12 Oil and gas extraction,06.05 Other hydrocarbons,False
 10.01.12 Oil and gas extraction,07 Petroleum products,True
 10.01.12 Oil and gas extraction,07.01 Motor gasoline,False
@@ -4312,7 +4312,7 @@
 10.01.13 Pump storage plants,06.01 Crude oil,False
 10.01.13 Pump storage plants,06.02 Natural gas liquids,False
 10.01.13 Pump storage plants,06.03 Refinery feedstocks,False
-10.01.13 Pump storage plants,06.04 Additives/  oxygenates,False
+10.01.13 Pump storage plants,06.04 Additives/ oxygenates,False
 10.01.13 Pump storage plants,06.05 Other hydrocarbons,False
 10.01.13 Pump storage plants,07 Petroleum products,True
 10.01.13 Pump storage plants,07.01 Motor gasoline,False
@@ -4390,7 +4390,7 @@
 10.01.14 Nuclear industry,06.01 Crude oil,False
 10.01.14 Nuclear industry,06.02 Natural gas liquids,False
 10.01.14 Nuclear industry,06.03 Refinery feedstocks,False
-10.01.14 Nuclear industry,06.04 Additives/  oxygenates,False
+10.01.14 Nuclear industry,06.04 Additives/ oxygenates,False
 10.01.14 Nuclear industry,06.05 Other hydrocarbons,False
 10.01.14 Nuclear industry,07 Petroleum products,True
 10.01.14 Nuclear industry,07.01 Motor gasoline,False
@@ -4468,7 +4468,7 @@
 10.01.15 Charcoal production plants,06.01 Crude oil,False
 10.01.15 Charcoal production plants,06.02 Natural gas liquids,False
 10.01.15 Charcoal production plants,06.03 Refinery feedstocks,False
-10.01.15 Charcoal production plants,06.04 Additives/  oxygenates,False
+10.01.15 Charcoal production plants,06.04 Additives/ oxygenates,False
 10.01.15 Charcoal production plants,06.05 Other hydrocarbons,False
 10.01.15 Charcoal production plants,07 Petroleum products,True
 10.01.15 Charcoal production plants,07.01 Motor gasoline,False
@@ -4546,7 +4546,7 @@
 10.01.16 Gasification plants for biogases,06.01 Crude oil,False
 10.01.16 Gasification plants for biogases,06.02 Natural gas liquids,False
 10.01.16 Gasification plants for biogases,06.03 Refinery feedstocks,False
-10.01.16 Gasification plants for biogases,06.04 Additives/  oxygenates,False
+10.01.16 Gasification plants for biogases,06.04 Additives/ oxygenates,False
 10.01.16 Gasification plants for biogases,06.05 Other hydrocarbons,False
 10.01.16 Gasification plants for biogases,07 Petroleum products,True
 10.01.16 Gasification plants for biogases,07.01 Motor gasoline,False
@@ -4624,7 +4624,7 @@
 10.01.17 Non-specified own uses,06.01 Crude oil,False
 10.01.17 Non-specified own uses,06.02 Natural gas liquids,False
 10.01.17 Non-specified own uses,06.03 Refinery feedstocks,False
-10.01.17 Non-specified own uses,06.04 Additives/  oxygenates,False
+10.01.17 Non-specified own uses,06.04 Additives/ oxygenates,False
 10.01.17 Non-specified own uses,06.05 Other hydrocarbons,False
 10.01.17 Non-specified own uses,07 Petroleum products,True
 10.01.17 Non-specified own uses,07.01 Motor gasoline,False
@@ -4702,7 +4702,7 @@
 10.02 Transmission and distribution losses,06.01 Crude oil,False
 10.02 Transmission and distribution losses,06.02 Natural gas liquids,False
 10.02 Transmission and distribution losses,06.03 Refinery feedstocks,False
-10.02 Transmission and distribution losses,06.04 Additives/  oxygenates,False
+10.02 Transmission and distribution losses,06.04 Additives/ oxygenates,False
 10.02 Transmission and distribution losses,06.05 Other hydrocarbons,False
 10.02 Transmission and distribution losses,07 Petroleum products,True
 10.02 Transmission and distribution losses,07.01 Motor gasoline,False
@@ -4780,7 +4780,7 @@
 11 Statistical discrepancy,06.01 Crude oil,False
 11 Statistical discrepancy,06.02 Natural gas liquids,False
 11 Statistical discrepancy,06.03 Refinery feedstocks,False
-11 Statistical discrepancy,06.04 Additives/  oxygenates,False
+11 Statistical discrepancy,06.04 Additives/ oxygenates,False
 11 Statistical discrepancy,06.05 Other hydrocarbons,False
 11 Statistical discrepancy,07 Petroleum products,True
 11 Statistical discrepancy,07.01 Motor gasoline,False
@@ -4858,7 +4858,7 @@
 12 Total final consumption,06.01 Crude oil,False
 12 Total final consumption,06.02 Natural gas liquids,False
 12 Total final consumption,06.03 Refinery feedstocks,False
-12 Total final consumption,06.04 Additives/  oxygenates,False
+12 Total final consumption,06.04 Additives/ oxygenates,False
 12 Total final consumption,06.05 Other hydrocarbons,False
 12 Total final consumption,07 Petroleum products,True
 12 Total final consumption,07.01 Motor gasoline,False
@@ -4936,7 +4936,7 @@
 13 Total final energy consumption,06.01 Crude oil,False
 13 Total final energy consumption,06.02 Natural gas liquids,False
 13 Total final energy consumption,06.03 Refinery feedstocks,False
-13 Total final energy consumption,06.04 Additives/  oxygenates,False
+13 Total final energy consumption,06.04 Additives/ oxygenates,False
 13 Total final energy consumption,06.05 Other hydrocarbons,False
 13 Total final energy consumption,07 Petroleum products,True
 13 Total final energy consumption,07.01 Motor gasoline,False
@@ -5014,7 +5014,7 @@
 14 Industry sector,06.01 Crude oil,True
 14 Industry sector,06.02 Natural gas liquids,True
 14 Industry sector,06.03 Refinery feedstocks,True
-14 Industry sector,06.04 Additives/  oxygenates,True
+14 Industry sector,06.04 Additives/ oxygenates,True
 14 Industry sector,06.05 Other hydrocarbons,True
 14 Industry sector,07 Petroleum products,True
 14 Industry sector,07.01 Motor gasoline,True
@@ -5092,7 +5092,7 @@
 14.01 Mining and quarrying,06.01 Crude oil,False
 14.01 Mining and quarrying,06.02 Natural gas liquids,False
 14.01 Mining and quarrying,06.03 Refinery feedstocks,False
-14.01 Mining and quarrying,06.04 Additives/  oxygenates,False
+14.01 Mining and quarrying,06.04 Additives/ oxygenates,False
 14.01 Mining and quarrying,06.05 Other hydrocarbons,False
 14.01 Mining and quarrying,07 Petroleum products,True
 14.01 Mining and quarrying,07.01 Motor gasoline,False
@@ -5170,7 +5170,7 @@
 14.02 Construction,06.01 Crude oil,False
 14.02 Construction,06.02 Natural gas liquids,False
 14.02 Construction,06.03 Refinery feedstocks,False
-14.02 Construction,06.04 Additives/  oxygenates,False
+14.02 Construction,06.04 Additives/ oxygenates,False
 14.02 Construction,06.05 Other hydrocarbons,False
 14.02 Construction,07 Petroleum products,True
 14.02 Construction,07.01 Motor gasoline,False
@@ -5248,7 +5248,7 @@
 14.03 Manufacturing,06.01 Crude oil,True
 14.03 Manufacturing,06.02 Natural gas liquids,True
 14.03 Manufacturing,06.03 Refinery feedstocks,True
-14.03 Manufacturing,06.04 Additives/  oxygenates,True
+14.03 Manufacturing,06.04 Additives/ oxygenates,True
 14.03 Manufacturing,06.05 Other hydrocarbons,True
 14.03 Manufacturing,07 Petroleum products,True
 14.03 Manufacturing,07.01 Motor gasoline,True
@@ -5326,7 +5326,7 @@
 14.03.01 Iron and steel,06.01 Crude oil,False
 14.03.01 Iron and steel,06.02 Natural gas liquids,False
 14.03.01 Iron and steel,06.03 Refinery feedstocks,False
-14.03.01 Iron and steel,06.04 Additives/  oxygenates,False
+14.03.01 Iron and steel,06.04 Additives/ oxygenates,False
 14.03.01 Iron and steel,06.05 Other hydrocarbons,False
 14.03.01 Iron and steel,07 Petroleum products,True
 14.03.01 Iron and steel,07.01 Motor gasoline,False
@@ -5404,7 +5404,7 @@
 14.03.02 Chemical (incl. petrochemical),06.01 Crude oil,False
 14.03.02 Chemical (incl. petrochemical),06.02 Natural gas liquids,False
 14.03.02 Chemical (incl. petrochemical),06.03 Refinery feedstocks,False
-14.03.02 Chemical (incl. petrochemical),06.04 Additives/  oxygenates,False
+14.03.02 Chemical (incl. petrochemical),06.04 Additives/ oxygenates,False
 14.03.02 Chemical (incl. petrochemical),06.05 Other hydrocarbons,False
 14.03.02 Chemical (incl. petrochemical),07 Petroleum products,True
 14.03.02 Chemical (incl. petrochemical),07.01 Motor gasoline,False
@@ -5482,7 +5482,7 @@
 14.03.03 Non ferrous metals,06.01 Crude oil,False
 14.03.03 Non ferrous metals,06.02 Natural gas liquids,False
 14.03.03 Non ferrous metals,06.03 Refinery feedstocks,False
-14.03.03 Non ferrous metals,06.04 Additives/  oxygenates,False
+14.03.03 Non ferrous metals,06.04 Additives/ oxygenates,False
 14.03.03 Non ferrous metals,06.05 Other hydrocarbons,False
 14.03.03 Non ferrous metals,07 Petroleum products,True
 14.03.03 Non ferrous metals,07.01 Motor gasoline,False
@@ -5560,7 +5560,7 @@
 14.03.04 Non-metallic mineral products,06.01 Crude oil,False
 14.03.04 Non-metallic mineral products,06.02 Natural gas liquids,False
 14.03.04 Non-metallic mineral products,06.03 Refinery feedstocks,False
-14.03.04 Non-metallic mineral products,06.04 Additives/  oxygenates,False
+14.03.04 Non-metallic mineral products,06.04 Additives/ oxygenates,False
 14.03.04 Non-metallic mineral products,06.05 Other hydrocarbons,False
 14.03.04 Non-metallic mineral products,07 Petroleum products,True
 14.03.04 Non-metallic mineral products,07.01 Motor gasoline,False
@@ -5638,7 +5638,7 @@
 14.03.05 Transportation equipment,06.01 Crude oil,False
 14.03.05 Transportation equipment,06.02 Natural gas liquids,False
 14.03.05 Transportation equipment,06.03 Refinery feedstocks,False
-14.03.05 Transportation equipment,06.04 Additives/  oxygenates,False
+14.03.05 Transportation equipment,06.04 Additives/ oxygenates,False
 14.03.05 Transportation equipment,06.05 Other hydrocarbons,False
 14.03.05 Transportation equipment,07 Petroleum products,True
 14.03.05 Transportation equipment,07.01 Motor gasoline,False
@@ -5716,7 +5716,7 @@
 14.03.06 Machinery,06.01 Crude oil,False
 14.03.06 Machinery,06.02 Natural gas liquids,False
 14.03.06 Machinery,06.03 Refinery feedstocks,False
-14.03.06 Machinery,06.04 Additives/  oxygenates,False
+14.03.06 Machinery,06.04 Additives/ oxygenates,False
 14.03.06 Machinery,06.05 Other hydrocarbons,False
 14.03.06 Machinery,07 Petroleum products,True
 14.03.06 Machinery,07.01 Motor gasoline,False
@@ -5794,7 +5794,7 @@
 "14.03.07 Food, beverages and tobacco",06.01 Crude oil,False
 "14.03.07 Food, beverages and tobacco",06.02 Natural gas liquids,False
 "14.03.07 Food, beverages and tobacco",06.03 Refinery feedstocks,False
-"14.03.07 Food, beverages and tobacco",06.04 Additives/  oxygenates,False
+"14.03.07 Food, beverages and tobacco",06.04 Additives/ oxygenates,False
 "14.03.07 Food, beverages and tobacco",06.05 Other hydrocarbons,False
 "14.03.07 Food, beverages and tobacco",07 Petroleum products,True
 "14.03.07 Food, beverages and tobacco",07.01 Motor gasoline,False
@@ -5872,7 +5872,7 @@
 "14.03.08 Pulp, paper and printing",06.01 Crude oil,False
 "14.03.08 Pulp, paper and printing",06.02 Natural gas liquids,False
 "14.03.08 Pulp, paper and printing",06.03 Refinery feedstocks,False
-"14.03.08 Pulp, paper and printing",06.04 Additives/  oxygenates,False
+"14.03.08 Pulp, paper and printing",06.04 Additives/ oxygenates,False
 "14.03.08 Pulp, paper and printing",06.05 Other hydrocarbons,False
 "14.03.08 Pulp, paper and printing",07 Petroleum products,True
 "14.03.08 Pulp, paper and printing",07.01 Motor gasoline,False
@@ -5950,7 +5950,7 @@
 14.03.09 Wood and wood products,06.01 Crude oil,False
 14.03.09 Wood and wood products,06.02 Natural gas liquids,False
 14.03.09 Wood and wood products,06.03 Refinery feedstocks,False
-14.03.09 Wood and wood products,06.04 Additives/  oxygenates,False
+14.03.09 Wood and wood products,06.04 Additives/ oxygenates,False
 14.03.09 Wood and wood products,06.05 Other hydrocarbons,False
 14.03.09 Wood and wood products,07 Petroleum products,True
 14.03.09 Wood and wood products,07.01 Motor gasoline,False
@@ -6028,7 +6028,7 @@
 14.03.10 Textiles and leather,06.01 Crude oil,False
 14.03.10 Textiles and leather,06.02 Natural gas liquids,False
 14.03.10 Textiles and leather,06.03 Refinery feedstocks,False
-14.03.10 Textiles and leather,06.04 Additives/  oxygenates,False
+14.03.10 Textiles and leather,06.04 Additives/ oxygenates,False
 14.03.10 Textiles and leather,06.05 Other hydrocarbons,False
 14.03.10 Textiles and leather,07 Petroleum products,True
 14.03.10 Textiles and leather,07.01 Motor gasoline,False
@@ -6106,7 +6106,7 @@
 14.03.11 Non-specified industry,06.01 Crude oil,False
 14.03.11 Non-specified industry,06.02 Natural gas liquids,False
 14.03.11 Non-specified industry,06.03 Refinery feedstocks,False
-14.03.11 Non-specified industry,06.04 Additives/  oxygenates,False
+14.03.11 Non-specified industry,06.04 Additives/ oxygenates,False
 14.03.11 Non-specified industry,06.05 Other hydrocarbons,False
 14.03.11 Non-specified industry,07 Petroleum products,True
 14.03.11 Non-specified industry,07.01 Motor gasoline,False
@@ -6184,7 +6184,7 @@
 15 Transport sector,06.01 Crude oil,True
 15 Transport sector,06.02 Natural gas liquids,True
 15 Transport sector,06.03 Refinery feedstocks,True
-15 Transport sector,06.04 Additives/  oxygenates,True
+15 Transport sector,06.04 Additives/ oxygenates,True
 15 Transport sector,06.05 Other hydrocarbons,True
 15 Transport sector,07 Petroleum products,True
 15 Transport sector,07.01 Motor gasoline,True
@@ -6262,7 +6262,7 @@
 15.01 Domestic air transport,06.01 Crude oil,False
 15.01 Domestic air transport,06.02 Natural gas liquids,False
 15.01 Domestic air transport,06.03 Refinery feedstocks,False
-15.01 Domestic air transport,06.04 Additives/  oxygenates,False
+15.01 Domestic air transport,06.04 Additives/ oxygenates,False
 15.01 Domestic air transport,06.05 Other hydrocarbons,False
 15.01 Domestic air transport,07 Petroleum products,True
 15.01 Domestic air transport,07.01 Motor gasoline,False
@@ -6340,7 +6340,7 @@
 15.02 Road,06.01 Crude oil,False
 15.02 Road,06.02 Natural gas liquids,False
 15.02 Road,06.03 Refinery feedstocks,False
-15.02 Road,06.04 Additives/  oxygenates,False
+15.02 Road,06.04 Additives/ oxygenates,False
 15.02 Road,06.05 Other hydrocarbons,False
 15.02 Road,07 Petroleum products,True
 15.02 Road,07.01 Motor gasoline,False
@@ -6418,7 +6418,7 @@
 15.03 Rail,06.01 Crude oil,False
 15.03 Rail,06.02 Natural gas liquids,False
 15.03 Rail,06.03 Refinery feedstocks,False
-15.03 Rail,06.04 Additives/  oxygenates,False
+15.03 Rail,06.04 Additives/ oxygenates,False
 15.03 Rail,06.05 Other hydrocarbons,False
 15.03 Rail,07 Petroleum products,True
 15.03 Rail,07.01 Motor gasoline,False
@@ -6496,7 +6496,7 @@
 15.04 Domestic navigation,06.01 Crude oil,False
 15.04 Domestic navigation,06.02 Natural gas liquids,False
 15.04 Domestic navigation,06.03 Refinery feedstocks,False
-15.04 Domestic navigation,06.04 Additives/  oxygenates,False
+15.04 Domestic navigation,06.04 Additives/ oxygenates,False
 15.04 Domestic navigation,06.05 Other hydrocarbons,False
 15.04 Domestic navigation,07 Petroleum products,True
 15.04 Domestic navigation,07.01 Motor gasoline,False
@@ -6574,7 +6574,7 @@
 15.05 Pipeline transport,06.01 Crude oil,False
 15.05 Pipeline transport,06.02 Natural gas liquids,False
 15.05 Pipeline transport,06.03 Refinery feedstocks,False
-15.05 Pipeline transport,06.04 Additives/  oxygenates,False
+15.05 Pipeline transport,06.04 Additives/ oxygenates,False
 15.05 Pipeline transport,06.05 Other hydrocarbons,False
 15.05 Pipeline transport,07 Petroleum products,True
 15.05 Pipeline transport,07.01 Motor gasoline,False
@@ -6652,7 +6652,7 @@
 15.06 Non-specified transport,06.01 Crude oil,False
 15.06 Non-specified transport,06.02 Natural gas liquids,False
 15.06 Non-specified transport,06.03 Refinery feedstocks,False
-15.06 Non-specified transport,06.04 Additives/  oxygenates,False
+15.06 Non-specified transport,06.04 Additives/ oxygenates,False
 15.06 Non-specified transport,06.05 Other hydrocarbons,False
 15.06 Non-specified transport,07 Petroleum products,True
 15.06 Non-specified transport,07.01 Motor gasoline,False
@@ -6730,7 +6730,7 @@
 16 Other sector,06.01 Crude oil,True
 16 Other sector,06.02 Natural gas liquids,True
 16 Other sector,06.03 Refinery feedstocks,True
-16 Other sector,06.04 Additives/  oxygenates,True
+16 Other sector,06.04 Additives/ oxygenates,True
 16 Other sector,06.05 Other hydrocarbons,True
 16 Other sector,07 Petroleum products,True
 16 Other sector,07.01 Motor gasoline,True
@@ -6808,7 +6808,7 @@
 16.01 Commercial and public services,06.01 Crude oil,False
 16.01 Commercial and public services,06.02 Natural gas liquids,False
 16.01 Commercial and public services,06.03 Refinery feedstocks,False
-16.01 Commercial and public services,06.04 Additives/  oxygenates,False
+16.01 Commercial and public services,06.04 Additives/ oxygenates,False
 16.01 Commercial and public services,06.05 Other hydrocarbons,False
 16.01 Commercial and public services,07 Petroleum products,True
 16.01 Commercial and public services,07.01 Motor gasoline,False
@@ -6886,7 +6886,7 @@
 16.02 Residential,06.01 Crude oil,False
 16.02 Residential,06.02 Natural gas liquids,False
 16.02 Residential,06.03 Refinery feedstocks,False
-16.02 Residential,06.04 Additives/  oxygenates,False
+16.02 Residential,06.04 Additives/ oxygenates,False
 16.02 Residential,06.05 Other hydrocarbons,False
 16.02 Residential,07 Petroleum products,True
 16.02 Residential,07.01 Motor gasoline,False
@@ -6964,7 +6964,7 @@
 16.03 Agriculture,06.01 Crude oil,False
 16.03 Agriculture,06.02 Natural gas liquids,False
 16.03 Agriculture,06.03 Refinery feedstocks,False
-16.03 Agriculture,06.04 Additives/  oxygenates,False
+16.03 Agriculture,06.04 Additives/ oxygenates,False
 16.03 Agriculture,06.05 Other hydrocarbons,False
 16.03 Agriculture,07 Petroleum products,True
 16.03 Agriculture,07.01 Motor gasoline,False
@@ -7042,7 +7042,7 @@
 16.04 Fishing,06.01 Crude oil,False
 16.04 Fishing,06.02 Natural gas liquids,False
 16.04 Fishing,06.03 Refinery feedstocks,False
-16.04 Fishing,06.04 Additives/  oxygenates,False
+16.04 Fishing,06.04 Additives/ oxygenates,False
 16.04 Fishing,06.05 Other hydrocarbons,False
 16.04 Fishing,07 Petroleum products,True
 16.04 Fishing,07.01 Motor gasoline,False
@@ -7120,7 +7120,7 @@
 16.05 Non-specified others,06.01 Crude oil,False
 16.05 Non-specified others,06.02 Natural gas liquids,False
 16.05 Non-specified others,06.03 Refinery feedstocks,False
-16.05 Non-specified others,06.04 Additives/  oxygenates,False
+16.05 Non-specified others,06.04 Additives/ oxygenates,False
 16.05 Non-specified others,06.05 Other hydrocarbons,False
 16.05 Non-specified others,07 Petroleum products,True
 16.05 Non-specified others,07.01 Motor gasoline,False
@@ -7198,7 +7198,7 @@
 17 Non-energy use,06.01 Crude oil,True
 17 Non-energy use,06.02 Natural gas liquids,True
 17 Non-energy use,06.03 Refinery feedstocks,True
-17 Non-energy use,06.04 Additives/  oxygenates,True
+17 Non-energy use,06.04 Additives/ oxygenates,True
 17 Non-energy use,06.05 Other hydrocarbons,True
 17 Non-energy use,07 Petroleum products,True
 17 Non-energy use,07.01 Motor gasoline,True
@@ -7276,7 +7276,7 @@
 17.01 Transformation sector,06.01 Crude oil,False
 17.01 Transformation sector,06.02 Natural gas liquids,False
 17.01 Transformation sector,06.03 Refinery feedstocks,False
-17.01 Transformation sector,06.04 Additives/  oxygenates,False
+17.01 Transformation sector,06.04 Additives/ oxygenates,False
 17.01 Transformation sector,06.05 Other hydrocarbons,False
 17.01 Transformation sector,07 Petroleum products,True
 17.01 Transformation sector,07.01 Motor gasoline,False
@@ -7354,7 +7354,7 @@
 17.02 Industry sector,06.01 Crude oil,False
 17.02 Industry sector,06.02 Natural gas liquids,False
 17.02 Industry sector,06.03 Refinery feedstocks,False
-17.02 Industry sector,06.04 Additives/  oxygenates,False
+17.02 Industry sector,06.04 Additives/ oxygenates,False
 17.02 Industry sector,06.05 Other hydrocarbons,False
 17.02 Industry sector,07 Petroleum products,True
 17.02 Industry sector,07.01 Motor gasoline,False
@@ -7432,7 +7432,7 @@
 17.03 Transport sector,06.01 Crude oil,False
 17.03 Transport sector,06.02 Natural gas liquids,False
 17.03 Transport sector,06.03 Refinery feedstocks,False
-17.03 Transport sector,06.04 Additives/  oxygenates,False
+17.03 Transport sector,06.04 Additives/ oxygenates,False
 17.03 Transport sector,06.05 Other hydrocarbons,False
 17.03 Transport sector,07 Petroleum products,True
 17.03 Transport sector,07.01 Motor gasoline,False
@@ -7510,7 +7510,7 @@
 17.04 Other sector,06.01 Crude oil,False
 17.04 Other sector,06.02 Natural gas liquids,False
 17.04 Other sector,06.03 Refinery feedstocks,False
-17.04 Other sector,06.04 Additives/  oxygenates,False
+17.04 Other sector,06.04 Additives/ oxygenates,False
 17.04 Other sector,06.05 Other hydrocarbons,False
 17.04 Other sector,07 Petroleum products,True
 17.04 Other sector,07.01 Motor gasoline,False
@@ -7588,7 +7588,7 @@
 18 Electricity output in GWh,06.01 Crude oil,True
 18 Electricity output in GWh,06.02 Natural gas liquids,True
 18 Electricity output in GWh,06.03 Refinery feedstocks,True
-18 Electricity output in GWh,06.04 Additives/  oxygenates,True
+18 Electricity output in GWh,06.04 Additives/ oxygenates,True
 18 Electricity output in GWh,06.05 Other hydrocarbons,True
 18 Electricity output in GWh,07 Petroleum products,True
 18 Electricity output in GWh,07.01 Motor gasoline,True
@@ -7666,7 +7666,7 @@
 18.01 MAP electricity plants,06.01 Crude oil,False
 18.01 MAP electricity plants,06.02 Natural gas liquids,False
 18.01 MAP electricity plants,06.03 Refinery feedstocks,False
-18.01 MAP electricity plants,06.04 Additives/  oxygenates,False
+18.01 MAP electricity plants,06.04 Additives/ oxygenates,False
 18.01 MAP electricity plants,06.05 Other hydrocarbons,False
 18.01 MAP electricity plants,07 Petroleum products,True
 18.01 MAP electricity plants,07.01 Motor gasoline,False
@@ -7744,7 +7744,7 @@
 18.02 MAP CHP plants,06.01 Crude oil,False
 18.02 MAP CHP plants,06.02 Natural gas liquids,False
 18.02 MAP CHP plants,06.03 Refinery feedstocks,False
-18.02 MAP CHP plants,06.04 Additives/  oxygenates,False
+18.02 MAP CHP plants,06.04 Additives/ oxygenates,False
 18.02 MAP CHP plants,06.05 Other hydrocarbons,False
 18.02 MAP CHP plants,07 Petroleum products,True
 18.02 MAP CHP plants,07.01 Motor gasoline,False
@@ -7822,7 +7822,7 @@
 18.03 AP electricity plants,06.01 Crude oil,False
 18.03 AP electricity plants,06.02 Natural gas liquids,False
 18.03 AP electricity plants,06.03 Refinery feedstocks,False
-18.03 AP electricity plants,06.04 Additives/  oxygenates,False
+18.03 AP electricity plants,06.04 Additives/ oxygenates,False
 18.03 AP electricity plants,06.05 Other hydrocarbons,False
 18.03 AP electricity plants,07 Petroleum products,True
 18.03 AP electricity plants,07.01 Motor gasoline,False
@@ -7900,7 +7900,7 @@
 18.04 AP CHP plants,06.01 Crude oil,False
 18.04 AP CHP plants,06.02 Natural gas liquids,False
 18.04 AP CHP plants,06.03 Refinery feedstocks,False
-18.04 AP CHP plants,06.04 Additives/  oxygenates,False
+18.04 AP CHP plants,06.04 Additives/ oxygenates,False
 18.04 AP CHP plants,06.05 Other hydrocarbons,False
 18.04 AP CHP plants,07 Petroleum products,True
 18.04 AP CHP plants,07.01 Motor gasoline,False
@@ -7978,7 +7978,7 @@
 19 Heat output in PJ,06.01 Crude oil,True
 19 Heat output in PJ,06.02 Natural gas liquids,True
 19 Heat output in PJ,06.03 Refinery feedstocks,True
-19 Heat output in PJ,06.04 Additives/  oxygenates,True
+19 Heat output in PJ,06.04 Additives/ oxygenates,True
 19 Heat output in PJ,06.05 Other hydrocarbons,True
 19 Heat output in PJ,07 Petroleum products,True
 19 Heat output in PJ,07.01 Motor gasoline,True
@@ -8056,7 +8056,7 @@
 19.01 MAP CHP plants,06.01 Crude oil,False
 19.01 MAP CHP plants,06.02 Natural gas liquids,False
 19.01 MAP CHP plants,06.03 Refinery feedstocks,False
-19.01 MAP CHP plants,06.04 Additives/  oxygenates,False
+19.01 MAP CHP plants,06.04 Additives/ oxygenates,False
 19.01 MAP CHP plants,06.05 Other hydrocarbons,False
 19.01 MAP CHP plants,07 Petroleum products,True
 19.01 MAP CHP plants,07.01 Motor gasoline,False
@@ -8134,7 +8134,7 @@
 19.02 MAP heat plants,06.01 Crude oil,False
 19.02 MAP heat plants,06.02 Natural gas liquids,False
 19.02 MAP heat plants,06.03 Refinery feedstocks,False
-19.02 MAP heat plants,06.04 Additives/  oxygenates,False
+19.02 MAP heat plants,06.04 Additives/ oxygenates,False
 19.02 MAP heat plants,06.05 Other hydrocarbons,False
 19.02 MAP heat plants,07 Petroleum products,True
 19.02 MAP heat plants,07.01 Motor gasoline,False
@@ -8212,7 +8212,7 @@
 19.03 AP CHP plants,06.01 Crude oil,False
 19.03 AP CHP plants,06.02 Natural gas liquids,False
 19.03 AP CHP plants,06.03 Refinery feedstocks,False
-19.03 AP CHP plants,06.04 Additives/  oxygenates,False
+19.03 AP CHP plants,06.04 Additives/ oxygenates,False
 19.03 AP CHP plants,06.05 Other hydrocarbons,False
 19.03 AP CHP plants,07 Petroleum products,True
 19.03 AP CHP plants,07.01 Motor gasoline,False
@@ -8290,7 +8290,7 @@
 19.04 AP heat plants,06.01 Crude oil,False
 19.04 AP heat plants,06.02 Natural gas liquids,False
 19.04 AP heat plants,06.03 Refinery feedstocks,False
-19.04 AP heat plants,06.04 Additives/  oxygenates,False
+19.04 AP heat plants,06.04 Additives/ oxygenates,False
 19.04 AP heat plants,06.05 Other hydrocarbons,False
 19.04 AP heat plants,07 Petroleum products,True
 19.04 AP heat plants,07.01 Motor gasoline,False

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +45,9 @@ CANONICAL_COMPATIBILITY_SHEETS = {
     "ESTO": "__compat_esto_names",
 }
 
+_EXCEL_READ_RETRY_ATTEMPTS = 3
+_EXCEL_READ_RETRY_DELAY_SECONDS = 0.5
+
 
 def resolve_runtime_table(path: str | Path) -> Path | None:
     """Resolve an old operational-table filename to its standalone CSV."""
@@ -67,12 +72,12 @@ def resolve_canonical_mapping_sheet(path: str | Path, sheet_name: str | None = N
 def _read_canonical_compatibility_table(sheet_name: str, **kwargs: Any) -> pd.DataFrame:
     """Reconstruct retired codebook shapes from canonical workbook sheets."""
     dtype = kwargs.get("dtype")
-    names = pd.read_excel(
+    names = _read_excel_with_retry(
         OUTLOOK_MAPPINGS_MASTER_PATH,
         sheet_name="leap_display_names",
         dtype=dtype,
     ).fillna("")
-    pairs = pd.read_excel(
+    pairs = _read_excel_with_retry(
         OUTLOOK_MAPPINGS_MASTER_PATH,
         sheet_name="ninth_pairs_to_esto_pairs",
         dtype=dtype,
@@ -125,6 +130,42 @@ def _read_canonical_compatibility_table(sheet_name: str, **kwargs: Any) -> pd.Da
     raise ValueError(f"Unknown canonical compatibility sheet: {sheet_name}")
 
 
+def _read_excel_with_retry(path: Path, **kwargs: Any) -> pd.DataFrame:
+    """Read an Excel workbook with a short retry window for transient ZIP reads."""
+    last_exc: Exception | None = None
+    for attempt in range(1, _EXCEL_READ_RETRY_ATTEMPTS + 1):
+        try:
+            return pd.read_excel(path, **kwargs)
+        except Exception as exc:
+            message = str(exc).lower()
+            transient = isinstance(exc, zipfile.BadZipFile) or "file is not a zip file" in message
+            if not transient or attempt >= _EXCEL_READ_RETRY_ATTEMPTS:
+                raise
+            last_exc = exc
+            time.sleep(_EXCEL_READ_RETRY_DELAY_SECONDS * attempt)
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError(f"Failed to read Excel workbook: {path}")
+
+
+def _sheet_names_with_retry(path: Path) -> list[str]:
+    """Read workbook sheet names with the same transient retry behavior."""
+    last_exc: Exception | None = None
+    for attempt in range(1, _EXCEL_READ_RETRY_ATTEMPTS + 1):
+        try:
+            return list(pd.ExcelFile(path).sheet_names)
+        except Exception as exc:
+            message = str(exc).lower()
+            transient = isinstance(exc, zipfile.BadZipFile) or "file is not a zip file" in message
+            if not transient or attempt >= _EXCEL_READ_RETRY_ATTEMPTS:
+                raise
+            last_exc = exc
+            time.sleep(_EXCEL_READ_RETRY_DELAY_SECONDS * attempt)
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError(f"Failed to read workbook sheet names: {path}")
+
+
 def config_table_exists(path: str | Path, sheet_name: str | None = None) -> bool:
     """Return True for canonical mappings, standalone runtime tables, or direct files."""
     canonical_sheet = resolve_canonical_mapping_sheet(path, sheet_name)
@@ -132,7 +173,9 @@ def config_table_exists(path: str | Path, sheet_name: str | None = None) -> bool
         if not OUTLOOK_MAPPINGS_MASTER_PATH.exists():
             return False
         try:
-            return canonical_sheet.startswith("__compat_") or canonical_sheet in pd.ExcelFile(OUTLOOK_MAPPINGS_MASTER_PATH).sheet_names
+            return canonical_sheet.startswith("__compat_") or canonical_sheet in _sheet_names_with_retry(
+                OUTLOOK_MAPPINGS_MASTER_PATH
+            )
         except Exception:
             return False
     runtime_table = resolve_runtime_table(path)
@@ -157,7 +200,7 @@ def read_config_table(
         kwargs.pop("encoding", None)
         if canonical_sheet.startswith("__compat_"):
             return _read_canonical_compatibility_table(canonical_sheet, **kwargs)
-        return pd.read_excel(
+        return _read_excel_with_retry(
             OUTLOOK_MAPPINGS_MASTER_PATH,
             sheet_name=canonical_sheet,
             **kwargs,
@@ -173,7 +216,7 @@ def read_config_table(
     if path.suffix.lower() in {".xlsx", ".xlsm", ".xls"}:
         if sheet_name is not None:
             kwargs["sheet_name"] = sheet_name
-        return pd.read_excel(path, **kwargs)
+        return _read_excel_with_retry(path, **kwargs)
 
     kwargs.pop("sheet_name", None)
     return pd.read_csv(path, **kwargs)

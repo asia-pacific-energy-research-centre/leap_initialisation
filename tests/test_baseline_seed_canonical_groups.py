@@ -106,11 +106,31 @@ def test_zero_capacity_allows_deterministic_complete_share_fallback(
     assert diagnostics["message"].str.contains("synthetic share anchor").any()
 
 
-@pytest.mark.parametrize("capacity_expression", ["Data(2023,1)", "", "not parseable"])
-def test_nonzero_missing_or_unparseable_capacity_blocks_fallback(
+def test_explicitly_nonzero_capacity_blocks_fallback(tmp_path: Path) -> None:
+    parent = "Transformation\\Plant\\Processes\\A\\Feedstock Fuels"
+    share = _row(f"{parent}\\Gas", "Feedstock Fuel Share", "Data(2023,0)")
+    capacity = _row("Transformation\\Plant\\Processes\\A", "Exogenous Capacity", "Data(2023,1)")
+    template_rows = [share, capacity]
+    template = tmp_path / "template.xlsx"
+    _write_template(template, template_rows)
+    _, diagnostics = complete_canonical_share_groups(
+        pd.DataFrame(template_rows),
+        template_path=template,
+        required_years_by_scenario={"Reference": [2023]},
+    )
+    assert diagnostics["blocking"].fillna(False).any()
+    assert diagnostics["message"].str.contains("fallback is blocked").any()
+
+
+@pytest.mark.parametrize("capacity_expression", ["", "not parseable"])
+def test_unavailable_capacity_still_gets_deterministic_fallback(
     tmp_path: Path,
     capacity_expression: str,
 ) -> None:
+    """When no owning capacity data exists at all, share activity is the only
+    signal available. An inactive share group with unavailable capacity must
+    still resolve to a valid, importable profile rather than blocking forever
+    on a fact the generator never had a chance to record."""
     parent = "Transformation\\Plant\\Processes\\A\\Feedstock Fuels"
     share = _row(f"{parent}\\Gas", "Feedstock Fuel Share", "Data(2023,0)")
     template_rows = [share]
@@ -121,13 +141,46 @@ def test_nonzero_missing_or_unparseable_capacity_blocks_fallback(
         candidate_rows.append(capacity)
     template = tmp_path / "template.xlsx"
     _write_template(template, template_rows)
-    _, diagnostics = complete_canonical_share_groups(
+    completed, diagnostics = complete_canonical_share_groups(
         pd.DataFrame(candidate_rows),
         template_path=template,
         required_years_by_scenario={"Reference": [2023]},
     )
-    assert diagnostics["blocking"].fillna(False).any()
-    assert diagnostics["message"].str.contains("fallback is blocked").any()
+    assert not diagnostics["blocking"].fillna(False).any()
+    assert diagnostics["message"].str.contains("synthetic share anchor").any()
+    share_row = completed[completed["Variable"].eq("Feedstock Fuel Share")].iloc[0]
+    assert _values(share_row["Expression"]) == {2023: 100.0}
+
+
+def test_noncanonical_sibling_is_removed_and_remaining_group_sums_to_100(tmp_path: Path) -> None:
+    """A generated sibling absent from the full-model export (e.g. a fuel that
+    was never a valid input to this process, or a label mangled by a mapping
+    bug) has no valid LEAP branch to import into. It must be dropped from the
+    exported group -- not left in place diluting the canonical siblings'
+    shares -- and the canonical siblings must still sum to 100."""
+    parent = "Transformation\\Gas works plants\\Processes\\Gas works plants\\Feedstock Fuels"
+    canonical_a = _row(f"{parent}\\Natural gas", "Feedstock Fuel Share", "Data(2023,60)")
+    canonical_b = _row(f"{parent}\\Coal tar", "Feedstock Fuel Share", "Data(2023,40)")
+    noncanonical = _row(f"{parent}\\PetProd nonspecified", "Feedstock Fuel Share", "Data(2023,25)")
+    template = tmp_path / "template.xlsx"
+    _write_template(template, [canonical_a, canonical_b])
+
+    completed, diagnostics = complete_canonical_share_groups(
+        pd.DataFrame([canonical_a, canonical_b, noncanonical]),
+        template_path=template,
+        required_years_by_scenario={"Reference": [2023]},
+    )
+
+    assert set(completed["Branch Path"]) == {canonical_a["Branch Path"], canonical_b["Branch Path"]}
+    by_leaf = {
+        path.rsplit("\\", 1)[-1]: _values(expression)
+        for path, expression in zip(completed["Branch Path"], completed["Expression"])
+    }
+    assert sum(by_leaf["Natural gas"].values()) + sum(by_leaf["Coal tar"].values()) == pytest.approx(100.0)
+    assert diagnostics["message"].str.contains("noncanonical sibling").any()
+
+    validation = validate_seed_rows(completed, template_path=template)
+    assert not validation.blocking_findings["rule_id"].isin({"SEED-006", "SEED-007", "SEED-008"}).any()
 
 
 def test_partial_group_validation_and_patch_both_block(tmp_path: Path) -> None:
@@ -144,6 +197,34 @@ def test_partial_group_validation_and_patch_both_block(tmp_path: Path) -> None:
     assert validation.blocking_findings["message"].str.contains("partial or noncanonical").any()
     with pytest.raises(ValueError, match="Partial canonical share-group patch"):
         _assert_atomic_canonical_share_groups(partial, template)
+
+
+def test_ignored_full_model_export_leaf_is_skipped_in_canonical_share_checks(tmp_path: Path) -> None:
+    parent = "Transformation\\Transfers unallocated\\Output Fuels"
+    canonical_a = _row(f"{parent}\\Additives and oxygenates", "Output Share", "Data(2023,55)")
+    canonical_b = _row(f"{parent}\\LPG", "Output Share", "Data(2023,45)")
+    ignored = _row(f"{parent}\\ABC DO NOT USE", "Output Share", "Data(2023,0)")
+    template = tmp_path / "template.xlsx"
+    _write_template(template, [canonical_a, canonical_b, ignored])
+
+    completed, diagnostics = complete_canonical_share_groups(
+        pd.DataFrame([canonical_a, canonical_b]),
+        template_path=template,
+        required_years_by_scenario={"Reference": [2023]},
+    )
+
+    assert set(completed["Branch Path"]) == {canonical_a["Branch Path"], canonical_b["Branch Path"]}
+    assert not diagnostics["message"].str.contains("partial or noncanonical", case=False).any()
+    _assert_atomic_canonical_share_groups(pd.DataFrame([canonical_a, canonical_b]), template)
+
+
+def test_ignored_full_model_export_branch_is_skipped_in_presence_validation(tmp_path: Path) -> None:
+    ignored = _row("Transformation\\Transfers unallocated\\Output Fuels\\ABC DO NOT USE", "Output Share", "Data(2023,0)")
+    template = tmp_path / "template.xlsx"
+    _write_template(template, [_row("Resources\\Primary\\Gas", "Imports", "Data(2023,1)")])
+
+    validation = validate_seed_rows(pd.DataFrame([ignored]), template_path=template)
+    assert not validation.findings["rule_id"].eq("SEED-011").any()
 
 
 #%%

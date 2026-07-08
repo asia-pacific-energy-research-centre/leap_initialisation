@@ -399,6 +399,7 @@ def _sync_results_saver_overrides() -> None:
         "write_per_economy_combined_workbooks",
         "supply_data_pipeline",
         "RUN_OTHER_LOSS_OWN_USE_PROXY",
+        "RUN_ELECTRICITY_HEAT_INTERIM",
         "OTHER_LOSS_OWN_USE_PROXY_STAGE",
         "RESULTS_SINGLE_FILE_OUTPUT",
         "RESULTS_WRITE_LEGACY_SIDECAR_FILES",
@@ -645,11 +646,16 @@ _PRESET_BASELINE_SEED = {
     "SKIP_ECONOMIES_WITH_EXISTING_EXPORTS": False,
 }
 
-# DO NOT USE — patch_baseline_seeds patch path is unverified against the current
-# baseline-seed / update process and can silently write stale or mismatched rows
-# (e.g. "losses_own_use" has no upstream regen wired up, per-economy failures are
-# only printed rather than raised). Re-enable only after auditing patch_baseline_seeds.py
-# against the current full workflow.
+# Audited 2026-07-08 (verified for "transfers" against 20_USA + 01_AUS; see
+# patch_baseline_seeds.py). Failures now raise instead of printing, stale-workbook
+# collection is prevented (fresh regen files are threaded through), and
+# "supply"/"losses_own_use" raise NotImplementedError when PATCH_RUN_WORKFLOW=True.
+# Remaining caveat before production use on other modules: a patch replaces only
+# the owning module's rows — reconciliation-layer extras the full run writes into
+# the same branches (zero Import/Export Target resets, capacity/production seeds)
+# are dropped and only restored by the next full run's global trade reset. The
+# "transfers" module is verified; treat other modules as unverified until given
+# the same check.
 # _PRESET_PATCH_BASELINE_SEEDS = {
 #     # --- Pass mode ---
 #     # When RUN_MODE == "patch_baseline_seeds", run_with_config() skips the full
@@ -714,8 +720,8 @@ _PRESET_RESULTS_UPDATE = {
 }
 
 # ← change this to switch presets. _PRESET_PATCH_BASELINE_SEEDS is currently
-# commented out above — do not use it until the patch path has been audited
-# against the current baseline-seed/update workflow.
+# commented out above — audited and verified for "transfers" (2026-07-08); other
+# modules remain unverified. Uncomment deliberately per run; see the note above it.
 ACTIVE_PRESET = _PRESET_BASELINE_SEED#_PRESET_BASELINE_SEED
 
 # Default run mode; presets other than _PRESET_PATCH_BASELINE_SEEDS don't set
@@ -821,11 +827,19 @@ def _run_leap_display_name_preflight() -> None:
     """
     try:
         from codebase.utilities.master_config import LEAP_MAPPINGS_REPO_ROOT
-        import sys as _sys
-        _lm = str(LEAP_MAPPINGS_REPO_ROOT)
-        if _lm not in _sys.path:
-            _sys.path.insert(0, _lm)
-        from codebase.mapping_tools.update_leap_display_names import check_display_name_issues  # type: ignore[import]
+        module_path = LEAP_MAPPINGS_REPO_ROOT / "codebase" / "mapping_tools" / "update_leap_display_names.py"
+        if not module_path.exists():
+            print(f"[WARN] leap_display_names preflight skipped: {module_path} not found")
+            return
+        spec = importlib.util.spec_from_file_location(
+            "_codex_update_leap_display_names_preflight",
+            module_path,
+        )
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load module spec from {module_path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        check_display_name_issues = getattr(module, "check_display_name_issues")
         issues = check_display_name_issues()
         orphans = issues.get("orphan_count", 0)
         dups = issues.get("duplicate_count", 0)

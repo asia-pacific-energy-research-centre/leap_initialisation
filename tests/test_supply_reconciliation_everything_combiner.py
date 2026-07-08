@@ -22,6 +22,7 @@ def test_discover_complete_economies_skips_missing_sources(tmp_path: Path, monke
         "transfer_leap_imports_20_USA_Reference.xlsx",
         "transfer_leap_imports_20_USA_Target.xlsx",
         "aggregated_demand_20_USA_Target_Reference_CurrentAccounts.xlsx",
+        "electricity_heat_interim_20_USA_Target_Reference_Current_Accounts.xlsx",
     ]:
         (workbooks_dir / name).write_text("x")
     (standalone_dir / "other_loss_own_use_proxy_20_USA_Target_Reference_Current_Accounts.xlsx").write_text("x")
@@ -51,6 +52,7 @@ def test_build_source_workbooks_for_economy_returns_expected_workflows(tmp_path:
         "transfer_leap_imports_20_USA_Reference.xlsx",
         "transfer_leap_imports_20_USA_Target.xlsx",
         "aggregated_demand_20_USA_Target_Reference_CurrentAccounts.xlsx",
+        "electricity_heat_interim_20_USA_Target_Reference_Current_Accounts.xlsx",
     ]:
         (workbooks_dir / name).write_text("x")
     other_loss = standalone_dir / "other_loss_own_use_proxy_20_USA_Target_Reference_Current_Accounts.xlsx"
@@ -66,5 +68,6 @@ def test_build_source_workbooks_for_economy_returns_expected_workflows(tmp_path:
     assert source_map["other_loss_own_use_proxy_workflow"] == [other_loss]
     assert len(source_map["transformation_workflow"]) == 3
     assert len(source_map["transfers_workflow"]) == 3
+    assert len(source_map["electricity_heat_interim_workflow"]) == 1
 
 #%%

@@ -2,7 +2,7 @@
 esto_missing,esto_flow,esto_product,01 Production,01 Coal,144226.457761
 esto_missing,esto_flow,esto_product,01 Production,03 Peat,10.624549
 esto_missing,esto_flow,esto_product,01 Production,06 Crude oil & NGL,84492.07328
-esto_missing,esto_flow,esto_product,01 Production,06.04 Additives/  oxygenates,59.381217
+esto_missing,esto_flow,esto_product,01 Production,06.04 Additives/ oxygenates,59.381217
 esto_missing,esto_flow,esto_product,01 Production,08 Gas,90040.273417
 esto_missing,esto_flow,esto_product,01 Production,12 Solar,3330.571442
 esto_missing,esto_flow,esto_product,01 Production,"13 Tide, wave, ocean",1.525837
@@ -13,7 +13,7 @@ esto_missing,esto_flow,esto_product,02 Imports,01 Coal,18840.927417000003
 esto_missing,esto_flow,esto_product,02 Imports,02 Coal products,137.981195
 esto_missing,esto_flow,esto_product,02 Imports,03 Peat,0.315475
 esto_missing,esto_flow,esto_product,02 Imports,06 Crude oil & NGL,57819.764382999994
-esto_missing,esto_flow,esto_product,02 Imports,06.04 Additives/  oxygenates,154.888349
+esto_missing,esto_flow,esto_product,02 Imports,06.04 Additives/ oxygenates,154.888349
 esto_missing,esto_flow,esto_product,02 Imports,07 Petroleum products,22575.263488
 esto_missing,esto_flow,esto_product,02 Imports,07.15 Paraffin  waxes,16.384148
 esto_missing,esto_flow,esto_product,02 Imports,08 Gas,19909.175123
@@ -24,7 +24,7 @@ esto_missing,esto_flow,esto_product,03 Exports,01 Coal,27302.129688999998
 esto_missing,esto_flow,esto_product,03 Exports,02 Coal products,410.577484
 esto_missing,esto_flow,esto_product,03 Exports,03 Peat,0.974143
 esto_missing,esto_flow,esto_product,03 Exports,06 Crude oil & NGL,31698.314041
-esto_missing,esto_flow,esto_product,03 Exports,06.04 Additives/  oxygenates,76.108068
+esto_missing,esto_flow,esto_product,03 Exports,06.04 Additives/ oxygenates,76.108068
 esto_missing,esto_flow,esto_product,03 Exports,07 Petroleum products,27032.122889000002
 esto_missing,esto_flow,esto_product,03 Exports,07.15 Paraffin  waxes,43.036213000000004
 esto_missing,esto_flow,esto_product,03 Exports,08 Gas,22750.301574999998
@@ -55,7 +55,7 @@ esto_missing,esto_flow,esto_product,06 Stock changes,06 Crude oil & NGL,867.7157
 esto_missing,esto_flow,esto_product,06 Stock changes,06.01 Crude oil,928.7996730000001
 esto_missing,esto_flow,esto_product,06 Stock changes,06.02 Natural gas liquids,20.420907
 esto_missing,esto_flow,esto_product,06 Stock changes,06.03 Refinery feedstocks,47.593968000000004
-esto_missing,esto_flow,esto_product,06 Stock changes,06.04 Additives/  oxygenates,6.915298
+esto_missing,esto_flow,esto_product,06 Stock changes,06.04 Additives/ oxygenates,6.915298
 esto_missing,esto_flow,esto_product,06 Stock changes,06.05 Other hydrocarbons,0.015659
 esto_missing,esto_flow,esto_product,06 Stock changes,07 Petroleum products,819.113367
 esto_missing,esto_flow,esto_product,06 Stock changes,07.01 Motor gasoline,5.795113000000005
@@ -90,7 +90,7 @@ esto_missing,esto_flow,esto_product,07 Total primary energy supply,02 Coal produ
 esto_missing,esto_flow,esto_product,07 Total primary energy supply,03 Peat,9.965882
 esto_missing,esto_flow,esto_product,07 Total primary energy supply,04 Peat products,0.060039
 esto_missing,esto_flow,esto_product,07 Total primary energy supply,06 Crude oil & NGL,111481.239249
-esto_missing,esto_flow,esto_product,07 Total primary energy supply,06.04 Additives/  oxygenates,145.076753
+esto_missing,esto_flow,esto_product,07 Total primary energy supply,06.04 Additives/ oxygenates,145.076753
 esto_missing,esto_flow,esto_product,07 Total primary energy supply,07 Petroleum products,11583.553629
 esto_missing,esto_flow,esto_product,07 Total primary energy supply,07.15 Paraffin  waxes,27.875758
 esto_missing,esto_flow,esto_product,07 Total primary energy supply,08 Gas,86906.969292
@@ -101,7 +101,7 @@ esto_missing,esto_flow,esto_product,07 Total primary energy supply,20 Total Rene
 esto_missing,esto_flow,esto_product,07 Total primary energy supply,21 Modern renewables,29986.344429
 esto_missing,esto_flow,esto_product,08 Transfers,06 Crude oil & NGL,5925.299008
 esto_missing,esto_flow,esto_product,08 Transfers,06.01 Crude oil,0.448239
-esto_missing,esto_flow,esto_product,08 Transfers,06.04 Additives/  oxygenates,22.230733
+esto_missing,esto_flow,esto_product,08 Transfers,06.04 Additives/ oxygenates,22.230733
 esto_missing,esto_flow,esto_product,08 Transfers,07 Petroleum products,1010.7488599999995
 esto_missing,esto_flow,esto_product,08 Transfers,07.15 Paraffin  waxes,9.165289999999999
 esto_missing,esto_flow,esto_product,08 Transfers,19 Total,4914.550523
@@ -121,7 +121,7 @@ esto_missing,esto_flow,esto_product,08.02 Interproduct transfers,07.17 Other pro
 esto_missing,esto_flow,esto_product,08.02 Interproduct transfers,19 Total,252.278951
 esto_missing,esto_flow,esto_product,08.03 Products transferred,06 Crude oil & NGL,318.890884
 esto_missing,esto_flow,esto_product,08.03 Products transferred,06.03 Refinery feedstocks,296.66015100000004
-esto_missing,esto_flow,esto_product,08.03 Products transferred,06.04 Additives/  oxygenates,22.230733
+esto_missing,esto_flow,esto_product,08.03 Products transferred,06.04 Additives/ oxygenates,22.230733
 esto_missing,esto_flow,esto_product,08.03 Products transferred,07 Petroleum products,5652.683142999999
 esto_missing,esto_flow,esto_product,08.03 Products transferred,07.01 Motor gasoline,86.950745
 esto_missing,esto_flow,esto_product,08.03 Products transferred,07.03 Naphtha,1079.2084989999998
@@ -166,7 +166,7 @@ esto_missing,esto_flow,esto_product,09 Total transformation sector,02.08 BKB/PB,
 esto_missing,esto_flow,esto_product,09 Total transformation sector,03 Peat,9.318644
 esto_missing,esto_flow,esto_product,09 Total transformation sector,04 Peat products,0.450374
 esto_missing,esto_flow,esto_product,09 Total transformation sector,06 Crude oil & NGL,106106.581304
-esto_missing,esto_flow,esto_product,09 Total transformation sector,06.04 Additives/  oxygenates,120.40502599999999
+esto_missing,esto_flow,esto_product,09 Total transformation sector,06.04 Additives/ oxygenates,120.40502599999999
 esto_missing,esto_flow,esto_product,09 Total transformation sector,07 Petroleum products,106802.488816
 esto_missing,esto_flow,esto_product,09 Total transformation sector,08 Gas,35166.313354
 esto_missing,esto_flow,esto_product,09 Total transformation sector,12 Solar,3139.86783
@@ -421,7 +421,7 @@ esto_missing,esto_flow,esto_product,09.06.04 Gas-to-liquids plants,08 Gas,148.93
 esto_missing,esto_flow,esto_product,09.06.04 Gas-to-liquids plants,08.01 Natural gas,148.934987
 esto_missing,esto_flow,esto_product,09.06.04 Gas-to-liquids plants,19 Total,78.387407
 esto_missing,esto_flow,esto_product,09.07 Oil refineries,06 Crude oil & NGL,107432.295235
-esto_missing,esto_flow,esto_product,09.07 Oil refineries,06.04 Additives/  oxygenates,120.40502599999999
+esto_missing,esto_flow,esto_product,09.07 Oil refineries,06.04 Additives/ oxygenates,120.40502599999999
 esto_missing,esto_flow,esto_product,09.07 Oil refineries,07 Petroleum products,109803.839557
 esto_missing,esto_flow,esto_product,09.07 Oil refineries,19 Total,2371.5438959999997
 esto_missing,esto_flow,esto_product,09.08 Coal transformation,01 Coal,24360.32758
@@ -777,7 +777,7 @@ esto_missing,esto_flow,esto_product,11 Statistical discrepancy,06 Crude oil & NG
 esto_missing,esto_flow,esto_product,11 Statistical discrepancy,06.01 Crude oil,1358.617771
 esto_missing,esto_flow,esto_product,11 Statistical discrepancy,06.02 Natural gas liquids,7.6608589999999985
 esto_missing,esto_flow,esto_product,11 Statistical discrepancy,06.03 Refinery feedstocks,115.092872
-esto_missing,esto_flow,esto_product,11 Statistical discrepancy,06.04 Additives/  oxygenates,45.100996
+esto_missing,esto_flow,esto_product,11 Statistical discrepancy,06.04 Additives/ oxygenates,45.100996
 esto_missing,esto_flow,esto_product,11 Statistical discrepancy,06.05 Other hydrocarbons,0.064686
 esto_missing,esto_flow,esto_product,11 Statistical discrepancy,07 Petroleum products,70.63258299999995
 esto_missing,esto_flow,esto_product,11 Statistical discrepancy,07.01 Motor gasoline,358.33974
@@ -844,7 +844,7 @@ esto_missing,esto_flow,esto_product,12 Total final consumption,06 Crude oil & NG
 esto_missing,esto_flow,esto_product,12 Total final consumption,06.01 Crude oil,193.418081
 esto_missing,esto_flow,esto_product,12 Total final consumption,06.02 Natural gas liquids,25.669468
 esto_missing,esto_flow,esto_product,12 Total final consumption,06.03 Refinery feedstocks,5.635612
-esto_missing,esto_flow,esto_product,12 Total final consumption,06.04 Additives/  oxygenates,1.801463
+esto_missing,esto_flow,esto_product,12 Total final consumption,06.04 Additives/ oxygenates,1.801463
 esto_missing,esto_flow,esto_product,12 Total final consumption,07 Petroleum products,89304.173629
 esto_missing,esto_flow,esto_product,12 Total final consumption,07.01 Motor gasoline,31012.899348000003
 esto_missing,esto_flow,esto_product,12 Total final consumption,07.02 Aviation gasoline,27.058145
@@ -1436,7 +1436,7 @@ esto_missing,esto_flow,esto_product,17 Non-energy use,06 Crude oil & NGL,224.315
 esto_missing,esto_flow,esto_product,17 Non-energy use,06.01 Crude oil,191.21461
 esto_missing,esto_flow,esto_product,17 Non-energy use,06.02 Natural gas liquids,25.669468
 esto_missing,esto_flow,esto_product,17 Non-energy use,06.03 Refinery feedstocks,5.630345
-esto_missing,esto_flow,esto_product,17 Non-energy use,06.04 Additives/  oxygenates,1.801463
+esto_missing,esto_flow,esto_product,17 Non-energy use,06.04 Additives/ oxygenates,1.801463
 esto_missing,esto_flow,esto_product,17 Non-energy use,07 Petroleum products,21148.513205
 esto_missing,esto_flow,esto_product,17 Non-energy use,07.01 Motor gasoline,10.926884
 esto_missing,esto_flow,esto_product,17 Non-energy use,07.03 Naphtha,6889.522705
@@ -1488,7 +1488,7 @@ esto_missing,esto_flow,esto_product,17.02 Industry sector,06 Crude oil & NGL,224
 esto_missing,esto_flow,esto_product,17.02 Industry sector,06.01 Crude oil,191.21461
 esto_missing,esto_flow,esto_product,17.02 Industry sector,06.02 Natural gas liquids,25.669468
 esto_missing,esto_flow,esto_product,17.02 Industry sector,06.03 Refinery feedstocks,5.630345
-esto_missing,esto_flow,esto_product,17.02 Industry sector,06.04 Additives/  oxygenates,1.801463
+esto_missing,esto_flow,esto_product,17.02 Industry sector,06.04 Additives/ oxygenates,1.801463
 esto_missing,esto_flow,esto_product,17.02 Industry sector,07 Petroleum products,20530.365784
 esto_missing,esto_flow,esto_product,17.02 Industry sector,07.01 Motor gasoline,10.926884
 esto_missing,esto_flow,esto_product,17.02 Industry sector,07.03 Naphtha,6889.522705

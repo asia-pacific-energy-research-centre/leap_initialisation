@@ -802,7 +802,7 @@ economy                flows                           products  total_from_star
   02_BD 09.07 Oil refineries                    06.01 Crude oil     -40466.311803
   02_BD 09.07 Oil refineries          06.02 Natural gas liquids        -69.668218
   02_BD 09.07 Oil refineries          06.03 Refinery feedstocks      -2914.218558
-  02_BD 09.07 Oil refineries       06.04 Additives/  oxygenates       -171.339394
+  02_BD 09.07 Oil refineries       06.04 Additives/ oxygenates       -171.339394
   02_BD 09.07 Oil refineries               07.01 Motor gasoline       7583.162509
   02_BD 09.07 Oil refineries                      07.03 Naphtha       4394.182355
   02_BD 09.07 Oil refineries       07.05 Kerosene type jet fuel       1044.459302

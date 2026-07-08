@@ -226,6 +226,11 @@ def test_results_supply_runner_builds_other_loss_proxy_paths(
     combined_path.write_text("combined", encoding="utf-8")
 
     monkeypatch.setattr(workflow, "RUN_OTHER_LOSS_OWN_USE_PROXY", True, raising=False)
+    # This test isolates other-loss-proxy path building and does not mock ESTO
+    # data loading, so the electricity/CHP/heat interim workflow (which reads
+    # core.esto_data) must stay disabled here even though the active
+    # baseline_seed preset normally turns it on for real runs.
+    monkeypatch.setattr(workflow, "RUN_ELECTRICITY_HEAT_INTERIM", False, raising=False)
     monkeypatch.setattr(workflow, "OTHER_LOSS_OWN_USE_PROXY_STAGE", "first", raising=False)
     monkeypatch.setattr(workflow, "CAPACITY_UNMET_PASS_MODE", "baseline_seed", raising=False)
     monkeypatch.setattr(workflow, "CAPACITY_UNMET_STATE_PATH", tmp_path / "state.json", raising=False)

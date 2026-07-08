@@ -52,6 +52,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 import pandas as pd
 
@@ -63,6 +64,7 @@ from codebase.functions.baseline_seed_validation import (
     SOURCE_WORKFLOW_COLUMN,
     prepare_seed_rows_for_write,
     resolve_logical_duplicates,
+    _exclude_ignored_full_model_export_rows,
     load_template_rows,
 )
 
@@ -103,10 +105,12 @@ def _assert_atomic_canonical_share_groups(
     """Reject patches that represent only part of a canonical share group."""
     share_variables = {"Output Share", "Process Share", "Feedstock Fuel Share"}
     shares = data[data.get("Variable", pd.Series("", index=data.index)).astype(str).str.strip().isin(share_variables)].copy()
+    shares = _exclude_ignored_full_model_export_rows(shares)
     if shares.empty:
         return
     template = load_template_rows(template_path)
     template = template[template["Variable"].astype(str).str.strip().isin(share_variables)].copy()
+    template = _exclude_ignored_full_model_export_rows(template)
     shares["__parent"] = shares["Branch Path"].astype(str).str.rsplit("\\", n=1).str[0]
     template["__parent"] = template["Branch Path"].astype(str).str.rsplit("\\", n=1).str[0]
     failures: list[str] = []
@@ -139,10 +143,24 @@ class ModuleConfig:
     workbook_glob: str | None = None        # glob under WORKBOOKS_DIR; * replaces {econ}
     auto_sector_keys: list[str] | None = None  # keys in ANALYSIS_REGISTRY
     workbook_dir: Path | None = None        # override WORKBOOKS_DIR when set
+    # When set, called at patch time to produce strip_prefixes from the owning
+    # workflow's own process-name registry, so the two can't drift apart.
+    strip_prefix_source: Callable[[], list[str]] | None = None
+
+    def resolve_strip_prefixes(self) -> list[str]:
+        if self.strip_prefix_source is not None:
+            return self.strip_prefix_source()
+        return self.strip_prefixes
 
 
 def _tf(*titles: str) -> list[str]:
     return [f"Transformation\\{t}" for t in titles]
+
+
+def _transfers_strip_prefixes() -> list[str]:
+    """All transfer sector titles the transfers workflow can produce."""
+    from codebase.transfers_workflow import get_transfer_sector_titles
+    return _tf(*sorted(get_transfer_sector_titles()))
 
 
 MODULE_REGISTRY: dict[str, ModuleConfig] = {
@@ -197,8 +215,14 @@ MODULE_REGISTRY: dict[str, ModuleConfig] = {
         workbook_glob="supply_leap_imports_{econ}*.xlsx",
     ),
     "transfers": ModuleConfig(
-        strip_prefixes=_tf("Upstream liquids transfers", "Transfers unallocated"),
+        # Static list mirrors transfers_workflow.get_transfer_sector_titles()
+        # for --list display only; strip_prefix_source is authoritative at run time.
+        strip_prefixes=_tf("Transfers", "Transfers unallocated",
+                           "Upstream & refinery transfers",
+                           "Upstream liquids transfers",
+                           "Refinery and blending transfers"),
         workbook_glob="transfer_leap_imports_{econ}*.xlsx",
+        strip_prefix_source=_transfers_strip_prefixes,
     ),
     "power_interim": ModuleConfig(
         strip_prefixes=_tf("Electricity interim", "CHP interim", "Heat plant interim"),
@@ -229,7 +253,12 @@ def _find_header_row(raw: pd.DataFrame) -> tuple[list, pd.DataFrame]:
             header = raw.iloc[idx].tolist()
             data = raw.iloc[idx + 1:].copy()
             data.columns = header
-            return header, data.dropna(how="all").reset_index(drop=True)
+            # Drop blank spacer columns: their NaN labels duplicate each other,
+            # and duplicate labels break per-row lookups during validation.
+            named = [c for c in data.columns
+                     if not pd.isna(c) and str(c).strip() not in ("", "nan")]
+            data = data[named]
+            return named, data.dropna(how="all").reset_index(drop=True)
     raise ValueError("LEAP header row (Branch Path + Variable) not found")
 
 
@@ -484,20 +513,33 @@ def validate_seed_files(
 # Source row collection
 # ---------------------------------------------------------------------------
 def _collect_from_workbooks(cfg: ModuleConfig,
-                             economy_filter: list[str] | None) -> dict[str, pd.DataFrame]:
-    src_dir = cfg.workbook_dir or WORKBOOKS_DIR
-    if not src_dir.exists():
-        print(f"[WARN] Workbook dir not found: {src_dir}")
-        return {}
-    if not cfg.workbook_glob:
-        print("[WARN] No workbook_glob configured for this module.")
-        return {}
+                             economy_filter: list[str] | None,
+                             files: list[Path] | None = None) -> dict[str, pd.DataFrame]:
+    """Collect source rows per economy.
 
-    pattern = cfg.workbook_glob.replace("{econ}", "*")
-    files = list(src_dir.glob(pattern))
-    if not files:
-        print(f"[WARN] No files matching '{pattern}' in {src_dir}")
-        return {}
+    When `files` is given (the exact workbooks a fresh regen just wrote), read
+    only those.  Globbing the workbooks dir instead would also pick up stale
+    workbooks from earlier runs, whose rows can conflict with the fresh ones.
+    """
+    if files is not None:
+        files = [Path(f) for f in files]
+        if not files:
+            print("[WARN] Source workflow reported no written workbooks.")
+            return {}
+    else:
+        src_dir = cfg.workbook_dir or WORKBOOKS_DIR
+        if not src_dir.exists():
+            print(f"[WARN] Workbook dir not found: {src_dir}")
+            return {}
+        if not cfg.workbook_glob:
+            print("[WARN] No workbook_glob configured for this module.")
+            return {}
+
+        pattern = cfg.workbook_glob.replace("{econ}", "*")
+        files = list(src_dir.glob(pattern))
+        if not files:
+            print(f"[WARN] No files matching '{pattern}' in {src_dir}")
+            return {}
 
     by_econ: dict[str, list[pd.DataFrame]] = {}
     for f in files:
@@ -521,6 +563,8 @@ def _collect_auto_regen(cfg: ModuleConfig,
     from codebase.functions import transformation_analysis_utils as core
     from codebase import transformation_workflow
     from codebase.functions.supply_data_pipeline import get_region_for_economy
+
+    core.prepare_transformation_assets()
 
     sector_keys = cfg.auto_sector_keys or []
     if "__all__" in sector_keys:
@@ -611,44 +655,65 @@ def _load_catalog() -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Source workflow runner
 # ---------------------------------------------------------------------------
-def _run_source_workflow(module: str, economies: list[str] | None) -> None:
+def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path] | None:
     """Re-run the upstream workflow that generates the source workbooks for a module.
 
     Only applies to workbook-based modules.  Auto-regen modules regenerate their
     data inline via _collect_auto_regen and do not need a pre-step.
 
-    Writes workbooks to WORKBOOKS_DIR so _collect_from_workbooks can find them.
+    Writes workbooks to WORKBOOKS_DIR and returns the list of files written, so
+    _collect_from_workbooks can read exactly those and not stale workbooks from
+    earlier runs that happen to match the module glob.
     """
     print(f"[INFO] Running source workflow for '{module}' before patching...")
 
     if module == "power_interim":
         from codebase import electricity_heat_interim_workflow as _w
         from codebase.functions import transformation_analysis_utils as _core
+        _core.prepare_transformation_assets()
         # When no economies are specified, run per-economy (not the 00_APEC aggregate
         # which is what core.ECONOMIES_TO_ANALYZE defaults to in workflow_config).
         econ_list = economies or sorted(
             e for e in _core.ninth_data["economy"].unique()
             if not str(e).startswith("00_")
         )
-        _w.assemble_electricity_heat_interim_workbook(
+        return _w.assemble_electricity_heat_interim_workbook(
             economies=econ_list,
             export_output_dir=WORKBOOKS_DIR,
         )
 
     elif module == "transfers":
         from codebase import transfers_workflow as _w
-        _w.assemble_transfer_workbook(
+        from codebase.functions import transformation_analysis_utils as _core
+        from codebase.functions.supply_results_saver import (
+            _build_transformation_supply_fuel_catalog_df,
+        )
+        _core.prepare_transformation_assets()
+        # Zero-fill all catalog branches owned by transfers so canonical share
+        # groups stay atomic. Use the same catalog builder as the full run
+        # (full model export + LEAP fuel-branch probe) so the zero-skeleton
+        # branch set matches what the full workflow writes into the seeds.
+        catalog_df = _build_transformation_supply_fuel_catalog_df(
+            transformation_export_paths=[],
+            supply_export_paths=[],
+            include_print_summary=False,
+        )
+        return _w.assemble_transfer_workbook(
             economies=economies,
             export_output_dir=WORKBOOKS_DIR,
+            full_branch_catalog_df=catalog_df if not catalog_df.empty else None,
+            in_scope_sector_titles=_w.get_transfer_sector_titles(),
         )
 
     elif module == "supply":
         # supply_workflow.assemble_supply_workbooks writes to its own EXPORT_OUTPUT_DIR
         # (outputs/leap_exports/) which differs from WORKBOOKS_DIR.  Wire this up once
         # the supply workflow supports a configurable export_output_dir.
-        print(
-            f"[WARN] No source workflow wired for '{module}' yet — "
-            "run supply_workflow.assemble_supply_workbooks() manually first."
+        raise NotImplementedError(
+            f"No source workflow is wired for '{module}': run "
+            "supply_workflow.assemble_supply_workbooks() manually, copy the outputs "
+            "into the workbooks dir, then re-run with run_workflow=False "
+            "(PATCH_RUN_WORKFLOW=False). Refusing to patch from possibly stale workbooks."
         )
 
     elif module == "aggregated_demand":
@@ -662,10 +727,12 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> None:
             DEFAULT_EXPORT_REGION,
         )
         from codebase.functions import transformation_analysis_utils as _core
+        _core.prepare_transformation_assets()
         econ_list = economies or sorted(
             e for e in _core.ninth_data["economy"].unique()
             if not str(e).startswith("00_")
         )
+        written: list[Path] = []
         for economy in econ_list:
             out_path = WORKBOOKS_DIR / f"aggregated_demand_{economy}.xlsx"
             print(f"[INFO] Building aggregated demand workbook: {economy}")
@@ -679,17 +746,25 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> None:
                 data_path=PROJECTION_DATA_PATH,
                 fuel_mappings_path=FUEL_MAPPINGS_PATH,
             )
+            written.append(out_path)
+        return written
 
     elif module == "losses_own_use":
-        # assemble_proxy_workbook takes a single economy= kwarg; needs a loop.
-        # Wire this up once confirmed.
-        print(
-            f"[WARN] No source workflow wired for '{module}' yet — "
-            "run other_loss_own_use_proxy_workflow.assemble_proxy_workbook() manually first."
+        # Not wired: assemble_proxy_workbook's output depends on the run's proxy
+        # stage (OTHER_LOSS_OWN_USE_PROXY_STAGE "first" vs "second") and LEAP-balance
+        # inputs that this patcher cannot know were regenerated. Requiring a manual,
+        # deliberate regen avoids silently seeding from the wrong proxy stage.
+        raise NotImplementedError(
+            f"No source workflow is wired for '{module}': run "
+            "other_loss_own_use_proxy_workflow.assemble_proxy_workbook() manually per "
+            "economy (choosing the correct proxy stage), then re-run with "
+            "run_workflow=False (PATCH_RUN_WORKFLOW=False). Refusing to patch from "
+            "possibly stale workbooks."
         )
 
     else:
         print(f"[INFO] No source workflow registered for '{module}'; skipping.")
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -840,30 +915,48 @@ def run_patch(
         If True (default), re-run the upstream source workflow before patching
         so that workbook-based modules always patch from fresh data.
         Set False to patch from whatever workbooks are already on disk.
+
+    Raises
+    ------
+    ValueError
+        If `module` is not in MODULE_REGISTRY.
+    NotImplementedError
+        If run_workflow=True but no source workflow is wired for the module
+        ("supply", "losses_own_use").
+    RuntimeError
+        If no source rows were collected, or if patching failed for one or
+        more economies (raised after all economies were attempted, with a
+        per-economy summary).
     """
     if module not in MODULE_REGISTRY:
-        print(f"[ERROR] Unknown module '{module}'. Available: {sorted(MODULE_REGISTRY)}")
-        return
+        raise ValueError(
+            f"Unknown module '{module}'. Available: {sorted(MODULE_REGISTRY)}"
+        )
 
     global _TEMPLATE_ID_LOOKUP_CACHE
     _TEMPLATE_ID_LOOKUP_CACHE = None  # rebuild from template on each run_patch call
 
     cfg = MODULE_REGISTRY[module]
+    fresh_files: list[Path] | None = None
     if run_workflow and not cfg.auto_sector_keys:
-        _run_source_workflow(module, economies)
+        fresh_files = _run_source_workflow(module, economies)
     is_auto = bool(cfg.auto_sector_keys)
     print(f"=== Patch: {module} ({'auto-regen' if is_auto else 'from workbooks'}) ===")
 
     source_by_econ = (
         _collect_auto_regen(cfg, economies)
         if is_auto
-        else _collect_from_workbooks(cfg, economies)
+        else _collect_from_workbooks(cfg, economies, files=fresh_files)
     )
     if not source_by_econ:
-        print("[ERROR] No source rows collected. Nothing to patch.")
-        return
+        raise RuntimeError(
+            f"No source rows collected for module '{module}' "
+            f"(economies={economies}); nothing to patch."
+        )
 
     print(f"Economies with source rows: {sorted(source_by_econ)}")
+
+    strip_prefixes = cfg.resolve_strip_prefixes()
 
     seed_files = {
         _econ_token(p.stem): p
@@ -871,7 +964,9 @@ def run_patch(
         if _econ_token(p.stem)
     }
 
-    failed: list[str] = []
+    from codebase.functions.supply_data_pipeline import get_region_for_economy
+
+    failures: dict[str, str] = {}
     for tok, new_df in sorted(source_by_econ.items()):
         seed_path = seed_files.get(tok)
         if not seed_path:
@@ -879,19 +974,31 @@ def run_patch(
             continue
         print(f"  [{tok}] {seed_path.name}")
         try:
-            _patch_one(seed_path, new_df, cfg.strip_prefixes, source_workflow=module)
+            if "Region" in new_df.columns:
+                # Source workbooks carry the global placeholder region; the seed
+                # combiner rewrites Region per economy, so the patch must too.
+                new_df["Region"] = get_region_for_economy(tok)
+            _patch_one(seed_path, new_df, strip_prefixes, source_workflow=module)
         except PermissionError:
-            print(f"  [{tok}] SKIPPED — file is locked (close it in Excel and re-run for this economy).")
-            failed.append(tok)
+            msg = "file is locked (close it in Excel and re-run for this economy)"
+            print(f"  [{tok}] FAILED — {msg}")
+            failures[tok] = msg
         except Exception as exc:
-            print(f"  [{tok}] ERROR — {exc}")
-            failed.append(tok)
+            import traceback
+            print(f"  [{tok}] FAILED — {exc}")
+            traceback.print_exc()
+            failures[tok] = str(exc)
 
-    if failed:
-        print(f"\nFailed economies (re-run with --economies {' '.join(failed)}): {failed}")
     print("Done.")
     print("\nValidating seed files against template...")
     validate_seed_files()
+
+    if failures:
+        summary = "; ".join(f"{tok}: {msg}" for tok, msg in sorted(failures.items()))
+        raise RuntimeError(
+            f"Patch '{module}' failed for {len(failures)} economy(ies) "
+            f"(re-run with --economies {' '.join(sorted(failures))}): {summary}"
+        )
 
 
 def list_modules() -> None:

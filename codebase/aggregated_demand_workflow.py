@@ -36,6 +36,7 @@ except Exception as exc:
 
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions.unified_name_lookup import load_active_mapping_sheet
+from codebase.mappings.canonical_loaders import load_leap_display_names
 from codebase.functions.ninth_projection_mapping import (
     add_ninth_pair_columns,
     allocate_ninth_projection_to_esto,
@@ -439,6 +440,23 @@ def load_fuel_mapping(
     work = work[work[source_col].ne("") & work["raw_leap_fuel_name"].ne("")]
     work = work.drop_duplicates(subset=[source_col], keep="first")
     return dict(zip(work[source_col], work["raw_leap_fuel_name"]))
+
+
+def _load_excluded_initialisation_esto_products() -> set[str]:
+    """Return ESTO product codes intentionally excluded from LEAP initialisation."""
+    try:
+        display_names = load_leap_display_names(include_excluded=True).fillna("")
+    except Exception:
+        return set()
+    if "USED_IN_LEAP_INITIALISATION" not in display_names.columns:
+        return set()
+    excluded = display_names[
+        display_names["code_type"].astype(str).str.strip().eq("esto_product")
+        & display_names["USED_IN_LEAP_INITIALISATION"].astype(str).str.strip().str.lower().isin(
+            {"false", "0", "0.0", "no", "n", "f"}
+        )
+    ]
+    return {str(code).strip() for code in excluded["code"].tolist() if str(code).strip()}
 
 
 def _normalize_esto_economy(value: object) -> str:
@@ -871,6 +889,9 @@ def _extract_contextual_projection_years(
         .dropna().astype(str).unique()
     )
     if unmapped:
+        excluded_initialisation = _load_excluded_initialisation_esto_products()
+        unmapped = [code for code in unmapped if code not in excluded_initialisation]
+    if unmapped:
         print(
             f"[WARN] {len(unmapped)} allocated ESTO products have no active LEAP fuel mapping, "
             f"dropped: {unmapped[:15]}"
@@ -960,6 +981,9 @@ def build_aggregated_demand(
         base_agg.loc[base_agg["leap_fuel_name"].isna(), "fuel_code"]
         .dropna().astype(str).unique()
     )
+    if unmapped_base:
+        excluded_initialisation = _load_excluded_initialisation_esto_products()
+        unmapped_base = [code for code in unmapped_base if code not in excluded_initialisation]
     if unmapped_base:
         print(
             f"[WARN] {len(unmapped_base)} ESTO products have no active canonical mapping, "

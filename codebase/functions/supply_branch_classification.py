@@ -45,7 +45,7 @@ _SUPPLY_BRANCH_PATH_MISS_WARNED: set[str] = set()
 SECONDARY_ESTO_PRODUCT_MAJOR_CODES = {"02", "04", "07"}
 SECONDARY_ESTO_PRODUCT_EXACT = {
     "06.03 Refinery feedstocks",
-    "06.04 Additives/  oxygenates",
+    "06.04 Additives/ oxygenates",
     "06.05 Other hydrocarbons",
     "08.02 LNG",
     "08.03 Gas works gas",
