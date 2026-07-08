@@ -779,25 +779,24 @@ def analyze_lng_liquefaction_regas(
                 ),
             )
 
-        regas_output_total = regas_output_series.sum()
-        if regas_output_total > 0 and regas_input_series_by_label:
-            _build_lng_process(
-                "Regasification",
-                fuel_codes["natural_gas"],
-                regas_output_series,
-                regas_input_series_by_label,
-                regas_loss_values_by_year,
-            )
+        # Always build both configured LNG processes. The builder emits a zero
+        # skeleton when a process has no activity, keeping branch keys present
+        # across scenarios so SEED-010 can continue to detect genuine omissions.
+        _build_lng_process(
+            "Regasification",
+            fuel_codes["natural_gas"],
+            regas_output_series,
+            regas_input_series_by_label,
+            regas_loss_values_by_year,
+        )
 
-        liquefaction_output_total = liquefaction_output_series.sum()
-        if liquefaction_output_total > 0 and liq_input_series_by_label:
-            _build_lng_process(
-                "Liquefaction",
-                fuel_codes["lng"],
-                liquefaction_output_series,
-                liq_input_series_by_label,
-                liq_loss_values_by_year,
-            )
+        _build_lng_process(
+            "Liquefaction",
+            fuel_codes["lng"],
+            liquefaction_output_series,
+            liq_input_series_by_label,
+            liq_loss_values_by_year,
+        )
     except Exception as exc:
         print(f"LNG analysis failed: {exc}")
         try_debug_breakpoint()
