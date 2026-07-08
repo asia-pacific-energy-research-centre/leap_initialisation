@@ -2489,9 +2489,19 @@ def save_transformation_export(
 ):
     """Save a LEAP import file built from process records across scenarios."""
     try:
-        if not process_records:
+        can_build_catalog_zero_skeleton = (
+            full_branch_catalog_df is not None
+            and not full_branch_catalog_df.empty
+            and bool(in_scope_sector_titles)
+        )
+        if not process_records and not can_build_catalog_zero_skeleton:
             print("No process records available for LEAP export.")
             return None
+        if not process_records:
+            print(
+                "No process records available; building a canonical zero skeleton "
+                "from the full-model branch catalog."
+            )
         scenario_configs = {
             scenario: get_scenario_export_config(
                 scenario,

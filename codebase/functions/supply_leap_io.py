@@ -751,12 +751,11 @@ def save_transfer_exports_with_supply_overrides(
             economy=economy,
             use_output_targets=False,
         )
-        if economy_records:
-            base_transfer_records_by_economy[str(economy)] = transfers_workflow.merge_transfer_rows(
-                economy_records
-            )
-    if not base_transfer_records_by_economy:
-        return []
+        base_transfer_records_by_economy[str(economy)] = (
+            transfers_workflow.merge_transfer_rows(economy_records)
+            if economy_records
+            else []
+        )
 
     empty_target_rows = pd.DataFrame(
         columns=[
