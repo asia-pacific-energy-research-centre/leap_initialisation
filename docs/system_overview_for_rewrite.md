@@ -139,7 +139,7 @@ These scripts are notebook-safe user-facing runners. They should stay small afte
 - `codebase/transformation_workflow.py`
 - `codebase/transfers_workflow.py`
 - `codebase/hydrogen_transformation_workflow.py`
-- `codebase/minor_demand_workflow.py`
+- `codebase/archive/minor_demand_workflow.py`
 - `codebase/aggregated_demand_workflow.py`
 - `codebase/other_loss_own_use_proxy_workflow.py`
 - `codebase/electricity_heat_interim_workflow.py`
@@ -284,7 +284,7 @@ Rewrite risk:
 
 ### Minor Demand
 
-`codebase/minor_demand_workflow.py` handles a limited set of minor demand branches such as agriculture, fishing, and non-specified others.
+`codebase/archive/minor_demand_workflow.py` handles a limited set of minor demand branches such as agriculture, fishing, and non-specified others.
 
 Current issue:
 

@@ -4,7 +4,7 @@ import unittest
 
 import pandas as pd
 
-from codebase import minor_demand_workflow as mdw
+from codebase.archive import minor_demand_workflow as mdw
 
 
 class TestMinorDemandWorkflow(unittest.TestCase):

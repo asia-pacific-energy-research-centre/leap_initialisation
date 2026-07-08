@@ -32,7 +32,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from codebase.functions.ninth_projection_mapping import normalize_economy_key
-from codebase.minor_demand_workflow import (
+from codebase.archive.minor_demand_workflow import (
     EXPORT_BASE_YEAR,
     MINOR_DEMAND_FLOW_CONFIG,
     NINTH_SCENARIO,

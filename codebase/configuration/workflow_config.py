@@ -34,8 +34,34 @@ def _resolve_global_aggregate(economies: list[str]) -> str:
         return economies[0]
     return "ALL_ECONOMIES"
 
-
-GLOBAL_ECONOMIES = _normalize_economies(["00_APEC"])
+# Default to individual APEC member economies so workbook producers emit
+# reusable per-economy files. Use an explicit aggregate sentinel when a
+# 00_APEC / ALL_ECONOMIES run is wanted.
+GLOBAL_ECONOMIES = _normalize_economies(
+    [
+        "01_AUS",
+        "02_BD",
+        "03_CDA",
+        "04_CHL",
+        "05_PRC",
+        "06_HKC",
+        "07_INA",
+        "08_JPN",
+        "09_ROK",
+        "10_MAS",
+        "11_MEX",
+        "12_NZ",
+        "13_PNG",
+        "14_PE",
+        "15_PHL",
+        "16_RUS",
+        "17_SGP",
+        "18_CT",
+        "19_THA",
+        "20_USA",
+        "21_VN",
+    ]
+)
 # Multiple economies -> per-economy runs (no aggregation unless a sentinel is used).
 GLOBAL_SCENARIOS = ["Reference", "Target", "Current Accounts"]
 GLOBAL_BASE_YEAR = 2022
@@ -50,9 +76,24 @@ GLOBAL_AGGREGATE_ECONOMY_LABEL = _resolve_global_aggregate(GLOBAL_ECONOMIES)
 # complete configured model horizon for every represented scenario.
 BASELINE_SEED_VALIDATION_BASE_YEAR = 2022
 BASELINE_SEED_VALIDATION_FINAL_YEAR = 2060
-# Exceptions are off by default. Each entry must name a rule_id and at least
-# one logical-key/provenance field such as Variable, Branch Path, or Scenario.
-BASELINE_SEED_VALIDATION_EXCEPTIONS: list[dict[str, object]] = []
+# NOTE (2026-07-07, unreviewed): this flag contradicts the confirmed INIT-005
+# design decision in docs/special_rules_and_design_decisions.md ("Deferring
+# failure does not turn a blocking finding into a warning and does not permit
+# invalid rows to reach a final workbook"). With this set to True,
+# write_per_economy_combined_workbooks downgrades every blocking finding
+# (not just SEED-006/007/008) to a warning and still writes the workbook. It
+# currently causes 3 known failures in tests/test_baseline_seed_writer_validation.py
+# (test_final_writer_writes_diagnostics_before_conflict_blocks,
+# test_writer_accumulates_economy_failures_and_writes_no_final_workbook,
+# test_default_reference_validation_window_requires_2023_through_2060), all of
+# which assert that a blocking finding must raise BaselineSeedValidationError
+# and must not produce a final workbook. Left as-is at the user's explicit
+# instruction (2026-07-07) while SEED-006/007/008 generation-layer fixes were
+# verified independently of this flag (via save_combined_supply_transformation_export,
+# which does not read this flag and enforces raise_on_blocking=True by
+# default). Revert to False to restore the INIT-005 guarantee once whatever
+# run this was worked around is no longer needed.
+BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True
 
 # Retained modelling decision: refining Exogenous Capacity follows Historical
 # Production, using the existing unit conversion metadata in refining_workflow.
@@ -309,7 +350,7 @@ MINOR_DEMAND_MEASURE_UNITS = {
     "Activity Level": {"units": "Petajoule", "scale": "", "per": ""},
     "Final Energy Intensity": {"units": "Petajoule", "scale": "", "per": ""},
 }
-# Fuel-activity behavior for codebase/minor_demand_workflow.py:
+# Fuel-activity behavior for codebase/archive/minor_demand_workflow.py:
 # - "activity_as_energy_intensity_as_one" (default): fuel Activity Level is in
 #   energy units and equals sector_activity * fuel_share, so fuel activities
 #   sum back to sector activity.

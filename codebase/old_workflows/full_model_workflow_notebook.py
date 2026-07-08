@@ -347,7 +347,7 @@ def run_transfers_workflow():
 
 
 def run_minor_demand_workflow():
-    from codebase import minor_demand_workflow
+    from codebase.archive import minor_demand_workflow
 
     run_economies = list(MINOR_DEMAND_ECONOMIES)
     should_aggregate, aggregate_label, _ = workflow_common.resolve_aggregate_economy(
