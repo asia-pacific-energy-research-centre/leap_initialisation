@@ -1392,8 +1392,23 @@ def summarize_transformation_flows(
                 log_dropped_input_fuels(economy, flow_code, zero_sum_labels, export_base_year, export_final_year)
             if not input_series_map:
                 print(f"[WARN] {flow_code}: no input series available after normalization; writing zero skeleton.")
+                # If the summary fell back to years before the export window,
+                # its output labels describe historical activity only.  Do not
+                # let those labels create present-day LEAP branches: canonical
+                # zero Output Share rows are added later from the full-model
+                # branch catalog.  This matters when an old ESTO product is not
+                # a valid output of the current LEAP module (for example, NZ GTL
+                # Other hydrocarbons activity that ended in 1997).
+                skeleton_output_labels = (
+                    None if used_all_years else list(output_series_by_label.keys())
+                )
                 append_process_record(process_records, build_zero_skeleton_record(
-                    economy, title, flow_code, list(output_series_by_label.keys()), export_base_year, export_final_year,
+                    economy,
+                    title,
+                    flow_code,
+                    skeleton_output_labels,
+                    export_base_year,
+                    export_final_year,
                 ))
                 continue
             total_input_series = build_total_input_series(input_series_map, export_years)
