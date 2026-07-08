@@ -2585,24 +2585,6 @@ def save_results_linked_single_workbook(
         for _, row in by_column.iterrows():
             print(f"  - {row['column']}: {int(row['count'])} fill(s)")
 
-    gigajoule_report_path = (
-        _resolve(RESULTS_CHECKS_DIR)
-        / "supply_reconciliation_template_gigajoule_rows.csv"
-    )
-    if isinstance(gigajoule_template_rows, pd.DataFrame) and not gigajoule_template_rows.empty:
-        gigajoule_report_path.parent.mkdir(parents=True, exist_ok=True)
-        _sort_output_frame_for_csv(gigajoule_template_rows).to_csv(
-            gigajoule_report_path,
-            index=False,
-        )
-        print(
-            "[WARN] Canonical full-model export uses Gigajoule for "
-            f"{len(gigajoule_template_rows)} generated row(s); template units were applied. "
-            f"Review: {gigajoule_report_path}"
-        )
-    elif gigajoule_report_path.exists():
-        gigajoule_report_path.unlink()
-
     if isinstance(metadata_mismatch_rows, pd.DataFrame) and not metadata_mismatch_rows.empty:
         mismatch_report_path = _resolve(RESULTS_CHECKS_DIR) / RESULTS_METADATA_MISMATCH_REPORT_FILENAME
         mismatch_report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2636,9 +2618,9 @@ def save_results_linked_single_workbook(
                 f"  ... plus {len(metadata_mismatch_rows) - 30} more metadata mismatches"
             )
 
-    unit_mismatch_report_path = (
+    unit_review_report_path = (
         _resolve(RESULTS_CHECKS_DIR)
-        / "supply_reconciliation_unit_mismatches.csv"
+        / "supply_reconciliation_unit_review.csv"
     )
     unit_mismatch_rows = (
         metadata_mismatch_rows[metadata_mismatch_rows["column"].eq("Units")].copy()
@@ -2646,20 +2628,53 @@ def save_results_linked_single_workbook(
         and not metadata_mismatch_rows.empty
         else pd.DataFrame()
     )
+    unit_review_frames: list[pd.DataFrame] = []
     if not unit_mismatch_rows.empty:
-        unit_mismatch_report_path.parent.mkdir(parents=True, exist_ok=True)
-        _sort_output_frame_for_csv(unit_mismatch_rows).to_csv(
-            unit_mismatch_report_path,
+        mismatch_review = unit_mismatch_rows.rename(columns={
+            "generated_value": "generated_units",
+            "reference_value": "template_units",
+        })[
+            ["Branch Path", "Variable", "Scenario", "Region", "generated_units", "template_units"]
+        ].copy()
+        mismatch_review["review_reason"] = "unit_mismatch"
+        unit_review_frames.append(mismatch_review)
+    if isinstance(gigajoule_template_rows, pd.DataFrame) and not gigajoule_template_rows.empty:
+        gigajoule_review = gigajoule_template_rows.copy()
+        gigajoule_review["review_reason"] = "template_uses_gigajoule"
+        unit_review_frames.append(gigajoule_review)
+
+    if unit_review_frames:
+        unit_review_rows = pd.concat(unit_review_frames, ignore_index=True)
+        group_cols = [
+            "Branch Path", "Variable", "Scenario", "Region",
+            "generated_units", "template_units",
+        ]
+        unit_review_rows = (
+            unit_review_rows.groupby(group_cols, dropna=False, as_index=False)["review_reason"]
+            .agg(lambda values: "|".join(sorted(set(values))))
+        )
+        unit_review_report_path.parent.mkdir(parents=True, exist_ok=True)
+        _sort_output_frame_for_csv(unit_review_rows).to_csv(
+            unit_review_report_path,
             index=False,
         )
         print(
-            "[WARN] Generated unit expectations differ from the LEAP template for "
-            f"{len(unit_mismatch_rows)} row(s). The template value was applied, but "
-            "the correct long-term unit may require a LEAP model change. "
-            f"Review: {unit_mismatch_report_path}"
+            "[WARN] Unit review contains generated/template mismatches and all "
+            f"template Gigajoule rows ({len(unit_review_rows)} row(s)). Template "
+            "values were applied, but the correct long-term unit may require a "
+            f"LEAP model change. Review: {unit_review_report_path}"
         )
-    elif unit_mismatch_report_path.exists():
-        unit_mismatch_report_path.unlink()
+    elif unit_review_report_path.exists():
+        unit_review_report_path.unlink()
+
+    # Remove obsolete split reports from earlier versions of this diagnostic.
+    for obsolete_name in (
+        "supply_reconciliation_unit_mismatches.csv",
+        "supply_reconciliation_template_gigajoule_rows.csv",
+    ):
+        obsolete_path = _resolve(RESULTS_CHECKS_DIR) / obsolete_name
+        if obsolete_path.exists():
+            obsolete_path.unlink()
 
     if (
         isinstance(mapping_config_mismatch_rows, pd.DataFrame)
