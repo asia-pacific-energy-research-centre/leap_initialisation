@@ -1235,6 +1235,7 @@ def assemble_proxy_workbook(
         esto_data=esto_data,
         ninth_data=ninth_data,
         configs=configs,
+        economy=economy,
         base_year=EXPORT_BASE_YEAR,
         final_year=EXPORT_FINAL_YEAR,
     )

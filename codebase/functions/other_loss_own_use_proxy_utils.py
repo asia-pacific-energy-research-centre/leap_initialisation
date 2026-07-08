@@ -1250,6 +1250,7 @@ def build_proxy_source_coverage_gaps(
     esto_data: pd.DataFrame,
     ninth_data: pd.DataFrame,
     configs: Sequence[Mapping[str, object]],
+    economy: str,
     base_year: int,
     final_year: int,
 ) -> pd.DataFrame:
@@ -1260,6 +1261,29 @@ def build_proxy_source_coverage_gaps(
     this workflow is meant to cover.
     """
     rows: list[dict[str, object]] = []
+    economy_key = _normalize_economy(economy)
+    compact_economy = economy_key.replace("_", "")
+
+    esto_data = esto_data.copy()
+    if "economy_key" in esto_data.columns:
+        esto_data = esto_data[
+            esto_data["economy_key"].map(_normalize_economy).eq(economy_key)
+        ].copy()
+    elif "economy" in esto_data.columns:
+        esto_data = esto_data[
+            esto_data["economy"].map(_normalize_economy).eq(economy_key)
+            | esto_data["economy"].astype(str).str.upper().eq(compact_economy)
+        ].copy()
+
+    ninth_data = ninth_data.copy()
+    if "economy_key" in ninth_data.columns:
+        ninth_data = ninth_data[
+            ninth_data["economy_key"].map(_normalize_economy).eq(economy_key)
+        ].copy()
+    elif "economy" in ninth_data.columns:
+        ninth_data = ninth_data[
+            ninth_data["economy"].map(_normalize_economy).eq(economy_key)
+        ].copy()
 
     def _sorted_join(values: Sequence[str]) -> str:
         cleaned = sorted({str(value).strip() for value in values if str(value).strip()})

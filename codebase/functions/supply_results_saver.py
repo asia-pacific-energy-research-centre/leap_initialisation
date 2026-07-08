@@ -37,6 +37,7 @@ from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP
 from codebase.utilities.master_config import config_table_exists, read_config_table
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.configuration.all_products_and_flows import ESTO_PRODUCT_LIST, ESTO_SECTORS
+from codebase.configuration.known_leap_label_exceptions import KNOWN_LEAP_LABEL_EXCEPTIONS
 from codebase.mappings.canonical_mapping import (
     DEFAULT_BACKUP_LEAP_MAPPINGS,
     DEFAULT_CODEBOOK,
@@ -1702,6 +1703,32 @@ def save_results_linked_single_workbook(
                 )
 
         matched = int(out["BranchID"].notna().sum())
+        # Aggregate-demand rows are only importable when the branch exists in
+        # the canonical model. Keep reviewed spelling aliases (for example
+        # Black liquor -> Black liqour) for the downstream alias rescue, but
+        # remove other placeholder branches instead of writing BranchID=-1.
+        reviewed_mapping_labels = {
+            _normalize_merge_text(value)
+            for value in KNOWN_LEAP_LABEL_EXCEPTIONS.values()
+        }
+        branch_text = out["Branch Path"].fillna("").astype(str)
+        aggregate_placeholder_mask = (
+            out["BranchID"].isna()
+            & branch_text.str.lower().str.startswith("demand\\all demand aggregated\\")
+            & ~branch_text.str.rsplit("\\", n=1).str[-1].map(_normalize_merge_text).isin(
+                reviewed_mapping_labels
+            )
+        )
+        if aggregate_placeholder_mask.any():
+            dropped_paths = sorted(set(branch_text[aggregate_placeholder_mask]))
+            print(
+                "[INFO] Dropped "
+                f"{int(aggregate_placeholder_mask.sum())} noncanonical aggregate-demand "
+                "placeholder row(s) with no LEAP branch. "
+                f"Branches: {dropped_paths}"
+            )
+            out = out.loc[~aggregate_placeholder_mask].copy()
+
         unmatched = out[out["BranchID"].isna()][
             ["Branch Path", "Variable", "Scenario", "Region"]
         ].copy()
@@ -1798,11 +1825,11 @@ def save_results_linked_single_workbook(
         mismatch_df = pd.DataFrame(mismatches).drop_duplicates().reset_index(drop=True)
         return mismatch_df
 
-    def _backfill_non_value_metadata_from_reference(
+    def _apply_reference_non_value_metadata(
         df: pd.DataFrame,
         source_data: pd.DataFrame,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
-        """Backfill empty non-year metadata fields from reference export values."""
+        """Use canonical export metadata wherever the reference supplies it."""
         key_cols = ["Branch Path", "Variable", "Scenario", "Region"]
         if source_data is None or source_data.empty:
             return df.copy(), pd.DataFrame(
@@ -1836,9 +1863,10 @@ def save_results_linked_single_workbook(
                 merged[col] = ""
             current_values = merged[col].map(_normalize_metadata_text)
             reference_values = merged[f"ref_{col}"].map(_normalize_metadata_text)
-            # Backfill only when generated metadata is missing; do not overwrite
-            # explicit generated metadata (for example supply Petajoule units).
-            apply_mask = current_values.eq("") & reference_values.ne("")
+            # The full-model export is authoritative for import metadata. This
+            # intentionally replaces explicit generated values such as PJ when
+            # the corresponding model branch is configured as GJ.
+            apply_mask = reference_values.ne("") & current_values.ne(reference_values)
             if not apply_mask.any():
                 continue
             merged.loc[apply_mask, col] = reference_values[apply_mask]
@@ -1861,6 +1889,40 @@ def save_results_linked_single_workbook(
             else pd.DataFrame(columns=key_cols + ["column", "filled_value"])
         )
         return merged, fill_df
+
+    def _collect_gigajoule_template_rows(
+        df: pd.DataFrame,
+        source_data: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """List generated rows whose canonical template unit is Gigajoule."""
+        columns = [
+            "Branch Path", "Variable", "Scenario", "Region",
+            "generated_units", "template_units",
+        ]
+        key_cols = ["Branch Path", "Variable", "Scenario", "Region"]
+        if (
+            df is None or df.empty or source_data is None or source_data.empty
+            or any(col not in source_data.columns for col in [*key_cols, "Units"])
+        ):
+            return pd.DataFrame(columns=columns)
+        generated = df[key_cols + (["Units"] if "Units" in df.columns else [])].copy()
+        if "Units" not in generated.columns:
+            generated["Units"] = ""
+        template = source_data[key_cols + ["Units"]].copy()
+        for col in key_cols:
+            generated[f"__k_{col}"] = generated[col].map(_normalize_merge_text)
+            template[f"__k_{col}"] = template[col].map(_normalize_merge_text)
+        join_cols = [f"__k_{col}" for col in key_cols]
+        template = template.drop_duplicates(subset=join_cols, keep="first")
+        merged = generated.merge(
+            template[join_cols + ["Units"]].rename(columns={"Units": "template_units"}),
+            on=join_cols,
+            how="left",
+        )
+        merged["generated_units"] = merged["Units"].map(_normalize_metadata_text)
+        merged["template_units"] = merged["template_units"].map(_normalize_metadata_text)
+        result = merged[merged["template_units"].str.casefold().eq("gigajoule")].copy()
+        return result[columns].drop_duplicates().reset_index(drop=True)
 
     def _load_field_mapping_table_for_validation() -> pd.DataFrame:
         """Load configured analysis-input mapping workbook used for metadata checks."""
@@ -1980,7 +2042,7 @@ def save_results_linked_single_workbook(
 
             if scoped.empty:
                 for cfg_field in compare_cols.keys():
-                    cfg_value = str(row.get(cfg_field) or "").strip()
+                    cfg_value = _normalize_metadata_text(row.get(cfg_field))
                     if cfg_value:
                         mismatches.append(
                             {
@@ -2208,7 +2270,15 @@ def save_results_linked_single_workbook(
     )
     level_source_df = verification_data if not verification_data.empty else leap_data
     export_df = _merge_levels_from_reference_data(export_df, level_source_df)
-    export_df, metadata_backfill_rows = _backfill_non_value_metadata_from_reference(
+    metadata_mismatch_rows = _collect_metadata_mismatches_against_reference(
+        export_df,
+        source_data=verification_data,
+    )
+    gigajoule_template_rows = _collect_gigajoule_template_rows(
+        export_df,
+        source_data=verification_data,
+    )
+    export_df, metadata_backfill_rows = _apply_reference_non_value_metadata(
         export_df,
         source_data=verification_data,
     )
@@ -2218,15 +2288,20 @@ def save_results_linked_single_workbook(
         source_path=verification_path,
     )
     nonzero_missing_id_rows: pd.DataFrame = pd.DataFrame()
-    metadata_mismatch_rows = _collect_metadata_mismatches_against_reference(
-        export_df,
-        source_data=verification_data,
-    )
     mapping_table = _load_field_mapping_table_for_validation()
     mapping_config_mismatch_rows = _collect_mapping_config_mismatches_against_reference(
         mapping_table,
         source_data=verification_data,
     )
+    if not mapping_config_mismatch_rows.empty:
+        mapping_config_unmatched_rows = mapping_config_mismatch_rows[
+            mapping_config_mismatch_rows["issue"].eq("no_reference_match")
+        ].copy()
+        mapping_config_mismatch_rows = mapping_config_mismatch_rows[
+            ~mapping_config_mismatch_rows["issue"].eq("no_reference_match")
+        ].copy()
+    else:
+        mapping_config_unmatched_rows = pd.DataFrame()
 
     year_columns = [col for col in export_df.columns if _is_year_header(col)]
     level_columns = [f"Level {idx}" for idx in range(1, 9)]
@@ -2510,6 +2585,24 @@ def save_results_linked_single_workbook(
         for _, row in by_column.iterrows():
             print(f"  - {row['column']}: {int(row['count'])} fill(s)")
 
+    gigajoule_report_path = (
+        _resolve(RESULTS_CHECKS_DIR)
+        / "supply_reconciliation_template_gigajoule_rows.csv"
+    )
+    if isinstance(gigajoule_template_rows, pd.DataFrame) and not gigajoule_template_rows.empty:
+        gigajoule_report_path.parent.mkdir(parents=True, exist_ok=True)
+        _sort_output_frame_for_csv(gigajoule_template_rows).to_csv(
+            gigajoule_report_path,
+            index=False,
+        )
+        print(
+            "[WARN] Canonical full-model export uses Gigajoule for "
+            f"{len(gigajoule_template_rows)} generated row(s); template units were applied. "
+            f"Review: {gigajoule_report_path}"
+        )
+    elif gigajoule_report_path.exists():
+        gigajoule_report_path.unlink()
+
     if isinstance(metadata_mismatch_rows, pd.DataFrame) and not metadata_mismatch_rows.empty:
         mismatch_report_path = _resolve(RESULTS_CHECKS_DIR) / RESULTS_METADATA_MISMATCH_REPORT_FILENAME
         mismatch_report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2542,6 +2635,31 @@ def save_results_linked_single_workbook(
             print(
                 f"  ... plus {len(metadata_mismatch_rows) - 30} more metadata mismatches"
             )
+
+    unit_mismatch_report_path = (
+        _resolve(RESULTS_CHECKS_DIR)
+        / "supply_reconciliation_unit_mismatches.csv"
+    )
+    unit_mismatch_rows = (
+        metadata_mismatch_rows[metadata_mismatch_rows["column"].eq("Units")].copy()
+        if isinstance(metadata_mismatch_rows, pd.DataFrame)
+        and not metadata_mismatch_rows.empty
+        else pd.DataFrame()
+    )
+    if not unit_mismatch_rows.empty:
+        unit_mismatch_report_path.parent.mkdir(parents=True, exist_ok=True)
+        _sort_output_frame_for_csv(unit_mismatch_rows).to_csv(
+            unit_mismatch_report_path,
+            index=False,
+        )
+        print(
+            "[WARN] Generated unit expectations differ from the LEAP template for "
+            f"{len(unit_mismatch_rows)} row(s). The template value was applied, but "
+            "the correct long-term unit may require a LEAP model change. "
+            f"Review: {unit_mismatch_report_path}"
+        )
+    elif unit_mismatch_report_path.exists():
+        unit_mismatch_report_path.unlink()
 
     if (
         isinstance(mapping_config_mismatch_rows, pd.DataFrame)
@@ -2580,6 +2698,23 @@ def save_results_linked_single_workbook(
             print(
                 f"  ... plus {len(mapping_config_mismatch_rows) - 30} more mapping mismatches"
             )
+
+    config_unmatched_path = (
+        _resolve(RESULTS_CHECKS_DIR)
+        / "supply_reconciliation_config_rows_without_template_match.csv"
+    )
+    if isinstance(mapping_config_unmatched_rows, pd.DataFrame) and not mapping_config_unmatched_rows.empty:
+        config_unmatched_path.parent.mkdir(parents=True, exist_ok=True)
+        _sort_output_frame_for_csv(mapping_config_unmatched_rows).to_csv(
+            config_unmatched_path,
+            index=False,
+        )
+        print(
+            "[INFO] Configuration rows without a literal full-model template match: "
+            f"{len(mapping_config_unmatched_rows)}. Review: {config_unmatched_path}"
+        )
+    elif config_unmatched_path.exists():
+        config_unmatched_path.unlink()
 
     print(
         "[INFO] Saved single-file results workbook in full-model Export structure to "

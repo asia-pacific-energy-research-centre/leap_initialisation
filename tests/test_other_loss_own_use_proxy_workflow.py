@@ -3,10 +3,44 @@ from __future__ import annotations
 import pandas as pd
 
 from codebase import other_loss_own_use_proxy_workflow as workflow
+from codebase.functions.other_loss_own_use_proxy_utils import build_proxy_source_coverage_gaps
 
 
 def _coal_config() -> dict[str, object]:
     return workflow.PROXY_CONFIG[0]
+
+
+def test_proxy_source_coverage_gaps_are_filtered_to_requested_economy() -> None:
+    esto = pd.DataFrame([
+        {
+            "economy": "20USA",
+            "economy_key": "20_USA",
+            "flows": "10.99 Test own use",
+            "products": "01.01 Coking coal",
+            "is_subtotal": False,
+            2022: 1.0,
+        },
+        {
+            "economy": "01AUS",
+            "economy_key": "01_AUS",
+            "flows": "10.98 Different own use",
+            "products": "02.01 Coke oven coke",
+            "is_subtotal": False,
+            2022: 2.0,
+        },
+    ])
+
+    gaps = build_proxy_source_coverage_gaps(
+        esto_data=esto,
+        ninth_data=pd.DataFrame(),
+        configs=[],
+        economy="20_USA",
+        base_year=2022,
+        final_year=2060,
+    )
+
+    assert len(gaps) == 1
+    assert gaps.iloc[0]["source_code"] == "10.99 Test own use"
 
 
 def test_proxy_config_scaffolds_all_own_use_children() -> None:
