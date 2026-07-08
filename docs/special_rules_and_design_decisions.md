@@ -89,6 +89,15 @@ The logical key `Branch Path + Variable + Scenario + Region` must be unique in a
 
 A `-1` sentinel is acceptable only in an intermediate row or an explicitly reviewed no-op that will not be relied on for import. Nonzero missing-ID rows are errors; zero-valued missing-ID rows must also be reviewed when they are intended to reset existing values. Validate all required ID columns, not only `BranchID`.
 
+There is one deliberate diagnostic exception for `Demand\All demand aggregated`.
+When its source Activity Level is genuinely nonzero but the corresponding branch
+does not exist in the canonical full-model export, retain the complete branch
+group in the generated workbook with `BranchID=-1`. This is not an importable
+row or a validation pass: it is visible evidence that LEAP needs a branch or a
+mapping decision. Remove missing-branch aggregate-demand groups when their
+source Activity Level is zero in every represented year; structural values such
+as `Final Energy Intensity = 1` do not by themselves make the source nonzero.
+
 ### Validation
 
 After refreshing the export, compare its branch paths and IDs with the archived version; rebuild catalog/reset scope; run unknown-path, metadata, duplicate-key, and missing-ID checks; validate share totals after duplicate resolution; and compare new baseline seeds with the last accepted set. Rules `SEED-001` through `SEED-005` and `SEED-011` automate the import-integrity checks. The detailed lifecycle and required export contents are documented in `data/README.md`.

@@ -1702,32 +1702,55 @@ def save_results_linked_single_workbook(
                     f"{matched_pass2} additional ID matches."
                 )
 
-        matched = int(out["BranchID"].notna().sum())
-        # Aggregate-demand rows are only importable when the branch exists in
-        # the canonical model. Keep reviewed spelling aliases (for example
-        # Black liquor -> Black liqour) for the downstream alias rescue, but
-        # remove other placeholder branches instead of writing BranchID=-1.
+        # A nonzero aggregate-demand source with no canonical LEAP branch is
+        # intentionally retained with BranchID=-1. It cannot import, but its
+        # presence makes the missing model branch visible to the modeller.
+        # Zero-only scaffolding is removed so it does not create false gaps.
+        # Keep reviewed spelling aliases (for example Black liquor -> Black
+        # liqour) for the downstream alias rescue.
         reviewed_mapping_labels = {
             _normalize_merge_text(value)
             for value in KNOWN_LEAP_LABEL_EXCEPTIONS.values()
         }
         branch_text = out["Branch Path"].fillna("").astype(str)
-        aggregate_placeholder_mask = (
+        aggregate_missing_mask = (
             out["BranchID"].isna()
             & branch_text.str.lower().str.startswith("demand\\all demand aggregated\\")
             & ~branch_text.str.rsplit("\\", n=1).str[-1].map(_normalize_merge_text).isin(
                 reviewed_mapping_labels
             )
         )
-        if aggregate_placeholder_mask.any():
-            dropped_paths = sorted(set(branch_text[aggregate_placeholder_mask]))
+        year_cols = [column for column in out.columns if _is_year_header(column)]
+        activity_mask = out["Variable"].fillna("").astype(str).str.casefold().eq("activity level")
+        nonzero_activity_paths: set[str] = set()
+        if year_cols:
+            activity_values = out.loc[activity_mask, year_cols].apply(
+                pd.to_numeric,
+                errors="coerce",
+            ).fillna(0.0)
+            nonzero_activity_rows = activity_values.abs().gt(1e-9).any(axis=1)
+            nonzero_activity_paths = set(
+                branch_text.loc[activity_values.index[nonzero_activity_rows]]
+            )
+        retain_missing_mask = aggregate_missing_mask & branch_text.isin(nonzero_activity_paths)
+        drop_zero_placeholder_mask = aggregate_missing_mask & ~branch_text.isin(nonzero_activity_paths)
+        if retain_missing_mask.any():
+            retained_paths = sorted(set(branch_text[retain_missing_mask]))
+            print(
+                "[WARN] Retained "
+                f"{int(retain_missing_mask.sum())} aggregate-demand row(s) with BranchID=-1 "
+                "because their source Activity Level is nonzero. These rows expose LEAP "
+                f"branches that need to be added or mapped: {retained_paths}"
+            )
+        if drop_zero_placeholder_mask.any():
+            dropped_paths = sorted(set(branch_text[drop_zero_placeholder_mask]))
             print(
                 "[INFO] Dropped "
-                f"{int(aggregate_placeholder_mask.sum())} noncanonical aggregate-demand "
+                f"{int(drop_zero_placeholder_mask.sum())} zero-only aggregate-demand "
                 "placeholder row(s) with no LEAP branch. "
                 f"Branches: {dropped_paths}"
             )
-            out = out.loc[~aggregate_placeholder_mask].copy()
+            out = out.loc[~drop_zero_placeholder_mask].copy()
 
         unmatched = out[out["BranchID"].isna()][
             ["Branch Path", "Variable", "Scenario", "Region"]
