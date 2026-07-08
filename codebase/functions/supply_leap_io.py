@@ -1913,11 +1913,15 @@ def write_per_economy_combined_workbooks(
         # for any row that does not already carry one (rows with an existing
         # Expression are left untouched). The workbook is then split across two
         # sheets: LEAP carries only the Expression (what LEAP imports), while
-        # FOR_VIEWING keeps the wide year columns for human review. A blank spacer
-        # column separates the value block from the Level columns on both sheets.
-        _meta = ["BranchID", "VariableID", "ScenarioID", "RegionID",
-                 "Branch Path", "Variable", "Scenario", "Region",
-                 "Scale", "Units", "Per...", "Expression"]
+        # FOR_VIEWING keeps Method immediately before the wide year columns for
+        # human review. A blank spacer column separates the value block from the
+        # Level columns on both sheets.
+        _leap_meta = ["BranchID", "VariableID", "ScenarioID", "RegionID",
+                      "Branch Path", "Variable", "Scenario", "Region",
+                      "Scale", "Units", "Per...", "Expression"]
+        _viewing_meta = ["BranchID", "VariableID", "ScenarioID", "RegionID",
+                         "Branch Path", "Variable", "Scenario", "Region",
+                         "Scale", "Units", "Per...", "Method"]
         _year_cols = sorted(
             [c for c in combined.columns if isinstance(c, (int, float)) and 500 < float(c) < 2200],
             key=float,
@@ -1944,14 +1948,20 @@ def write_per_economy_combined_workbooks(
                 return build_data_expression_from_row(row, _year_cols)
             combined["Expression"] = combined.apply(_resolve_expression, axis=1)
 
-        _meta_cols = [c for c in _meta if c in combined.columns]
+        if "Method" not in combined.columns and _year_cols:
+            combined["Method"] = "Interp"
+
+        _leap_meta_cols = [c for c in _leap_meta if c in combined.columns]
+        _viewing_meta_cols = [c for c in _viewing_meta if c in combined.columns]
         _level_cols = [c for c in combined.columns if str(c).startswith("Level")]
         _other = [c for c in combined.columns
-                  if c not in _meta_cols and c not in _year_cols and c not in _level_cols]
+                  if c not in set(_leap_meta_cols + _viewing_meta_cols)
+                  and c not in _year_cols
+                  and c not in _level_cols]
 
         BLANK_SPACER = "__BLANK_SPACER__"
-        leap_ordered = _meta_cols + [BLANK_SPACER] + _level_cols + _other
-        viewing_ordered = _meta_cols + _year_cols + [BLANK_SPACER] + _level_cols + _other
+        leap_ordered = _leap_meta_cols + [BLANK_SPACER] + _level_cols + _other
+        viewing_ordered = _viewing_meta_cols + _year_cols + [BLANK_SPACER] + _level_cols + _other
 
         def _assemble_sheet(ordered_cols):
             frame = combined.reindex(columns=ordered_cols)
