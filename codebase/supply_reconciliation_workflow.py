@@ -646,16 +646,18 @@ _PRESET_BASELINE_SEED = {
     "SKIP_ECONOMIES_WITH_EXISTING_EXPORTS": False,
 }
 
-# Audited 2026-07-08 (verified for "transfers" against 20_USA + 01_AUS; see
-# patch_baseline_seeds.py). Failures now raise instead of printing, stale-workbook
-# collection is prevented (fresh regen files are threaded through), and
-# "supply"/"losses_own_use" raise NotImplementedError when PATCH_RUN_WORKFLOW=True.
-# Remaining caveat before production use on other modules: a patch replaces only
-# the owning module's rows — reconciliation-layer extras the full run writes into
-# the same branches (zero Import/Export Target resets, capacity/production seeds)
-# are dropped and only restored by the next full run's global trade reset. The
-# "transfers" module is verified; treat other modules as unverified until given
-# the same check.
+# Audited 2026-07-08. "transfers" is VERIFIED: its regen goes through the same
+# save_transfer_exports_with_supply_overrides path as the full run (empty
+# reconciliation table = baseline-seed semantics), and a patched seed reproduces
+# the full workflow's transfer rows exactly (573/573 rows, zero diffs, checked
+# against 01_AUS; 20_USA reallocation applied and verified). Failures now raise
+# instead of printing, stale-workbook collection is prevented (fresh regen files
+# are threaded through), and "supply"/"losses_own_use" raise NotImplementedError
+# when PATCH_RUN_WORKFLOW=True. Other modules (power_interim, aggregated_demand,
+# transformation auto-regen) remain UNVERIFIED — they likely miss the same
+# full-run layers (capacity/production seeding, trade-target resets, catalog
+# zero-fill) that transfers needed; give them the same equivalence check before
+# trusting them.
 # _PRESET_PATCH_BASELINE_SEEDS = {
 #     # --- Pass mode ---
 #     # When RUN_MODE == "patch_baseline_seeds", run_with_config() skips the full
