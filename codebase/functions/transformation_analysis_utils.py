@@ -229,6 +229,7 @@ MAJOR_SECTOR_CONFIG = {
         "title": "NG Liquefaction",
         "liquefaction_title": "NG Liquefaction",
         "regasification_title": "LNG regasification",
+        "additional_sector_titles": ["LNG regasification"],
         "transformation_sub1": "09_06_gas_processing_plants",
         "transformation_sub2": ["09_06_02_liquefaction_regasification_plants"],
         "loss_sub2": ["10_01_03_liquefaction_regasification_plants"],
@@ -238,6 +239,10 @@ MAJOR_SECTOR_CONFIG = {
     "gas_works": {
         "dataset_key": "esto",
         "title": "Gas works plants",
+        # One callback builds two separate LEAP modules. Register both so the
+        # template-driven zero skeleton also writes canonical feedstock shares
+        # when an economy has no source data for natural-gas blending.
+        "additional_sector_titles": ["Natural gas blending plants"],
         "transformation_sub2": [
             "09_06_01_gas_works_plants",
             "09_06_03_natural_gas_blending_plants",
@@ -1493,9 +1498,12 @@ def run_analysis_for_sector(run_flag, sector_key, analysis_callback, process_rec
         sector_config["sector_key"] = sector_key
         # Register this sector so zero-fill can clear its catalog branches even for
         # economies that had no ESTO data (no process record produced).
-        sector_title = map_code_label(sector_config.get("title", ""), code_to_name_mapping)
-        if sector_title:
-            _analyzed_sector_titles.add(sector_title)
+        configured_titles = [sector_config.get("title", "")]
+        configured_titles.extend(sector_config.get("additional_sector_titles", []) or [])
+        for configured_title in configured_titles:
+            sector_title = map_code_label(configured_title, code_to_name_mapping)
+            if sector_title:
+                _analyzed_sector_titles.add(sector_title)
         data, year_cols = resolve_dataset(DATASET_MAP, sector_config["dataset_key"])
         loss_data, loss_year_cols = data, year_cols
         for economy in get_economy_list(data, ECONOMIES_TO_ANALYZE):
