@@ -685,24 +685,34 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
     elif module == "transfers":
         from codebase import transfers_workflow as _w
         from codebase.functions import transformation_analysis_utils as _core
+        from codebase.functions.supply_leap_io import (
+            save_transfer_exports_with_supply_overrides,
+        )
         from codebase.functions.supply_results_saver import (
             _build_transformation_supply_fuel_catalog_df,
         )
         _core.prepare_transformation_assets()
-        # Zero-fill all catalog branches owned by transfers so canonical share
-        # groups stay atomic. Use the same catalog builder as the full run
-        # (full model export + LEAP fuel-branch probe) so the zero-skeleton
-        # branch set matches what the full workflow writes into the seeds.
+        econ_list = economies or sorted(
+            e for e in _core.esto_data["economy"].unique()
+            if not str(e).startswith("00_")
+        )
+        # Use the same export path as the full run, with an empty reconciliation
+        # table (baseline-seed semantics). This layers on what the standalone
+        # assemble_transfer_workbook omits: Exogenous Capacity / Historical
+        # Production seeding from process output totals, zero Import/Export
+        # Target resets, and catalog zero-fill for canonical share groups.
         catalog_df = _build_transformation_supply_fuel_catalog_df(
             transformation_export_paths=[],
             supply_export_paths=[],
             include_print_summary=False,
         )
-        return _w.assemble_transfer_workbook(
-            economies=economies,
-            export_output_dir=WORKBOOKS_DIR,
+        return save_transfer_exports_with_supply_overrides(
+            pd.DataFrame(),
+            economies=econ_list,
+            scenarios=list(_w.DEFAULT_SCENARIOS),
+            output_dir=WORKBOOKS_DIR,
+            filename_template=_w.EXPORT_FILENAME_TEMPLATE,
             full_branch_catalog_df=catalog_df if not catalog_df.empty else None,
-            in_scope_sector_titles=_w.get_transfer_sector_titles(),
         )
 
     elif module == "supply":
