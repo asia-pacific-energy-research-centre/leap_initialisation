@@ -973,6 +973,9 @@ def build_zero_skeleton_record(
         output_import_targets=zero_targets,
         output_export_targets=dict(zero_targets),
     )
+    record["historical_production_by_year"] = dict(zero_by_year)
+    record["exogenous_capacity_by_year"] = dict(zero_by_year)
+    record["capacity_units"] = "Gigajoules/Year"
     record["is_zero_skeleton"] = True
     return record
 

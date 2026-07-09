@@ -17,6 +17,9 @@ def test_interim_modules_select_only_approved_signed_transformation_sectors() ->
         "CHP interim": ["09_02_chp_plants"],
         "Heat plant interim": ["09_x_heat_plants"],
     }
+    assert workflow.INTERIM_MODULES["Electricity interim"]["output_labels"] == ["Electricity"]
+    assert workflow.INTERIM_MODULES["CHP interim"]["output_labels"] == ["Electricity", "Heat"]
+    assert workflow.INTERIM_MODULES["Heat plant interim"]["output_labels"] == ["Heat"]
     assert not (
         set(workflow.ALL_POWER_SUB1SECTORS)
         & workflow.FORBIDDEN_POWER_INTERIM_SUB1SECTORS
@@ -142,6 +145,77 @@ def test_esto_product_mapping_reads_only_canonical_sheet(monkeypatch: pytest.Mon
     assert calls == [("ninth fuel to esto product", ("9th_fuel", "esto_product"))]
     assert mapping["01 Coal"] == "01_coal"
     assert mapping["12.99 Solar nonspecified"] == "12_solar_unallocated"
+
+
+def test_no_data_chp_skeleton_emits_output_and_capacity_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(workflow.core, "esto_data", pd.DataFrame(columns=["economy", "flows"]))
+    monkeypatch.setattr(
+        workflow.core,
+        "ninth_data",
+        pd.DataFrame(columns=["economy", "sub1sectors", "fuels", "subfuels"]),
+    )
+    monkeypatch.setattr(workflow.core, "esto_year_cols", [2022, 2023])
+    monkeypatch.setattr(workflow.core, "ninth_year_cols", [2022, 2023])
+
+    record = workflow._build_interim_process_record(
+        economy="01_AUS",
+        sector_title="CHP interim",
+        process_name="CHP interim",
+        sub1sectors=workflow.INTERIM_MODULES["CHP interim"]["sub1sectors"],
+        esto_flows=workflow.INTERIM_MODULES["CHP interim"]["esto_flows"],
+        output_labels=workflow.INTERIM_MODULES["CHP interim"]["output_labels"],
+    )
+    rows = workflow.core.build_transformation_log_rows(
+        [record],
+        scenario="Reference",
+        region="Australia",
+        base_year=2022,
+        final_year=2023,
+        code_to_name_mapping={
+            "CHP interim": "CHP interim",
+            "Electricity": "Electricity",
+            "Heat": "Heat",
+        },
+    )
+    paths_by_measure = {
+        (row["Branch_Path"], row["Measure"])
+        for row in rows
+    }
+
+    assert (
+        "Transformation\\CHP interim\\Output Fuels\\Electricity",
+        "Output Share",
+    ) in paths_by_measure
+    assert (
+        "Transformation\\CHP interim\\Output Fuels\\Heat",
+        "Output Share",
+    ) in paths_by_measure
+    assert (
+        "Transformation\\CHP interim\\Output Fuels\\Electricity",
+        "Import Target",
+    ) in paths_by_measure
+    assert (
+        "Transformation\\CHP interim\\Processes\\CHP interim",
+        "Historical Production",
+    ) in paths_by_measure
+    assert (
+        "Transformation\\CHP interim\\Processes\\CHP interim",
+        "Exogenous Capacity",
+    ) in paths_by_measure
+    zero_measures = {
+        "Output Share",
+        "Import Target",
+        "Export Target",
+        "Historical Production",
+        "Exogenous Capacity",
+    }
+    assert all(
+        float(row["Value"]) == 0.0
+        for row in rows
+        if row["Measure"] in zero_measures
+    )
 
 
 #%%

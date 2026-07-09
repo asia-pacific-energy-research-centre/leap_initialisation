@@ -85,6 +85,7 @@ EXPORT_ID_LOOKUP_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 # Each key is the LEAP sector title and process name.
 # sub1sectors: 9th-data sub1sector codes to aggregate for projections.
 # esto_flows: ESTO flow codes to aggregate for historical/base-year data.
+# output_labels: LEAP output-fuel leaves to retain when a module has no data.
 INTERIM_MODULES: dict[str, dict] = {
     "Electricity interim": {
         "sub1sectors": ["09_01_electricity_plants"],
@@ -92,6 +93,7 @@ INTERIM_MODULES: dict[str, dict] = {
             "09.01.01 Electricity plants",
             "09.02.01 Electricity plants",
         ],
+        "output_labels": ["Electricity"],
     },
     "CHP interim": {
         "sub1sectors": ["09_02_chp_plants"],
@@ -99,6 +101,7 @@ INTERIM_MODULES: dict[str, dict] = {
             "09.01.02 CHP plants",
             "09.02.02 CHP plants",
         ],
+        "output_labels": ["Electricity", "Heat"],
     },
     "Heat plant interim": {
         "sub1sectors": ["09_x_heat_plants"],
@@ -106,6 +109,7 @@ INTERIM_MODULES: dict[str, dict] = {
             "09.01.03 Heat plants",
             "09.02.03 Heat plants",
         ],
+        "output_labels": ["Heat"],
     },
 }
 
@@ -709,6 +713,7 @@ def _build_interim_process_record(
     process_name: str,
     sub1sectors: list[str],
     esto_flows: list[str],
+    output_labels: list[str] | None = None,
 ) -> dict | None:
     """Return a process record for one interim module.
 
@@ -730,7 +735,7 @@ def _build_interim_process_record(
             f"ESTO flows {esto_flows} and sub1sectors {sub1sectors}; writing zero skeleton."
         )
         return core.build_zero_skeleton_record(
-            economy, sector_title, process_name, None,
+            economy, sector_title, process_name, output_labels,
             core.EXPORT_BASE_YEAR, core.EXPORT_FINAL_YEAR,
         )
 
@@ -786,7 +791,7 @@ def _build_interim_process_record(
             f"writing zero skeleton."
         )
         return core.build_zero_skeleton_record(
-            economy, sector_title, process_name, None,
+            economy, sector_title, process_name, output_labels,
             core.EXPORT_BASE_YEAR, core.EXPORT_FINAL_YEAR,
         )
 
@@ -908,6 +913,7 @@ def build_electricity_heat_interim_rows(
                 process_name=module_name,
                 sub1sectors=module_cfg["sub1sectors"],
                 esto_flows=module_cfg["esto_flows"],
+                output_labels=module_cfg.get("output_labels"),
             )
             if record is not None:
                 rows.append(record)
