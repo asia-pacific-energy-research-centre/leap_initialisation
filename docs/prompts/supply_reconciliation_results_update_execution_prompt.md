@@ -62,13 +62,15 @@ explicitly asks.
   source of truth for the update pass. A `mapping_status.xlsx` dashboard file is
   not required for this run.
 - Previously reviewed canonical mapping exceptions are not expected to block
-  this run if the workbook already carries the reviewed flags. Treat new or
-  unreviewed mapping/subtotal issues as blockers; treat known reviewed rows as
-  diagnostics.
-- The reviewed exceptions currently allowed for this run are the exact
-  duplicate mapping rows marked `duplicate_to_remove=True` and the 12 reviewed
-  subtotal mismatch rows marked `subtotal_mismatch_is_ok=True` in
-  `config/outlook_mappings_master.xlsx`. Do not add new exceptions unless the
+  this run if they are already captured in the shared exception workbook used
+  by baseline-seed validation. Treat new or unreviewed mapping/subtotal issues
+  as blockers; treat known reviewed rows as diagnostics.
+- The reviewed exceptions should come from
+  `C:\Users\Work\github\leap_mappings\config\mapping_issue_exception_sets.xlsx`
+  rather than ad hoc workbook flags. In practice, the main sheets to respect
+  here are `subtotal_mismatch_allowed` for subtotal mismatches and
+  `leap_dup_source_allowed` / `leap_dup_target_allowed` for duplicate-source or
+  duplicate-target cases if they surface. Do not add new exceptions unless the
   run surfaces a genuinely reviewed case.
 
 Read the config values out of the file rather than assuming they are already
