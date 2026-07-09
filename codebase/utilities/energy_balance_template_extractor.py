@@ -35,6 +35,11 @@ _SUBTOTAL_EXCEPTION_KEY_COLUMNS = {
     "leap_combined_ninth": ("ninth_sector", "ninth_fuel"),
 }
 _SUBTOTAL_MISMATCH_EXCEPTION_SETS: dict[str, set[tuple[str, str, str, str]]] | None = None
+DUPLICATE_MAPPING_EXCEPTION_SHEETS = {
+    "leap_dup_source_allowed": ("source_flow", "source_product"),
+    "leap_dup_target_allowed": ("target_flow", "target_product"),
+}
+_DUPLICATE_MAPPING_EXCEPTION_SETS: dict[str, set[tuple[str, str]]] | None = None
 
 _EXTRACTOR_REPO_ROOT = Path(__file__).resolve().parents[2]
 SUBTOTAL_FLAG_DIAGNOSTIC_DIR = (
@@ -93,6 +98,45 @@ def load_subtotal_mismatch_exception_sets() -> dict[str, set[tuple[str, str, str
             f"{SUBTOTAL_MISMATCH_EXCEPTIONS_PATH}: {exc}"
         )
     _SUBTOTAL_MISMATCH_EXCEPTION_SETS = sets
+    return sets
+
+
+def load_duplicate_mapping_exception_sets() -> dict[str, set[tuple[str, str]]]:
+    """Load reviewed duplicate-source/target mapping allowances.
+
+    The workbook is maintained in leap_mappings. Missing workbook/sheets degrade
+    to strict validation, matching the subtotal exception behavior above.
+    """
+    global _DUPLICATE_MAPPING_EXCEPTION_SETS
+    if _DUPLICATE_MAPPING_EXCEPTION_SETS is not None:
+        return _DUPLICATE_MAPPING_EXCEPTION_SETS
+    sets: dict[str, set[tuple[str, str]]] = {}
+    try:
+        workbook = pd.ExcelFile(SUBTOTAL_MISMATCH_EXCEPTIONS_PATH)
+        for sheet_name, columns in DUPLICATE_MAPPING_EXCEPTION_SHEETS.items():
+            if sheet_name not in workbook.sheet_names:
+                continue
+            frame = pd.read_excel(workbook, sheet_name=sheet_name, dtype=str).fillna("")
+            enabled = (
+                frame.get("enabled", pd.Series("", index=frame.index))
+                .astype(str)
+                .str.strip()
+                .str.lower()
+                .isin({"1", "true", "yes", "y", "on", "t"})
+            )
+            sheet_set: set[tuple[str, str]] = set()
+            for _, row in frame[enabled].iterrows():
+                first = _norm_exception_part(row.get(columns[0]))
+                second = _norm_exception_part(row.get(columns[1]))
+                if first and second:
+                    sheet_set.add((first, second))
+            sets[sheet_name] = sheet_set
+    except Exception as exc:
+        print(
+            "[WARN] Could not load duplicate mapping exceptions from "
+            f"{SUBTOTAL_MISMATCH_EXCEPTIONS_PATH}: {exc}"
+        )
+    _DUPLICATE_MAPPING_EXCEPTION_SETS = sets
     return sets
 
 UNIT_PREFIX_TO_SCALE = {
@@ -730,6 +774,41 @@ class TemplateBalanceExtractor:
                 ),
                 axis=1,
             )
+            duplicate_exception_sets = load_duplicate_mapping_exception_sets()
+            duplicate_source_exceptions = duplicate_exception_sets.get("leap_dup_source_allowed", set())
+            duplicate_target_exceptions = duplicate_exception_sets.get("leap_dup_target_allowed", set())
+            out["duplicate_source_exception_matched"] = False
+            out["duplicate_target_exception_matched"] = False
+            if sheet_label == "leap_combined_esto":
+                source_keys = [
+                    (
+                        _norm_exception_part(path),
+                        _norm_exception_part(fuel),
+                    )
+                    for path, fuel in zip(
+                        out["leap_sector_name_full_path"],
+                        out["raw_leap_fuel_name"],
+                    )
+                ]
+                target_keys = [
+                    (
+                        _norm_exception_part(flow),
+                        _norm_exception_part(product),
+                    )
+                    for flow, product in zip(out[target_sector_col], out[target_fuel_col])
+                ]
+                out.loc[:, "duplicate_source_exception_matched"] = [
+                    key in duplicate_source_exceptions and int(_pair_src_count.get(src, 0)) > 1
+                    for key, src in zip(source_keys, out["_src"])
+                ]
+                out.loc[:, "duplicate_target_exception_matched"] = [
+                    key in duplicate_target_exceptions and int(_pair_tgt_count.get(tgt, 0)) > 1
+                    for key, tgt in zip(target_keys, out["_tgt"])
+                ]
+            reviewed_duplicate_exception = (
+                out["duplicate_source_exception_matched"].fillna(False).map(truthy)
+                | out["duplicate_target_exception_matched"].fillna(False).map(truthy)
+            )
             out = out.drop(columns=["_src", "_tgt"], errors="ignore")
 
             def _norm_cardinality(value: object) -> str:
@@ -742,7 +821,12 @@ class TemplateBalanceExtractor:
                 if authored_col in out.columns and out[authored_col].fillna("").astype(str).str.strip().ne("").any():
                     authored = out[authored_col].fillna("").astype(str).map(_norm_cardinality)
                     computed = out[computed_col].fillna("").astype(str).map(_norm_cardinality)
-                    mismatch_mask = valid & out[authored_col].fillna("").astype(str).str.strip().ne("") & authored.ne(computed)
+                    mismatch_mask = (
+                        valid
+                        & out[authored_col].fillna("").astype(str).str.strip().ne("")
+                        & authored.ne(computed)
+                        & ~reviewed_duplicate_exception
+                    )
                     mismatch_rows = out[mismatch_mask].copy()
                     if not mismatch_rows.empty:
                         preview_cols = [
@@ -987,6 +1071,8 @@ class TemplateBalanceExtractor:
                     "leap_is_subtotal_computed",
                     target_subtotal_col,
                     "legacy_many_to_many_is_ok",
+                    "duplicate_source_exception_matched",
+                    "duplicate_target_exception_matched",
                 ]
                 for col in diagnostic_cols:
                     if col not in many_to_many_rows.columns:
