@@ -31,11 +31,13 @@ explicitly asks.
    (`Get-Process python` / equivalent) before launching a new one.
 5. Record the starting commit, the exact configuration in force, the start
    time, and the exact launch command before you run anything.
-6. Confirm the dashboard-side prerequisites already exist for the requested
-   economy. The results-update path reads
-   `outputs/leap_results_dashboard/USA/mapping_status.xlsx` and related
-   comparison artifacts before the main run starts. If those files are missing,
-   stop and regenerate them first rather than launching this prompt blindly.
+6. Confirm the upstream LEAP balance-export prerequisite exists for the
+   requested economy. The results-update path reads the economy's balance
+   workbook under `data/leap balances exports/<economy>/`. The extractor
+   accepts LEAP energy-balance workbooks with `EBal|...`, `Energy Balance...`,
+   or plain four-digit year sheet names (for example `2060` and `2059`). If
+   the workbook is missing or the sheets are unreadable, stop and regenerate
+   the LEAP export first.
 
 ## Run configuration
 
@@ -51,9 +53,14 @@ explicitly asks.
 - `SCENARIOS = ["Target", "Reference", "Current Accounts"]` by default.
   If the user explicitly asks for only `Current Accounts` and one other
   scenario, use exactly those two and nothing else.
-- `outputs/leap_results_dashboard/USA/mapping_status.xlsx` must exist and
-  contain the expected columns before the run starts. If it does not, this
-  prompt is blocked until the dashboard/mapping step is rerun.
+- The requested economy must already have a readable LEAP balance export
+  workbook in `data/leap balances exports/<economy>/`. The workbook is the
+  source of truth for the update pass. A `mapping_status.xlsx` dashboard file is
+  not required for this run.
+- Previously reviewed canonical mapping exceptions are not expected to block
+  this run if the workbook already carries the reviewed flags. Treat new or
+  unreviewed mapping/subtotal issues as blockers; treat known reviewed rows as
+  diagnostics.
 
 Read the config values out of the file rather than assuming they are already
 set this way. If they differ, edit them and note exactly what changed.

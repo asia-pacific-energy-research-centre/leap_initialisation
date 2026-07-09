@@ -664,6 +664,9 @@ def _list_balance_sheets(workbook_path: Path) -> list[str]:
         if key.startswith("ebal|"):
             selected.append(name)
             continue
+        if len(key) == 4 and key.isdigit():
+            selected.append(name)
+            continue
         if key.startswith("energy balance") or key.startswith("targt energy balance"):
             selected.append(name)
             continue
