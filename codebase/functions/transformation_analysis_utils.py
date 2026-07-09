@@ -597,15 +597,22 @@ def filter_total_energy_rows(df):
 
     Removes:
     - Named total rows (19 Total, 20 Total Renewables, 21 Modern renewables)
-    - ESTO aggregate product codes that have no decimal point (e.g. '08 Gas',
-      '01 Coal', '07 Petroleum products'). These are subtotals of their
-      sub-product groups and should never appear as LEAP branch fuels.
+    - ESTO subtotal product rows when ``is_subtotal`` is available.
+    - A conservative fallback list of known aggregate product labels when
+      ``is_subtotal`` is unavailable.
     """
     try:
-        import re as _re
         updated = df.copy()
         total_codes = {"19_total", "20_total_renewables", "21_modern_renewables"}
-        total_labels = {
+        aggregate_product_labels = {
+            "01 Coal",
+            "02 Coal products",
+            "06 Crude oil & NGL",
+            "07 Petroleum products",
+            "08 Gas",
+            "12 Solar",
+            "15 Solid biomass",
+            "16 Others",
             "19 Total",
             "20 Total Renewables",
             "21 Modern renewables",
@@ -615,14 +622,17 @@ def filter_total_energy_rows(df):
         if "subfuels" in updated.columns:
             updated = updated[~updated["subfuels"].astype(str).isin(total_codes)]
         if "products" in updated.columns:
-            # Drop named totals
-            mask_named = updated["products"].astype(str).isin(total_labels)
-            # Drop aggregate codes: two-digit number + space + name, no decimal
-            # e.g. "08 Gas", "01 Coal", "07 Petroleum products"
-            mask_aggregate = updated["products"].astype(str).str.match(
-                r"^\d{2} ", na=False
-            ) & ~updated["products"].astype(str).str.contains(r"\.", na=False)
-            updated = updated[~(mask_named | mask_aggregate)]
+            if "is_subtotal" in updated.columns:
+                subtotal_flags = updated["is_subtotal"].fillna(False)
+                if subtotal_flags.dtype == object:
+                    subtotal_flags = subtotal_flags.astype(str).str.strip().str.lower().isin(
+                        {"true", "1", "yes", "y"}
+                    )
+                updated = updated[~subtotal_flags.astype(bool)]
+            else:
+                updated = updated[
+                    ~updated["products"].astype(str).str.strip().isin(aggregate_product_labels)
+                ]
         return updated
     except Exception as exc:
         print(f"Failed to filter total energy rows: {exc}")
