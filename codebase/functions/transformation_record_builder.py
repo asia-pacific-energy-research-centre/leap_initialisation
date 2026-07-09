@@ -1558,8 +1558,8 @@ def _normalize_region_text(value: object) -> str:
     return re.sub(r"\s+", " ", str(value).strip()).lower()
 
 
-def validate_export_region_matches_process_economies(process_records, region) -> None:
-    """Fail fast when process-record economies do not match the LEAP export region."""
+def resolve_export_region_from_process_economies(process_records, region) -> str:
+    """Return the LEAP region implied by process-record economies when known."""
     try:
         expected_by_economy = {}
         for record in process_records or []:
@@ -1573,7 +1573,7 @@ def validate_export_region_matches_process_economies(process_records, region) ->
                 expected_by_economy[economy] = expected_region
 
         if not expected_by_economy:
-            return
+            return str(region)
 
         expected_regions = sorted(set(expected_by_economy.values()))
         if len(expected_regions) > 1:
@@ -1589,51 +1589,14 @@ def validate_export_region_matches_process_economies(process_records, region) ->
         expected_region = expected_regions[0]
         if _normalize_region_text(region) != _normalize_region_text(expected_region):
             economy_list = ", ".join(sorted(expected_by_economy))
-            raise ValueError(
-                f"Export region '{region}' does not match process-record "
-                f"economy/economies {economy_list}; expected LEAP region "
-                f"'{expected_region}'. Pass the matching region and use a full "
-                "model export template from that same LEAP area."
+            print(
+                f"[INFO] Using LEAP region '{expected_region}' for "
+                f"economy/economies {economy_list} instead of configured region "
+                f"'{region}'."
             )
+        return expected_region
     except Exception as exc:
-        print(f"Failed to validate transformation export region: {exc}")
-        _try_debug_breakpoint()
-        raise
-
-
-def validate_export_region_matches_id_lookup(region, id_lookup_path) -> None:
-    """Fail fast when the ID/template workbook does not contain the export region."""
-    try:
-        if id_lookup_path is None:
-            return
-        path = Path(id_lookup_path)
-        if not path.exists():
-            return
-        try:
-            reference = pd.read_excel(path, sheet_name="Export", header=2, usecols=["Region"])
-        except Exception:
-            return
-        if "Region" not in reference.columns:
-            return
-        regions = sorted(
-            {
-                str(value).strip()
-                for value in reference["Region"].dropna()
-                if str(value).strip()
-            }
-        )
-        if not regions:
-            return
-        normalized_regions = {_normalize_region_text(value) for value in regions}
-        if _normalize_region_text(region) not in normalized_regions:
-            raise ValueError(
-                f"Export region '{region}' is not present in ID lookup workbook "
-                f"'{path}'. Available region(s): {', '.join(regions)}. Use a full "
-                "model export template from the same LEAP area as the requested "
-                "region."
-            )
-    except Exception as exc:
-        print(f"Failed to validate transformation ID lookup region: {exc}")
+        print(f"Failed to resolve transformation export region: {exc}")
         _try_debug_breakpoint()
         raise
 
@@ -2665,8 +2628,7 @@ def save_transformation_export(
 ):
     """Save a LEAP import file built from process records across scenarios."""
     try:
-        validate_export_region_matches_process_economies(process_records, region)
-        validate_export_region_matches_id_lookup(region, id_lookup_path)
+        region = resolve_export_region_from_process_economies(process_records, region)
         can_build_catalog_zero_skeleton = (
             full_branch_catalog_df is not None
             and not full_branch_catalog_df.empty

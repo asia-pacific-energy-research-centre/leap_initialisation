@@ -239,17 +239,11 @@ MAJOR_SECTOR_CONFIG = {
     "gas_works": {
         "dataset_key": "esto",
         "title": "Gas works plants",
-        # One callback builds two separate LEAP modules. Register both so the
-        # template-driven zero skeleton also writes canonical feedstock shares
-        # when an economy has no source data for natural-gas blending.
-        "additional_sector_titles": ["Natural gas blending plants"],
-        "transformation_sub2": [
-            "09_06_01_gas_works_plants",
-            "09_06_03_natural_gas_blending_plants",
-        ],
+        # Independently registered and analyzed from natural gas blending
+        # (separate ANALYSIS_REGISTRY entry, separate callback) even though
+        # both live under 09.06 Gas processing plants.
+        "sub2_gas_works": "09_06_01_gas_works_plants",
         "flow_code_gas_works": "09.06.01 Gas works plants",
-        "flow_code_blending": "09.06.03 Natural gas blending plants",
-        "product_code_natural_gas": "08.01 Natural gas",
         "product_code_gas_works_gas": "08.03 Gas works gas",
         "product_code_lignite": "01.05 Lignite",
         "transformation_flow_codes": ["09.06.01 Gas works plants"],
@@ -258,6 +252,10 @@ MAJOR_SECTOR_CONFIG = {
     "gas_blending": {
         "dataset_key": "esto",
         "title": "Natural gas blending plants",
+        "sub2_blending": "09_06_03_natural_gas_blending_plants",
+        "flow_code_blending": "09.06.03 Natural gas blending plants",
+        "product_code_natural_gas": "08.01 Natural gas",
+        "product_code_gas_works_gas": "08.03 Gas works gas",
         "transformation_flow_codes": ["09.06.03 Natural gas blending plants"],
         "loss_flow_codes": [],
     },
@@ -335,7 +333,10 @@ MAJOR_SECTOR_CONFIG = {
     },
     "nonspecified_transformation": {
         "dataset_key": "esto",
-        "title": "Non-specified transformation",
+        # Use the canonical LEAP branch label (no hyphen) so
+        # build_aux_fuel_zero_rows can match in-scope sectors against the
+        # full-model export catalog when this sector has zero activity.
+        "title": "Non specified transformation",
         "transformation_flow_codes": ["09.12 Non-specified transformation"],
         "loss_flow_codes": ["10.01.17 Non-specified own uses"],
     },
@@ -1568,11 +1569,28 @@ def run_lng_analysis(
     )
 
 
-def run_gas_processing_analysis(
+def run_gas_works_analysis(
     data, year_cols, economy, loss_data, loss_year_cols, sector_config, process_records
 ):
-    """Run gas processing analysis for a single economy."""
-    analyze_gas_processing(
+    """Run gas works plants analysis for a single economy."""
+    analyze_gas_works_plants(
+        data,
+        year_cols,
+        YEAR_START_FOR_ANALYSIS,
+        economy,
+        code_to_name_mapping,
+        loss_data,
+        loss_year_cols,
+        sector_config,
+        process_records,
+    )
+
+
+def run_gas_blending_analysis(
+    data, year_cols, economy, loss_data, loss_year_cols, sector_config, process_records
+):
+    """Run natural gas blending plants analysis for a single economy."""
+    analyze_natural_gas_blending_plants(
         data,
         year_cols,
         YEAR_START_FOR_ANALYSIS,
@@ -1824,7 +1842,8 @@ def prepare_transformation_assets() -> None:
 # ---------------------------------------------------------------------------
 from codebase.functions.transformation_sector_analysis import (  # noqa: F401, E402
     analyze_lng_liquefaction_regas,
-    analyze_gas_processing,
+    analyze_gas_works_plants,
+    analyze_natural_gas_blending_plants,
     summarize_transformation_flows,
     analyze_hydrogen_transformation,
 )

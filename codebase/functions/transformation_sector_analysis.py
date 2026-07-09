@@ -803,7 +803,307 @@ def analyze_lng_liquefaction_regas(
         raise
 
 
-def analyze_gas_processing(
+def _build_gas_process_record(
+    process_records,
+    economy,
+    code_to_name_mapping,
+    loss_data,
+    loss_year_cols,
+    start_year,
+    year_cols,
+    loss_sector_key,
+    export_base_year,
+    export_final_year,
+    export_years,
+    sector_title,
+    process_name,
+    output_label,
+    process_rows,
+    output_rows,
+    loss_sub2_code,
+):
+    """Build a process record for a single gas-processing sub-sector (gas works or blending)."""
+    if process_rows.empty:
+        print(f"{process_name}: no data rows for {economy}; writing zero skeleton.")
+        append_process_record(process_records, build_zero_skeleton_record(
+            economy, sector_title, process_name, [output_label],
+            export_base_year, export_final_year,
+        ))
+        return
+    feedstock_method = resolve_feedstock_method()
+    totals, _ = summarize_fuel_totals(
+        process_rows, year_cols, start_year, allow_all_years_fallback=True
+    )
+    timeseries, _ = summarize_fuel_timeseries(
+        process_rows, year_cols, start_year, allow_all_years_fallback=True
+    )
+    negative = totals[totals < 0]
+    if negative.empty or timeseries.empty:
+        print(f"{process_name}: no negative inputs available; writing zero skeleton.")
+        append_process_record(process_records, build_zero_skeleton_record(
+            economy, sector_title, process_name, [output_label],
+            export_base_year, export_final_year,
+        ))
+        return
+    output_series = ensure_full_year_series(
+        sum_years_by_year(output_rows, year_cols, start_year),
+        export_base_year,
+        export_final_year,
+    )
+    if output_series.sum() == 0:
+        print(f"{process_name}: no output series available; writing zero skeleton.")
+        append_process_record(process_records, build_zero_skeleton_record(
+            economy, sector_title, process_name, [output_label],
+            export_base_year, export_final_year,
+        ))
+        return
+    input_series_map, zero_sum_labels = build_input_series_map(
+        timeseries,
+        list(negative.index),
+        export_base_year,
+        export_final_year,
+    )
+    if zero_sum_labels:
+        log_dropped_input_fuels(economy, str(process_name), zero_sum_labels, export_base_year, export_final_year)
+    if not input_series_map:
+        print(f"{process_name}: no input series after normalization; writing zero skeleton.")
+        append_process_record(process_records, build_zero_skeleton_record(
+            economy, sector_title, process_name, [output_label],
+            export_base_year, export_final_year,
+        ))
+        return
+    total_input_series = build_total_input_series(input_series_map, export_years)
+    loss_series, loss_total, loss_values, loss_values_by_year = build_loss_context(
+        loss_data,
+        loss_year_cols,
+        start_year,
+        economy,
+        loss_sector_key,
+        loss_sub2_code,
+    )
+    total_loss_by_year = sum_loss_values_by_year(loss_values_by_year, export_years)
+    output_import_targets_total, output_export_targets_total = gather_output_target_dicts(
+        economy,
+        [output_label],
+        export_base_year,
+        export_final_year,
+        output_series_by_fuel={output_label: output_series},
+    )
+
+    if feedstock_method == FEEDSTOCK_METHOD_SPLIT:
+        feedstock_labels = list(input_series_map.keys())
+        for idx, feedstock_label in enumerate(feedstock_labels):
+            input_series = input_series_map[feedstock_label]
+            share_series = build_input_share_series(
+                input_series,
+                total_input_series,
+                fallback_to_one=(idx == 0),
+            )
+            allocated_output_series = output_series.mul(share_series, fill_value=0.0)
+            allocated_loss_values = allocate_loss_by_share(
+                loss_values_by_year,
+                share_series,
+            )
+            loss_total_for_eff = total_loss_by_year.mul(share_series, fill_value=0.0)
+            efficiency_series = compute_efficiency_by_year(
+                allocated_output_series,
+                input_series,
+                loss_total_for_eff,
+            )
+            auxiliary_fuels, auxiliary_ratios = build_auxiliary_from_losses_by_year(
+                allocated_loss_values,
+                allocated_output_series,
+                feedstock_labels=[feedstock_label],
+            )
+            output_import_targets = {
+                label: scale_year_dict_by_share(values, share_series)
+                for label, values in (output_import_targets_total or {}).items()
+            }
+            output_export_targets = {
+                label: scale_year_dict_by_share(values, share_series)
+                for label, values in (output_export_targets_total or {}).items()
+            }
+            process_label = (
+                process_name
+                if len(feedstock_labels) == 1
+                else f"{process_name} - {feedstock_label}"
+            )
+            print_leap_structure_block(
+                process_label,
+                [output_label],
+                process_label,
+                [feedstock_label],
+                auxiliary_fuels,
+                loss_fuels=list(allocated_loss_values.keys()),
+                code_to_name_mapping=code_to_name_mapping,
+                output_fuel_values={output_label: allocated_output_series.sum()},
+                process_value=f"{efficiency_series.mean():.6f}",
+                feedstock_fuel_values={feedstock_label: input_series.sum()},
+                auxiliary_fuel_values={
+                    label: summarize_numeric_value(values, summary="mean")
+                    for label, values in auxiliary_ratios.items()
+                },
+                loss_fuel_values={
+                    label: summarize_numeric_value(values, summary="sum")
+                    for label, values in allocated_loss_values.items()
+                },
+            )
+            record = build_process_record(
+                economy,
+                sector_title,
+                process_label,
+                {output_label: series_to_year_dict(allocated_output_series, export_base_year, export_final_year)},
+                {feedstock_label: series_to_year_dict(input_series, export_base_year, export_final_year)},
+                series_to_year_dict(efficiency_series, export_base_year, export_final_year),
+                auxiliary_ratios,
+                allocated_loss_values,
+                float(pd.Series(loss_total_for_eff, dtype=float).sum()),
+                loss_values_for_efficiency=series_to_year_dict(
+                    loss_total_for_eff,
+                    export_base_year,
+                    export_final_year,
+                ),
+                feedstock_shares={feedstock_label: 1.0},
+                input_total=float(input_series.sum()),
+                output_import_targets=output_import_targets,
+                output_export_targets=output_export_targets,
+            )
+            append_process_record(process_records, record)
+    elif feedstock_method == FEEDSTOCK_METHOD_MULTI:
+        auxiliary_fuels, auxiliary_ratios = build_auxiliary_from_losses_by_year(
+            loss_values_by_year,
+            output_series,
+            feedstock_labels=list(input_series_map.keys()) if LOSS_AUX_EXCLUDE_FEEDSTOCKS else None,
+        )
+        efficiency_series = compute_efficiency_by_year(
+            output_series,
+            total_input_series,
+            total_loss_by_year,
+        )
+        feedstock_values = {
+            label: series_to_year_dict(series, export_base_year, export_final_year)
+            for label, series in input_series_map.items()
+        }
+        feedstock_shares = {
+            label: safe_divide_series(series, total_input_series).to_dict()
+            for label, series in input_series_map.items()
+        }
+        print_leap_structure_block(
+            process_name,
+            [output_label],
+            process_name,
+            list(feedstock_values.keys()),
+            auxiliary_fuels,
+            loss_fuels=list(loss_values_by_year.keys()),
+            code_to_name_mapping=code_to_name_mapping,
+            output_fuel_values={output_label: output_series.sum()},
+            process_value=f"{efficiency_series.mean():.6f}",
+            feedstock_fuel_values={
+                label: summarize_numeric_value(values, summary="sum")
+                for label, values in feedstock_values.items()
+            },
+            auxiliary_fuel_values={
+                label: summarize_numeric_value(values, summary="mean")
+                for label, values in auxiliary_ratios.items()
+            },
+            loss_fuel_values={
+                label: summarize_numeric_value(values, summary="sum")
+                for label, values in loss_values_by_year.items()
+            },
+        )
+        record = build_process_record(
+            economy,
+            sector_title,
+            process_name,
+            {output_label: series_to_year_dict(output_series, export_base_year, export_final_year)},
+            feedstock_values,
+            series_to_year_dict(efficiency_series, export_base_year, export_final_year),
+            auxiliary_ratios,
+            loss_values_by_year,
+            loss_total,
+            loss_values_for_efficiency=series_to_year_dict(
+                total_loss_by_year,
+                export_base_year,
+                export_final_year,
+            ),
+            feedstock_shares=feedstock_shares,
+            input_total=float(total_input_series.sum()),
+            output_import_targets=output_import_targets_total,
+            output_export_targets=output_export_targets_total,
+            own_use_ratios=compute_own_use_ratios_for_record(
+                loss_values_by_year, input_series_map, export_years
+            ),
+        )
+        append_process_record(process_records, record)
+    else:
+        primary_input = negative.idxmin()
+        input_series = input_series_map.get(primary_input)
+        if input_series is None or input_series.empty:
+            print(f"{process_name}: primary input series missing after normalization.")
+            return
+        other_feedstock_fuels = [
+            label for label in input_series_map.keys() if label != primary_input
+        ]
+        auxiliary_fuels = list(other_feedstock_fuels)
+        auxiliary_ratios = build_auxiliary_ratios_by_year(
+            timeseries, auxiliary_fuels, output_series
+        )
+        auxiliary_fuels, auxiliary_ratios = merge_loss_into_auxiliary_by_year(
+            auxiliary_fuels,
+            auxiliary_ratios,
+            loss_values_by_year,
+            output_series,
+            primary_input,
+        )
+        efficiency_series = compute_efficiency_by_year(
+            output_series,
+            total_input_series,
+            total_loss_by_year,
+        )
+        print_leap_structure_block(
+            process_name,
+            [output_label],
+            process_name,
+            [primary_input],
+            auxiliary_fuels,
+            loss_fuels=list(loss_values_by_year.keys()),
+            code_to_name_mapping=code_to_name_mapping,
+            output_fuel_values={output_label: output_series.sum()},
+            process_value=f"{efficiency_series.mean():.6f}",
+            feedstock_fuel_values={primary_input: input_series.sum()},
+            auxiliary_fuel_values={
+                label: summarize_numeric_value(values, summary="mean")
+                for label, values in auxiliary_ratios.items()
+            },
+            loss_fuel_values={
+                label: summarize_numeric_value(values, summary="sum")
+                for label, values in loss_values_by_year.items()
+            },
+        )
+        record = build_process_record(
+            economy,
+            sector_title,
+            process_name,
+            {output_label: series_to_year_dict(output_series, export_base_year, export_final_year)},
+            {primary_input: series_to_year_dict(input_series, export_base_year, export_final_year)},
+            series_to_year_dict(efficiency_series, export_base_year, export_final_year),
+            auxiliary_ratios,
+            loss_values_by_year,
+            loss_total,
+            loss_values_for_efficiency=series_to_year_dict(
+                total_loss_by_year,
+                export_base_year,
+                export_final_year,
+            ),
+            feedstock_shares={primary_input: 1.0},
+            input_total=float(total_input_series.sum()),
+            output_import_targets=output_import_targets_total,
+            output_export_targets=output_export_targets_total,
+        )
+        append_process_record(process_records, record)
+
+
+def analyze_gas_works_plants(
     esto_data,
     year_cols,
     start_year,
@@ -814,324 +1114,29 @@ def analyze_gas_processing(
     sector_config=None,
     process_records=None,
 ):
-    """Estimate efficiencies for gas works and natural gas blending plants."""
+    """Estimate efficiencies for gas works plants (09.06.01), independent of blending."""
     try:
         if sector_config is None:
-            raise ValueError("Gas processing analysis requires a sector_config")
+            raise ValueError("Gas works plants analysis requires a sector_config")
         gas_config = sector_config
         fuel_codes = {
-            "natural_gas": "08_01_natural_gas",
-            "lng": "08_02_lng",
             "gas_works_gas": "08_03_gas_works_gas",
             "lignite": "01_05_lignite",
-            "electricity": "17_electricity",
         }
-        transformation_sub2 = gas_config.get("transformation_sub2") or []
-        gas_works_sub2 = transformation_sub2[0] if len(transformation_sub2) > 0 else None
-        blending_sub2 = transformation_sub2[1] if len(transformation_sub2) > 1 else None
+        gas_works_sub2 = gas_config.get("sub2_gas_works")
         gas_works_flow_code = gas_config.get("flow_code_gas_works")
-        blending_flow_code = gas_config.get("flow_code_blending")
-        product_code_natural_gas = gas_config.get("product_code_natural_gas")
         product_code_gas_works_gas = gas_config.get("product_code_gas_works_gas")
         product_code_lignite = gas_config.get("product_code_lignite")
-        print(f"\n==== Gas processing (no imports/exports expected) ({economy}) ====")
+        print(f"\n==== Gas works plants (no imports/exports expected) ({economy}) ====")
         if not has_required_columns(
             esto_data,
             [["sub2sectors", "subfuels", "fuels"], ["flows", "products"]],
-            "Gas processing",
+            "Gas works plants",
         ):
             return
-        year_cols_from_start = get_years_from(year_cols, start_year)
         export_base_year = EXPORT_BASE_YEAR
         export_final_year = EXPORT_FINAL_YEAR
         export_years = list(range(export_base_year, export_final_year + 1))
-
-        def _build_gas_process_records(
-            sector_title,
-            process_name,
-            output_label,
-            process_rows,
-            output_rows,
-            loss_sub2_code,
-        ):
-            if process_rows.empty:
-                print(f"{process_name}: no data rows for {economy}; writing zero skeleton.")
-                append_process_record(process_records, build_zero_skeleton_record(
-                    economy, sector_title, process_name, [output_label],
-                    export_base_year, export_final_year,
-                ))
-                return
-            feedstock_method = resolve_feedstock_method()
-            totals, _ = summarize_fuel_totals(
-                process_rows, year_cols, start_year, allow_all_years_fallback=True
-            )
-            timeseries, _ = summarize_fuel_timeseries(
-                process_rows, year_cols, start_year, allow_all_years_fallback=True
-            )
-            negative = totals[totals < 0]
-            if negative.empty or timeseries.empty:
-                print(f"{process_name}: no negative inputs available; writing zero skeleton.")
-                append_process_record(process_records, build_zero_skeleton_record(
-                    economy, sector_title, process_name, [output_label],
-                    export_base_year, export_final_year,
-                ))
-                return
-            output_series = ensure_full_year_series(
-                sum_years_by_year(output_rows, year_cols, start_year),
-                export_base_year,
-                export_final_year,
-            )
-            if output_series.sum() == 0:
-                print(f"{process_name}: no output series available; writing zero skeleton.")
-                append_process_record(process_records, build_zero_skeleton_record(
-                    economy, sector_title, process_name, [output_label],
-                    export_base_year, export_final_year,
-                ))
-                return
-            input_series_map, zero_sum_labels = build_input_series_map(
-                timeseries,
-                list(negative.index),
-                export_base_year,
-                export_final_year,
-            )
-            if zero_sum_labels:
-                log_dropped_input_fuels(economy, str(process_name), zero_sum_labels, export_base_year, export_final_year)
-            if not input_series_map:
-                print(f"{process_name}: no input series after normalization; writing zero skeleton.")
-                append_process_record(process_records, build_zero_skeleton_record(
-                    economy, sector_title, process_name, [output_label],
-                    export_base_year, export_final_year,
-                ))
-                return
-            total_input_series = build_total_input_series(input_series_map, export_years)
-            loss_series, loss_total, loss_values, loss_values_by_year = build_loss_context(
-                loss_data,
-                loss_year_cols,
-                start_year,
-                economy,
-                "gas_processing",
-                loss_sub2_code,
-            )
-            total_loss_by_year = sum_loss_values_by_year(loss_values_by_year, export_years)
-            output_import_targets_total, output_export_targets_total = gather_output_target_dicts(
-                economy,
-                [output_label],
-                export_base_year,
-                export_final_year,
-                output_series_by_fuel={output_label: output_series},
-            )
-
-            if feedstock_method == FEEDSTOCK_METHOD_SPLIT:
-                feedstock_labels = list(input_series_map.keys())
-                for idx, feedstock_label in enumerate(feedstock_labels):
-                    input_series = input_series_map[feedstock_label]
-                    share_series = build_input_share_series(
-                        input_series,
-                        total_input_series,
-                        fallback_to_one=(idx == 0),
-                    )
-                    allocated_output_series = output_series.mul(share_series, fill_value=0.0)
-                    allocated_loss_values = allocate_loss_by_share(
-                        loss_values_by_year,
-                        share_series,
-                    )
-                    loss_total_for_eff = total_loss_by_year.mul(share_series, fill_value=0.0)
-                    efficiency_series = compute_efficiency_by_year(
-                        allocated_output_series,
-                        input_series,
-                        loss_total_for_eff,
-                    )
-                    auxiliary_fuels, auxiliary_ratios = build_auxiliary_from_losses_by_year(
-                        allocated_loss_values,
-                        allocated_output_series,
-                        feedstock_labels=[feedstock_label],
-                    )
-                    output_import_targets = {
-                        label: scale_year_dict_by_share(values, share_series)
-                        for label, values in (output_import_targets_total or {}).items()
-                    }
-                    output_export_targets = {
-                        label: scale_year_dict_by_share(values, share_series)
-                        for label, values in (output_export_targets_total or {}).items()
-                    }
-                    process_label = (
-                        process_name
-                        if len(feedstock_labels) == 1
-                        else f"{process_name} - {feedstock_label}"
-                    )
-                    print_leap_structure_block(
-                        process_label,
-                        [output_label],
-                        process_label,
-                        [feedstock_label],
-                        auxiliary_fuels,
-                        loss_fuels=list(allocated_loss_values.keys()),
-                        code_to_name_mapping=code_to_name_mapping,
-                        output_fuel_values={output_label: allocated_output_series.sum()},
-                        process_value=f"{efficiency_series.mean():.6f}",
-                        feedstock_fuel_values={feedstock_label: input_series.sum()},
-                        auxiliary_fuel_values={
-                            label: summarize_numeric_value(values, summary="mean")
-                            for label, values in auxiliary_ratios.items()
-                        },
-                        loss_fuel_values={
-                            label: summarize_numeric_value(values, summary="sum")
-                            for label, values in allocated_loss_values.items()
-                        },
-                    )
-                    record = build_process_record(
-                        economy,
-                        sector_title,
-                        process_label,
-                        {output_label: series_to_year_dict(allocated_output_series, export_base_year, export_final_year)},
-                        {feedstock_label: series_to_year_dict(input_series, export_base_year, export_final_year)},
-                        series_to_year_dict(efficiency_series, export_base_year, export_final_year),
-                        auxiliary_ratios,
-                        allocated_loss_values,
-                        float(pd.Series(loss_total_for_eff, dtype=float).sum()),
-                        loss_values_for_efficiency=series_to_year_dict(
-                            loss_total_for_eff,
-                            export_base_year,
-                            export_final_year,
-                        ),
-                        feedstock_shares={feedstock_label: 1.0},
-                        input_total=float(input_series.sum()),
-                        output_import_targets=output_import_targets,
-                        output_export_targets=output_export_targets,
-                    )
-                    append_process_record(process_records, record)
-            elif feedstock_method == FEEDSTOCK_METHOD_MULTI:
-                auxiliary_fuels, auxiliary_ratios = build_auxiliary_from_losses_by_year(
-                    loss_values_by_year,
-                    output_series,
-                    feedstock_labels=list(input_series_map.keys()) if LOSS_AUX_EXCLUDE_FEEDSTOCKS else None,
-                )
-                efficiency_series = compute_efficiency_by_year(
-                    output_series,
-                    total_input_series,
-                    total_loss_by_year,
-                )
-                feedstock_values = {
-                    label: series_to_year_dict(series, export_base_year, export_final_year)
-                    for label, series in input_series_map.items()
-                }
-                feedstock_shares = {
-                    label: safe_divide_series(series, total_input_series).to_dict()
-                    for label, series in input_series_map.items()
-                }
-                print_leap_structure_block(
-                    process_name,
-                    [output_label],
-                    process_name,
-                    list(feedstock_values.keys()),
-                    auxiliary_fuels,
-                    loss_fuels=list(loss_values_by_year.keys()),
-                    code_to_name_mapping=code_to_name_mapping,
-                    output_fuel_values={output_label: output_series.sum()},
-                    process_value=f"{efficiency_series.mean():.6f}",
-                    feedstock_fuel_values={
-                        label: summarize_numeric_value(values, summary="sum")
-                        for label, values in feedstock_values.items()
-                    },
-                    auxiliary_fuel_values={
-                        label: summarize_numeric_value(values, summary="mean")
-                        for label, values in auxiliary_ratios.items()
-                    },
-                    loss_fuel_values={
-                        label: summarize_numeric_value(values, summary="sum")
-                        for label, values in loss_values_by_year.items()
-                    },
-                )
-                record = build_process_record(
-                    economy,
-                    sector_title,
-                    process_name,
-                    {output_label: series_to_year_dict(output_series, export_base_year, export_final_year)},
-                    feedstock_values,
-                    series_to_year_dict(efficiency_series, export_base_year, export_final_year),
-                    auxiliary_ratios,
-                    loss_values_by_year,
-                    loss_total,
-                    loss_values_for_efficiency=series_to_year_dict(
-                        total_loss_by_year,
-                        export_base_year,
-                        export_final_year,
-                    ),
-                    feedstock_shares=feedstock_shares,
-                    input_total=float(total_input_series.sum()),
-                    output_import_targets=output_import_targets_total,
-                    output_export_targets=output_export_targets_total,
-                    own_use_ratios=compute_own_use_ratios_for_record(
-                        loss_values_by_year, input_series_map, export_years
-                    ),
-                )
-                append_process_record(process_records, record)
-            else:
-                primary_input = negative.idxmin()
-                input_series = input_series_map.get(primary_input)
-                if input_series is None or input_series.empty:
-                    print(f"{process_name}: primary input series missing after normalization.")
-                    return
-                other_feedstock_fuels = [
-                    label for label in input_series_map.keys() if label != primary_input
-                ]
-                auxiliary_fuels = list(other_feedstock_fuels)
-                auxiliary_ratios = build_auxiliary_ratios_by_year(
-                    timeseries, auxiliary_fuels, output_series
-                )
-                auxiliary_fuels, auxiliary_ratios = merge_loss_into_auxiliary_by_year(
-                    auxiliary_fuels,
-                    auxiliary_ratios,
-                    loss_values_by_year,
-                    output_series,
-                    primary_input,
-                )
-                efficiency_series = compute_efficiency_by_year(
-                    output_series,
-                    total_input_series,
-                    total_loss_by_year,
-                )
-                print_leap_structure_block(
-                    process_name,
-                    [output_label],
-                    process_name,
-                    [primary_input],
-                    auxiliary_fuels,
-                    loss_fuels=list(loss_values_by_year.keys()),
-                    code_to_name_mapping=code_to_name_mapping,
-                    output_fuel_values={output_label: output_series.sum()},
-                    process_value=f"{efficiency_series.mean():.6f}",
-                    feedstock_fuel_values={primary_input: input_series.sum()},
-                    auxiliary_fuel_values={
-                        label: summarize_numeric_value(values, summary="mean")
-                        for label, values in auxiliary_ratios.items()
-                    },
-                    loss_fuel_values={
-                        label: summarize_numeric_value(values, summary="sum")
-                        for label, values in loss_values_by_year.items()
-                    },
-                )
-                record = build_process_record(
-                    economy,
-                    sector_title,
-                    process_name,
-                    {output_label: series_to_year_dict(output_series, export_base_year, export_final_year)},
-                    {primary_input: series_to_year_dict(input_series, export_base_year, export_final_year)},
-                    series_to_year_dict(efficiency_series, export_base_year, export_final_year),
-                    auxiliary_ratios,
-                    loss_values_by_year,
-                    loss_total,
-                    loss_values_for_efficiency=series_to_year_dict(
-                        total_loss_by_year,
-                        export_base_year,
-                        export_final_year,
-                    ),
-                    feedstock_shares={primary_input: 1.0},
-                    input_total=float(total_input_series.sum()),
-                    output_import_targets=output_import_targets_total,
-                    output_export_targets=output_export_targets_total,
-                )
-                append_process_record(process_records, record)
 
         if "sub2sectors" in esto_data.columns and gas_works_sub2:
             gas_works_output = select_rows(
@@ -1142,40 +1147,26 @@ def analyze_gas_processing(
                     "subfuels": fuel_codes["gas_works_gas"],
                 },
             )
-            gas_works_input = select_rows(
-                esto_data,
-                {"economy": economy, "sub2sectors": gas_works_sub2, "subfuels": fuel_codes["lignite"]},
-            )
             gas_works_rows = select_rows(
                 esto_data,
                 {"economy": economy, "sub2sectors": gas_works_sub2},
             )
+        elif gas_works_flow_code:
+            gas_works_output = select_rows(
+                esto_data,
+                {
+                    "economy": economy,
+                    "flows": gas_works_flow_code,
+                    "products": product_code_gas_works_gas,
+                },
+            )
+            gas_works_rows = select_rows(
+                esto_data,
+                {"economy": economy, "flows": gas_works_flow_code},
+            )
         else:
-            if gas_works_flow_code:
-                gas_works_output = select_rows(
-                    esto_data,
-                    {
-                        "economy": economy,
-                        "flows": gas_works_flow_code,
-                        "products": product_code_gas_works_gas,
-                    },
-                )
-                gas_works_input = select_rows(
-                    esto_data,
-                    {
-                        "economy": economy,
-                        "flows": gas_works_flow_code,
-                        "products": product_code_lignite,
-                    },
-                )
-                gas_works_rows = select_rows(
-                    esto_data,
-                    {"economy": economy, "flows": gas_works_flow_code},
-                )
-            else:
-                gas_works_output = esto_data.iloc[0:0]
-                gas_works_input = esto_data.iloc[0:0]
-                gas_works_rows = esto_data.iloc[0:0]
+            gas_works_output = esto_data.iloc[0:0]
+            gas_works_rows = esto_data.iloc[0:0]
         print_sector_rows_from_df(
             gas_works_rows,
             "Gas works rows",
@@ -1189,7 +1180,18 @@ def analyze_gas_processing(
         gas_works_sector_title = str(
             gas_config.get("title", "Gas works plants")
         ).strip() or "Gas works plants"
-        _build_gas_process_records(
+        _build_gas_process_record(
+            process_records,
+            economy,
+            code_to_name_mapping,
+            loss_data,
+            loss_year_cols,
+            start_year,
+            year_cols,
+            "gas_works",
+            export_base_year,
+            export_final_year,
+            export_years,
             gas_works_sector_title,
             "Gas works plants",
             output_label,
@@ -1197,6 +1199,61 @@ def analyze_gas_processing(
             gas_works_output,
             gas_works_sub2,
         )
+
+        if PRINT_GAS_PROCESSING_SUMMARY:
+            gas_processing_rows = (
+                select_flow_rows(esto_data, economy, gas_works_flow_code)
+                if gas_works_flow_code else esto_data.iloc[0:0]
+            )
+            negatives, positives = summarize_fuels_by_subfuel(
+                gas_processing_rows, year_cols, start_year
+            )
+            if not negatives.empty:
+                print("Gas works plants inputs by fuel label:")
+                print(map_series_index(negatives, code_to_name_mapping).to_string())
+            if not positives.empty:
+                print("Gas works plants outputs by fuel label:")
+                print(map_series_index(positives, code_to_name_mapping).to_string())
+    except Exception as exc:
+        print(f"Gas works plants analysis failed: {exc}")
+        try_debug_breakpoint()
+        raise
+
+
+def analyze_natural_gas_blending_plants(
+    esto_data,
+    year_cols,
+    start_year,
+    economy,
+    code_to_name_mapping,
+    loss_data,
+    loss_year_cols,
+    sector_config=None,
+    process_records=None,
+):
+    """Estimate efficiencies for natural gas blending plants (09.06.03), independent of gas works."""
+    try:
+        if sector_config is None:
+            raise ValueError("Natural gas blending analysis requires a sector_config")
+        blending_config = sector_config
+        fuel_codes = {
+            "natural_gas": "08_01_natural_gas",
+            "gas_works_gas": "08_03_gas_works_gas",
+        }
+        blending_sub2 = blending_config.get("sub2_blending")
+        blending_flow_code = blending_config.get("flow_code_blending")
+        product_code_natural_gas = blending_config.get("product_code_natural_gas")
+        product_code_gas_works_gas = blending_config.get("product_code_gas_works_gas")
+        print(f"\n==== Natural gas blending plants (no imports/exports expected) ({economy}) ====")
+        if not has_required_columns(
+            esto_data,
+            [["sub2sectors", "subfuels", "fuels"], ["flows", "products"]],
+            "Natural gas blending plants",
+        ):
+            return
+        export_base_year = EXPORT_BASE_YEAR
+        export_final_year = EXPORT_FINAL_YEAR
+        export_years = list(range(export_base_year, export_final_year + 1))
 
         if "sub2sectors" in esto_data.columns and blending_sub2:
             blending_output = select_rows(
@@ -1207,44 +1264,26 @@ def analyze_gas_processing(
                     "subfuels": fuel_codes["natural_gas"],
                 },
             )
-            blending_input = select_rows(
-                esto_data,
-                {
-                    "economy": economy,
-                    "sub2sectors": blending_sub2,
-                    "subfuels": fuel_codes["gas_works_gas"],
-                },
-            )
             blending_rows = select_rows(
                 esto_data,
                 {"economy": economy, "sub2sectors": blending_sub2},
             )
+        elif blending_flow_code:
+            blending_output = select_rows(
+                esto_data,
+                {
+                    "economy": economy,
+                    "flows": blending_flow_code,
+                    "products": product_code_natural_gas,
+                },
+            )
+            blending_rows = select_rows(
+                esto_data,
+                {"economy": economy, "flows": blending_flow_code},
+            )
         else:
-            if blending_flow_code:
-                blending_output = select_rows(
-                    esto_data,
-                    {
-                        "economy": economy,
-                        "flows": blending_flow_code,
-                        "products": product_code_natural_gas,
-                    },
-                )
-                blending_input = select_rows(
-                    esto_data,
-                    {
-                        "economy": economy,
-                        "flows": blending_flow_code,
-                        "products": product_code_gas_works_gas,
-                    },
-                )
-                blending_rows = select_rows(
-                    esto_data,
-                    {"economy": economy, "flows": blending_flow_code},
-                )
-            else:
-                blending_output = esto_data.iloc[0:0]
-                blending_input = esto_data.iloc[0:0]
-                blending_rows = esto_data.iloc[0:0]
+            blending_output = esto_data.iloc[0:0]
+            blending_rows = esto_data.iloc[0:0]
         print_sector_rows_from_df(
             blending_rows,
             "Natural gas blending rows",
@@ -1256,12 +1295,20 @@ def analyze_gas_processing(
         if "products" in esto_data.columns:
             output_label = product_code_natural_gas
         blending_sector_title = str(
-            MAJOR_SECTOR_CONFIG.get("gas_blending", {}).get(
-                "title",
-                "Natural gas blending plants",
-            )
+            blending_config.get("title", "Natural gas blending plants")
         ).strip() or "Natural gas blending plants"
-        _build_gas_process_records(
+        _build_gas_process_record(
+            process_records,
+            economy,
+            code_to_name_mapping,
+            loss_data,
+            loss_year_cols,
+            start_year,
+            year_cols,
+            "gas_blending",
+            export_base_year,
+            export_final_year,
+            export_years,
             blending_sector_title,
             "Natural gas blending plants",
             output_label,
@@ -1271,24 +1318,21 @@ def analyze_gas_processing(
         )
 
         if PRINT_GAS_PROCESSING_SUMMARY:
-            flow_list = [
-                code for code in [gas_works_flow_code, blending_flow_code] if code
-            ]
-            gas_processing_rows = pd.concat(
-                [select_flow_rows(esto_data, economy, code) for code in flow_list],
-                ignore_index=True,
-            ) if flow_list else esto_data.iloc[0:0]
+            gas_processing_rows = (
+                select_flow_rows(esto_data, economy, blending_flow_code)
+                if blending_flow_code else esto_data.iloc[0:0]
+            )
             negatives, positives = summarize_fuels_by_subfuel(
                 gas_processing_rows, year_cols, start_year
             )
             if not negatives.empty:
-                print("Gas processing inputs by fuel label:")
+                print("Natural gas blending plants inputs by fuel label:")
                 print(map_series_index(negatives, code_to_name_mapping).to_string())
             if not positives.empty:
-                print("Gas processing outputs by fuel label:")
+                print("Natural gas blending plants outputs by fuel label:")
                 print(map_series_index(positives, code_to_name_mapping).to_string())
     except Exception as exc:
-        print(f"Gas processing analysis failed: {exc}")
+        print(f"Natural gas blending plants analysis failed: {exc}")
         try_debug_breakpoint()
         raise
 

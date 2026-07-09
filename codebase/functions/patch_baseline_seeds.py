@@ -180,7 +180,7 @@ MODULE_REGISTRY: dict[str, ModuleConfig] = {
     "gas_processing": ModuleConfig(
         strip_prefixes=_tf("Gas works plants", "Natural gas blending plants",
                            "Gas to liquids plants"),
-        auto_sector_keys=["gas_works"],
+        auto_sector_keys=["gas_works", "gas_blending"],
     ),
     "coal_transformation": ModuleConfig(
         strip_prefixes=_tf("Coke ovens", "Blast furnaces", "Patent fuel plants",

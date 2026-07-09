@@ -126,6 +126,44 @@ def attach_export_ids(
 
     if merged["BranchID"].isna().any():
         fallback_source = reference[required_cols].copy()
+        for col in ["Branch Path", "Variable", "Scenario"]:
+            fallback_source[f"__k_{col}"] = fallback_source[col].map(_norm_text)
+        fallback_source = fallback_source.drop_duplicates(
+            subset=["__k_Branch Path", "__k_Variable", "__k_Scenario"],
+            keep="first",
+        )
+        fallback_map = (
+            fallback_source
+            .set_index(["__k_Branch Path", "__k_Variable", "__k_Scenario"])[id_cols]
+            .apply(lambda row: tuple(row.values.tolist()), axis=1)
+            .to_dict()
+        )
+        fallback_mask = merged["BranchID"].isna()
+        if fallback_mask.any():
+            fallback_ids = merged.loc[
+                fallback_mask,
+                ["__k_Branch Path", "__k_Variable", "__k_Scenario"],
+            ].apply(
+                lambda row: fallback_map.get(
+                    (
+                        row["__k_Branch Path"],
+                        row["__k_Variable"],
+                        row["__k_Scenario"],
+                    ),
+                    (pd.NA, pd.NA, pd.NA, pd.NA),
+                ),
+                axis=1,
+            )
+            fallback_values = pd.DataFrame(
+                fallback_ids.tolist(),
+                columns=id_cols,
+                index=merged.index[fallback_mask],
+            )
+            for col in id_cols:
+                merged.loc[fallback_mask, col] = fallback_values[col].values
+
+    if merged["BranchID"].isna().any():
+        fallback_source = reference[required_cols].copy()
         for col in ["Branch Path", "Variable"]:
             fallback_source[f"__k_{col}"] = fallback_source[col].map(_norm_text)
         fallback_source = fallback_source.drop_duplicates(

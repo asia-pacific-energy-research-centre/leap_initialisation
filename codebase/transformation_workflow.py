@@ -62,7 +62,8 @@ RUN_HYDROGEN_TRANSFORMATION_ANALYSIS = core.RUN_HYDROGEN_TRANSFORMATION_ANALYSIS
 
 ANALYSIS_REGISTRY = [
     ("lng", core.run_lng_analysis, RUN_LNG_ANALYSIS),
-    ("gas_works", core.run_gas_processing_analysis, RUN_GAS_PROCESSING_ANALYSIS),
+    ("gas_works", core.run_gas_works_analysis, RUN_GAS_PROCESSING_ANALYSIS),
+    ("gas_blending", core.run_gas_blending_analysis, RUN_GAS_PROCESSING_ANALYSIS),
     ("coal_coke_ovens", core.run_flow_sector_analysis, RUN_COAL_TRANSFORMATION_ANALYSIS),
     ("coal_blast_furnaces", core.run_flow_sector_analysis, RUN_COAL_TRANSFORMATION_ANALYSIS),
     ("coal_patent_fuel_plants", core.run_flow_sector_analysis, RUN_COAL_TRANSFORMATION_ANALYSIS),
