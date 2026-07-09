@@ -250,6 +250,7 @@ from codebase.functions.supply_demand_mapping import (  # noqa: F401
     _build_balance_demand_scenario_map,
     _compact_economy_code,
     _resolve_balance_demand_workbooks_for_economy,
+    _workbook_has_hydrogen_process_detail,
     _build_projection_only_mapping_status,
     load_balance_demand_inputs,
     load_direct_leap_demand_inputs,
@@ -683,6 +684,7 @@ _PRESET_BASELINE_SEED = {
 _PRESET_RESULTS_UPDATE = {
     # Set True to run only preflight_compressed_projection for this preset.
     "PREFLIGHT_COMPRESSED_PROJECTION_ONLY": False,
+    "RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE": True,
 
     # --- Pass mode ---
     "CAPACITY_UNMET_PASS_MODE": "results_update",
@@ -706,10 +708,17 @@ _PRESET_RESULTS_UPDATE = {
     #   16_02_agriculture_and_fishing    16_05_nonspecified_others
     # Example: ["15_transport_sector"]  or  ["15_02_road", "15_03_rail"]
     "AGGREGATED_DEMAND_EXCLUDED_SECTORS": None,
+    "USE_AGGREGATED_DEMAND_AS_DUMMY": True,
+    "WRITE_AGGREGATED_DEMAND_WORKBOOK": True,
+    "AGGREGATED_DEMAND_INCLUDE_IN_LEAP_IMPORT": True,
     # When True, branches are written as Demand\All demand aggregated\{SectorLabel}\{fuel}
     # instead of the flat Demand\All demand aggregated\{fuel}.
     # Enable when LEAP has per-sector sub-branches under the aggregated demand node.
     "AGGREGATED_DEMAND_USE_SECTOR_BRANCHES": False,
+    # Keep stale detailed demand branches from surviving update imports when the
+    # aggregated-demand dummy is still the active demand source.
+    "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT": True,
+    "ZERO_OTHER_DEMAND_INCLUDE_IN_LEAP_IMPORT": True,
 
     # --- Other loss / own-use proxy ---
     # Stage "second" uses LEAP-balance proxy (post-LEAP-run); "first" uses ESTO/ninth proxy.
@@ -857,6 +866,59 @@ def _run_leap_display_name_preflight() -> None:
         print(f"[WARN] leap_display_names preflight skipped: {exc}")
 
 
+def _run_results_update_readiness_check() -> None:
+    """Fail early when a results_update run is missing required balance exports."""
+    if _resolve_capacity_unmet_pass_mode(CAPACITY_UNMET_PASS_MODE) != "results_update":
+        return
+
+    economy_list = workflow_common.normalize_economies(ECONOMIES)
+    if not economy_list:
+        return
+
+    issues: list[str] = []
+    print(
+        "[INFO] results_update readiness: checking LEAP balance export workbooks "
+        f"for {len(economy_list)} economy/economies."
+    )
+    for economy in economy_list:
+        try:
+            ref_workbook, tgt_workbook = _resolve_balance_demand_workbooks_for_economy(economy)
+        except Exception as exc:
+            issues.append(f"{economy}: could not resolve REF/TGT balance workbooks ({exc})")
+            continue
+
+        missing_paths = [
+            path for path in (ref_workbook, tgt_workbook) if not Path(path).exists()
+        ]
+        if missing_paths:
+            missing_text = ", ".join(str(path) for path in missing_paths)
+            issues.append(f"{economy}: missing balance workbook(s): {missing_text}")
+            continue
+
+        if economy in HYDROGEN_DUAL_PROCESS_ECONOMIES:
+            missing_detail_paths = [
+                path
+                for path in (ref_workbook, tgt_workbook)
+                if not _workbook_has_hydrogen_process_detail(path)
+            ]
+            if missing_detail_paths:
+                detail_text = ", ".join(str(path) for path in missing_detail_paths)
+                issues.append(
+                    f"{economy}: balance workbook(s) need at least Level 2 hydrogen "
+                    f"process detail: {detail_text}"
+                )
+
+    if issues:
+        issue_text = "\n".join(f"- {issue}" for issue in issues)
+        raise RuntimeError(
+            "results_update readiness check failed. Export fresh LEAP balance "
+            "workbooks before running the update pass:\n"
+            f"{issue_text}"
+        )
+
+    print("[INFO] results_update readiness: OK")
+
+
 def run_with_config() -> dict[str, object]:
     """Run the notebook-configured workflow while optionally preventing PC sleep."""
     with _log_to_file(_WORKFLOW_LOG_PATH) as log_path:
@@ -936,6 +998,8 @@ def _run_with_config_inner() -> dict[str, object]:
             "preflight_compressed_projection": preflight_result,
             "preflight_compressed_results_update": results_update_preflight_result,
         }
+
+    _run_results_update_readiness_check()
 
     if int(supply_data_pipeline.EXPORT_FINAL_YEAR) > int(LEAP_IMPORT_MAX_YEAR):
         print(
