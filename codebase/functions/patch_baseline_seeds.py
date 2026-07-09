@@ -794,7 +794,6 @@ def _patch_one(
     prefixes: list[str],
     source_workflow: str = "patch_baseline_seeds",
 ) -> None:
-    _assert_atomic_canonical_share_groups(new_df, FULL_MODEL_EXPORT_PATH)
     raw = pd.read_excel(seed_path, sheet_name="LEAP", header=None)
     _, data = _find_header_row(raw)
 
@@ -873,9 +872,9 @@ def _patch_one(
         diagnostic_stem=diagnostic_stem,
         required_years_by_scenario=required_years_by_scenario,
     )
-    combined = validation.resolved_rows.drop(
-        columns=[SOURCE_WORKFLOW_COLUMN], errors="ignore"
-    )
+    combined = validation.resolved_rows
+    _assert_atomic_canonical_share_groups(combined, FULL_MODEL_EXPORT_PATH)
+    combined = combined.drop(columns=[SOURCE_WORKFLOW_COLUMN], errors="ignore")
 
     cols = list(combined.columns)
     preamble = {c: pd.NA for c in cols}
