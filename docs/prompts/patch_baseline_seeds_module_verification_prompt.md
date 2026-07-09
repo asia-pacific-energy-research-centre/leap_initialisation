@@ -1,90 +1,290 @@
-# Task: Verify (and fix) the remaining patch_baseline_seeds modules against the full workflow
+# Task: Patch and verify baseline seed modules
 
-## Context — what has already been done
+Use this prompt when working on `codebase/functions/patch_baseline_seeds.py` or
+when refreshing baseline seed files from module-specific workbooks.
 
-`codebase/functions/patch_baseline_seeds.py` was audited and partially fixed on 2026-07-08 (uncommitted changes in the working tree). The **"transfers" module is fully verified**: its regen was rewired to go through `save_transfer_exports_with_supply_overrides` (codebase/functions/supply_leap_io.py) with an empty reconciliation table — the exact export path the full run uses — and a backup→patch→diff→restore check on 01_AUS (whose transfer config had not changed since the last full run) showed the patch reproduces the full workflow's seed rows **exactly** (573/573 rows, zero row or value differences).
+## Current Context
 
-Fixes already in place that the remaining modules inherit:
-- `run_patch` raises on failure (per-economy `RuntimeError` summary, `ValueError` on unknown module, `NotImplementedError` for unwired regens) instead of printing.
-- `_run_source_workflow` returns the exact workbook paths it wrote and `_collect_from_workbooks(files=...)` reads only those — never glob for freshly-regenerated data, stale workbooks from earlier runs conflict.
-- Regen paths call `core.prepare_transformation_assets()` (explicit-init; module-level `esto_data` is None until then).
-- `run_patch` rewrites `Region` per economy via `get_region_for_economy(tok)` before patching (source workbooks all carry the `GLOBAL_REGION` placeholder "United States"; the full run's seed combiner does the same rewrite at supply_leap_io.py ~line 1628).
-- `_find_header_row` drops blank spacer header columns (duplicate NaN labels broke `resolve_logical_duplicates`).
-- `MODULE_REGISTRY["transfers"].strip_prefix_source` resolves strip prefixes at runtime from `transfers_workflow.get_transfer_sector_titles()`; contract test `test_transfers_patch_scope_covers_every_transfer_process_title` in tests/test_baseline_seed_comparison_workflow.py.
+`patch_baseline_seeds.py` supports patching a single module into the existing
+`leap_import_baseline_seed_{econ}_*.xlsx` files without running the full supply
+reconciliation workflow.
 
-## The lesson from transfers (why the other modules are suspect)
+Do not call `supply_reconciliation_workflow.run_with_config()` for these tasks.
+Call the patcher directly.
 
-The full run does NOT export module workbooks with the standalone module workflows. It layers extra, load-bearing data on top via `apply_transformation_target_overrides_for_scenario` (supply_leap_io.py ~line 315–547), **which runs even with an empty reconciliation table**:
-1. **Exogenous Capacity / Historical Production seeding** = process output totals × `CAPACITY_CONSTRAINT_FACTOR` (Current Accounts). Missing this left a patched process with zero capacity against ~7,050 PJ of output.
-2. **Zero Import/Export Target resets** on output fuels (`CAPACITY_CLEAR_OUTPUT_TRADE_TARGETS`).
-3. **Catalog zero-fill** from `_build_transformation_supply_fuel_catalog_df` (supply_results_saver.py — full model export **plus** the LEAP fuel-branch probe CSV). The patcher's older `_load_catalog()` (full-model-export only) produced a smaller skeleton set and different share tie-breaks.
+Known verified/fixed areas:
 
-Assume every unverified module misses one or more of these layers until proven otherwise.
+- `transfers` has been verified against the full workflow path.
+- `power_interim` has been fixed for the interim electricity/CHP/heat sectors:
+  - The interim workflow now uses canonical fuel display names from
+    `leap_mappings/config/outlook_mappings_master.xlsx` / `leap_display_names`.
+  - The old local `POWER_INTERIM_AMBIGUOUS_DISPLAY_NAMES` override should not be
+    restored.
+  - `Black liquor` should remain canonical; do not reintroduce the old
+    `Black liqour` branch spelling in power-interim output.
+  - Zero-valued output fuels in the export-year window are skipped, which avoids
+    noncanonical zero output rows such as `Electricity interim\Output Fuels\Hydrogen`
+    for `05_PRC`.
+  - No-data CHP and heat skeletons now emit zero output-fuel, import/export
+    target, historical production, and exogenous capacity rows.
+  - Atomic canonical share-group guards are expected to pass for freshly
+    regenerated power-interim workbooks.
 
-## Goal
+Important operational lesson:
 
-For each remaining module, either (a) prove patch output is row-for-row equivalent to what the full workflow wrote into the seeds, fixing the patcher until it is, or (b) explicitly conclude the module is not safely patchable and make it raise with a clear message. Then update the verdict comment above `_PRESET_PATCH_BASELINE_SEEDS` in codebase/supply_reconciliation_workflow.py (~line 649). Do NOT uncomment/enable the preset itself.
+- When `run_workflow=True`, the patcher must patch from the exact workbook paths
+  generated in that run.
+- Do not glob the workbooks directory for fresh data if exact fresh paths are
+  available. Older scenario-order files such as
+  `electricity_heat_interim_20_USA_Current_Accounts_Reference_Target.xlsx` can
+  collide with the current
+  `electricity_heat_interim_20_USA_Reference_Target_Current_Accounts.xlsx`
+  workbook and produce duplicate-key conflicts.
 
-## The verification recipe (used for transfers — reuse it)
+## Quick Power-Interim Refresh Prompt
 
-For a module M and an economy E whose config for M has not changed since the last full run (seeds are `outputs/leap_exports/supply_reconciliation/leap_import_baseline_seed_{E}_*.xlsx`):
+Use this when the goal is simply to recreate all power-interim seed rows for all
+economies and report readiness as files are made.
 
-1. Copy E's seed to a backup file outside the seed directory.
-2. In a `try/finally` that **always restores the backup**, run `run_patch(M, [E], run_workflow=True)`.
-3. Diff the module-owned rows (filter by the module's branch prefixes) before vs after, keyed on `(Branch Path, Variable, Scenario)` — not Region, and parse `Data(year,value,...)` expressions numerically.
-4. Classify differences:
-   - **Benign** (seed-pipeline normalizations): float rounding; scenario-year trimming (Current Accounts keeps only the base year, Reference/Target start at base+1); canonical share-group completion (e.g. single-process Process Share → 100).
-   - **Everything else is a defect**: rows only-in-before (patch drops full-run data), rows only-in-after (patch invents rows), real value differences.
-5. Pass = 0 only-in-before, 0 only-in-after, 0 non-benign value differences.
+Task: Recreate power-interim baseline seed rows for all economies.
+
+Before running:
+1. Read AGENTS.md and referenced instruction files.
+2. Run `git status --short`; preserve unrelated existing changes.
+3. Confirm the current code includes the power-interim canonical-name fixes:
+   - no `POWER_INTERIM_AMBIGUOUS_DISPLAY_NAMES` override
+   - no `Black liquor` -> `Black liqour` remap in `electricity_heat_interim_workflow.py`
+   - zero-valued output fuels are skipped before output rows are written
+4. Close any open Excel seed/workbook files if locked.
+
+Run the patcher directly. Do not run the full supply reconciliation workflow.
+
+Use:
+
+```powershell
+@'
+from codebase.functions.patch_baseline_seeds import run_patch
+
+run_patch("power_interim", economies=None, run_workflow=True)
+'@ | C:\Users\Work\miniconda3\python.exe -
+```
+
+Requirements:
+- Patch only `power_interim`.
+- Do not patch transfers, supply, aggregated_demand, losses_own_use, or broad
+  transformation.
+- Use `run_workflow=True` so fresh
+  `electricity_heat_interim_{econ}_Reference_Target_Current_Accounts.xlsx`
+  workbooks are generated first.
+- As each seed file is successfully written, report:
+  `[READY] {economy}: {seed_file_path}`
+- If the stock patcher output is not enough for per-file readiness, wrap the
+  patcher internals in Python and print `[READY]` immediately after each
+  `_patch_one()` call succeeds.
+- If wrapping internals, collect rows only from the fresh workbook paths from
+  the current run. Do not glob stale workbook variants.
+- After all economies finish, run `validate_seed_files()` and report the result.
+- Report final `git status --short`.
+
+## Module Verification Goal
+
+For each module, either:
+
+1. prove the patch output is row-for-row equivalent to what the full workflow
+   wrote into the seeds, fixing the patcher until it is; or
+2. explicitly conclude the module is not safely patchable and make it raise with
+   a clear message.
+
+Then update the verdict comment above `_PRESET_PATCH_BASELINE_SEEDS` in
+`codebase/supply_reconciliation_workflow.py`. Do not enable the preset itself.
+
+## Verification Recipe
+
+For a module `M` and an economy `E` whose config for `M` has not changed since
+the last full run:
+
+1. Copy `E`'s seed to a backup file outside the seed directory.
+2. In a `try/finally` that always restores the backup, run:
+
+```powershell
+@'
+from codebase.functions.patch_baseline_seeds import run_patch
+
+run_patch("MODULE_NAME", economies=["ECONOMY"], run_workflow=True)
+'@ | C:\Users\Work\miniconda3\python.exe -
+```
+
+3. Diff the module-owned rows before vs after, filtering by the module's branch
+   prefixes.
+4. Key rows on `(Branch Path, Variable, Scenario)`; do not key on `Region`.
+5. Parse `Data(year,value,...)` expressions numerically before comparing values.
+6. Classify differences:
+   - Benign: float rounding, scenario-year trimming, canonical share-group
+     completion.
+   - Defect: rows only before, rows only after, or real non-benign value
+     differences.
+7. Pass criteria: zero rows only before, zero rows only after, and zero
+   non-benign value differences.
 
 Practical notes:
-- Each fresh Python process spends ~3–4 min in `prepare_transformation_assets()` loading reference tables. Batch steps into one script per run.
-- Run `run_patch` directly from a script; going through `supply_reconciliation_workflow.run_with_config()` redirects stdout to a log wrapper that has swallowed output before.
-- All seeds carry ~369 pre-existing template-validation warnings each (BranchID −1 on `Demand\All demand aggregated` fuels; Black liquor 2531 vs 2540). Ignore these; they are not patch-caused.
-- The validation guards (`_assert_atomic_canonical_share_groups`, `resolve_logical_duplicates`, `prepare_seed_rows_for_write`) raise loudly — treat their failures as diagnostics pointing at a missing full-run layer, not as noise to suppress.
-- Some economies have no data for a given module (e.g. 05_PRC/06_HKC/07_INA/10_MAS/15_PHL/16_RUS/17_SGP/19_THA have no transfer rows at all). Pick a verification economy that has module data. Do not use 20_USA for transfers comparisons — its config changed on 2026-07-08 (merged into "Transfers unallocated") and its seed was already re-patched.
-- Don't leave regen artifacts with non-standard filenames in `outputs/leap_exports/supply_reconciliation/workbooks/` (a previous combined-scenario file caused duplicate-row conflicts; it was deleted).
-- Consider committing a generalized harness (module, economy, prefix-regex parameters) under `codebase/scrapbook/` so this check is repeatable.
 
-## Modules to review, with known suspects
+- Fresh Python processes spend several minutes loading reference tables. Batch
+  checks into one script when possible.
+- Run patcher code directly from PowerShell/Python. Avoid the full workflow log
+  wrapper for patch verification.
+- Validation guards such as `_assert_atomic_canonical_share_groups`,
+  `resolve_logical_duplicates`, and `prepare_seed_rows_for_write` are useful
+  diagnostics. Do not suppress them.
+- Pick an economy with module data. Some economies legitimately have no rows for
+  a module.
+- Do not leave non-standard workbook filenames in
+  `outputs/leap_exports/supply_reconciliation/workbooks/` when a later patch run
+  might glob them.
 
-### 1. Transformation auto-regen sectors — highest priority, near-certain gaps
-`oil_refineries`, `lng`, `hydrogen`, `gas_processing`, `coal_transformation`, `petrochemical`, `charcoal`, `biofuels`, `nonspecified_transformation`, and the combined `"transformation"`.
-- `_collect_auto_regen` builds records from ESTO and calls `build_transformation_log_rows` directly. It **bypasses `apply_transformation_target_overrides_for_scenario` entirely** (no capacity/production seeding, no trade-target resets) and uses the smaller `_load_catalog()` instead of `_build_transformation_supply_fuel_catalog_df`.
-- The full run exports these sectors via `save_transformation_exports_with_split_targets` (supply_leap_io.py ~line 562) with `in_scope_sector_titles = get_analyzed_sector_titles() − get_transfer_sector_titles()` (producer ownership — transfers branches are excluded to avoid duplicate keys; see supply_leap_io.py ~line 724).
-- Likely fix shape (mirroring transfers): route the regen through `save_transformation_exports_with_split_targets` with an empty reconciliation table and empty target rows, rather than trying to make `_collect_auto_regen` imitate it. Check how it behaves with `reconciliation_table=pd.DataFrame()` — it prints "baseline seed; exporting without supply-link overrides" and proceeds.
-- Note `refining_workflow.py` also post-processes refining Exogenous Capacity from Historical Production — check whether that step runs inside or after the export path the full run uses for `oil_refineries`.
+## Module Notes
 
-### 2. power_interim
-- Patcher regen: `electricity_heat_interim_workflow.assemble_electricity_heat_interim_workbook`.
-- Full run: `build_electricity_heat_interim_workbooks_for_results_supply` (supply_leap_io). Diff what that wrapper adds. The interim workflow does some of its own capacity handling (~line 883), so the gap may be smaller — let the equivalence diff decide.
-- Strip prefixes are hardcoded `_tf("Electricity interim", "CHP interim", "Heat plant interim")` — confirm they cover every title the workflow can emit (same drift risk the transfers module had).
+### transfers
 
-### 3. aggregated_demand
-- Patcher calls `save_aggregated_demand_as_leap_workbook` with defaults. The run config options are NOT threaded through: `AGGREGATED_DEMAND_EXCLUDED_SECTORS`, `AGGREGATED_DEMAND_USE_SECTOR_BRANCHES`, `exclude_own_use_td_losses`. If the last full run used non-defaults, the patch diverges silently.
-- The combiner also keys workbook filenames on `_sector_exclusion_suffix` — mismatched suffixes mean the combiner and patcher disagree about which file is current.
-- The full run wrapper is `build_aggregated_demand_workbooks_for_results_supply` (supply_leap_io) — compare against it.
-- Separately owned: the demand-zeroing workbook (`ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT`). Confirm the patch's strip scope (`Demand\All demand aggregated\` only — guarded by an existing test) cannot touch it.
+Status: verified.
 
-### 4. losses_own_use — currently blocked, has an extra latent bug
-- Regen is unwired and now raises `NotImplementedError` (output depends on `OTHER_LOSS_OWN_USE_PROXY_STAGE` "first" vs "second", which the patcher can't know). Decide: wire it with an explicit stage parameter, or keep it manual-only.
-- **Latent bug even in manual mode**: `strip_prefixes=[]` means prefixes are derived from the *source* rows (`_derive_prefixes`). Any branch present in the old seed but absent from the fresh source workbook is silently left stale — the exact bug class the transfers module had. Fix before allowing even `run_workflow=False` use.
+The patcher regen goes through `save_transfer_exports_with_supply_overrides`
+with an empty reconciliation table, matching the full workflow export path.
+Runtime strip prefixes are resolved from
+`transfers_workflow.get_transfer_sector_titles()`.
 
-### 5. supply — probably not patchable; confirm and gate
-- Regen unwired (raises). `Resources\` rows are the most reconciliation-entangled output in the seeds. Recommendation from the transfers audit: conclude explicitly whether patching supply can ever reproduce the full run, and if not, remove it from the registry or make it raise unconditionally with an explanation.
+### power_interim
 
-## Deliverables
+Status: fixed for the current baseline-seed refresh process.
 
-1. Per module: verdict (verified / fixed-and-verified / not patchable) with the equivalence-diff numbers as evidence.
-2. Fixes in `patch_baseline_seeds.py` (and minimal, backwards-compatible passthroughs elsewhere if needed, as was done for `assemble_transfer_workbook`).
-3. Contract tests for any prefix-coverage or option-threading fix, alongside the existing ones in tests/test_baseline_seed_comparison_workflow.py.
-4. Updated verdict comment above `_PRESET_PATCH_BASELINE_SEEDS` in supply_reconciliation_workflow.py. Keep the preset commented out.
-5. All seeds left byte-identical to their pre-task state (restore from backups) — except where the user explicitly asks to keep a patched seed.
-6. Run: tests/test_baseline_seed_comparison_workflow.py, tests/test_baseline_seed_canonical_groups.py, tests/test_baseline_seed_output_shares.py, tests/test_module_attribute_contracts.py.
+Use:
 
-## Hard constraints
+```powershell
+@'
+from codebase.functions.patch_baseline_seeds import run_patch
 
-- Never modify a seed without the automatic pre-patch archive plus your own backup; always restore in `finally`.
-- Do not enable `_PRESET_PATCH_BASELINE_SEEDS` or touch other `_PRESET_*` blocks.
-- Do not "fix" the ~369 pre-existing validation warnings as part of this task — note them and move on.
-- If a module's equivalence check cannot pass without replaying reconciliation state that only a full run produces, say so explicitly and gate the module rather than approximating.
+run_patch("power_interim", economies=None, run_workflow=True)
+'@ | C:\Users\Work\miniconda3\python.exe -
+```
+
+Expected generated workbooks:
+
+```text
+outputs/leap_exports/supply_reconciliation/workbooks/electricity_heat_interim_{econ}_Reference_Target_Current_Accounts.xlsx
+```
+
+Expected seed scope:
+
+```text
+Transformation\Electricity interim\
+Transformation\CHP interim\
+Transformation\Heat plant interim\
+```
+
+For `01_AUS`, spot-check:
+
+```text
+Transformation\CHP interim\Output Fuels\Electricity
+Transformation\CHP interim\Output Fuels\Heat
+  variables: Output Share, Import Target, Export Target
+
+Transformation\CHP interim\Processes\CHP interim
+  variables: Historical Production, Exogenous Capacity
+```
+
+These rows should exist after patching. Import/export target, historical
+production, exogenous capacity, and the no-data heat output rows should be zero.
+The no-data Electricity output share may be 100 where Electricity is the active
+single output and Heat is zero.
+
+Known pitfalls:
+
+- Do not restore local fuel-name overrides. The canonical mapping workbook is
+  the source of truth for display labels.
+- Do not read stale scenario-order workbook variants when patching from existing
+  files.
+- A zero output fuel row is not a valid reason to add an output branch absent
+  from the full-model template.
+
+### transformation auto-regen sectors
+
+Modules:
+
+```text
+oil_refineries
+lng
+hydrogen
+gas_processing
+coal_transformation
+petrochemical
+charcoal
+biofuels
+nonspecified_transformation
+transformation
+```
+
+These remain suspect until verified. Check whether the patch path reproduces the
+full workflow layers:
+
+- Exogenous Capacity / Historical Production seeding
+- output-fuel Import Target / Export Target resets
+- full catalog zero-fill from the same catalog source used by the full run
+
+If equivalence fails, prefer routing regeneration through the same full-workflow
+export helper rather than reimplementing its behavior in the patcher.
+
+### aggregated_demand
+
+Check that run configuration options are threaded through:
+
+- `AGGREGATED_DEMAND_EXCLUDED_SECTORS`
+- `AGGREGATED_DEMAND_USE_SECTOR_BRANCHES`
+- `exclude_own_use_td_losses`
+
+Confirm the patcher's strip scope stays limited to:
+
+```text
+Demand\All demand aggregated\
+```
+
+### losses_own_use
+
+Currently blocked/manual unless explicitly wired with the correct proxy stage.
+Do not silently infer whether the proxy stage is `"first"` or `"second"`.
+
+Before allowing manual `run_workflow=False` patching, fix strip-prefix behavior
+so stale old rows are removed even when absent from the fresh source workbook.
+
+### supply
+
+Likely not safely patchable without full reconciliation state. Confirm and gate
+with a clear message rather than approximating resource rows.
+
+## Deliverables For A Verification Task
+
+1. Per-module verdict: verified, fixed-and-verified, or not patchable.
+2. Equivalence-diff numbers as evidence.
+3. Minimal fixes in `patch_baseline_seeds.py` or the owning workflow.
+4. Contract tests for prefix coverage, option threading, or canonical naming.
+5. Updated verdict comment above `_PRESET_PATCH_BASELINE_SEEDS`.
+6. Seeds restored to pre-task state unless the user explicitly asked to keep
+   patched seeds.
+7. Final `validate_seed_files()` result and `git status --short`.
+
+Suggested tests:
+
+```powershell
+C:\Users\Work\miniconda3\python.exe -m pytest tests\test_baseline_seed_comparison_workflow.py
+C:\Users\Work\miniconda3\python.exe -m pytest tests\test_baseline_seed_canonical_groups.py
+C:\Users\Work\miniconda3\python.exe -m pytest tests\test_baseline_seed_output_shares.py
+C:\Users\Work\miniconda3\python.exe -m pytest tests\test_module_attribute_contracts.py
+```
+
+## Hard Constraints
+
+- Preserve unrelated working-tree changes.
+- Never modify seeds during verification without a backup and `finally` restore.
+- Do not enable `_PRESET_PATCH_BASELINE_SEEDS`.
+- Do not touch unrelated `_PRESET_*` blocks.
+- Do not broaden patch scope beyond the requested module.
+- If equivalence requires full reconciliation state, gate the module instead of
+  approximating.
