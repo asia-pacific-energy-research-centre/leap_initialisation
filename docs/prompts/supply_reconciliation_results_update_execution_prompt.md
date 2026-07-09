@@ -49,6 +49,10 @@ explicitly asks.
 - `OTHER_LOSS_OWN_USE_PROXY_STAGE = "second"`
 - `RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE = True`
 - `RUN_PREFLIGHT_COMPRESSED_PROJECTION = True`
+- `PREFLIGHT_COMPRESSED_RESULTS_UPDATE_ONLY = False`
+- `PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST = False`
+- `PREFLIGHT_COMPRESSED_PROJECTION_ONLY = False`
+- `PREFLIGHT_COMPRESSED_FAIL_FAST = False`
 - `ECONOMIES = ["<provided economy>"]`
 - `SCENARIOS = ["Target", "Reference", "Current Accounts"]` by default.
   If the user explicitly asks for only `Current Accounts` and one other
@@ -61,6 +65,11 @@ explicitly asks.
   this run if the workbook already carries the reviewed flags. Treat new or
   unreviewed mapping/subtotal issues as blockers; treat known reviewed rows as
   diagnostics.
+- The reviewed exceptions currently allowed for this run are the exact
+  duplicate mapping rows marked `duplicate_to_remove=True` and the 12 reviewed
+  subtotal mismatch rows marked `subtotal_mismatch_is_ok=True` in
+  `config/outlook_mappings_master.xlsx`. Do not add new exceptions unless the
+  run surfaces a genuinely reviewed case.
 
 Read the config values out of the file rather than assuming they are already
 set this way. If they differ, edit them and note exactly what changed.
