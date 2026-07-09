@@ -1433,6 +1433,10 @@ def _normalize_output_shares_for_export(output_shares, base_year, final_year):
         # Preserve an explicit zero profile so the final canonical-group layer
         # can capacity-gate any synthetic fallback and emit every sibling.
         if not genuine_profiles:
+            if len(labels) == 1:
+                return {
+                    labels[0]: {year: 100.0 for year in years}
+                }
             return {
                 label: {year: 0.0 for year in years}
                 for label in labels
