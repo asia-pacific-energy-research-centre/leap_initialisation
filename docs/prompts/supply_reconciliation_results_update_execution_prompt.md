@@ -31,6 +31,11 @@ explicitly asks.
    (`Get-Process python` / equivalent) before launching a new one.
 5. Record the starting commit, the exact configuration in force, the start
    time, and the exact launch command before you run anything.
+6. Confirm the dashboard-side prerequisites already exist for the requested
+   economy. The results-update path reads
+   `outputs/leap_results_dashboard/USA/mapping_status.xlsx` and related
+   comparison artifacts before the main run starts. If those files are missing,
+   stop and regenerate them first rather than launching this prompt blindly.
 
 ## Run configuration
 
@@ -46,6 +51,9 @@ explicitly asks.
 - `SCENARIOS = ["Target", "Reference", "Current Accounts"]` by default.
   If the user explicitly asks for only `Current Accounts` and one other
   scenario, use exactly those two and nothing else.
+- `outputs/leap_results_dashboard/USA/mapping_status.xlsx` must exist and
+  contain the expected columns before the run starts. If it does not, this
+  prompt is blocked until the dashboard/mapping step is rerun.
 
 Read the config values out of the file rather than assuming they are already
 set this way. If they differ, edit them and note exactly what changed.
