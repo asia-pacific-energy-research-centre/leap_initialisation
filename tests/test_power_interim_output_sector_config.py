@@ -118,9 +118,9 @@ def test_power_interim_display_names_and_never_output_use_canonical_builder(
         workflow._safe_power_interim_display_label("12_solar_unallocated")
         == "Solar nonspecified"
     )
-    assert workflow._safe_power_interim_display_label("15_04_black_liquor") == "Black liqour"
-    assert workflow._safe_power_interim_display_label("01_x_thermal_coal") == "Other bituminous coal"
-    assert workflow._safe_power_interim_display_label("07_x_jet_fuel") == "Kerosene type jet fuel"
+    assert workflow._safe_power_interim_display_label("15_04_black_liquor") == "Black liquor"
+    assert workflow._safe_power_interim_display_label("01_x_thermal_coal") == "01_x_thermal_coal"
+    assert workflow._safe_power_interim_display_label("07_x_jet_fuel") == "07_x_jet_fuel"
     assert "Coal" in workflow.POWER_INTERIM_NEVER_OUTPUT_LABELS
     assert "Solar nonspecified" not in workflow.POWER_INTERIM_NEVER_OUTPUT_LABELS
 

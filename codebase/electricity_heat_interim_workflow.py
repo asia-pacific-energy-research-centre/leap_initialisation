@@ -188,18 +188,6 @@ POWER_INTERIM_ALLOWED_WORKBOOK_ONLY_LABELS: frozenset[str] = frozenset({
     "Natural gas liquids",
 })
 
-# These 9th aggregate codes have several valid LEAP leaf names in the canonical
-# display-name table. The interim workflow must retain its established single
-# branch choice because the aggregated source series cannot be split back into
-# those leaves without inventing shares.
-POWER_INTERIM_AMBIGUOUS_DISPLAY_NAMES: dict[str, str] = {
-    "01_x_thermal_coal": "Other bituminous coal",
-    "02_coal_products": "Coke oven coke",
-    "07_x_jet_fuel": "Kerosene type jet fuel",
-    "07_x_other_petroleum_products": "Other products",
-    "12_01_of_which_photovoltaics": "of which Photovoltaics",
-}
-
 _ESTO_PRODUCT_TO_NINTH_FUEL: dict[str, str] | None = None
 _POWER_INTERIM_DISPLAY_NAME_MAP: dict[str, str] | None = None
 
@@ -362,7 +350,6 @@ def _load_power_interim_display_name_map() -> dict[str, str]:
     # POWER_INTERIM_NEVER_OUTPUT_LABELS guard can still identify and suppress
     # Coal/Gas/Petroleum-product subtotal rows.
     mapping, _conflicts = build_code_to_display_name(include_excluded=True)
-    mapping.update(POWER_INTERIM_AMBIGUOUS_DISPLAY_NAMES)
 
     _POWER_INTERIM_DISPLAY_NAME_MAP = mapping
     return _POWER_INTERIM_DISPLAY_NAME_MAP
@@ -380,10 +367,6 @@ def _safe_power_interim_display_label(label: object) -> str:
     # so they write to the real LEAP branch rather than being suppressed.
     if resolved in ("Solar", "Unallocated Solar"):
         return "Solar nonspecified"
-    # The LEAP template currently contains this historical spelling. Use the
-    # template label so computed and zero-fill rows address the same branch.
-    if resolved == "Black liquor":
-        return "Black liqour"
     return resolved
 
 
@@ -810,7 +793,19 @@ def _build_interim_process_record(
             export_base,
             export_final,
         ).clip(lower=0.0)
+        if float(label_series.abs().sum()) <= 1e-12:
+            continue
         output_values[label] = core.series_to_year_dict(label_series, export_base, export_final)
+
+    if not output_values:
+        print(
+            f"{sector_title} ({economy}): no non-zero output series in export "
+            "years; writing zero skeleton."
+        )
+        return core.build_zero_skeleton_record(
+            economy, sector_title, process_name, output_labels,
+            export_base, export_final,
+        )
 
     input_series_map, zero_sum_labels = core.build_input_series_map(
         timeseries, list(negative.index), export_base, export_final,
@@ -829,7 +824,7 @@ def _build_interim_process_record(
 
     total_input_series = core.build_total_input_series(input_series_map, export_years)
     total_output_series = _build_total_output_series(
-        timeseries, positive.index, export_base, export_final
+        timeseries, output_values.keys(), export_base, export_final
     )
 
     zero_loss = pd.Series({year: 0.0 for year in export_years}, dtype=float)
