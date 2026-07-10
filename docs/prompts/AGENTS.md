@@ -67,7 +67,6 @@ Reviewed on 2026-07-10.
 | `supply_reconciliation_results_update_execution_prompt.md` | Targeted long-running execution | Valid, active | Runs `_PRESET_RESULTS_UPDATE` for one provided economy and requested scenario scope using LEAP balance exports as the prerequisite input. | Requires the user to name an economy/scope. Verify the balance workbook exists under `data/leap balances exports/<economy>/` before launch. |
 | `patch_baseline_seeds_module_verification_prompt.md` | Verification / patch workflow | Valid, active | Guides direct use of `run_patch()` and `validate_seed_files()` for module-specific baseline seed refresh and equivalence checks. | Use for patcher verification, not full reconciliation. Some module verdicts remain suspect and should be updated as verification completes. |
 | `id_verification_consolidation_execution_prompt.md` | Implementation and verification | Valid, active, high value | Consolidates duplicated LEAP ID / branch matching logic and shared preflight-state override code, with tests and real-data equivalence checks. | Line numbers are point-in-time and must be rechecked. Item 1 is highest risk; Item 2 Part A is still live because `_apply_preflight_compressed_state` and `_apply_preflight_results_update_state` remain separate. |
-| `leap_mappings_prompt_folder_agents_review_prompt.md` | Cross-repo prompt housekeeping | Valid, active | Instructs an agent to review `leap_mappings/docs/prompts/`, create the same kind of prompt-folder `AGENTS.md`, classify active/stale/invalid prompts, archive completed prompts, and recommend the next tackling order. | Use in `C:\Users\Work\github\leap_mappings`. Read that repo's `AGENTS.md` and `docs/mappings_system.md` before acting. |
 | `workflow_folder_migration_and_reconciliation_verification_prompt.md` | Refactor plus run verification | Invalid as written | The objective is to move workflow entrypoints into `codebase/workflows/`, while the short version describes a baseline-seed run with a specific economy order. | Do not execute without rewriting. It mixes unrelated objectives, contains stale wording/encoding artifacts, and references a `codebase/workflows/` migration that has not been started. Split into separate migration and run prompts if this work is still desired. |
 
 ## Recommended Tackling Order
@@ -78,27 +77,21 @@ Reviewed on 2026-07-10.
      producer output behavior.
    - Commit Item 1 separately from preflight-state cleanup if possible.
 
-2. `leap_mappings_prompt_folder_agents_review_prompt.md`
-   - Use this in the `leap_mappings` repo to create the same prompt-folder
-     guide and prompt review there.
-   - This can run in parallel with code implementation prompts because it is
-     documentation housekeeping in a different repo.
-
-3. `patch_baseline_seeds_module_verification_prompt.md`
+2. `patch_baseline_seeds_module_verification_prompt.md`
    - Use after ID validation changes so patcher checks use the consolidated
-     behavior.
+   behavior.
    - Work module by module and update module verdicts as each is proven.
 
-4. `supply_reconciliation_results_update_execution_prompt.md`
+3. `supply_reconciliation_results_update_execution_prompt.md`
    - Run when a specific economy needs a targeted results update or after a
      targeted fix that should not require the full 21-economy run.
 
-5. `supply_reconciliation_full_baselineseed_run_execution_prompt.md`
+4. `supply_reconciliation_full_baselineseed_run_execution_prompt.md`
    - Run after implementation and patcher-verification prompts are stable.
    - This is the full integration check and should produce the consolidated
      decision table for any remaining findings.
 
-6. `workflow_folder_migration_and_reconciliation_verification_prompt.md`
+5. `workflow_folder_migration_and_reconciliation_verification_prompt.md`
    - Do not tackle in its current form.
    - If still needed, rewrite as two prompts: one for workflow-folder migration,
      one for post-migration supply reconciliation verification.
@@ -107,6 +100,7 @@ Reviewed on 2026-07-10.
 
 - `other_loss_own_use_proxy_hardening_prompt.md`
 - `other_loss_own_use_initialisation_post_initialisation_prompt.md`
+- `leap_mappings_prompt_folder_agents_review_prompt.md`
 
 ## Known Folder Issues
 
