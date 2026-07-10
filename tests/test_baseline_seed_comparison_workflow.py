@@ -18,6 +18,7 @@ from codebase.functions.baseline_seed_validation import (
     validate_seed_rows,
 )
 from codebase.functions.patch_baseline_seeds import MODULE_REGISTRY
+from codebase.functions import patch_baseline_seeds
 
 
 def _row(branch: str, variable: str, expression: object, *, branch_id: int = 1) -> dict[str, object]:
@@ -239,6 +240,59 @@ def test_aggregated_demand_patch_scope_does_not_strip_entire_demand_tree() -> No
     assert MODULE_REGISTRY["aggregated_demand"].strip_prefixes == [
         "Demand\\All demand aggregated\\"
     ]
+
+
+def test_aggregated_demand_patch_threads_reconciliation_config(monkeypatch, tmp_path: Path) -> None:
+    import codebase.aggregated_demand_workflow as aggregated_demand_workflow
+    import codebase.functions.transformation_analysis_utils as transformation_core
+    import codebase.supply_reconciliation_config as reconciliation_config
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(transformation_core, "prepare_transformation_assets", lambda: None)
+    monkeypatch.setattr(
+        transformation_core,
+        "ninth_data",
+        pd.DataFrame({"economy": ["20_USA", "00_APEC"]}),
+    )
+    monkeypatch.setattr(patch_baseline_seeds, "WORKBOOKS_DIR", tmp_path)
+    monkeypatch.setattr(
+        reconciliation_config,
+        "AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES",
+        True,
+    )
+    monkeypatch.setattr(
+        reconciliation_config,
+        "AGGREGATED_DEMAND_EXCLUDED_SECTORS",
+        ["15_02_road"],
+    )
+    monkeypatch.setattr(
+        reconciliation_config,
+        "AGGREGATED_DEMAND_USE_SECTOR_BRANCHES",
+        True,
+    )
+
+    def fake_save_aggregated_demand_as_leap_workbook(**kwargs):
+        captured.update(kwargs)
+        output_path = Path(kwargs["output_path"])
+        output_path.write_text("placeholder")
+        return output_path
+
+    monkeypatch.setattr(
+        aggregated_demand_workflow,
+        "save_aggregated_demand_as_leap_workbook",
+        fake_save_aggregated_demand_as_leap_workbook,
+    )
+
+    written = patch_baseline_seeds._run_source_workflow(
+        "aggregated_demand",
+        ["20_USA"],
+    )
+
+    assert written == [tmp_path / "aggregated_demand_20_USA.xlsx"]
+    assert captured["exclude_own_use_td_losses"] is True
+    assert captured["excluded_sectors"] == ["15_02_road"]
+    assert captured["use_sector_branches"] is True
 
 
 def test_transfers_patch_scope_covers_every_transfer_process_title() -> None:

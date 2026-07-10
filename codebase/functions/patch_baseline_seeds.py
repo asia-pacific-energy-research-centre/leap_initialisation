@@ -755,6 +755,11 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
             PROJECTION_END_YEAR,
             DEFAULT_EXPORT_REGION,
         )
+        from codebase.supply_reconciliation_config import (
+            AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES,
+            AGGREGATED_DEMAND_EXCLUDED_SECTORS,
+            AGGREGATED_DEMAND_USE_SECTOR_BRANCHES,
+        )
         from codebase.functions import transformation_analysis_utils as _core
         _core.prepare_transformation_assets()
         econ_list = economies or sorted(
@@ -774,6 +779,9 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
                 final_year=PROJECTION_END_YEAR,
                 data_path=PROJECTION_DATA_PATH,
                 fuel_mappings_path=FUEL_MAPPINGS_PATH,
+                exclude_own_use_td_losses=bool(AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES),
+                excluded_sectors=AGGREGATED_DEMAND_EXCLUDED_SECTORS,
+                use_sector_branches=bool(AGGREGATED_DEMAND_USE_SECTOR_BRANCHES),
             )
             written.append(out_path)
         return written

@@ -666,10 +666,16 @@ _PRESET_BASELINE_SEED = {
 # paths from assemble_electricity_heat_interim_workbook(), so stale scenario-
 # order workbook variants are not read.
 #
-# Other modules (aggregated_demand, transformation auto-regen) remain
-# UNVERIFIED. They may miss full-run layers (capacity/production seeding,
-# trade-target resets, catalog zero-fill) unless proven by the same
-# equivalence check before trusting them.
+# Audited 2026-07-10. "aggregated_demand" is FIXED AND SPOT-VERIFIED: the
+# patcher now threads the reconciliation config for own-use/T&D-loss exclusion,
+# explicit excluded sectors, and sector-branch output mode into fresh workbook
+# generation. Temp-copy patch checks against current full-run baseline seeds
+# reproduced aggregated-demand rows exactly for 01_AUS and 20_USA (420/420 rows,
+# zero row/expression diffs for both).
+#
+# Transformation auto-regen modules remain UNVERIFIED. They may miss full-run
+# layers (capacity/production seeding, trade-target resets, catalog zero-fill)
+# unless proven by the same equivalence check before trusting them.
 # _PRESET_PATCH_BASELINE_SEEDS = {
 #     # --- Pass mode ---
 #     # When RUN_MODE == "patch_baseline_seeds", run_with_config() skips the full
