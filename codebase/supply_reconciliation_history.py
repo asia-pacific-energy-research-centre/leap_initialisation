@@ -10,6 +10,23 @@ import pandas as pd
 from codebase.supply_reconciliation_config import *  # noqa: F401,F403
 from codebase.utilities.workflow_utils import _resolve
 
+CONVERGENCE_CSV_COLUMNS = [
+    "run_id",
+    "timestamp_utc",
+    "mode",
+    "iteration_run_mode",
+    "pass_count",
+    "gap_at_first_pass",
+    "gap_at_current_pass",
+    "gap_closure_pct",
+    "gap_delta_last_pass",
+    "allocated_cumulative",
+    "clipped_total_current",
+    "unresolved_count_current",
+    "trend",
+    "unresolved_fuels_current",
+]
+
 
 def _state_token(value: object) -> str:
     """Normalize a state key token for case-insensitive comparisons."""
@@ -71,6 +88,35 @@ def _capacity_unmet_default_state() -> dict[str, object]:
         "passes": [],
         "pass_deltas": [],
     }
+
+
+def _default_convergence_csv_path() -> Path:
+    return _resolve(RESULTS_RUNTIME_DIR) / "capacity_unmet_convergence.csv"
+
+
+def load_convergence_csv(csv_path: Path | str | None = None) -> pd.DataFrame:
+    """Load convergence CSV rows, adding blank run_id for legacy files."""
+    path = _resolve(csv_path) if csv_path is not None else _default_convergence_csv_path()
+    if not path.exists():
+        return pd.DataFrame(columns=CONVERGENCE_CSV_COLUMNS)
+    df = pd.read_csv(path, dtype=object).fillna("")
+    if "run_id" not in df.columns:
+        df.insert(0, "run_id", "")
+    for column in CONVERGENCE_CSV_COLUMNS:
+        if column not in df.columns:
+            df[column] = ""
+    return df
+
+
+def _latest_convergence_run_id(df: pd.DataFrame) -> str:
+    """Return the latest nonblank run id, or blank for legacy-only history."""
+    if df.empty or "run_id" not in df.columns:
+        return ""
+    run_ids = [str(value).strip() for value in df["run_id"].tolist()]
+    for run_id in reversed(run_ids):
+        if run_id:
+            return run_id
+    return ""
 
 
 def rollback_last_capacity_unmet_pass(
@@ -168,7 +214,11 @@ def rollback_last_capacity_unmet_pass(
         f"(mode={delta.get('mode', '?')}, timestamp={delta.get('timestamp_utc', '?')}). "
         f"State written to {path}."
     )
-    trim_convergence_csv_to_pass(pass_number=len(state["passes"]), csv_path=convergence_csv_path)
+    trim_convergence_csv_to_pass(
+        pass_number=len(state["passes"]),
+        csv_path=convergence_csv_path,
+        run_id=str(delta.get("run_id") or ""),
+    )
     return state
 
 
@@ -397,11 +447,13 @@ def _lookup_runtime_primary_addition(
 def trim_convergence_csv_to_pass(
     pass_number: int,
     csv_path: Path | None = None,
+    run_id: str | None = None,
 ) -> None:
     """Remove convergence rows where pass_count exceeds pass_number.
 
     After rolling back reconciliation passes, call this to strip the stale
-    convergence rows that no longer correspond to active passes.
+    convergence rows that no longer correspond to active passes. When run_id
+    is supplied and the CSV has run ids, trimming is scoped to that run.
 
     Parameters
     ----------
@@ -411,20 +463,74 @@ def trim_convergence_csv_to_pass(
     csv_path : Path or None
         Path to the CSV.  Defaults to
         RESULTS_RUNTIME_DIR / "capacity_unmet_convergence.csv".
+    run_id : str or None
+        Optional run id to trim. Legacy rows without run_id are trimmed
+        globally for backward compatibility.
     """
     if csv_path is None:
-        csv_path = _resolve(RESULTS_RUNTIME_DIR) / "capacity_unmet_convergence.csv"
+        csv_path = _default_convergence_csv_path()
     path = _resolve(csv_path)
     if not path.exists():
         return
-    df = pd.read_csv(path)
+    df = load_convergence_csv(path)
     before = len(df)
-    df = df[df["pass_count"] <= pass_number]
+    pass_counts = pd.to_numeric(df["pass_count"], errors="coerce").fillna(0).astype(int)
+    run_token = str(run_id or "").strip()
+    if run_token and "run_id" in df.columns:
+        same_run = df["run_id"].astype(str).str.strip() == run_token
+        keep_mask = (~same_run) | (pass_counts <= int(pass_number))
+    else:
+        keep_mask = pass_counts <= int(pass_number)
+    df = df[keep_mask].copy()
     after = len(df)
     df.to_csv(path, index=False)
+    scope_text = f" for run_id={run_token}" if run_token else ""
     print(
-        f"[CONVERGENCE] Trimmed {before - after} row(s) with pass_count > {pass_number} "
+        f"[CONVERGENCE] Trimmed {before - after} row(s){scope_text} with pass_count > {pass_number} "
         f"({after} row(s) remain). Written to {path}."
+    )
+
+
+def remove_convergence_run(
+    run_id: str | None = None,
+    csv_path: Path | None = None,
+) -> None:
+    """Remove all convergence-history rows for one deliberately reverted run.
+
+    If run_id is omitted, the latest nonblank run id in the CSV is removed. For
+    legacy CSVs without run ids, omitting run_id removes the blank legacy group.
+    The file itself is never deleted.
+    """
+    if csv_path is None:
+        csv_path = _default_convergence_csv_path()
+    path = _resolve(csv_path)
+    if not path.exists():
+        print(f"[CONVERGENCE] No convergence CSV found at {path}.")
+        return
+
+    df = load_convergence_csv(path)
+    if df.empty:
+        df.to_csv(path, index=False)
+        print(f"[CONVERGENCE] No convergence rows to remove in {path}.")
+        return
+
+    resolved_run_id = str(run_id or _latest_convergence_run_id(df)).strip()
+    run_values = df["run_id"].astype(str).str.strip()
+    remove_mask = run_values == resolved_run_id
+    removed = df[remove_mask].copy()
+    kept = df[~remove_mask].copy()
+
+    pass_counts = pd.to_numeric(removed.get("pass_count"), errors="coerce").dropna()
+    if pass_counts.empty:
+        pass_range = "n/a"
+    else:
+        pass_range = f"{int(pass_counts.min())}-{int(pass_counts.max())}"
+
+    kept.to_csv(path, index=False)
+    display_run_id = resolved_run_id or "<legacy blank run_id>"
+    print(
+        f"[CONVERGENCE] Removed {len(removed)} row(s) for run_id={display_run_id} "
+        f"(pass range {pass_range}). {len(kept)} row(s) remain in {path}."
     )
 
 

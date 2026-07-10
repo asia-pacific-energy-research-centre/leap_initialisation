@@ -316,7 +316,7 @@ Consider rewriting `other_loss_own_use_proxy_workflow.py` from scratch using its
 
 Once the codebase is clean enough to work in confidently:
 
-- **Convergence rate reporting and run history** — datestamped run history appended each pass; convergence summary surfaced in main output; modeller-friendly run removal (small CLI helper, not manual JSON editing); average gap reduction per pass projecting remaining pass count. Files: `codebase/supply_reconciliation_history.py`, `outputs/reconciliation_history/`
+- **Convergence diagnostics and run history** — capacity-unmet convergence rows now carry run ids, per-run diagnostics can print/write per-fuel allocation and unresolved-gap summaries, latest-two comparisons are available, and `remove_convergence_run()` removes rows for a deliberately reverted run. Files: `codebase/functions/capacity_unmet_convergence_diagnostics.py`, `codebase/supply_reconciliation_history.py`, `outputs/leap_exports/supply_reconciliation/supporting_files/runtime/`
 - **All demand aggregated output improvements** — per-sector filename IDs; pre-generate all unique demand branch subset combinations; record individual branch contributions within the aggregated output file. Files: `codebase/aggregated_demand_workflow.py`
 - **Per-economy parallelism** — the reconciliation loop is currently single-economy sequential; the scripts are independent per economy and can run in parallel with minimal changes.
 

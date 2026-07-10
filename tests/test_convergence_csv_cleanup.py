@@ -9,31 +9,21 @@ import pytest
 import json
 
 from codebase.supply_reconciliation_history import (
+    CONVERGENCE_CSV_COLUMNS,
     clear_convergence_csv,
+    load_convergence_csv,
+    remove_convergence_run,
     rollback_last_capacity_unmet_pass,
     trim_convergence_csv_to_pass,
 )
 
-_COLUMNS = [
-    "timestamp_utc",
-    "mode",
-    "iteration_run_mode",
-    "pass_count",
-    "gap_at_first_pass",
-    "gap_at_current_pass",
-    "gap_closure_pct",
-    "gap_delta_last_pass",
-    "allocated_cumulative",
-    "clipped_total_current",
-    "unresolved_count_current",
-    "trend",
-    "unresolved_fuels_current",
-]
+_COLUMNS = CONVERGENCE_CSV_COLUMNS
 
 
-def _make_csv(path: Path, pass_counts: list[int]) -> None:
+def _make_csv(path: Path, pass_counts: list[int], run_id: str = "run_a") -> None:
     rows = [
         {
+            "run_id": run_id,
             "timestamp_utc": f"2026-01-0{i+1}T00:00:00+00:00",
             "mode": "balanced",
             "iteration_run_mode": "results_update",
@@ -50,7 +40,11 @@ def _make_csv(path: Path, pass_counts: list[int]) -> None:
         }
         for i, pc in enumerate(pass_counts)
     ]
-    pd.DataFrame(rows, columns=_COLUMNS).to_csv(path, index=False)
+    frame = pd.DataFrame(rows, columns=_COLUMNS)
+    if path.exists():
+        existing = pd.read_csv(path)
+        frame = pd.concat([existing, frame], ignore_index=True)
+    frame.to_csv(path, index=False)
 
 
 def test_trim_to_pass_zero_removes_all_data_rows(tmp_path):
@@ -72,6 +66,49 @@ def test_trim_to_mid_pass_keeps_earlier_rows(tmp_path):
 
     df = pd.read_csv(csv)
     assert list(df["pass_count"]) == [1, 2, 3]
+
+
+def test_trim_to_mid_pass_is_scoped_to_run_id(tmp_path):
+    csv = tmp_path / "convergence.csv"
+    _make_csv(csv, [1, 2, 3], run_id="run_a")
+    _make_csv(csv, [1, 2, 3], run_id="run_b")
+
+    trim_convergence_csv_to_pass(2, csv_path=csv, run_id="run_b")
+
+    df = pd.read_csv(csv)
+    assert list(df[df["run_id"] == "run_a"]["pass_count"]) == [1, 2, 3]
+    assert list(df[df["run_id"] == "run_b"]["pass_count"]) == [1, 2]
+
+
+def test_load_convergence_csv_adds_blank_run_id_for_legacy_csv(tmp_path):
+    csv = tmp_path / "legacy.csv"
+    legacy_columns = [column for column in _COLUMNS if column != "run_id"]
+    pd.DataFrame(
+        [
+            {
+                column: "" if column != "pass_count" else 1
+                for column in legacy_columns
+            }
+        ],
+        columns=legacy_columns,
+    ).to_csv(csv, index=False)
+
+    df = load_convergence_csv(csv)
+
+    assert list(df.columns)[0] == "run_id"
+    assert df["run_id"].tolist() == [""]
+
+
+def test_remove_convergence_run_removes_latest_run_by_default(tmp_path):
+    csv = tmp_path / "convergence.csv"
+    _make_csv(csv, [1, 2], run_id="run_a")
+    _make_csv(csv, [1, 2], run_id="run_b")
+
+    remove_convergence_run(csv_path=csv)
+
+    df = pd.read_csv(csv)
+    assert set(df["run_id"]) == {"run_a"}
+    assert list(df["pass_count"]) == [1, 2]
 
 
 def test_clear_convergence_csv_leaves_header_only(tmp_path):
@@ -101,13 +138,13 @@ def test_rollback_also_trims_convergence_csv(tmp_path):
     state = {
         "passes": ["pass1", "pass2", "pass3"],
         "pass_deltas": [
-            {"pass_index": 1, "mode": "balanced", "timestamp_utc": "2026-01-01T00:00:00+00:00",
+            {"pass_index": 1, "run_id": "run_a", "mode": "balanced", "timestamp_utc": "2026-01-01T00:00:00+00:00",
              "capacity_additions": {}, "output_additions": {}, "primary_additions": {},
              "export_adjustments": {}, "pre_pass_signatures": {}},
-            {"pass_index": 2, "mode": "balanced", "timestamp_utc": "2026-01-02T00:00:00+00:00",
+            {"pass_index": 2, "run_id": "run_a", "mode": "balanced", "timestamp_utc": "2026-01-02T00:00:00+00:00",
              "capacity_additions": {}, "output_additions": {}, "primary_additions": {},
              "export_adjustments": {}, "pre_pass_signatures": {}},
-            {"pass_index": 3, "mode": "balanced", "timestamp_utc": "2026-01-03T00:00:00+00:00",
+            {"pass_index": 3, "run_id": "run_a", "mode": "balanced", "timestamp_utc": "2026-01-03T00:00:00+00:00",
              "capacity_additions": {}, "output_additions": {}, "primary_additions": {},
              "export_adjustments": {}, "pre_pass_signatures": {}},
         ],

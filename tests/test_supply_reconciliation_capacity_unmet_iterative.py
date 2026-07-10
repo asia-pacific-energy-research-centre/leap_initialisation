@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from codebase import supply_reconciliation_workflow as workflow
+from codebase import supply_reconciliation_allocation as allocation
 from codebase.configuration import workflow_config as workflow_cfg
 
 
@@ -555,6 +556,7 @@ def test_capacity_unmet_iterative_writes_convergence_csv(
         ]
     )
     monkeypatch.setattr(workflow, "RESULTS_RUNTIME_DIR", runtime_dir, raising=False)
+    monkeypatch.setattr(allocation, "RESULTS_RUNTIME_DIR", runtime_dir, raising=False)
     monkeypatch.setattr(workflow, "_build_capacity_process_catalog", lambda records: (process_catalog, []))
     monkeypatch.setattr(workflow, "_build_label_to_esto_product_lookup", lambda: {})
 
@@ -566,11 +568,65 @@ def test_capacity_unmet_iterative_writes_convergence_csv(
         results_dir=[balance_csv],
         state_path=state_path,
         allow_same_results_reuse=False,
+        run_id="capacity_unmet_test_run",
     )
 
     convergence_csv = runtime_dir / "capacity_unmet_convergence.csv"
     assert convergence_csv.exists()
     convergence_rows = pd.read_csv(convergence_csv)
+    assert convergence_rows["run_id"].tolist() == ["capacity_unmet_test_run"]
     assert convergence_rows["pass_count"].tolist() == [1]
     assert convergence_rows["gap_at_current_pass"].tolist() == pytest.approx([6.0])
     assert convergence_rows["trend"].tolist() == ["unknown"]
+
+
+def test_capacity_unmet_iterative_balanced_writes_convergence_run_id(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    reconciliation = _minimal_reconciliation_df()
+    reconciliation["adjusted_exports"] = 0.0
+    reconciliation["max_production"] = pd.NA
+    reconciliation["constrained_production"] = 0.0
+    state_path = tmp_path / "state.json"
+    runtime_dir = tmp_path / "runtime"
+    balance_csv = tmp_path / "balance_table_20_USA_25042026_REF_2030.csv"
+    _write_balance_table_csv(balance_csv, observed_imports=8.0)
+
+    process_catalog = pd.DataFrame(
+        [
+            {
+                "record_index": 0,
+                "economy": "20_USA",
+                "module": "Electricity generation",
+                "process": "Gas plants",
+                "instance": 1,
+                "esto_product": "17 Electricity",
+                "year": 2030,
+                "product_output": 10.0,
+                "module_total_output": 20.0,
+                "yield": 0.5,
+            }
+        ]
+    )
+    monkeypatch.setattr(workflow, "RESULTS_RUNTIME_DIR", runtime_dir, raising=False)
+    monkeypatch.setattr(allocation, "RESULTS_RUNTIME_DIR", runtime_dir, raising=False)
+    monkeypatch.setattr(workflow, "_build_capacity_process_catalog", lambda records: (process_catalog, []))
+    monkeypatch.setattr(workflow, "_build_label_to_esto_product_lookup", lambda: {})
+
+    summary = workflow._run_capacity_unmet_iterative_balanced_pass(
+        reconciliation_table=reconciliation,
+        process_records=[{}],
+        economies=["20_USA"],
+        scenarios=["Reference"],
+        results_dir=[balance_csv],
+        state_path=state_path,
+        allow_same_results_reuse=False,
+        run_id="capacity_unmet_balanced_test_run",
+    )
+
+    assert summary["positive_import_gap_total"] == pytest.approx(6.0)
+    assert summary["positive_gap_rows"][0]["positive_gap"] == pytest.approx(6.0)
+    convergence_rows = pd.read_csv(runtime_dir / "capacity_unmet_convergence.csv")
+    assert convergence_rows["run_id"].tolist() == ["capacity_unmet_balanced_test_run"]
+    assert convergence_rows["gap_at_current_pass"].tolist() == pytest.approx([6.0])

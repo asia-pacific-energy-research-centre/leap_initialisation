@@ -839,11 +839,31 @@ Caps and override settings (`CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS`, `CAPA
 
 ### Convergence rate reporting and run history tracking
 
-Iterative capacity-unmet passes now calculate convergence metrics from the saved pass history. The pass summary includes the pass count, first and current gap, gap closure percentage, last-pass gap delta, unresolved fuel count, and trend. Each pass also appends one row to `outputs/leap_exports/supply_reconciliation/supporting_files/runtime/capacity_unmet_convergence.csv`.
+Iterative capacity-unmet passes now calculate convergence metrics from the saved pass history. The pass summary includes the run id, pass count, first and current gap, gap closure percentage, last-pass gap delta, unresolved fuel count, and trend. Each pass also appends one row to `outputs/leap_exports/supply_reconciliation/supporting_files/runtime/capacity_unmet_convergence.csv`.
 
-Remaining improvement: add a modeller-facing helper for removing selected convergence-history rows when a run is deliberately reverted.
+The convergence history now has modeller-facing diagnostics helpers:
 
-**Files:** `codebase/supply_reconciliation_allocation.py`, `outputs/leap_exports/supply_reconciliation/supporting_files/runtime/capacity_unmet_convergence.csv`
+```python
+# Print and write the latest run's per-fuel diagnostics CSV.
+from codebase.functions.capacity_unmet_convergence_diagnostics import (
+    build_capacity_unmet_run_diagnostics,
+    compare_capacity_unmet_runs,
+)
+
+latest_report = build_capacity_unmet_run_diagnostics()
+
+# Compare the latest two run ids in capacity_unmet_convergence.csv.
+comparison = compare_capacity_unmet_runs()
+
+# Remove convergence-history rows for a deliberately reverted run.
+from codebase.supply_reconciliation_history import remove_convergence_run
+
+remove_convergence_run(run_id="capacity_unmet_20260710T010203456789Z")
+```
+
+`build_capacity_unmet_run_diagnostics()` prints a short summary and writes `capacity_unmet_run_diagnostics_<run_id>.csv` to the runtime supporting-files folder. The CSV shows per-fuel start/end gap, gap delta, allocation split across primary production, transformation capacity, imports fallback, clipped amount, and whether the fuel remains unresolved. `compare_capacity_unmet_runs()` reports side-by-side gap trajectories, closure and pass-count deltas, unresolved-set differences, and warns when the two runs used different `mode` / `iteration_run_mode` values.
+
+**Files:** `codebase/supply_reconciliation_allocation.py`, `codebase/functions/capacity_unmet_convergence_diagnostics.py`, `codebase/supply_reconciliation_history.py`, `outputs/leap_exports/supply_reconciliation/supporting_files/runtime/capacity_unmet_convergence.csv`
 
 ### All demand aggregated output improvements
 

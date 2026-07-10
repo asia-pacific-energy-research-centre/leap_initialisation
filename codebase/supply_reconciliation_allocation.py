@@ -46,6 +46,36 @@ _CAPACITY_UNMET_RUNTIME_PASS_SUMMARY: dict[str, object] | None = None
 # Convergence tracking
 # ---------------------------------------------------------------------------
 
+def _generate_capacity_unmet_run_id() -> str:
+    """Return a UTC timestamp run id for one capacity-unmet workflow invocation."""
+    return datetime.now(timezone.utc).strftime("capacity_unmet_%Y%m%dT%H%M%S%fZ")
+
+
+def _build_positive_gap_rows(
+    rows: pd.DataFrame,
+    *,
+    gap_column: str,
+) -> list[dict[str, object]]:
+    """Store compact per-fuel positive gaps for later run diagnostics."""
+    if rows.empty or gap_column not in rows.columns:
+        return []
+    out: list[dict[str, object]] = []
+    for _, row in rows.iterrows():
+        gap_value = pd.to_numeric(row.get(gap_column), errors="coerce")
+        if pd.isna(gap_value) or float(gap_value) <= 0.0:
+            continue
+        out.append(
+            {
+                "economy": str(row.get("economy") or "").strip(),
+                "scenario": str(row.get("scenario") or "").strip(),
+                "esto_product": str(row.get("esto_product") or "").strip(),
+                "year": int(pd.to_numeric(row.get("year"), errors="coerce")),
+                "positive_gap": float(gap_value),
+            }
+        )
+    return out
+
+
 def _compute_convergence_metrics(passes: list[dict]) -> dict[str, object]:
     """Compute gap-closure metrics from the pass history list stored in state."""
     if not passes:
@@ -122,6 +152,7 @@ def _write_convergence_csv(
     path = _resolve(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     row = {
+        "run_id": str(pass_summary.get("run_id", "")),
         "timestamp_utc": str(pass_summary.get("timestamp_utc", "")),
         "mode": str(pass_summary.get("mode", "")),
         "iteration_run_mode": str(pass_summary.get("iteration_run_mode", "")),
@@ -136,9 +167,19 @@ def _write_convergence_csv(
         "trend": str(convergence.get("trend", "unknown")),
         "unresolved_fuels_current": "; ".join(convergence.get("unresolved_fuels_current", [])),
     }
+    fieldnames = list(row.keys())
     write_header = not path.exists() or path.stat().st_size == 0
+    if not write_header:
+        existing = pd.read_csv(path, dtype=object).fillna("")
+        missing_columns = [column for column in fieldnames if column not in existing.columns]
+        if missing_columns:
+            for column in missing_columns:
+                existing[column] = ""
+            extra_columns = [column for column in existing.columns if column not in fieldnames]
+            existing = existing[fieldnames + extra_columns]
+            existing.to_csv(path, index=False)
     with path.open("a", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=list(row.keys()))
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
         if write_header:
             writer.writeheader()
         writer.writerow(row)
@@ -654,6 +695,7 @@ def _run_capacity_unmet_iterative_pass(
     results_dir: Path | str | Iterable[Path | str] = CAPACITY_UNMET_RESULTS_DIR,
     state_path: Path | str = CAPACITY_UNMET_STATE_PATH,
     allow_same_results_reuse: bool = CAPACITY_UNMET_ALLOW_SAME_RESULTS_REUSE,
+    run_id: str | None = None,
 ) -> dict[str, object]:
     """Compute one manual unmet-capacity pass and persist cumulative state."""
     global _CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS
@@ -1002,7 +1044,9 @@ def _run_capacity_unmet_iterative_pass(
     clipped_total = float(
         sum(float(item.get("clipped_output_uplift", 0.0)) for item in clipping_rows)
     )
+    resolved_run_id = run_id or _generate_capacity_unmet_run_id()
     pass_summary = {
+        "run_id": resolved_run_id,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "mode": "capacity_unmet_iterative",
         "iteration_run_mode": run_mode,
@@ -1011,6 +1055,7 @@ def _run_capacity_unmet_iterative_pass(
         "baseline_import_total": float(unmet_table["adjusted_imports"].sum()),
         "observed_import_total": float(unmet_table["observed_imports"].sum()),
         "unmet_proxy_total": unmet_total,
+        "positive_gap_rows": _build_positive_gap_rows(unmet_candidates, gap_column="unmet_proxy"),
         "allocated_output_total": allocated_total,
         "clipped_output_total": clipped_total,
         "allocation_rows": allocation_rows,
@@ -1034,6 +1079,7 @@ def _run_capacity_unmet_iterative_pass(
     convergence_csv = _write_convergence_csv(pass_summary=pass_summary, convergence=convergence)
     pass_delta = {
         "pass_index": len(state["passes"]) - 1,
+        "run_id": resolved_run_id,
         "timestamp_utc": pass_summary.get("timestamp_utc", ""),
         "mode": pass_summary.get("mode", ""),
         "pre_pass_signatures": last_signatures,
@@ -1107,6 +1153,7 @@ def _run_capacity_unmet_iterative_balanced_pass(
     results_dir: Path | str | Iterable[Path | str] = CAPACITY_UNMET_RESULTS_DIR,
     state_path: Path | str = CAPACITY_UNMET_STATE_PATH,
     allow_same_results_reuse: bool = CAPACITY_UNMET_ALLOW_SAME_RESULTS_REUSE,
+    run_id: str | None = None,
 ) -> dict[str, object]:
     """Compute one iterative pass using observed imports gaps as unmet proxy."""
     global _CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS
@@ -1656,7 +1703,9 @@ def _run_capacity_unmet_iterative_balanced_pass(
     clipped_total = float(
         sum(float(item.get("clipped_output_uplift", 0.0)) for item in clipping_rows)
     )
+    resolved_run_id = run_id or _generate_capacity_unmet_run_id()
     pass_summary = {
+        "run_id": resolved_run_id,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "mode": "capacity_unmet_iterative_balanced",
         "iteration_run_mode": run_mode,
@@ -1665,6 +1714,7 @@ def _run_capacity_unmet_iterative_balanced_pass(
         "baseline_import_total": float(delta["adjusted_imports"].sum()),
         "observed_import_total": float(delta["observed_imports"].sum()),
         "positive_import_gap_total": positive_total,
+        "positive_gap_rows": _build_positive_gap_rows(positive_rows, gap_column="imports_gap"),
         "negative_import_gap_total": negative_total,
         "baseline_net_import_total": float(delta["baseline_net_imports"].sum()),
         "observed_net_import_total": float(delta["observed_net_imports"].sum()),
@@ -1696,6 +1746,7 @@ def _run_capacity_unmet_iterative_balanced_pass(
     convergence_csv = _write_convergence_csv(pass_summary=pass_summary, convergence=convergence)
     pass_delta = {
         "pass_index": len(state["passes"]) - 1,
+        "run_id": resolved_run_id,
         "timestamp_utc": pass_summary.get("timestamp_utc", ""),
         "mode": pass_summary.get("mode", ""),
         "pre_pass_signatures": last_signatures,

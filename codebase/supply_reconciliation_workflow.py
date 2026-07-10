@@ -360,6 +360,7 @@ def _sync_extracted_runtime_state() -> None:
 
     config_names = [
         "CAPACITY_UNMET_PASS_MODE",
+        "CAPACITY_UNMET_STATE_PATH",
         "CAPACITY_UNMET_PIN_EXPORTS_TO_9TH_PROJECTIONS",
         "RESULTS_SINGLE_FILE_ARCHIVE_DIR",
         "RESULTS_RUNTIME_DIR",
@@ -409,6 +410,7 @@ def _sync_results_saver_overrides() -> None:
         "OUTPUT_DIR",
         "RESULTS_CHECKS_DIR",
         "RESULTS_RUNTIME_DIR",
+        "CAPACITY_UNMET_STATE_PATH",
         "TRANSFORMATION_SUPPLY_CACHE_ENABLED",
         "TRANSFORMATION_SUPPLY_CACHE_PATH",
         "SKIP_ECONOMIES_WITH_EXISTING_EXPORTS",
