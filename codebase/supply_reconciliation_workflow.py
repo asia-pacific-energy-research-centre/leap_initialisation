@@ -654,11 +654,20 @@ _PRESET_BASELINE_SEED = {
 # against 01_AUS; 20_USA reallocation applied and verified). Failures now raise
 # instead of printing, stale-workbook collection is prevented (fresh regen files
 # are threaded through), and "supply"/"losses_own_use" raise NotImplementedError
-# when PATCH_RUN_WORKFLOW=True. Other modules (power_interim, aggregated_demand,
-# transformation auto-regen) remain UNVERIFIED — they likely miss the same
-# full-run layers (capacity/production seeding, trade-target resets, catalog
-# zero-fill) that transfers needed; give them the same equivalence check before
-# trusting them.
+# when PATCH_RUN_WORKFLOW=True.
+#
+# Audited 2026-07-10. "power_interim" is FIXED AND SPOT-VERIFIED: temp-copy
+# patch checks against current full-run baseline seeds reproduced interim rows
+# exactly for 01_AUS (339/339 rows, zero row/expression diffs) and 20_USA
+# (339/339 retained rows, zero row/expression diffs after non-template fresh
+# rows were filtered by patch scope). The patcher uses exact fresh workbook
+# paths from assemble_electricity_heat_interim_workbook(), so stale scenario-
+# order workbook variants are not read.
+#
+# Other modules (aggregated_demand, transformation auto-regen) remain
+# UNVERIFIED. They may miss full-run layers (capacity/production seeding,
+# trade-target resets, catalog zero-fill) unless proven by the same
+# equivalence check before trusting them.
 # _PRESET_PATCH_BASELINE_SEEDS = {
 #     # --- Pass mode ---
 #     # When RUN_MODE == "patch_baseline_seeds", run_with_config() skips the full
