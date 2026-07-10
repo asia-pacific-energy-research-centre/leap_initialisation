@@ -170,6 +170,26 @@ AUXILIARY_THRESHOLD_RATIO = 0.1
 INCLUDE_ALL_AUXILIARY = False
 PRINT_GAS_PROCESSING_SUMMARY = False
 
+
+def _safe_print_line(text):
+    """Print debug text without aborting on console encoding quirks."""
+    try:
+        print(text)
+    except Exception:
+        safe_text = str(text).encode("ascii", "backslashreplace").decode("ascii")
+        try:
+            sys.stdout.write(safe_text + "\n")
+        except Exception:
+            sys.__stdout__.write(safe_text + "\n")
+
+
+def _safe_map_code_label(value, code_to_name_mapping):
+    """Map a label for debug display without letting one bad value abort prints."""
+    try:
+        return map_code_label(value, code_to_name_mapping)
+    except Exception:
+        return value
+
 HYDROGEN_OUTPUT_SUBFUELS = [
     "16_x_hydrogen",
     "16_x_ammonia",
@@ -677,7 +697,7 @@ def print_sector_rows(df, sector_label, filters, year_cols, start_year, code_to_
             "total_from_start",
         ]
         columns_to_show = [col for col in columns_to_show if col in summary.columns]
-        print(f"\n{sector_label}: rows {summary.shape[0]}")
+        _safe_print_line(f"\n{sector_label}: rows {summary.shape[0]}")
         summary_to_show = summary[columns_to_show].copy()
         if code_to_name_mapping:
             columns_to_map = [
@@ -692,9 +712,9 @@ def print_sector_rows(df, sector_label, filters, year_cols, start_year, code_to_
             for column in columns_to_map:
                 if column in summary_to_show.columns:
                     summary_to_show[column] = summary_to_show[column].apply(
-                        lambda value: map_code_label(value, code_to_name_mapping)
+                        lambda value: _safe_map_code_label(value, code_to_name_mapping)
                     )
-        print(summary_to_show.head(PRINT_TOP_FUEL_ROWS).to_string(index=False))
+        _safe_print_line(summary_to_show.head(PRINT_TOP_FUEL_ROWS).to_string(index=False))
     except Exception as exc:
         print(f"Failed to print sector rows for {sector_label}: {exc}")
         try_debug_breakpoint()
@@ -734,7 +754,7 @@ def print_sector_rows_from_df(
             "total_from_start",
         ]
         columns_to_show = [col for col in columns_to_show if col in summary.columns]
-        print(f"\n{sector_label}: rows {summary.shape[0]}")
+        _safe_print_line(f"\n{sector_label}: rows {summary.shape[0]}")
         summary_to_show = summary[columns_to_show].copy()
         if code_to_name_mapping:
             columns_to_map = [
@@ -749,9 +769,9 @@ def print_sector_rows_from_df(
             for column in columns_to_map:
                 if column in summary_to_show.columns:
                     summary_to_show[column] = summary_to_show[column].apply(
-                        lambda value: map_code_label(value, code_to_name_mapping)
+                        lambda value: _safe_map_code_label(value, code_to_name_mapping)
                     )
-        print(summary_to_show.head(PRINT_TOP_FUEL_ROWS).to_string(index=False))
+        _safe_print_line(summary_to_show.head(PRINT_TOP_FUEL_ROWS).to_string(index=False))
     except Exception as exc:
         print(f"Failed to print sector rows for {sector_label}: {exc}")
         try_debug_breakpoint()

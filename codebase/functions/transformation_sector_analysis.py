@@ -254,14 +254,8 @@ def analyze_lng_liquefaction_regas(
         export_base_year = EXPORT_BASE_YEAR
         export_final_year = EXPORT_FINAL_YEAR
         export_years = list(range(export_base_year, export_final_year + 1))
-        print_sector_rows(
-            esto_data,
-            "LNG liquefaction/regas rows",
-            {"economy": economy, "sub2sectors": lng_sub2},
-            year_cols,
-            start_year,
-            code_to_name_mapping,
-        )
+        # Skip the detailed LNG sector debug table here. It is informational only
+        # and can abort long unattended runs on some console/encoding combinations.
 
         def _zero_series():
             return pd.Series({year: 0.0 for year in export_years}, dtype=float)

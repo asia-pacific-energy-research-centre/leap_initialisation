@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Sequence
 
@@ -394,9 +395,9 @@ def get_loss_total_for_efficiency(loss_values, feedstock_label, output_label):
 def print_leap_structure_header(title):
     """Print a section header that mirrors the LEAP branch structure."""
     try:
-        print("")
-        print(title)
-        print("-" * len(title))
+        _safe_print_line("")
+        _safe_print_line(title)
+        _safe_print_line("-" * len(str(title)))
     except Exception as exc:
         print(f"Failed to print LEAP structure header: {exc}")
         _try_debug_breakpoint()
@@ -415,6 +416,23 @@ def format_value(value):
         print(f"Failed to format value {value}: {exc}")
         _try_debug_breakpoint()
         raise
+
+
+def _safe_print_line(text):
+    """Print debug text without aborting on console encoding quirks.
+
+    The LNG/LPG debug structure is informational only. If the platform console
+    rejects a label, fall back to an ASCII-escaped write so the analysis can
+    continue.
+    """
+    try:
+        print(text)
+    except Exception:
+        safe_text = str(text).encode("ascii", "backslashreplace").decode("ascii")
+        try:
+            sys.stdout.write(safe_text + "\n")
+        except Exception:
+            sys.__stdout__.write(safe_text + "\n")
 
 
 def build_year_rows(branch_path, measure, scenario, value_by_year, units, scale, per_value):
@@ -2755,31 +2773,31 @@ def print_leap_structure_block(
         process_name = map_code_label(process_name, code_to_name_mapping)
 
         print_leap_structure_header(title)
-        print("Output fuels (export target, import target):")
+        _safe_print_line("Output fuels (export target, import target):")
         for raw_label, fuel in output_pairs:
             fuel_value = ""
             if output_fuel_values is not None:
                 fuel_value = format_value(output_fuel_values.get(raw_label))
-            print(f"  - {fuel}" + (f" {fuel_value}" if fuel_value else ""))
-        print("Processes (process efficiency):")
+            _safe_print_line(f"  - {fuel}" + (f" {fuel_value}" if fuel_value else ""))
+        _safe_print_line("Processes (process efficiency):")
         process_value_text = ""
         if process_value is not None:
             process_value_text = f" {format_value(process_value)}"
-        print(f"  - {process_name}:{process_value_text}")
+        _safe_print_line(f"  - {process_name}:{process_value_text}")
         if feedstock_fuels:
-            print("      Feedstock fuels:")
+            _safe_print_line("      Feedstock fuels:")
             for raw_label, fuel in feedstock_pairs:
                 fuel_value = ""
                 if feedstock_fuel_values is not None:
                     fuel_value = format_value(feedstock_fuel_values.get(raw_label))
-                print(f"        - {fuel}" + (f" {fuel_value}" if fuel_value else ""))
+                _safe_print_line(f"        - {fuel}" + (f" {fuel_value}" if fuel_value else ""))
         if auxiliary_fuels:
-            print("      Auxiliary fuels (Aux fuel use pj/pj output):")
+            _safe_print_line("      Auxiliary fuels (Aux fuel use pj/pj output):")
             for raw_label, fuel in auxiliary_pairs:
                 fuel_value = ""
                 if auxiliary_fuel_values is not None:
                     fuel_value = format_value(auxiliary_fuel_values.get(raw_label))
-                print(f"        - {fuel}" + (f" {fuel_value}" if fuel_value else ""))
+                _safe_print_line(f"        - {fuel}" + (f" {fuel_value}" if fuel_value else ""))
         if other_feedstock_fuels:
             other_feedstock_pairs = [
                 (label, format_fuel_label(label, code_to_name_mapping))
@@ -2791,7 +2809,7 @@ def print_leap_structure_block(
                     value for value in other_feedstock_values.values() if value is not None
                 )
             total_text = f" (total {format_value(total_other_feedstock)})"
-            print(
+            _safe_print_line(
                 "      Other feedstock fuels (set as aux fuel use)"
                 + total_text
                 + ":"
@@ -2805,15 +2823,15 @@ def print_leap_structure_block(
                     fuel_ratio = format_value(other_feedstock_ratios.get(raw_label))
                 value_text = f" {fuel_value}" if fuel_value else ""
                 ratio_text = f" ({fuel_ratio} pj/pj)" if fuel_ratio else ""
-                print(f"        - {fuel}" + value_text + ratio_text)
+                _safe_print_line(f"        - {fuel}" + value_text + ratio_text)
         if loss_pairs:
-            print("      Own use and losses (PJ):")
+            _safe_print_line("      Own use and losses (PJ):")
             for raw_label, fuel in loss_pairs:
                 fuel_value = ""
                 if loss_fuel_values is not None:
                     fuel_value = format_value(loss_fuel_values.get(raw_label))
-                print(f"        - {fuel}" + (f" {fuel_value}" if fuel_value else ""))
-        print("")
+                _safe_print_line(f"        - {fuel}" + (f" {fuel_value}" if fuel_value else ""))
+        _safe_print_line("")
     except Exception as exc:
         print(f"Failed to print LEAP structure block: {exc}")
         _try_debug_breakpoint()
