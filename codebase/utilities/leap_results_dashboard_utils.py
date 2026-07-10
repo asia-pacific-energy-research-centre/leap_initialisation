@@ -79,14 +79,14 @@ def _safe_read_codebook_sheet(codebook_path: Path, sheet_name: str) -> pd.DataFr
             }
             rows = []
             for _, row in pairs.iterrows():
-                ninth_sector = str(row.get("9th_sector", "")).strip()
-                ninth_fuel = str(row.get("9th_fuel", "")).strip()
+                ninth_sector = str(row.get("ninth_sector", "")).strip()
+                ninth_fuel = str(row.get("ninth_fuel", "")).strip()
                 esto_flow = str(row.get("esto_flow", "")).strip()
                 esto_product = str(row.get("esto_product", "")).strip()
                 rows.extend([
-                    {"9th_label": ninth_sector, "9th_column": "sectors", "esto_label": esto_flow,
+                    {"ninth_label": ninth_sector, "ninth_column": "sectors", "esto_label": esto_flow,
                      "esto_column": "flows", "name": name_lookup.get(("esto_flow", esto_flow), "")},
-                    {"9th_label": ninth_fuel, "9th_column": "fuels", "esto_label": esto_product,
+                    {"ninth_label": ninth_fuel, "ninth_column": "fuels", "esto_label": esto_product,
                      "esto_column": "products", "name": name_lookup.get(("esto_product", esto_product), "")},
                 ])
             return pd.DataFrame(rows).drop_duplicates().reset_index(drop=True)
@@ -661,7 +661,7 @@ def _build_codebook_lookup(codebook_path: Path) -> dict[str, str]:
         return lookup
     for _, row in df.iterrows():
         name = str(row.get("name") or "").strip().lower()
-        code = str(row.get("9th_label") or "").strip()
+        code = str(row.get("ninth_label") or "").strip()
         if name and code:
             lookup[name] = code
     return lookup
@@ -701,9 +701,9 @@ def _build_leap_esto_lookup(codebook_path: Path) -> dict[str, str]:
     if df_leap.empty or df_code.empty:
         return {}
     esto_to_9th = {
-        str(r["esto_label"]).strip().lower(): str(r["9th_label"]).strip()
+        str(r["esto_label"]).strip().lower(): str(r["ninth_label"]).strip()
         for _, r in df_code.iterrows()
-        if pd.notna(r.get("esto_label")) and pd.notna(r.get("9th_label"))
+        if pd.notna(r.get("esto_label")) and pd.notna(r.get("ninth_label"))
     }
     lookup: dict[str, str] = {}
     for _, row in df_leap.iterrows():
@@ -731,7 +731,7 @@ def load_canonical_pairs(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Load canonical 9th->ESTO pairs and return (clean_pairs, conflicts).
-    Hard conflict: same (9th_sector, 9th_fuel) maps to inconsistent
+    Hard conflict: same (ninth_sector, ninth_fuel) maps to inconsistent
     (esto_flow, esto_product).
     """
     return shared_load_canonical_pairs(path=path, strict=strict)
@@ -1564,7 +1564,7 @@ def aggregate_esto_by_ninth_pairs(
     pairs["esto_product_norm"] = pairs["esto_product"].astype(str).str.strip().str.lower()
 
     merged = working.merge(
-        pairs[["esto_flow_norm", "esto_product_norm", "9th_sector", "9th_fuel"]],
+        pairs[["esto_flow_norm", "esto_product_norm", "ninth_sector", "ninth_fuel"]],
         left_on=["flows_norm", "products_norm"],
         right_on=["esto_flow_norm", "esto_product_norm"],
         how="inner",
@@ -1575,7 +1575,7 @@ def aggregate_esto_by_ninth_pairs(
     year_cols = [str(base_year)] + [c for c in merged.columns if c.isdigit()]
     value_cols = [c for c in year_cols if c in merged.columns]
     melted = merged.melt(
-        id_vars=["economy", "9th_sector", "9th_fuel"],
+        id_vars=["economy", "ninth_sector", "ninth_fuel"],
         value_vars=value_cols,
         var_name="year",
         value_name="value",
@@ -1584,7 +1584,7 @@ def aggregate_esto_by_ninth_pairs(
     melted = melted[(melted["economy"] == economy_code) & melted["year"].notna()]
     melted["value"] = pd.to_numeric(melted["value"], errors="coerce")
     agg = (
-        melted.groupby(["economy", "9th_sector", "9th_fuel", "year"], as_index=False)["value"]
+        melted.groupby(["economy", "ninth_sector", "ninth_fuel", "year"], as_index=False)["value"]
         .sum(min_count=1)
     )
     return agg
@@ -1622,7 +1622,7 @@ def build_comparisons(
     status_rows: list[dict] = []
     long_rows: list[dict] = []
     pairs, _ = load_canonical_pairs(DEFAULT_NINTH_TO_ESTO, strict=False) if ninth_pairs.empty else (ninth_pairs.copy(), pd.DataFrame())
-    for col in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:
+    for col in ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]:
         pairs[col] = pairs[col].map(_clean_token)
     for col in ["sector_match_method", "fuel_match_method", "mapping_note"]:
         if col not in pairs.columns:
@@ -1630,10 +1630,10 @@ def build_comparisons(
         pairs[col] = pairs[col].map(_clean_token)
     for col in ["sector_match_method", "fuel_match_method"]:
         pairs[col] = pairs[col].map(shared_normalize_match_method)
-    pairs = pairs[(pairs["9th_sector"] != "") & (pairs["9th_fuel"] != "")]
+    pairs = pairs[(pairs["ninth_sector"] != "") & (pairs["ninth_fuel"] != "")]
     pairs = pairs[(pairs["esto_flow"] != "") & (pairs["esto_product"] != "")]
-    pairs["sector_norm"] = pairs["9th_sector"].str.lower()
-    pairs["fuel_norm"] = pairs["9th_fuel"].str.lower()
+    pairs["sector_norm"] = pairs["ninth_sector"].str.lower()
+    pairs["fuel_norm"] = pairs["ninth_fuel"].str.lower()
     pairs["esto_flow_norm"] = pairs["esto_flow"].str.lower()
     pairs["esto_product_norm"] = pairs["esto_product"].str.lower()
     projection_cache: dict[tuple[str, str, str], pd.Series] = {}
@@ -2356,14 +2356,14 @@ def build_comparisons(
     def _choose_single_candidate(df: pd.DataFrame) -> tuple[str, str, str, str]:
         if df.empty:
             return "", "", "", ""
-        unique_pairs = df[["9th_fuel", "esto_flow", "esto_product"]].drop_duplicates().sort_values(
-            ["9th_fuel", "esto_flow", "esto_product"]
+        unique_pairs = df[["ninth_fuel", "esto_flow", "esto_product"]].drop_duplicates().sort_values(
+            ["ninth_fuel", "esto_flow", "esto_product"]
         )
         if len(unique_pairs) != 1:
             return "", "", "", ""
         row = unique_pairs.iloc[0]
         match = df[
-            (df["9th_fuel"] == row["9th_fuel"])
+            (df["ninth_fuel"] == row["ninth_fuel"])
             & (df["esto_flow"] == row["esto_flow"])
             & (df["esto_product"] == row["esto_product"])
         ].copy()
@@ -2372,7 +2372,7 @@ def build_comparisons(
             method = _clean_token(match.iloc[0].get("sector_match_method"))
         else:
             method = ""
-        return _clean_token(row["9th_fuel"]), _clean_token(row["esto_flow"]), _clean_token(row["esto_product"]), method
+        return _clean_token(row["ninth_fuel"]), _clean_token(row["esto_flow"]), _clean_token(row["esto_product"]), method
 
     def _infer_fuel_from_flow_product(sector_codes: list[str], esto_flow: str, esto_product: str) -> str:
         if not esto_flow or not esto_product:
@@ -2382,19 +2382,19 @@ def build_comparisons(
             & (pairs["esto_product_norm"] == esto_product.strip().lower())
         ]
         match = _sector_match_subset(subset, sector_codes)
-        vals = sorted(match["9th_fuel"].dropna().astype(str).str.strip().replace("", pd.NA).dropna().unique().tolist())
+        vals = sorted(match["ninth_fuel"].dropna().astype(str).str.strip().replace("", pd.NA).dropna().unique().tolist())
         if len(vals) == 1:
             return vals[0]
         # Fallback 1: global flow+product unique fuel across canonical pairs.
         vals_global = sorted(
-            subset["9th_fuel"].dropna().astype(str).str.strip().replace("", pd.NA).dropna().unique().tolist()
+            subset["ninth_fuel"].dropna().astype(str).str.strip().replace("", pd.NA).dropna().unique().tolist()
         )
         if len(vals_global) == 1:
             return vals_global[0]
         # Fallback 2: product-only unique fuel (independent of flow/sector).
         prod_subset = pairs[pairs["esto_product_norm"] == esto_product.strip().lower()]
         vals_prod = sorted(
-            prod_subset["9th_fuel"].dropna().astype(str).str.strip().replace("", pd.NA).dropna().unique().tolist()
+            prod_subset["ninth_fuel"].dropna().astype(str).str.strip().replace("", pd.NA).dropna().unique().tolist()
         )
         if len(vals_prod) == 1:
             return vals_prod[0]
@@ -2429,7 +2429,7 @@ def build_comparisons(
                 narrowed = candidates[candidates["esto_flow_norm"] == flow.lower()]
             if narrowed.empty:
                 narrowed = candidates
-            sector_values = _dedupe_tokens(narrowed.get("9th_sector", pd.Series(dtype=str)).tolist())
+            sector_values = _dedupe_tokens(narrowed.get("ninth_sector", pd.Series(dtype=str)).tolist())
             derived.extend((sector_value, fuel_code) for sector_value in sector_values)
         return _dedupe_projection_targets(derived)
 
@@ -2609,13 +2609,13 @@ def build_comparisons(
             c_by_fuel, parent_fallback_codes = _canonical_by_sector_and_fuel_with_parent_fallback(
                 comparison_sector_codes, ninth_fuel
             )
-            fuel_match_count = len(c_by_fuel[["9th_fuel", "esto_flow", "esto_product"]].drop_duplicates()) if not c_by_fuel.empty else 0
+            fuel_match_count = len(c_by_fuel[["ninth_fuel", "esto_flow", "esto_product"]].drop_duplicates()) if not c_by_fuel.empty else 0
             c_targets = _canonical_targets(c_by_fuel)
             c_targets = _restrict_targets_to_exact_flow(c_targets, exact_sector_flow)
             c_ninth, c_flow, c_prod, c_sector_method = _choose_single_candidate(c_by_fuel)
             c_by_product = _canonical_by_sector_and_product(comparison_sector_codes, esto_product_hint)
             prod_match_count = (
-                len(c_by_product[["9th_fuel", "esto_flow", "esto_product"]].drop_duplicates()) if not c_by_product.empty else 0
+                len(c_by_product[["ninth_fuel", "esto_flow", "esto_product"]].drop_duplicates()) if not c_by_product.empty else 0
             )
             p_ninth, p_flow, p_prod, p_sector_method = _choose_single_candidate(c_by_product)
 
@@ -2688,7 +2688,7 @@ def build_comparisons(
                     mapping_note = "ambiguous canonical matches for sector+fuel"
                 if prod_match_count > 1 and not c_by_product.empty:
                     product_fuels = (
-                        c_by_product["9th_fuel"]
+                        c_by_product["ninth_fuel"]
                         .astype(str)
                         .map(_clean_token)
                         .replace("", pd.NA)
@@ -3146,7 +3146,7 @@ def build_comparisons(
         if not code_df.empty:
             code_df["esto_label_norm"] = code_df.get("esto_label", "").map(_clean_token).str.lower()
             code_df["esto_column_norm"] = code_df.get("esto_column", "").map(_clean_token).str.lower()
-            code_df["ninth_label_norm"] = code_df.get("9th_label", "").map(_clean_token).str.lower()
+            code_df["ninth_label_norm"] = code_df.get("ninth_label", "").map(_clean_token).str.lower()
             code_df["name_clean"] = code_df.get("name", "").map(_clean_token)
             for _, row in code_df.iterrows():
                 ninth_label = str(row.get("ninth_label_norm") or "").strip()
@@ -3715,7 +3715,7 @@ def build_comparisons(
                 code_df["esto_label_norm"] = code_df.get("esto_label", "").map(_clean_token).str.lower()
                 code_df["esto_column_norm"] = code_df.get("esto_column", "").map(_clean_token).str.lower()
                 code_df["name_clean"] = code_df.get("name", "").map(_clean_token)
-                code_df["ninth_label_norm"] = code_df.get("9th_label", "").map(_clean_token).str.lower()
+                code_df["ninth_label_norm"] = code_df.get("ninth_label", "").map(_clean_token).str.lower()
                 for _, row in code_df.iterrows():
                     ninth_label = str(row.get("ninth_label_norm") or "").strip()
                     name = str(row["name_clean"] or "").strip()
@@ -6142,10 +6142,10 @@ def build_dashboards(
     code_df = _safe_read_codebook_sheet(DEFAULT_CODEBOOK, "code_to_name")
     if code_df.empty:
         return pd.DataFrame()
-    code_df["9th_label_clean"] = code_df.get("9th_label", "").map(_clean_token)
-    code_df["9th_column_clean"] = code_df.get("9th_column", "").map(_clean_token).str.lower()
+    code_df["ninth_label_clean"] = code_df.get("ninth_label", "").map(_clean_token)
+    code_df["ninth_column_clean"] = code_df.get("ninth_column", "").map(_clean_token).str.lower()
     code_df["name_clean"] = code_df.get("name", "").map(_clean_token)
-    sector_rows = code_df[code_df["9th_column_clean"].isin({"sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"})].copy()
+    sector_rows = code_df[code_df["ninth_column_clean"].isin({"sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"})].copy()
 
     def _numeric_seq(code: str) -> tuple[int, ...]:
         parts: list[int] = []
@@ -6156,7 +6156,7 @@ def build_dashboards(
                 break
         return tuple(parts)
 
-    sector_rows["num_seq"] = sector_rows["9th_label_clean"].map(_numeric_seq)
+    sector_rows["num_seq"] = sector_rows["ninth_label_clean"].map(_numeric_seq)
     seq_to_name = {
         tuple(row["num_seq"]): str(row["name_clean"]).strip()
         for _, row in sector_rows.iterrows()

@@ -186,21 +186,21 @@ class TestMinorDemandWorkflow(unittest.TestCase):
                 {
                     "esto_flow": flow,
                     "esto_product": "Coal",
-                    "9th_fuel": "01_coal",
+                    "ninth_fuel": "01_coal",
                 }
             ]
         )
         sector_projection = pd.DataFrame(
             [
-                {"economy_key": "20_USA", "9th_sector": "s1", 2023: 100.0, 2024: 200.0}
+                {"economy_key": "20_USA", "ninth_sector": "s1", 2023: 100.0, 2024: 200.0}
             ]
         )
         fuel_projection = pd.DataFrame(
             [
                 {
                     "economy_key": "20_USA",
-                    "9th_sector": "s1",
-                    "9th_fuel": "01_coal",
+                    "ninth_sector": "s1",
+                    "ninth_fuel": "01_coal",
                     2023: 30.0,
                     2024: 50.0,
                 }
@@ -255,8 +255,8 @@ class TestMinorDemandWorkflow(unittest.TestCase):
         mapping = pd.DataFrame(
             [
                 {
-                    "9th_sector": "s1",
-                    "9th_fuel": "f1",
+                    "ninth_sector": "s1",
+                    "ninth_fuel": "f1",
                     "esto_flow": "Flow A",
                     "esto_product": "Fuel A",
                 }

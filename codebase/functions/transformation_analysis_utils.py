@@ -1361,7 +1361,7 @@ def load_code_to_name_mapping(path_candidates):
             except Exception as exc:
                 print(f"Failed to read code-to-name mapping from {path}: {exc}")
                 continue
-            required_cols = {"esto_label", "9th_label", "name"}
+            required_cols = {"esto_label", "ninth_label", "name"}
             if not required_cols.issubset(set(mapping_df.columns)):
                 missing = sorted(required_cols - set(mapping_df.columns))
                 print(
@@ -1378,7 +1378,7 @@ def load_code_to_name_mapping(path_candidates):
                 if not name:
                     continue
 
-                for col in ["esto_label", "9th_label"]:
+                for col in ["esto_label", "ninth_label"]:
                     label = row.get(col)
                     if label is None or (isinstance(label, float) and pd.isna(label)):
                         continue

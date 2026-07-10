@@ -150,7 +150,24 @@ flowchart TD
 
 The workflow is iterative. It is not expected to solve the whole system perfectly in one run.
 
-On the first pass (`baseline_seed`), the workflow does not compute the gap itself — it deliberately writes the supply export with imports set to zero, so LEAP's own recalculation reveals where domestic supply and transformation output fall short of demand. Only on later passes (`results_update`) does the workflow read LEAP's balance results back and compute the import/export gap directly, as described in Section 3.
+The key idea is that demand is taken as given, then the workflow watches how much import LEAP needs to satisfy that demand after recalculation. Imports are therefore treated as an observable signal of imbalance, not as a number to hard-code upfront.
+
+On the first pass (`baseline_seed`), the workflow does not try to solve that imbalance directly. It writes the supply export with imports set to zero, lets LEAP recalculate, and uses the resulting import requirement as the signal for where domestic supply or transformation output is missing. On later passes (`results_update`), the workflow reads LEAP's balance results back and compares the observed import/export pattern with the expected 9th Outlook / ESTO baseline, then adjusts the supply-side levers accordingly.
+
+```mermaid
+flowchart TD
+    A[Demand and baseline supply assumptions]
+    B[baseline_seed]
+    C[Write imports = 0]
+    D[LEAP recalculates]
+    E[Read balance tables]
+    F[Observed import gap]
+    G[results_update]
+    H[Adjust production, capacity, or exports]
+    I[Next import workbook]
+
+    A --> B --> C --> D --> E --> F --> G --> H --> I --> D
+```
 
 ## 3. The main error signal
 
@@ -163,13 +180,13 @@ A simple way to interpret this is:
 
 | Gap type | Interpretation | Possible response |
 |---|---|---|
-| LEAP imports more than expected | The model may not have enough domestic production or transformation capacity. | Increase primary `Maximum Production` or transformation `Exogenous Capacity`, where plausible. If reserves are used for the primary fuel, also increase reserve levels by a corresponding amount, if necessary (it is unlikely they will be on initialisation). |
+| LEAP imports more than expected | The model needed more imported fuel than the reconciliation baseline expected, which usually means domestic production or transformation output is too low. | Increase primary `Maximum Production` or transformation `Exogenous Capacity`, where plausible. If reserves are used for the primary fuel, also increase reserve levels by a corresponding amount, if necessary (it is unlikely they will be on initialisation). |
 | LEAP imports less than expected | The model may have too much domestic production or transformation output, or may need more exports. | Reduce production/capacity or route surplus to exports. |
 | LEAP exports more than expected | Transformation surplus or over-production may be occurring. | Check output shares, `SurplusExported`, capacity, and export settings. |
 | LEAP exports less than expected | Production or transformation output may be too low, or domestic demand may be absorbing more fuel. | Check production, transformation output, and demand. |
 | LEAP unmet requirements | LEAP is not meeting all demand. | Check production, transformation output, and capacity limits or investigate further as it could be due to a mistakenly set parameter, or LEAP system issue/bug. |
 
-In the current documented setup, positive import gaps are especially important because they indicate cases where LEAP is importing more fuel than intended.
+In the current documented setup, positive import gaps are especially important because they indicate cases where LEAP is importing more fuel than intended. The update pass does not rewrite demand to make that disappear; it changes supply-side settings so the same demand can be met with a smaller unexplained import gap.
 
 ## 4. Active mode: `capacity_unmet_iterative_balanced`
 
@@ -181,7 +198,7 @@ capacity_unmet_iterative_balanced
 
 In this mode, the workflow uses the latest LEAP supply results and compares observed imports and exports with the expected reconciliation baseline.
 
-The import gap is used as the main signal.
+The import gap is used as the main signal because it is the clearest indication that the current supply and transformation setup is not meeting demand in the way the baseline expects.
 
 The documented allocation logic is:
 
@@ -192,7 +209,9 @@ The documented allocation logic is:
 
 This means the workflow is mainly trying to answer:
 
-> If LEAP is importing more than expected, where should extra domestic production or transformation output be added so the balance is closer to the intended supply pathway?
+> If LEAP is importing more than expected, where should extra domestic production or transformation output be added so the model can satisfy the same demand with less unexplained importing?
+
+One important nuance: the workflow does not assume imports are always an error in the real-world sense. It uses the difference between expected and observed imports as a reconciliation signal. If your detailed interim or placeholder sectors change demand, fuel inputs, or transformation output, the next `results_update` pass should respond to those new values, but only by adjusting the supply-side levers that the workflow controls.
 
 ## 4b. Module and production growth caps (upper limits)
 
@@ -376,6 +395,8 @@ Exporting results is required before every reconciliation pass. Results must be 
    | Level 1 | Balance totals; no transformation activity by process | Not usually sufficient for reconciliation |
    | Level 2 | Sector-level demand; transformation by module | Sufficient for most reconciliation passes |
    | Level 4 | All detail including demand sub-sector end-uses | Use when you also need detailed demand sector outputs |
+
+   Malaysia (`10_MAS`) is the main exception: it needs Level 2 balance detail when running `results_update`, because the hydrogen transformation sector can use both `Electrolysers` and `SMR with CCS` and the workflow checks for those process rows explicitly.
 
 5. Click the **Excel symbol** and select **All** to export all results.
 6. Wait for the export to complete. A full area at Level 2 covering 2022–2060 typically takes **3–4 hours**. Higher detail levels or more years will take longer. This is best run on a spare machine or out of hours.

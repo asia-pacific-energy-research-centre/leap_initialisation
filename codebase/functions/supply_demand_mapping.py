@@ -368,7 +368,7 @@ def _build_augmented_balance_demand_mapping_workbook() -> Path:
 
     required_esto = ["leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product"]
     required_ninth = ["leap_sector_name_full_path", "raw_leap_fuel_name", "ninth_sector", "ninth_fuel"]
-    required_canonical = ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]
+    required_canonical = ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]
     missing_esto = [col for col in required_esto if col not in raw_esto.columns]
     missing_ninth = [col for col in required_ninth if col not in raw_ninth.columns]
     missing_canonical = [col for col in required_canonical if col not in canonical.columns]
@@ -437,7 +437,7 @@ def _build_augmented_balance_demand_mapping_workbook() -> Path:
     inferred = candidates.merge(
         canonical[required_canonical].drop_duplicates(),
         left_on=["ninth_sector", "ninth_fuel"],
-        right_on=["9th_sector", "9th_fuel"],
+        right_on=["ninth_sector", "ninth_fuel"],
         how="left",
         suffixes=("", "_canonical"),
     )
@@ -605,11 +605,11 @@ def _resolve_demand_esto_pairs_via_rollups(
 
     # 9th -> ESTO canonical bridge for the ninth-axis fallback.
     canon = canonical.copy()
-    for col in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:
+    for col in ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]:
         canon[col] = canon[col].fillna("").astype(str).str.strip()
     canon = canon[canon["esto_flow"].ne("") & canon["esto_product"].ne("")]
     ninth_esto_lookup: dict[tuple[str, str], tuple[str, str]] = {}
-    for sec, fuel, flow, product in zip(canon["9th_sector"], canon["9th_fuel"], canon["esto_flow"], canon["esto_product"]):
+    for sec, fuel, flow, product in zip(canon["ninth_sector"], canon["ninth_fuel"], canon["esto_flow"], canon["esto_product"]):
         ninth_esto_lookup.setdefault((mr.normalise_key(sec), mr.normalise_key(fuel)), (flow, product))
 
     def _roll_identity(flow_value: str, product_value: str, rules_df: pd.DataFrame, sheet_name: str) -> list[tuple[str, str, str]]:
@@ -1292,6 +1292,52 @@ def _resolve_balance_demand_workbooks_for_economy(economy: str) -> tuple[Path, P
     return ref_workbook, tgt_workbook
 
 
+def _workbook_has_hydrogen_process_detail(
+    workbook_path: Path | str,
+    *,
+    required_tokens: tuple[str, ...] = ("Electrolysers", "SMR with CCS"),
+) -> bool:
+    """Return True when a workbook exposes the hydrogen process rows we need.
+
+    We use this as a coarse Level 2 guard for economies that genuinely need
+    hydrogen process detail. A Level 1 export usually collapses the hydrogen
+    sector to totals and leaves these process labels absent.
+    """
+    path = _resolve(workbook_path)
+    if not path.exists():
+        return False
+    try:
+        from openpyxl import load_workbook
+
+        wb = load_workbook(path, read_only=True, data_only=True)
+    except Exception as exc:
+        print(f"[WARN] Could not inspect balance workbook {path}: {exc}")
+        return False
+
+    wanted = {str(token).strip().lower() for token in required_tokens if str(token).strip()}
+    if not wanted:
+        return True
+    found: set[str] = set()
+    try:
+        for sheet in wb.worksheets:
+            try:
+                for row in sheet.iter_rows(values_only=True):
+                    for value in row:
+                        text = str(value or "").strip().lower()
+                        if not text:
+                            continue
+                        for token in wanted:
+                            if token in text:
+                                found.add(token)
+                        if found == wanted:
+                            return True
+            except Exception:
+                continue
+    finally:
+        wb.close()
+    return found == wanted
+
+
 def _build_projection_only_mapping_status(balance_mapping_workbook: Path | str) -> pd.DataFrame:
     """Build demand mapping metadata directly from the augmented mapping workbook."""
     workbook = _resolve(balance_mapping_workbook)
@@ -1440,7 +1486,45 @@ def load_balance_demand_inputs(
             )
             return comparison_long, mapping_status, issues, matching_diagnostics
 
-        ref_workbook_path, tgt_workbook_path = _resolve_balance_demand_workbooks_for_economy(economy_text)
+        try:
+            ref_workbook_path, tgt_workbook_path = _resolve_balance_demand_workbooks_for_economy(economy_text)
+        except FileNotFoundError:
+            # No LEAP balance-export workbook exists for this economy at all (e.g.
+            # the synthetic 00_APEC aggregate used by preflight_compressed_projection,
+            # which has no LEAP model of its own). Fall back to the same 9th
+            # projection-only construction the baseline_seed pass uses, rather than
+            # leaving this economy degenerate for the rest of results_update. This is
+            # distinct from a workbook existing but being unreadable/broken, which
+            # still raises below.
+            mapping_status = _projection_only_mapping_status()
+            comparison_long = _build_projection_rows_from_ninth(
+                mapping_status,
+                ninth_df=_projection_ninth_table(),
+                scenarios=balance_scenarios,
+                projection_economy=economy_text,
+            )
+            issues = pd.DataFrame()
+            matching_diagnostics = pd.DataFrame()
+            print(
+                "[INFO] results_update pass: no LEAP balance-export workbook found for "
+                f"{economy_text}; falling back to 9th projection-only demand for this "
+                "economy."
+            )
+            return comparison_long, mapping_status, issues, matching_diagnostics
+        if economy_text in HYDROGEN_DUAL_PROCESS_ECONOMIES:
+            missing_detail_paths = [
+                path
+                for path in (ref_workbook_path, tgt_workbook_path)
+                if path and not _workbook_has_hydrogen_process_detail(path)
+            ]
+            if missing_detail_paths:
+                missing_text = ", ".join(str(path) for path in missing_detail_paths)
+                raise ValueError(
+                    "Economy 10_MAS requires at least Level 2 LEAP balance export detail "
+                    "so the hydrogen process rows are visible. The current workbook(s) do "
+                    "not expose both Electrolysers and SMR with CCS: "
+                    f"{missing_text}"
+                )
         base_economy = (
             DIRECT_DEMAND_BASE_ECONOMY
             if economy_text == DIRECT_DEMAND_PROJECTION_ECONOMY

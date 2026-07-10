@@ -200,6 +200,11 @@ LEAP_IMPORT_LOG_LEVEL = "summary"  # detailed|summary|quiet
 LEAP_IMPORT_WARNING_PRINT_LIMIT = 20
 RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT = False
 
+# Economies that require hydrogen process detail in LEAP balance exports.
+# Malaysia uses both Electrolysers and SMR with CCS, so its balance workbook
+# must expose at least Level 2 detail for the update pass to work safely.
+HYDROGEN_DUAL_PROCESS_ECONOMIES = {"10_MAS"}
+
 # Electricity and heat interim controls.
 # When True, three simplified power transformation modules are built from ESTO
 # power sector data: 'Electricity interim' (electricity plants), 'CHP interim'

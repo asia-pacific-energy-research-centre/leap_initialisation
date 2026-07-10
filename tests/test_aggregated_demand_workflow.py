@@ -40,8 +40,8 @@ def test_contextual_projection_uses_same_sector_esto_fuel_shares(monkeypatch):
         {"economy": "20_USA", "flows": "14.02 Construction", "products": "p2", "is_subtotal": False, "2022": 75.0},
     ])
     mapping = pd.DataFrame([
-        {"9th_sector": "14_02_construction", "9th_fuel": "01_x_thermal_coal", "esto_flow": "14.02 Construction", "esto_product": "p1"},
-        {"9th_sector": "14_02_construction", "9th_fuel": "01_x_thermal_coal", "esto_flow": "14.02 Construction", "esto_product": "p2"},
+        {"ninth_sector": "14_02_construction", "ninth_fuel": "01_x_thermal_coal", "esto_flow": "14.02 Construction", "esto_product": "p1"},
+        {"ninth_sector": "14_02_construction", "ninth_fuel": "01_x_thermal_coal", "esto_flow": "14.02 Construction", "esto_product": "p2"},
     ])
     monkeypatch.setattr(
         aggregated_demand_workflow,

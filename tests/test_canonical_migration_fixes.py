@@ -61,7 +61,7 @@ def test_refining_pairs_accepts_canonical_sheet_ref():
     from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
 
     pairs = _load_pairs((OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs"))
-    assert {"9th_fuel", "esto_product"}.issubset(pairs.columns)
+    assert {"ninth_fuel", "esto_product"}.issubset(pairs.columns)
     product, candidates = _resolve_esto_product(pairs, "06_01_crude_oil", "")
     assert product == "06.01 Crude oil"
 

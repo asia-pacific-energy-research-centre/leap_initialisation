@@ -34,8 +34,8 @@ def _write_minimal_workbook(path: Path) -> None:
     ninth_esto = pd.DataFrame(
         [
             {
-                "9th_sector": "08_transfers",
-                "9th_fuel": "07_01_motor_gasoline",
+                "ninth_sector": "08_transfers",
+                "ninth_fuel": "07_01_motor_gasoline",
                 "esto_flow": "08.01 Recycled products",
                 "esto_product": "07.01 Motor gasoline",
             }

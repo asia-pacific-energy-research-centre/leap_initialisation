@@ -12,8 +12,8 @@ import pandas as pd
 ######### CONSTANTS (UNLIKELY TO CHANGE) #########
 ENABLE_DEBUG_BREAKPOINTS = True
 CODE_TO_NAME_REQUIRED_COLUMNS = {"code", "name", "source_sheet"}
-LABEL_REQUIRED_COLUMNS = {"9th_label", "esto_label", "name"}
-MAPPING_COLUMNS = ["9th_label", "9th_column", "esto_label", "esto_column", "name"]
+LABEL_REQUIRED_COLUMNS = {"ninth_label", "esto_label", "name"}
+MAPPING_COLUMNS = ["ninth_label", "ninth_column", "esto_label", "esto_column", "name"]
 NINTH_LABEL_COLUMNS = [
     "fuels",
     "subfuels",
@@ -80,19 +80,19 @@ def load_reference_sheet(workbook_path: Path, sheet_name: str) -> pd.DataFrame:
 
 
 def add_label_columns_for_fixes(df: pd.DataFrame) -> pd.DataFrame:
-    """Add 9th_label / esto_label columns from the code_to_name structure.
+    """Add ninth_label / esto_label columns from the code_to_name structure.
 
     Inputs:
         df: Dataframe from the code_to_name sheet.
     Outputs:
-        Dataframe with 9th_label and esto_label columns added.
+        Dataframe with ninth_label and esto_label columns added.
     Side effects:
         None.
     """
     try:
         if LABEL_REQUIRED_COLUMNS.issubset(df.columns):
             working = df.copy()
-            working["9th_label"] = working["9th_label"].fillna("").astype(str).str.strip()
+            working["ninth_label"] = working["ninth_label"].fillna("").astype(str).str.strip()
             working["esto_label"] = working["esto_label"].fillna("").astype(str).str.strip()
             return working
 
@@ -107,13 +107,13 @@ def add_label_columns_for_fixes(df: pd.DataFrame) -> pd.DataFrame:
         working = df.copy()
         working["source_sheet_clean"] = working["source_sheet"].astype(str).str.strip().str.lower()
         working["code_clean"] = working["code"].astype(str).str.strip()
-        working["9th_label"] = ""
+        working["ninth_label"] = ""
         working["esto_label"] = ""
 
         is_9th = working["source_sheet_clean"] == "9th"
         is_esto = working["source_sheet_clean"] == "esto"
 
-        working.loc[is_9th, "9th_label"] = working.loc[is_9th, "code_clean"]
+        working.loc[is_9th, "ninth_label"] = working.loc[is_9th, "code_clean"]
         working.loc[is_esto, "esto_label"] = working.loc[is_esto, "code_clean"]
         return working
     except Exception as exc:
@@ -126,7 +126,7 @@ def apply_name_fixes(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Apply manual name harmonisation fixes based on 9th/ESTO codes.
 
     Inputs:
-        df: Dataframe with name, 9th_label, and esto_label columns.
+        df: Dataframe with name, ninth_label, and esto_label columns.
     Outputs:
         Tuple of (updated dataframe, audit dataframe).
     Side effects:
@@ -169,7 +169,7 @@ def apply_name_fixes(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
     def canonical_for_row(row: pd.Series) -> Optional[str]:
         esto_label = (row.get("esto_label") or "").strip()
-        ninth_label = (row.get("9th_label") or "").strip()
+        ninth_label = (row.get("ninth_label") or "").strip()
 
         if esto_label in esto_label_to_canonical:
             return esto_label_to_canonical[esto_label]
@@ -191,7 +191,7 @@ def apply_name_fixes(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
     df_out.loc[mask, "name"] = canon_name[mask]
 
     # Audit table.
-    audit_columns = [col for col in ["code", "source_sheet", "9th_label", "esto_label"] if col in df_out.columns]
+    audit_columns = [col for col in ["code", "source_sheet", "ninth_label", "esto_label"] if col in df_out.columns]
     changes = df_out.loc[mask, audit_columns].copy()
     changes.insert(0, "old_name", old_name[mask].values)
     changes.insert(1, "new_name", canon_name[mask].values)
@@ -273,7 +273,7 @@ def run_validation_checks(df: pd.DataFrame) -> None:
         Prints diagnostic information.
     """
     try:
-        missing_9th = report_missing_labels(df, "9th_label")
+        missing_9th = report_missing_labels(df, "ninth_label")
         missing_esto = report_missing_labels(df, "esto_label")
 
         print(f"Missing 9th labels: {len(missing_9th)}")
@@ -288,7 +288,7 @@ def run_validation_checks(df: pd.DataFrame) -> None:
             duplicates = report_duplicate_values(df, column)
             print(f"Duplicate values in {column}: {len(duplicates)}")
             if len(duplicates):
-                if column in {"9th_column", "esto_label", "esto_column"}:
+                if column in {"ninth_column", "esto_label", "esto_column"}:
                     print(duplicates.to_string(index=False))
                 else:
                     print(duplicates.head(10).to_string(index=False))
@@ -311,27 +311,27 @@ def run_mapping_cardinality_checks(df: pd.DataFrame) -> pd.DataFrame:
         Prints diagnostic counts.
     """
     try:
-        if "9th_label" not in df.columns or "esto_label" not in df.columns:
-            print("Missing 9th_label or esto_label for mapping cardinality checks.")
+        if "ninth_label" not in df.columns or "esto_label" not in df.columns:
+            print("Missing ninth_label or esto_label for mapping cardinality checks.")
             return pd.DataFrame()
 
         working = df.copy()
-        working["9th_label_clean"] = working["9th_label"].fillna("").astype(str).str.strip()
+        working["ninth_label_clean"] = working["ninth_label"].fillna("").astype(str).str.strip()
         working["esto_label_clean"] = working["esto_label"].fillna("").astype(str).str.strip()
         working = working[
-            (working["9th_label_clean"] != "") & (working["esto_label_clean"] != "")
+            (working["ninth_label_clean"] != "") & (working["esto_label_clean"] != "")
         ]
         working = working.drop_duplicates(
-            subset=["9th_label_clean", "esto_label_clean"]
+            subset=["ninth_label_clean", "esto_label_clean"]
         )
 
         if working.empty:
             print("No rows with both 9th and ESTO labels; skipping mapping cardinality checks.")
             return pd.DataFrame()
 
-        ninth_counts = working["9th_label_clean"].value_counts()
+        ninth_counts = working["ninth_label_clean"].value_counts()
         esto_counts = working["esto_label_clean"].value_counts()
-        working["9th_degree"] = working["9th_label_clean"].map(ninth_counts)
+        working["9th_degree"] = working["ninth_label_clean"].map(ninth_counts)
         working["esto_degree"] = working["esto_label_clean"].map(esto_counts)
 
         one_to_one = (working["9th_degree"] == 1) & (working["esto_degree"] == 1)
@@ -367,7 +367,7 @@ def run_mapping_cardinality_checks(df: pd.DataFrame) -> pd.DataFrame:
         raise
 
 
-def collect_9th_labels(ninth_df: pd.DataFrame) -> pd.Series:
+def collect_ninth_labels(ninth_df: pd.DataFrame) -> pd.Series:
     """Collect unique 9th labels from all hierarchy columns.
 
     Inputs:
@@ -492,16 +492,16 @@ def align_label_columns_with_reference(
         esto_mapping = build_label_column_mapping(esto_df, ESTO_COLUMN_CANDIDATES)
 
         for idx, row in updated_df.iterrows():
-            ninth_label = (row.get("9th_label") or "").strip()
+            ninth_label = (row.get("ninth_label") or "").strip()
             esto_label = (row.get("esto_label") or "").strip()
 
             if ninth_label:
                 expected_column, candidates = resolve_label_column(
                     ninth_label, ninth_mapping, NINTH_LABEL_COLUMNS
                 )
-                current_column = (row.get("9th_column") or "").strip()
+                current_column = (row.get("ninth_column") or "").strip()
                 if expected_column and current_column not in candidates:
-                    updated_df.at[idx, "9th_column"] = expected_column
+                    updated_df.at[idx, "ninth_column"] = expected_column
                     audit_rows.append(
                         {
                             "name": row.get("name", ""),
@@ -620,11 +620,11 @@ def run_reference_label_checks(workbook_path: Path, code_to_name_df: pd.DataFram
         ninth_df = load_reference_sheet(workbook_path, NINTH_SHEET_NAME)
         esto_df = load_reference_sheet(workbook_path, ESTO_SHEET_NAME)
 
-        ninth_labels = collect_9th_labels(ninth_df)
+        ninth_labels = collect_ninth_labels(ninth_df)
         esto_labels = collect_esto_labels(esto_df)
 
         ninth_in_mapping = (
-            code_to_name_df.get("9th_label", pd.Series([], dtype=str))
+            code_to_name_df.get("ninth_label", pd.Series([], dtype=str))
             .fillna("")
             .astype(str)
             .str.strip()
@@ -644,7 +644,7 @@ def run_reference_label_checks(workbook_path: Path, code_to_name_df: pd.DataFram
         print(f"Unique ESTO labels (code_to_name): {len(esto_in_mapping)}")
 
         missing_9th = report_missing_reference_labels(
-            code_to_name_df, ninth_labels, "9th_label", "9th"
+            code_to_name_df, ninth_labels, "ninth_label", "9th"
         )
         missing_esto = report_missing_reference_labels(
             code_to_name_df, esto_labels, "esto_label", "ESTO"
@@ -679,12 +679,12 @@ def run_column_source_consistency_checks(code_to_name_df: pd.DataFrame) -> pd.Da
         Prints diagnostics.
     """
     try:
-        if "9th_column" not in code_to_name_df.columns or "esto_column" not in code_to_name_df.columns:
-            print("Missing 9th_column or esto_column for source consistency checks.")
+        if "ninth_column" not in code_to_name_df.columns or "esto_column" not in code_to_name_df.columns:
+            print("Missing ninth_column or esto_column for source consistency checks.")
             return pd.DataFrame()
 
         working = code_to_name_df.copy()
-        working["9th_column_clean"] = working["9th_column"].fillna("").astype(str).str.strip().str.lower()
+        working["ninth_column_clean"] = working["ninth_column"].fillna("").astype(str).str.strip().str.lower()
         working["esto_column_clean"] = working["esto_column"].fillna("").astype(str).str.strip().str.lower()
 
         sector_set = {col.lower() for col in NINTH_SECTOR_COLUMNS}
@@ -692,7 +692,7 @@ def run_column_source_consistency_checks(code_to_name_df: pd.DataFrame) -> pd.Da
 
         mismatches = []
         for _, row in working.iterrows():
-            ninth_col = row["9th_column_clean"]
+            ninth_col = row["ninth_column_clean"]
             esto_col = row["esto_column_clean"]
             if ninth_col == "" or esto_col == "":
                 continue

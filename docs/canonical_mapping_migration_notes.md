@@ -99,7 +99,7 @@ Two legacy reads; both cannot be safely migrated yet because the canonical
 workbook is missing rows the current logic depends on. Left as-is with an
 in-code NOTE pointing here. **Evidence:**
 
-1. `_load_esto_product_to_ninth_fuel` (esto_product -> 9th_fuel relationship)
+1. `_load_esto_product_to_ninth_fuel` (esto_product -> ninth_fuel relationship)
    still reads `master_config.xlsx/independent_product_mapping`. Removing it and
    relying on canonical would (a) change 8 detailed assignments and (b) drop 8
    aggregate esto->9th rows that feed the parent-code fallback and are ABSENT
@@ -174,7 +174,7 @@ comments remained:
 - `unified_name_lookup.py` — deliberately a multi-source name *consolidator*
   (legacy proposed sheets + canonical `leap_combined_*` + master_config), with
   conflict detection. Only consumer of its consolidation API is a scrapbook
-  (`fill_apec_9th_fuels_template.py`); its `load_active_mapping_sheet` export is
+  (`fill_apec_ninth_fuels_template.py`); its `load_active_mapping_sheet` export is
   called by aggregated demand with canonical paths. Correct as-is; not on the
   reconciliation hot path. No change.
 
@@ -237,7 +237,7 @@ alternative mapping:
 
 - **[RISK C2 — downgraded after review] ninth_pairs content differs, but the
   1580-row diff is almost entirely cardinality artifacts, not lost mappings.**
-  Reclassifying by whether the `(9th_fuel -> esto_product)` relationship survives
+  Reclassifying by whether the `(ninth_fuel -> esto_product)` relationship survives
   in canonical (see `canonical_ninth_pairs_missing_CLASSIFIED.csv`): 1004 rows
   keep the same fuel->product with a different sector/flow, 381 are local junk,
   106 have the source key present in canonical mapped to its own target, 22 are

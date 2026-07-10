@@ -66,7 +66,7 @@ def _build_name_maps(code_to_name_df: pd.DataFrame) -> tuple[dict[str, str], dic
         name = str(row.get("name") or "").strip()
         if not name:
             continue
-        ninth_label = str(row.get("9th_label") or "").strip()
+        ninth_label = str(row.get("ninth_label") or "").strip()
         if ninth_label:
             ninth_map.setdefault(ninth_label, name)
         esto_label = str(row.get("esto_label") or "").strip()
@@ -173,8 +173,8 @@ def build_crosswalk(workbook_path: Path) -> tuple[pd.DataFrame, str]:
         for esto_label, method, code_match in matches:
             rows.append(
                 {
-                    "9th_label": ninth_label,
-                    "9th_column": ninth_column,
+                    "ninth_label": ninth_label,
+                    "ninth_column": ninth_column,
                     "9th_code": _extract_ninth_code(ninth_label),
                     "9th_name": ninth_name,
                     "esto_label": esto_label,
@@ -189,13 +189,13 @@ def build_crosswalk(workbook_path: Path) -> tuple[pd.DataFrame, str]:
     crosswalk = pd.DataFrame(rows)
     if not crosswalk.empty:
         crosswalk = crosswalk.sort_values(
-            ["9th_label", "match_method", "esto_label"], ascending=[True, True, True]
+            ["ninth_label", "match_method", "esto_label"], ascending=[True, True, True]
         )
 
     report_lines = []
     report_lines.append(f"9th labels: {len(ninth_labels)}")
     report_lines.append(f"ESTO labels: {len(esto_labels)}")
-    report_lines.append(f"Mapped 9th labels: {crosswalk['9th_label'].nunique() if not crosswalk.empty else 0}")
+    report_lines.append(f"Mapped 9th labels: {crosswalk['ninth_label'].nunique() if not crosswalk.empty else 0}")
     report_lines.append(f"Unmapped 9th labels: {len(unmapped)}")
     if unmapped:
         report_lines.append("Unmapped 9th labels:")
@@ -203,7 +203,7 @@ def build_crosswalk(workbook_path: Path) -> tuple[pd.DataFrame, str]:
 
     if not crosswalk.empty:
         multi = (
-            crosswalk.groupby("9th_label")["esto_label"]
+            crosswalk.groupby("ninth_label")["esto_label"]
             .nunique()
             .sort_values(ascending=False)
         )
@@ -213,7 +213,7 @@ def build_crosswalk(workbook_path: Path) -> tuple[pd.DataFrame, str]:
             report_lines.append("Top ambiguous examples:")
             for label in ambiguous.head(25).index:
                 esto_targets = (
-                    crosswalk[crosswalk["9th_label"] == label]["esto_label"]
+                    crosswalk[crosswalk["ninth_label"] == label]["esto_label"]
                     .dropna()
                     .unique()
                     .tolist()

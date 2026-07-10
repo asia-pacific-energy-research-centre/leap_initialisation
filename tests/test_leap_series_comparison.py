@@ -62,8 +62,8 @@ def _write_common_reference_inputs(tmp_path: Path) -> dict[str, Path]:
     ninth_to_esto_df = pd.DataFrame(
         [
             {
-                "9th_sector": "09_08_coal_transformation",
-                "9th_fuel": "07_01_motor_gasoline",
+                "ninth_sector": "09_08_coal_transformation",
+                "ninth_fuel": "07_01_motor_gasoline",
                 "esto_flow": "09.08.01 Coke ovens",
                 "esto_product": "07.01 Motor gasoline",
             }

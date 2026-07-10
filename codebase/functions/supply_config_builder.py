@@ -101,8 +101,8 @@ def load_code_to_name_mapping(path_candidates):
                     )
                 )
 
-            if "9th_label" in mapping_df.columns and "name" in mapping_df.columns:
-                ninth_labels = mapping_df["9th_label"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
+            if "ninth_label" in mapping_df.columns and "name" in mapping_df.columns:
+                ninth_labels = mapping_df["ninth_label"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
                 names = mapping_df["name"].astype(str).str.strip().str.replace(r"\s+", " ", regex=True)
                 mapping.update({label: name for label, name in zip(ninth_labels, names) if label})
 
@@ -206,7 +206,7 @@ def build_supply_sector_config(
                 ninth_fuels = sorted(
                     {
                         str(value).strip()
-                        for value in group["9th_fuel"].tolist()
+                        for value in group["ninth_fuel"].tolist()
                         if str(value).strip()
                     }
                 )
@@ -248,7 +248,7 @@ def build_supply_sector_config(
             config[product] = {
                 "dataset_key": dataset_key,
                 "fuel_label_esto": product,
-                "fuel_code_ninth": entry.get("9th_label") or None,
+                "fuel_code_ninth": entry.get("ninth_label") or None,
                 "fuel_name": entry.get("name") or product,
             }
         print(

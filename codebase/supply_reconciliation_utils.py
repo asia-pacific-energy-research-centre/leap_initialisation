@@ -48,8 +48,8 @@ def _load_code_to_name_table() -> pd.DataFrame:
         columns={"code": "esto_label", "leap_display_name": "name"}
     )
     pairs, _conflicts = load_ninth_pairs_to_esto_pairs(detect_conflicts=False)
-    bridge = pairs[["9th_fuel", "esto_product"]].drop_duplicates().rename(
-        columns={"9th_fuel": "9th_label", "esto_product": "esto_label"}
+    bridge = pairs[["ninth_fuel", "esto_product"]].drop_duplicates().rename(
+        columns={"ninth_fuel": "ninth_label", "esto_product": "esto_label"}
     )
     table = product_names[["esto_label", "name"]].merge(
         bridge,
@@ -96,7 +96,7 @@ def _build_label_to_esto_product_lookup() -> dict[str, str]:
         keys = [
             row.get("name"),
             row.get("esto_label"),
-            row.get("9th_label"),
+            row.get("ninth_label"),
             row.get("code"),
         ]
         for key in keys:

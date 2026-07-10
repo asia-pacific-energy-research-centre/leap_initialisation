@@ -139,17 +139,11 @@ def load_canonical_pairs(path: ConfigTableRef = DEFAULT_NINTH_TO_ESTO, *, strict
     else:
         raw = read_config_table(path)
     raw.columns = [str(c).strip().lower() for c in raw.columns]
-    required = ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]
+    required = ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]
     if any(c not in raw.columns for c in required) and path.suffix.lower() in {".xlsx", ".xlsm", ".xls"}:
         try:
             raw = read_config_table(path, sheet_name="leap_combined_mapping")
             raw.columns = [str(c).strip().lower() for c in raw.columns]
-            raw = raw.rename(
-                columns={
-                    "ninth_sector": "9th_sector",
-                    "ninth_fuel": "9th_fuel",
-                }
-            )
         except Exception:
             pass
     missing = [c for c in required if c not in raw.columns]
@@ -164,56 +158,56 @@ def load_canonical_pairs(path: ConfigTableRef = DEFAULT_NINTH_TO_ESTO, *, strict
     for col in ["sector_match_method", "fuel_match_method"]:
         if col in df.columns:
             df[col] = df[col].map(normalize_match_method)
-    df = df[(df["9th_sector"] != "") & (df["9th_fuel"] != "")]
+    df = df[(df["ninth_sector"] != "") & (df["ninth_fuel"] != "")]
     df = df[(df["esto_flow"] != "") & (df["esto_product"] != "")]
     if df.empty:
-        empty_conflicts = pd.DataFrame(columns=["9th_sector", "9th_fuel", "issue", "details"])
+        empty_conflicts = pd.DataFrame(columns=["ninth_sector", "ninth_fuel", "issue", "details"])
         return df, empty_conflicts
 
     grouped = (
-        df.groupby(["9th_sector", "9th_fuel"], dropna=False)[["esto_flow", "esto_product"]]
+        df.groupby(["ninth_sector", "ninth_fuel"], dropna=False)[["esto_flow", "esto_product"]]
         .nunique(dropna=False)
         .reset_index()
     )
-    bad = grouped[(grouped["esto_flow"] > 1) | (grouped["esto_product"] > 1)][["9th_sector", "9th_fuel"]]
+    bad = grouped[(grouped["esto_flow"] > 1) | (grouped["esto_product"] > 1)][["ninth_sector", "ninth_fuel"]]
     if bad.empty:
-        conflicts = pd.DataFrame(columns=["9th_sector", "9th_fuel", "issue", "details"])
+        conflicts = pd.DataFrame(columns=["ninth_sector", "ninth_fuel", "issue", "details"])
     else:
         rows: list[dict[str, str]] = []
-        for sector, fuel in set(zip(bad["9th_sector"], bad["9th_fuel"])):
-            vals = df[(df["9th_sector"] == sector) & (df["9th_fuel"] == fuel)][["esto_flow", "esto_product"]].drop_duplicates()
+        for sector, fuel in set(zip(bad["ninth_sector"], bad["ninth_fuel"])):
+            vals = df[(df["ninth_sector"] == sector) & (df["ninth_fuel"] == fuel)][["esto_flow", "esto_product"]].drop_duplicates()
             details = "; ".join(f"{r.esto_flow} | {r.esto_product}" for r in vals.itertuples(index=False))
             rows.append(
                 {
-                    "9th_sector": sector,
-                    "9th_fuel": fuel,
+                    "ninth_sector": sector,
+                    "ninth_fuel": fuel,
                     "issue": "duplicate_canonical_key_inconsistent_target",
                     "details": details,
                 }
             )
-        conflicts = pd.DataFrame(rows).sort_values(["9th_sector", "9th_fuel"]).reset_index(drop=True)
+        conflicts = pd.DataFrame(rows).sort_values(["ninth_sector", "ninth_fuel"]).reset_index(drop=True)
         if strict:
             raise ValueError(f"Conflicting canonical mappings found: {len(conflicts)} key(s)")
 
     clean = df.drop_duplicates(subset=keep_cols).copy()
-    clean = clean.sort_values(["9th_sector", "9th_fuel", "esto_flow", "esto_product"] + optional).reset_index(drop=True)
+    clean = clean.sort_values(["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"] + optional).reset_index(drop=True)
     return clean, conflicts
 
 
 def build_product_fuel_crosswalk(canonical_pairs: pd.DataFrame) -> pd.DataFrame:
     df = canonical_pairs.copy()
-    for col in ["9th_fuel", "esto_product", "9th_sector", "esto_flow"]:
+    for col in ["ninth_fuel", "esto_product", "ninth_sector", "esto_flow"]:
         if col not in df.columns:
             df[col] = ""
         df[col] = df[col].map(clean_token)
     out = (
-        df[df["9th_fuel"].ne("") & df["esto_product"].ne("")]
-        .groupby(["esto_product", "9th_fuel"], as_index=False)
+        df[df["ninth_fuel"].ne("") & df["esto_product"].ne("")]
+        .groupby(["esto_product", "ninth_fuel"], as_index=False)
         .agg(
-            sector_count=("9th_sector", "nunique"),
+            sector_count=("ninth_sector", "nunique"),
             flow_count=("esto_flow", "nunique"),
         )
-        .sort_values(["esto_product", "9th_fuel"])
+        .sort_values(["esto_product", "ninth_fuel"])
         .reset_index(drop=True)
     )
     return out
@@ -221,18 +215,18 @@ def build_product_fuel_crosswalk(canonical_pairs: pd.DataFrame) -> pd.DataFrame:
 
 def build_flow_sector_crosswalk(canonical_pairs: pd.DataFrame) -> pd.DataFrame:
     df = canonical_pairs.copy()
-    for col in ["9th_sector", "esto_flow", "9th_fuel", "esto_product"]:
+    for col in ["ninth_sector", "esto_flow", "ninth_fuel", "esto_product"]:
         if col not in df.columns:
             df[col] = ""
         df[col] = df[col].map(clean_token)
     out = (
-        df[df["9th_sector"].ne("") & df["esto_flow"].ne("")]
-        .groupby(["esto_flow", "9th_sector"], as_index=False)
+        df[df["ninth_sector"].ne("") & df["esto_flow"].ne("")]
+        .groupby(["esto_flow", "ninth_sector"], as_index=False)
         .agg(
-            fuel_count=("9th_fuel", "nunique"),
+            fuel_count=("ninth_fuel", "nunique"),
             product_count=("esto_product", "nunique"),
         )
-        .sort_values(["esto_flow", "9th_sector"])
+        .sort_values(["esto_flow", "ninth_sector"])
         .reset_index(drop=True)
     )
     return out
@@ -244,7 +238,7 @@ def build_sector_to_esto_flow_lookup(codebook_path: Path = DEFAULT_CODEBOOK) -> 
         (OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs")
     )
     lookup: dict[str, str] = {}
-    for ninth_sector, group in df.groupby("9th_sector", sort=False):
+    for ninth_sector, group in df.groupby("ninth_sector", sort=False):
         flows = sorted({clean_token(value) for value in group["esto_flow"] if clean_token(value)})
         if len(flows) == 1:
             lookup[clean_token(ninth_sector).lower()] = flows[0]
@@ -339,7 +333,7 @@ def build_leap_branch_crosswalk(
             rows.append(
                 {
                     "sheet_name": sheet,
-                    "9th_sector": sector,
+                    "ninth_sector": sector,
                     "esto_flow": flow,
                     "flow_source": flow_source,
                 }

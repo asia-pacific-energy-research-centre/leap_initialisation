@@ -776,9 +776,9 @@ def _extract_contextual_projection_years(
         empty = (pd.DataFrame(columns=columns), pd.DataFrame())
         return (*empty, pd.DataFrame()) if return_allocation_provenance else empty
     mapping = load_active_mapping_sheet(NINTH_TO_ESTO_SHEET, Path(mappings_path))
-    for column in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:
+    for column in ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]:
         mapping[column] = mapping[column].fillna("").astype(str).str.strip()
-    mapped_sectors = set(mapping["9th_sector"])
+    mapped_sectors = set(mapping["ninth_sector"])
     ninth_filtered = ninth_filtered.rename(
         columns={str(year): year for year in projection_years}
     )
@@ -790,7 +790,7 @@ def _extract_contextual_projection_years(
     sector_columns = ["sub4sectors", "sub3sectors", "sub2sectors", "sub1sectors", "sectors"]
     resolved_sectors: list[str] = []
     for _, row in ninth_pairs.iterrows():
-        fuel = str(row.get("9th_fuel", "")).strip()
+        fuel = str(row.get("ninth_fuel", "")).strip()
         candidates = [
             str(row.get(column, "")).strip()
             for column in sector_columns
@@ -799,7 +799,7 @@ def _extract_contextual_projection_years(
         resolved_sectors.append(
             next((sector for sector in candidates if sector in mapped_sectors), candidates[0] if candidates else "")
         )
-    ninth_pairs["9th_sector"] = resolved_sectors
+    ninth_pairs["ninth_sector"] = resolved_sectors
     ninth_pairs["economy_key"] = ninth_pairs["economy"].map(normalize_economy_key)
     ninth_series = build_ninth_projection_series(ninth_pairs, projection_years)
 
@@ -810,27 +810,27 @@ def _extract_contextual_projection_years(
     # with that fuel's reviewed ESTO products. Base-year values in the resulting
     # flow/product context determine the actual allocation shares.
     sector_flows = (
-        mapping.groupby("9th_sector", dropna=False)["esto_flow"]
+        mapping.groupby("ninth_sector", dropna=False)["esto_flow"]
         .apply(lambda values: sorted({value for value in values if value}))
         .to_dict()
     )
     fuel_products = (
-        mapping.groupby("9th_fuel", dropna=False)["esto_product"]
+        mapping.groupby("ninth_fuel", dropna=False)["esto_product"]
         .apply(lambda values: sorted({value for value in values if value}))
         .to_dict()
     )
     mapping_rows: list[dict[str, str]] = []
-    for sector, fuel in ninth_series[["9th_sector", "9th_fuel"]].drop_duplicates().itertuples(index=False, name=None):
-        exact = mapping[mapping["9th_sector"].eq(sector) & mapping["9th_fuel"].eq(fuel)]
+    for sector, fuel in ninth_series[["ninth_sector", "ninth_fuel"]].drop_duplicates().itertuples(index=False, name=None):
+        exact = mapping[mapping["ninth_sector"].eq(sector) & mapping["ninth_fuel"].eq(fuel)]
         if not exact.empty:
             mapping_rows.extend(
-                exact[["9th_sector", "9th_fuel", "esto_flow", "esto_product"]].to_dict("records")
+                exact[["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]].to_dict("records")
             )
             continue
         mapping_rows.extend(
             {
-                "9th_sector": sector,
-                "9th_fuel": fuel,
+                "ninth_sector": sector,
+                "ninth_fuel": fuel,
                 "esto_flow": flow,
                 "esto_product": product,
             }
@@ -1038,8 +1038,8 @@ def build_aggregated_demand(
             )
             allocation_provenance["scenario"] = scenario
             allocation_provenance["source_system"] = "NINTH"
-            allocation_provenance["source_sector_or_flow"] = allocation_provenance["9th_sector"]
-            allocation_provenance["source_fuel_or_product"] = allocation_provenance["9th_fuel"]
+            allocation_provenance["source_sector_or_flow"] = allocation_provenance["ninth_sector"]
+            allocation_provenance["source_fuel_or_product"] = allocation_provenance["ninth_fuel"]
             allocation_provenance["leap_fuel_name"] = allocation_provenance["esto_product"].map(esto_fuel_map)
             provenance_parts.append(
                 allocation_provenance[

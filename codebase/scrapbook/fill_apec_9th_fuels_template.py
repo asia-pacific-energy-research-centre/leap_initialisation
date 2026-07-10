@@ -96,21 +96,21 @@ def _bucket_from_codes_and_name(fuel_code: str, subfuel_code: str, name: str) ->
 
 def main() -> None:
     df = pd.read_csv(CSV_PATH)
-    code_map = read_config_table(MAP_PATH, sheet_name="code_to_name")[["9th_label", "9th_column", "name"]]
-    code_map = code_map.dropna(subset=["9th_label", "9th_column"]).copy()
-    code_map["9th_label"] = code_map["9th_label"].astype(str)
-    code_map["9th_column"] = code_map["9th_column"].astype(str)
+    code_map = read_config_table(MAP_PATH, sheet_name="code_to_name")[["ninth_label", "ninth_column", "name"]]
+    code_map = code_map.dropna(subset=["ninth_label", "ninth_column"]).copy()
+    code_map["ninth_label"] = code_map["ninth_label"].astype(str)
+    code_map["ninth_column"] = code_map["ninth_column"].astype(str)
 
     fuel_name_map = (
-        code_map[code_map["9th_column"] == "fuels"][["9th_label", "name"]]
+        code_map[code_map["ninth_column"] == "fuels"][["ninth_label", "name"]]
         .drop_duplicates()
-        .set_index("9th_label")["name"]
+        .set_index("ninth_label")["name"]
         .to_dict()
     )
     subfuel_name_map = (
-        code_map[code_map["9th_column"] == "subfuels"][["9th_label", "name"]]
+        code_map[code_map["ninth_column"] == "subfuels"][["ninth_label", "name"]]
         .drop_duplicates()
-        .set_index("9th_label")["name"]
+        .set_index("ninth_label")["name"]
         .to_dict()
     )
 

@@ -569,7 +569,7 @@ NINTH_SUB4SECTORS = [
 ]
 
 #NAME MAPPINGS:
-# 9th_label	9th_column	esto_label	esto_column	name
+# ninth_label	ninth_column	esto_label	esto_column	name
 # 		06.04 Additives/ oxygenates	products	Additives/  oxygenates
 # 09_01_01_03_advultracritical	sub3sectors			Advanced ultra-supercritical coal power
 # 18_01_01_03_advultracritical	sub3sectors			Advanced ultra-supercritical coal power (electricity output)

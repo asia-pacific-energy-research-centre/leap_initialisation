@@ -100,7 +100,7 @@ def filter_mapping_for_minor_demand(
     """
     flow_list = [cfg["esto_flow"] for cfg in flow_configs]
     mapping = mapping[mapping["esto_flow"].isin(flow_list)].copy()
-    mapping = mapping[(mapping["9th_sector"] != "") & (mapping["9th_fuel"] != "")]
+    mapping = mapping[(mapping["ninth_sector"] != "") & (mapping["ninth_fuel"] != "")]
     # Only keep pairs that exist in non-subtotal ESTO data.
     valid_pairs = (
         esto_data[["flows", "products"]]
@@ -123,13 +123,13 @@ def build_flow_to_sectors(
     for cfg in flow_configs:
         flow = cfg["esto_flow"]
         sectors = sorted(
-            mapping.loc[mapping["esto_flow"] == flow, "9th_sector"]
+            mapping.loc[mapping["esto_flow"] == flow, "ninth_sector"]
             .dropna()
             .unique()
             .tolist()
         )
         sectors = [sector for sector in sectors if sector]
-        expected = cfg.get("expected_9th_sectors", [])
+        expected = cfg.get("expected_ninth_sectors", [])
         if expected and set(sectors) != set(expected):
             print(
                 f"[WARN] Mapping for '{flow}' differs from expectation. "
@@ -179,7 +179,7 @@ def build_sector_projection(
     for year in year_cols:
         working[year] = pd.to_numeric(working[year], errors="coerce").fillna(0.0)
     grouped = (
-        working.groupby(["economy_key", "9th_sector"], dropna=False)[year_cols]
+        working.groupby(["economy_key", "ninth_sector"], dropna=False)[year_cols]
         .sum()
         .reset_index()
     )
@@ -199,7 +199,7 @@ def build_fuel_projection(
     for year in year_cols:
         working[year] = pd.to_numeric(working[year], errors="coerce").fillna(0.0)
     grouped = (
-        working.groupby(["economy_key", "9th_sector", "9th_fuel"], dropna=False)[year_cols]
+        working.groupby(["economy_key", "ninth_sector", "ninth_fuel"], dropna=False)[year_cols]
         .sum()
         .reset_index()
     )
@@ -353,7 +353,7 @@ def build_activity_series(
         return {year: 0.0 for year in year_cols}
     subset = sector_projection[
         (sector_projection["economy_key"] == economy_key)
-        & (sector_projection["9th_sector"].isin(sectors))
+        & (sector_projection["ninth_sector"].isin(sectors))
     ]
     if subset.empty:
         return {year: 0.0 for year in year_cols}
@@ -416,7 +416,7 @@ def build_intensity_series_from_shares(
     mapped_fuels = (
         mapping.loc[
             (mapping["esto_flow"] == flow) & (mapping["esto_product"] == esto_product),
-            "9th_fuel",
+            "ninth_fuel",
         ]
         .dropna()
         .unique()
@@ -429,8 +429,8 @@ def build_intensity_series_from_shares(
     )
     fuel_subset = fuel_projection[
         (fuel_projection["economy_key"] == economy_key)
-        & (fuel_projection["9th_sector"].isin(sectors))
-        & (fuel_projection["9th_fuel"].isin(mapped_fuels))
+        & (fuel_projection["ninth_sector"].isin(sectors))
+        & (fuel_projection["ninth_fuel"].isin(mapped_fuels))
     ]
     if fuel_subset.empty:
         return {year: 0.0 for year in year_cols}

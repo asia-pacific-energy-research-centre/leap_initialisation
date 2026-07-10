@@ -45,7 +45,7 @@ def _coerce_bool_flag(series: pd.Series) -> pd.Series:
 def load_mapping_pairs(mapping_path: str | Path) -> pd.DataFrame:
     path = _resolve(mapping_path)
     mapping_df = _read_table(path)
-    required = ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]
+    required = ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]
     missing = [col for col in required if col not in mapping_df.columns]
     if missing:
         raise ValueError(f"Mapping file missing required columns: {missing}")
@@ -98,7 +98,7 @@ def build_nonzero_ninth_pairs(
 ) -> pd.DataFrame:
     working = filter_ninth_projection_rows(ninth_df, scenario=scenario)
     if working.empty:
-        return pd.DataFrame(columns=["9th_sector", "9th_fuel"])
+        return pd.DataFrame(columns=["ninth_sector", "ninth_fuel"])
 
     for subtotal_col in ["subtotal_layout", "subtotal_results"]:
         if subtotal_col in working.columns:
@@ -116,15 +116,15 @@ def build_nonzero_ninth_pairs(
 
     numeric = working[year_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
     working = working[
-        working["9th_sector"].astype(str).str.strip().ne("")
-        & working["9th_fuel"].astype(str).str.strip().ne("")
+        working["ninth_sector"].astype(str).str.strip().ne("")
+        & working["ninth_fuel"].astype(str).str.strip().ne("")
         & numeric.abs().sum(axis=1).gt(0)
     ].copy()
 
     return (
-        working[["9th_sector", "9th_fuel"]]
+        working[["ninth_sector", "ninth_fuel"]]
         .drop_duplicates()
-        .sort_values(["9th_sector", "9th_fuel"])
+        .sort_values(["ninth_sector", "ninth_fuel"])
         .reset_index(drop=True)
     )
 
@@ -184,9 +184,9 @@ def run_mapping_coverage_check(
         .reset_index(drop=True)
     )
     mapped_ninth_pairs = (
-        mapping_df[["9th_sector", "9th_fuel"]]
+        mapping_df[["ninth_sector", "ninth_fuel"]]
         .drop_duplicates()
-        .sort_values(["9th_sector", "9th_fuel"])
+        .sort_values(["ninth_sector", "ninth_fuel"])
         .reset_index(drop=True)
     )
 
@@ -204,7 +204,7 @@ def run_mapping_coverage_check(
 
     missing_ninth_pairs = nonzero_ninth_pairs.merge(
         mapped_ninth_pairs,
-        on=["9th_sector", "9th_fuel"],
+        on=["ninth_sector", "ninth_fuel"],
         how="left",
         indicator=True,
     )
@@ -239,7 +239,7 @@ def run_mapping_coverage_check(
 
     summary_path = layout.root / "mapping_coverage_summary.csv"
     missing_esto_path = layout.checks / "missing_esto_flow_product_pairs.csv"
-    missing_ninth_path = layout.checks / "missing_9th_sector_fuel_pairs.csv"
+    missing_ninth_path = layout.checks / "missing_ninth_sector_fuel_pairs.csv"
 
     summary_df.to_csv(summary_path, index=False)
     missing_esto_pairs.to_csv(missing_esto_path, index=False)

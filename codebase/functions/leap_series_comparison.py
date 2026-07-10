@@ -355,7 +355,7 @@ def _load_mapping_pairs(mapping_path: Path) -> pd.DataFrame:
         else None
     )
     df = read_config_table(mapping_path, sheet_name=sheet_name, dtype=str).fillna("")
-    for col in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:
+    for col in ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
     return df
@@ -499,8 +499,8 @@ def _validate_expected_ninth_pair(
         return False, "esto_pair_not_in_mapping_table"
 
     pair_subset = subset[
-        (subset["9th_sector"] == ninth_sector_expected)
-        & (subset["9th_fuel"] == ninth_fuel_expected)
+        (subset["ninth_sector"] == ninth_sector_expected)
+        & (subset["ninth_fuel"] == ninth_fuel_expected)
     ]
     if pair_subset.empty:
         return False, "expected_9th_pair_not_found_for_esto_pair"
@@ -1126,14 +1126,14 @@ def _load_transport_fuel_aliases(path: Path) -> pd.DataFrame:
 
 def _load_code_to_name(path: Path, sheet_name: str) -> pd.DataFrame:
     codebook = read_config_table(path, sheet_name=sheet_name, dtype=str).fillna("")
-    required = {"9th_label", "9th_column", "esto_label", "esto_column", "name"}
+    required = {"ninth_label", "ninth_column", "esto_label", "esto_column", "name"}
     missing = required - set(codebook.columns)
     if missing:
         raise ValueError(
             f"Code-to-name sheet '{path}:{sheet_name}' is missing columns: {sorted(missing)}"
         )
     codebook = codebook.copy()
-    for col in ["9th_label", "9th_column", "esto_label", "esto_column", "name"]:
+    for col in ["ninth_label", "ninth_column", "esto_label", "esto_column", "name"]:
         codebook[col] = codebook[col].astype(str).str.strip()
     codebook["__name_norm"] = codebook["name"].map(_normalize_lookup_label)
     return codebook
@@ -1162,12 +1162,12 @@ def _build_sector_parent_children_maps(
     codebook_df: pd.DataFrame,
 ) -> tuple[dict[str, str], dict[str, list[str]]]:
     sector_rows = codebook_df[
-        codebook_df["9th_column"].isin(NINTH_SECTOR_COLUMNS_BY_DEPTH.values())
-        & codebook_df["9th_label"].ne("")
+        codebook_df["ninth_column"].isin(NINTH_SECTOR_COLUMNS_BY_DEPTH.values())
+        & codebook_df["ninth_label"].ne("")
     ].copy()
     if sector_rows.empty:
         return {}, {}
-    sector_rows["__depth"] = sector_rows["9th_label"].map(
+    sector_rows["__depth"] = sector_rows["ninth_label"].map(
         lambda value: len(_numeric_prefix_tokens(value))
     )
     sector_rows = sector_rows[
@@ -1181,7 +1181,7 @@ def _build_sector_parent_children_maps(
         for depth in sorted(sector_rows["__depth"].unique())
     }
     for _, row in sector_rows.iterrows():
-        child = row["9th_label"]
+        child = row["ninth_label"]
         depth = int(row["__depth"])
         if depth <= 1:
             continue
@@ -1191,10 +1191,10 @@ def _build_sector_parent_children_maps(
         candidates = by_depth.get(parent_depth, pd.DataFrame())
         if candidates.empty:
             continue
-        subset = candidates[candidates["9th_label"].str.startswith(parent_prefix)]
+        subset = candidates[candidates["ninth_label"].str.startswith(parent_prefix)]
         if subset.empty:
             continue
-        parent = sorted(subset["9th_label"].unique().tolist())[0]
+        parent = sorted(subset["ninth_label"].unique().tolist())[0]
         parent_map[child] = parent
         children = children_map.get(parent, [])
         if child not in children:
@@ -1238,10 +1238,10 @@ def _prepare_ninth_rows(
 
 def _build_fuel_column_lookup(codebook_df: pd.DataFrame) -> dict[str, str]:
     rows = codebook_df[
-        codebook_df["9th_column"].isin(NINTH_FUEL_COLUMNS)
-        & codebook_df["9th_label"].ne("")
-    ][["9th_label", "9th_column"]].drop_duplicates()
-    return {row["9th_label"]: row["9th_column"] for _, row in rows.iterrows()}
+        codebook_df["ninth_column"].isin(NINTH_FUEL_COLUMNS)
+        & codebook_df["ninth_label"].ne("")
+    ][["ninth_label", "ninth_column"]].drop_duplicates()
+    return {row["ninth_label"]: row["ninth_column"] for _, row in rows.iterrows()}
 
 
 def _aggregate_ninth_series(
@@ -1310,19 +1310,19 @@ def _resolve_fuel_mapping(
     ninth_fuel_code = ninth_fuel_override
     if not ninth_fuel_code:
         fuel_rows = name_matches[
-            name_matches["9th_column"].isin(NINTH_FUEL_COLUMNS)
-            & name_matches["9th_label"].ne("")
+            name_matches["ninth_column"].isin(NINTH_FUEL_COLUMNS)
+            & name_matches["ninth_label"].ne("")
         ]
         if not fuel_rows.empty:
-            ninth_fuel_code = _normalize_text(fuel_rows["9th_label"].iloc[0])
+            ninth_fuel_code = _normalize_text(fuel_rows["ninth_label"].iloc[0])
 
     ninth_fuel_column = (
         fuel_column_lookup.get(ninth_fuel_code, "") if ninth_fuel_code else ""
     )
     if not ninth_fuel_column and ninth_fuel_code:
-        fallback = codebook_df[codebook_df["9th_label"] == ninth_fuel_code]
-        if not fallback.empty and fallback["9th_column"].iloc[0] in NINTH_FUEL_COLUMNS:
-            ninth_fuel_column = _normalize_text(fallback["9th_column"].iloc[0])
+        fallback = codebook_df[codebook_df["ninth_label"] == ninth_fuel_code]
+        if not fallback.empty and fallback["ninth_column"].iloc[0] in NINTH_FUEL_COLUMNS:
+            ninth_fuel_column = _normalize_text(fallback["ninth_column"].iloc[0])
 
     esto_product = esto_product_override
     if not esto_product:
@@ -1565,15 +1565,15 @@ def run_transport_results_table_comparison(
     )
 
     mapping_pairs = _load_mapping_pairs(ninth_to_esto_mapping_path)
-    for col in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:
+    for col in ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]:
         if col in mapping_pairs.columns:
             mapping_pairs[col] = mapping_pairs[col].astype(str).str.strip()
     mapping_pairs = mapping_pairs[
-        mapping_pairs["9th_sector"].ne("")
-        & mapping_pairs["9th_fuel"].ne("")
+        mapping_pairs["ninth_sector"].ne("")
+        & mapping_pairs["ninth_fuel"].ne("")
         & mapping_pairs["esto_flow"].ne("")
         & mapping_pairs["esto_product"].ne("")
-    ][["9th_sector", "9th_fuel", "esto_flow", "esto_product"]].drop_duplicates()
+    ][["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]].drop_duplicates()
 
     ninth_df = _load_ninth_data(ninth_data_path)
     economy_key = normalize_economy_key(config.economy)
@@ -1733,8 +1733,8 @@ def run_transport_results_table_comparison(
                     base_key = (sector_code, ninth_fuel_code, ninth_fuel_column)
                     if base_key not in base_cache:
                         direct_pairs = mapping_pairs[
-                            (mapping_pairs["9th_sector"] == sector_code)
-                            & (mapping_pairs["9th_fuel"] == ninth_fuel_code)
+                            (mapping_pairs["ninth_sector"] == sector_code)
+                            & (mapping_pairs["ninth_fuel"] == ninth_fuel_code)
                         ]
                         if not direct_pairs.empty:
                             value_sum = 0.0
@@ -1758,8 +1758,8 @@ def run_transport_results_table_comparison(
                         else:
                             parent_sector = parent_map.get(sector_code, "")
                             parent_pairs = mapping_pairs[
-                                (mapping_pairs["9th_sector"] == parent_sector)
-                                & (mapping_pairs["9th_fuel"] == ninth_fuel_code)
+                                (mapping_pairs["ninth_sector"] == parent_sector)
+                                & (mapping_pairs["ninth_fuel"] == ninth_fuel_code)
                             ]
                             if not parent_sector or parent_pairs.empty:
                                 base_cache[base_key] = (

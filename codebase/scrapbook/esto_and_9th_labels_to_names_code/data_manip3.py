@@ -11,7 +11,7 @@ import pandas as pd
 #%%
 ######### CONSTANTS (UNLIKELY TO CHANGE) #########
 ENABLE_DEBUG_BREAKPOINTS = True
-REQUIRED_COLUMNS = {"9th_label", "9th_column", "esto_label", "esto_column", "name"}
+REQUIRED_COLUMNS = {"ninth_label", "ninth_column", "esto_label", "esto_column", "name"}
 #%%
 
 #%%
@@ -69,8 +69,8 @@ def fix_known_mismatches(df: pd.DataFrame) -> pd.DataFrame:
     """
     try:
         df_out = df.copy()
-        df_out.loc[df_out["9th_label"] == "09_x_04_biomass", ["esto_label", "esto_column"]] = ""
-        df_out.loc[df_out["9th_label"] == "09_13_06_others", ["esto_label", "esto_column"]] = ""
+        df_out.loc[df_out["ninth_label"] == "09_x_04_biomass", ["esto_label", "esto_column"]] = ""
+        df_out.loc[df_out["ninth_label"] == "09_13_06_others", ["esto_label", "esto_column"]] = ""
         return df_out
     except Exception as exc:
         print(f"Failed to apply mismatch fixes: {exc}")
@@ -115,8 +115,8 @@ def dedupe_esto_labels(df: pd.DataFrame) -> Tuple[pd.DataFrame, int]:
         for esto_label in duplicates["esto_label"].unique():
             group = df_out[df_out["esto_label"] == esto_label].copy()
 
-            group["detail_score"] = group["9th_label"].apply(count_segments)
-            group["has_9th"] = group["9th_label"].apply(
+            group["detail_score"] = group["ninth_label"].apply(count_segments)
+            group["has_9th"] = group["ninth_label"].apply(
                 lambda x: 0 if pd.isna(x) or x == "" else 1
             )
             group = group.sort_values(["has_9th", "detail_score"], ascending=[False, False])
@@ -149,16 +149,16 @@ def add_missing_labels(
     """
     try:
         df_out = df.copy()
-        name_map_9th = dict(zip(df_out["9th_label"], df_out["name"]))
+        name_map_9th = dict(zip(df_out["ninth_label"], df_out["name"]))
         name_map_esto = dict(zip(df_out["esto_label"], df_out["name"]))
 
         new_rows_9th = []
         for label, column in missing_9th:
-            if label not in df_out["9th_label"].values:
+            if label not in df_out["ninth_label"].values:
                 new_rows_9th.append(
                     {
-                        "9th_label": label,
-                        "9th_column": column,
+                        "ninth_label": label,
+                        "ninth_column": column,
                         "esto_label": "",
                         "esto_column": "",
                         "name": name_map_9th.get(label, ""),
@@ -170,8 +170,8 @@ def add_missing_labels(
             if label not in df_out["esto_label"].values:
                 new_rows_esto.append(
                     {
-                        "9th_label": "",
-                        "9th_column": "",
+                        "ninth_label": "",
+                        "ninth_column": "",
                         "esto_label": label,
                         "esto_column": column,
                         "name": name_map_esto.get(label, ""),

@@ -140,7 +140,7 @@ def _expand_resolved_rule_targets(
         return [resolved_rule]
 
     pair_df = canonical_pairs.copy()
-    for col in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:
+    for col in ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]:
         if col not in pair_df.columns:
             pair_df[col] = ""
         pair_df[col] = pair_df[col].map(_clean_token)
@@ -164,9 +164,9 @@ def _expand_resolved_rule_targets(
     if bool(resolved_rule.get("create_esto")) and not _clean_token(resolved_rule.get("target_esto_flow")):
         flow_candidates = pair_df.copy()
         if source_ninth_fuel:
-            flow_candidates = flow_candidates[flow_candidates["9th_fuel"].eq(source_ninth_fuel)]
+            flow_candidates = flow_candidates[flow_candidates["ninth_fuel"].eq(source_ninth_fuel)]
         if source_ninth_sector:
-            sector_exact = flow_candidates[flow_candidates["9th_sector"].eq(source_ninth_sector)]
+            sector_exact = flow_candidates[flow_candidates["ninth_sector"].eq(source_ninth_sector)]
             if not sector_exact.empty:
                 flow_candidates = sector_exact
         if source_esto_flow:
@@ -199,7 +199,7 @@ def _expand_resolved_rule_targets(
             if not flow_exact.empty:
                 sector_candidates = flow_exact
         sector_pairs = (
-            sector_candidates[["9th_sector", "9th_fuel"]]
+            sector_candidates[["ninth_sector", "ninth_fuel"]]
             .drop_duplicates()
             .to_dict("records")
         )
@@ -208,11 +208,11 @@ def _expand_resolved_rule_targets(
                 variant = dict(resolved_rule)
                 variant["target_sub2sectors"] = _pick_first_non_empty(
                     variant.get("target_sub2sectors"),
-                    pair.get("9th_sector"),
+                    pair.get("ninth_sector"),
                 )
                 variant["target_subfuels"] = _pick_first_non_empty(
                     variant.get("target_subfuels"),
-                    pair.get("9th_fuel"),
+                    pair.get("ninth_fuel"),
                 )
                 expanded_rules.append(variant)
 

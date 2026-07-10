@@ -45,10 +45,10 @@ ROLLUP_SHEET_COLUMNS = {
     ],
     "ninth_rollup_rules": [
         "rollup_context",
-        "input_9th_sector",
-        "input_9th_fuel",
-        "rolled_9th_sector",
-        "rolled_9th_fuel",
+        "input_ninth_sector",
+        "input_ninth_fuel",
+        "rolled_ninth_sector",
+        "rolled_ninth_fuel",
         "rollup_group_id",
         "rollup_reason",
         "priority",
@@ -106,7 +106,7 @@ MAPPING_SHEET_CONFIGS = [
         "source_system": "NINTH",
         "target_system": "ESTO",
         "rollup_context": "ninth_to_esto",
-        "source_cols": ["9th_sector", "9th_fuel"],
+        "source_cols": ["ninth_sector", "ninth_fuel"],
         "target_cols": ["esto_flow", "esto_product"],
         "source_rollup_sheet": "ninth_rollup_rules",
         "target_rollup_sheet": "esto_rollup_rules",
@@ -187,7 +187,7 @@ INDIVIDUAL_MAPPING_CHECKS = [
         "use_case": "ninth_to_esto_balance_conversion",
         "source_col": "rolled_source_product",
         "target_col": "rolled_target_product",
-        "source_label": "9th_fuel",
+        "source_label": "ninth_fuel",
         "target_label": "esto_product",
     },
     {
@@ -361,10 +361,10 @@ def rollup_columns_for_sheet(rollup_sheet_name: str) -> dict[str, str]:
         }
     if rollup_sheet_name == "ninth_rollup_rules":
         return {
-            "input_flow": "input_9th_sector",
-            "input_product": "input_9th_fuel",
-            "rolled_flow": "rolled_9th_sector",
-            "rolled_product": "rolled_9th_fuel",
+            "input_flow": "input_ninth_sector",
+            "input_product": "input_ninth_fuel",
+            "rolled_flow": "rolled_ninth_sector",
+            "rolled_product": "rolled_ninth_fuel",
         }
     raise ValueError(f"Unsupported rollup sheet: {rollup_sheet_name}")
 

@@ -325,6 +325,25 @@ VALIDATION_IGNORE_FUEL_NAMES: frozenset[str] = frozenset({
     # are remapped to "Solar nonspecified" at source in _safe_power_interim_display_label.
 })
 
+def split_documented_exclusions(
+    df: pd.DataFrame,
+    branch_path_col: str = "Branch Path",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split rows into (kept, excluded) using VALIDATION_IGNORE_FUEL_NAMES/PREFIXES.
+
+    A row is excluded if its branch path's final segment is a known
+    9th-edition aggregate fuel name, or if the branch path starts with a
+    known zero-energy prefix. Excluded rows are documented (written to a
+    diagnostics CSV) by the caller rather than silently dropped.
+    """
+    branch_paths = df[branch_path_col].fillna("").astype(str)
+    exclusion_mask = branch_paths.map(
+        lambda path: path.split("\\")[-1] in VALIDATION_IGNORE_FUEL_NAMES
+        or any(path.startswith(prefix) for prefix in VALIDATION_IGNORE_PREFIXES)
+    )
+    return df[~exclusion_mask].copy(), df[exclusion_mask].copy()
+
+
 _TEMPLATE_ID_LOOKUP_CACHE: dict | None = None
 
 
@@ -837,19 +856,14 @@ def _patch_one(
     new_aligned[SOURCE_WORKFLOW_COLUMN] = source_workflow
     combined = pd.concat([cleaned, new_aligned], ignore_index=True)
 
-    branch_paths = combined[bp_col].fillna("").astype(str)
-    documented_exclusion_mask = branch_paths.map(
-        lambda path: path.split("\\")[-1] in VALIDATION_IGNORE_FUEL_NAMES
-        or any(path.startswith(prefix) for prefix in VALIDATION_IGNORE_PREFIXES)
-    )
+    combined, excluded_rows = split_documented_exclusions(combined, branch_path_col=bp_col)
     diagnostics_dir = seed_path.parent / "supporting_files" / "baseline_seed_validation"
     diagnostic_stem = f"{seed_path.stem}_patch_{source_workflow}"
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
-    combined[documented_exclusion_mask].to_csv(
+    excluded_rows.to_csv(
         diagnostics_dir / f"{diagnostic_stem}_documented_exclusions.csv",
         index=False,
     )
-    combined = combined[~documented_exclusion_mask].copy()
 
     from codebase.functions import transformation_record_builder as record_builder
 

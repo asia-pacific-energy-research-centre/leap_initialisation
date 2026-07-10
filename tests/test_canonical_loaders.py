@@ -41,8 +41,8 @@ def _base_sheets() -> dict[str, pd.DataFrame]:
         cl.SHEET_NINTH_PAIRS_TO_ESTO_PAIRS: pd.DataFrame(
             [
                 {
-                    "9th_sector": "09_07_oil_refineries",
-                    "9th_fuel": "06_01_crude_oil",
+                    "ninth_sector": "09_07_oil_refineries",
+                    "ninth_fuel": "06_01_crude_oil",
                     "esto_flow": "09.07 Oil refineries",
                     "esto_product": "06.01 Crude oil",
                 },
@@ -187,8 +187,8 @@ def test_ninth_pairs_conflict_detected(tmp_path: Path):
     sheets = _base_sheets()
     sheets[cl.SHEET_NINTH_PAIRS_TO_ESTO_PAIRS] = pd.DataFrame(
         [
-            {"9th_sector": "s", "9th_fuel": "f", "esto_flow": "A", "esto_product": "P"},
-            {"9th_sector": "s", "9th_fuel": "f", "esto_flow": "B", "esto_product": "Q"},
+            {"ninth_sector": "s", "ninth_fuel": "f", "esto_flow": "A", "esto_product": "P"},
+            {"ninth_sector": "s", "ninth_fuel": "f", "esto_flow": "B", "esto_product": "Q"},
         ]
     )
     _write_workbook(wb, sheets)

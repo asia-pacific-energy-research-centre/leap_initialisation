@@ -964,22 +964,14 @@ def save_combined_supply_transformation_export(
         source_workflow_by_path=source_workflow_by_path,
     )
     leap_data = _drop_wide_year_columns(leap_data)
-    branch_paths = leap_data["Branch Path"].fillna("").astype(str)
-    documented_exclusion_mask = branch_paths.map(
-        lambda path: path.split("\\")[-1] in patch_baseline_seeds.VALIDATION_IGNORE_FUEL_NAMES
-        or any(
-            path.startswith(prefix)
-            for prefix in patch_baseline_seeds.VALIDATION_IGNORE_PREFIXES
-        )
-    )
+    leap_data, excluded_rows = patch_baseline_seeds.split_documented_exclusions(leap_data)
     diagnostics_dir = output_path / "supporting_files" / "baseline_seed_validation"
     diagnostic_stem = combined_path.stem
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
-    leap_data[documented_exclusion_mask].to_csv(
+    excluded_rows.to_csv(
         diagnostics_dir / f"{diagnostic_stem}_documented_exclusions.csv",
         index=False,
     )
-    leap_data = leap_data[~documented_exclusion_mask].copy()
 
     required_years_by_scenario: dict[str, list[int]] = {}
     scenario_list = [str(item) for item in (scenarios or []) if str(item).strip()]
@@ -1771,17 +1763,7 @@ def write_per_economy_combined_workbooks(
         if "Region" in combined.columns:
             combined["Region"] = region
 
-        branch_paths = combined["Branch Path"].fillna("").astype(str)
-        aggregate_fuel_mask = branch_paths.map(
-            lambda path: path.split("\\")[-1] in patch_baseline_seeds.VALIDATION_IGNORE_FUEL_NAMES
-        )
-        absent_prefix_mask = branch_paths.map(
-            lambda path: any(
-                path.startswith(prefix)
-                for prefix in patch_baseline_seeds.VALIDATION_IGNORE_PREFIXES
-            )
-        )
-        excluded_rows = combined[aggregate_fuel_mask | absent_prefix_mask].copy()
+        combined, excluded_rows = patch_baseline_seeds.split_documented_exclusions(combined)
         diagnostics_dir = out_dir / "supporting_files" / "baseline_seed_validation"
         diagnostics_dir.mkdir(parents=True, exist_ok=True)
         diagnostic_stem = f"baseline_seed_{econ_token}_{run_stamp}"
@@ -1789,7 +1771,6 @@ def write_per_economy_combined_workbooks(
             diagnostics_dir / f"{diagnostic_stem}_documented_exclusions.csv",
             index=False,
         )
-        combined = combined[~(aggregate_fuel_mask | absent_prefix_mask)].copy()
 
         if enforce_validation:
             present_scenarios = sorted({

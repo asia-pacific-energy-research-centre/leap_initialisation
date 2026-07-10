@@ -84,8 +84,8 @@ def collect_reference_labels(workbook_path):
         esto_products = _normalize_series(esto_df.get("products", pd.Series([], dtype=str)))
 
         return {
-            "9th_sectors": set(ninth_sectors.tolist()),
-            "9th_fuels": set(ninth_fuels.tolist()),
+            "ninth_sectors": set(ninth_sectors.tolist()),
+            "ninth_fuels": set(ninth_fuels.tolist()),
             "esto_flows": set(esto_flows.tolist()),
             "esto_products": set(esto_products.tolist()),
         }
@@ -157,8 +157,8 @@ REFERENCE_WORKBOOK_PATH = "config/sector_fuel_codes_to_names.xlsx"
 OUTPUT_WORKBOOK_PATH = "outputs/independent product flow mappings.xlsx"
 PRODUCT_SHEET_NAME = "product"
 FLOW_SHEET_NAME = "flow"
-PRODUCT_COLUMNS = {"esto_product", "9th_fuel"}
-FLOW_COLUMNS = {"9th_sector", "esto_flow"}
+PRODUCT_COLUMNS = {"esto_product", "ninth_fuel"}
+FLOW_COLUMNS = {"ninth_sector", "esto_flow"}
 RUN_MAPPING_CLEANUP = True
 #%%
 
@@ -187,9 +187,9 @@ if RUN_MAPPING_CLEANUP:
         total_removed += removed
         product_df, added_9th, added_esto = add_missing_labels(
             product_df,
-            "9th_fuel",
+            "ninth_fuel",
             "esto_product",
-            references["9th_fuels"],
+            references["ninth_fuels"],
             references["esto_products"],
             drop_x_left=True,
         )
@@ -209,9 +209,9 @@ if RUN_MAPPING_CLEANUP:
         total_removed += removed
         flow_df, added_9th, added_esto = add_missing_labels(
             flow_df,
-            "9th_sector",
+            "ninth_sector",
             "esto_flow",
-            references["9th_sectors"],
+            references["ninth_sectors"],
             references["esto_flows"],
             drop_x_left=True,
         )

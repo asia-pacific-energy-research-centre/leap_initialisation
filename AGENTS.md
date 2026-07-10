@@ -28,6 +28,11 @@ on it.** Launch it in the background and poll its progress at most once every
 the workflow reports its own per-stage progress, so a 10-minute cadence is
 sufficient to notice a stall or failure.
 
+## Prompt docs workflow
+
+- Multi-step agent prompts (plan-first implementation tasks, investigation prompts, prompt packs) live in `docs/prompts/`.
+- Once the work a prompt describes is complete (implemented, tested, and committed), move that prompt file out of `docs/prompts/` into `docs/archive/` — see `leap_mappings/docs/archive/common_esto_lineage_validation/` for the pattern (a prompt pack archived together with its own status/findings/TODO notes once superseded or finished). Do not leave completed prompts in `docs/prompts/`; that folder should only contain active or pending work.
+
 ## Rebuild scope and active documentation
 
 This repository is being rebuilt. All new workflow code goes here, not in `leap_utilities`.

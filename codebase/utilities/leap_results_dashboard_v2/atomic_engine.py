@@ -253,13 +253,13 @@ def _canonical_targets_for_base_row(row: pd.Series, canonical_pairs: pd.DataFram
 
     if mapping_source == "canonical_aggregated" and sector_code and fuel_code and not canonical_pairs.empty:
         cp = canonical_pairs.copy()
-        for col in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:
+        for col in ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]:
             if col not in cp.columns:
                 cp[col] = ""
             cp[col] = cp[col].fillna("").astype(str).str.strip()
         subset = cp[
-            cp["9th_sector"].eq(sector_code)
-            & cp["9th_fuel"].eq(fuel_code)
+            cp["ninth_sector"].eq(sector_code)
+            & cp["ninth_fuel"].eq(fuel_code)
             & cp["esto_flow"].ne("")
             & cp["esto_product"].ne("")
         ][["esto_flow", "esto_product"]].drop_duplicates()

@@ -96,8 +96,8 @@ def collect_reference_labels(workbook_path):
         )
 
         return {
-            "9th_sectors": set(ninth_sectors.tolist()),
-            "9th_fuels": set(ninth_fuels.tolist()),
+            "ninth_sectors": set(ninth_sectors.tolist()),
+            "ninth_fuels": set(ninth_fuels.tolist()),
             "esto_flows": set(esto_flows.tolist()),
             "esto_products": set(esto_products.tolist()),
         }
@@ -185,15 +185,15 @@ def resolve_sheet_columns(df, sheet_name):
     columns = [str(col).strip() for col in df.columns]
     column_set = {col.lower() for col in columns}
     if sheet_name == PRODUCT_SHEET_NAME:
-        if {"9th_fuel", "esto_product"}.issubset(column_set):
-            return "9th_fuel", "esto_product"
-        if {"9th_label", "esto_label"}.issubset(column_set):
-            return "9th_label", "esto_label"
+        if {"ninth_fuel", "esto_product"}.issubset(column_set):
+            return "ninth_fuel", "esto_product"
+        if {"ninth_label", "esto_label"}.issubset(column_set):
+            return "ninth_label", "esto_label"
     if sheet_name == FLOW_SHEET_NAME:
-        if {"9th_sector", "esto_flow"}.issubset(column_set):
-            return "9th_sector", "esto_flow"
-        if {"9th_label", "esto_label"}.issubset(column_set):
-            return "9th_label", "esto_label"
+        if {"ninth_sector", "esto_flow"}.issubset(column_set):
+            return "ninth_sector", "esto_flow"
+        if {"ninth_label", "esto_label"}.issubset(column_set):
+            return "ninth_label", "esto_label"
     raise ValueError(
         f"{sheet_name} sheet missing expected columns; found: {columns}"
     )
@@ -334,7 +334,7 @@ if RUN_CHECKS:
                 product_df,
                 left_col,
                 right_col,
-                references["9th_fuels"],
+                references["ninth_fuels"],
                 references["esto_products"],
                 drop_x_left=True,
             )
@@ -345,7 +345,7 @@ if RUN_CHECKS:
             product_df,
             left_col,
             right_col,
-            references["9th_fuels"],
+            references["ninth_fuels"],
             references["esto_products"],
             PRODUCT_SHEET_NAME,
             drop_x_left=True,
@@ -354,7 +354,7 @@ if RUN_CHECKS:
             product_df,
             left_col,
             right_col,
-            references["9th_fuels"],
+            references["ninth_fuels"],
             references["esto_products"],
             PRODUCT_SHEET_NAME,
             drop_x_left=True,
@@ -379,7 +379,7 @@ if RUN_CHECKS:
                 flow_df,
                 left_col,
                 right_col,
-                references["9th_sectors"],
+                references["ninth_sectors"],
                 references["esto_flows"],
                 drop_x_left=True,
             )
@@ -390,7 +390,7 @@ if RUN_CHECKS:
             flow_df,
             left_col,
             right_col,
-            references["9th_sectors"],
+            references["ninth_sectors"],
             references["esto_flows"],
             FLOW_SHEET_NAME,
             drop_x_left=True,
@@ -399,7 +399,7 @@ if RUN_CHECKS:
             flow_df,
             left_col,
             right_col,
-            references["9th_sectors"],
+            references["ninth_sectors"],
             references["esto_flows"],
             FLOW_SHEET_NAME,
             drop_x_left=True,

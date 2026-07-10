@@ -91,14 +91,14 @@ def _read_canonical_compatibility_table(sheet_name: str, **kwargs: Any) -> pd.Da
     if sheet_name == "__compat_code_to_name":
         rows: list[dict[str, str]] = []
         for _, row in pairs.iterrows():
-            ninth_sector = str(row.get("9th_sector", "")).strip()
-            ninth_fuel = str(row.get("9th_fuel", "")).strip()
+            ninth_sector = str(row.get("ninth_sector", "")).strip()
+            ninth_fuel = str(row.get("ninth_fuel", "")).strip()
             esto_flow = str(row.get("esto_flow", "")).strip()
             esto_product = str(row.get("esto_product", "")).strip()
             rows.extend([
-                {"9th_label": ninth_sector, "9th_column": "sectors", "esto_label": esto_flow,
+                {"ninth_label": ninth_sector, "ninth_column": "sectors", "esto_label": esto_flow,
                  "esto_column": "flows", "name": name_lookup.get(("esto_flow", esto_flow), "")},
-                {"9th_label": ninth_fuel, "9th_column": "fuels", "esto_label": esto_product,
+                {"ninth_label": ninth_fuel, "ninth_column": "fuels", "esto_label": esto_product,
                  "esto_column": "products", "name": name_lookup.get(("esto_product", esto_product), "")},
             ])
         return pd.DataFrame(rows).drop_duplicates().reset_index(drop=True)
@@ -125,7 +125,7 @@ def _read_canonical_compatibility_table(sheet_name: str, **kwargs: Any) -> pd.Da
         }).reset_index(drop=True)
 
     if sheet_name == "__compat_independent_flow":
-        return pairs[["9th_sector", "esto_flow"]].drop_duplicates().reset_index(drop=True)
+        return pairs[["ninth_sector", "esto_flow"]].drop_duplicates().reset_index(drop=True)
 
     raise ValueError(f"Unknown canonical compatibility sheet: {sheet_name}")
 

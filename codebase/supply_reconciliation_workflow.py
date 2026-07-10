@@ -551,7 +551,7 @@ ECONOMIES_RUN_ORDER = [
     "03_CDA", "04_CHL", "06_HKC", "07_INA", "08_JPN", "09_ROK",
     "14_PE", "16_RUS", "17_SGP", "18_CT",
 ]
-ECONOMIES = ECONOMIES_RUN_ORDER
+ECONOMIES = ["02_BD"]
 # [, "20_USA"
 #     "01_AUS", "02_BD", "05_PRC", "10_MAS", "12_NZ", "15_PHL", "13_PNG", "19_THA", "05_PRC", "21_VN",
 # ]
@@ -733,7 +733,7 @@ _PRESET_RESULTS_UPDATE = {
 # ← change this to switch presets. _PRESET_PATCH_BASELINE_SEEDS is currently
 # commented out above — audited and verified for "transfers" (2026-07-08); other
 # modules remain unverified. Uncomment deliberately per run; see the note above it.
-ACTIVE_PRESET = _PRESET_BASELINE_SEED#_PRESET_BASELINE_SEED
+ACTIVE_PRESET = _PRESET_RESULTS_UPDATE
 
 # Default run mode; presets other than _PRESET_PATCH_BASELINE_SEEDS don't set
 # RUN_MODE, so reset it here each time before unpacking the active preset.

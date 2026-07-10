@@ -50,8 +50,8 @@ TARGET_FUEL_TO_ESTO_PRODUCT = {
 MANUAL_CODEBOOK_SUGGESTIONS = [
     {
         "suggested_action": "add_or_update",
-        "9th_label": "10_01_19_hydrogen_transformation",
-        "9th_column": "sub2sectors",
+        "ninth_label": "10_01_19_hydrogen_transformation",
+        "ninth_column": "sub2sectors",
         "esto_label": "10.01.19 Hydrogen transformation",
         "esto_column": "flows",
         "name": "Hydrogen transformation",
@@ -61,8 +61,8 @@ MANUAL_CODEBOOK_SUGGESTIONS = [
 MANUAL_PAIR_SUGGESTIONS = [
     {
         "sheet_group": "pair_core_synthetic",
-        "9th_sector": "10_01_19_hydrogen_transformation",
-        "9th_fuel": "17_electricity",
+        "ninth_sector": "10_01_19_hydrogen_transformation",
+        "ninth_fuel": "17_electricity",
         "esto_flow": "10.01.19 Hydrogen transformation",
         "esto_product": "17 Electricity",
         "suggested_action": "add_row",
@@ -71,8 +71,8 @@ MANUAL_PAIR_SUGGESTIONS = [
         "esto_base_year_nonzero": "",
         "ninth_pair_exists": False,
         "mapping_note": "Needed so the synthetic hydrogen own-use electricity rows can map through the standard 9th-ESTO comparator path.",
-        "orig_9th_sector": "10_01_19_hydrogen_transformation",
-        "orig_9th_fuel": "17_electricity",
+        "orig_ninth_sector": "10_01_19_hydrogen_transformation",
+        "orig_ninth_fuel": "17_electricity",
         "faulty mapping note": "",
     },
 ]
@@ -135,29 +135,29 @@ def _load_minimal_ninth_df() -> pd.DataFrame:
 
 def _add_deepest_sector_columns(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
-    out["9th_sector"] = "x"
-    out["9th_sector_column"] = "sectors"
+    out["ninth_sector"] = "x"
+    out["ninth_sector_column"] = "sectors"
     unresolved = pd.Series(True, index=out.index)
     for col in reversed(SECTOR_COLUMNS):
         values = out[col].fillna("").astype(str).str.strip()
         valid = values.ne("") & values.ne("x") & values.str.lower().ne("nan")
         mask = unresolved & valid
-        out.loc[mask, "9th_sector"] = values.loc[mask]
-        out.loc[mask, "9th_sector_column"] = col
+        out.loc[mask, "ninth_sector"] = values.loc[mask]
+        out.loc[mask, "ninth_sector_column"] = col
         unresolved &= ~mask
     return out
 
 
 def _choose_suggested_flow(pairs: pd.DataFrame, sector_code: str, fuel_code: str) -> str:
     exact = pairs[
-        pairs["9th_sector"].fillna("").astype(str).str.strip().eq(sector_code)
-        & pairs["9th_fuel"].fillna("").astype(str).str.strip().eq(fuel_code)
+        pairs["ninth_sector"].fillna("").astype(str).str.strip().eq(sector_code)
+        & pairs["ninth_fuel"].fillna("").astype(str).str.strip().eq(fuel_code)
     ].copy()
     exact_flows = [token for token in exact.get("esto_flow", pd.Series(dtype=str)).map(_clean) if token]
     if exact_flows:
         return exact_flows[0]
 
-    same_sector = pairs[pairs["9th_sector"].fillna("").astype(str).str.strip().eq(sector_code)].copy()
+    same_sector = pairs[pairs["ninth_sector"].fillna("").astype(str).str.strip().eq(sector_code)].copy()
     same_sector["esto_flow"] = same_sector.get("esto_flow", pd.Series(dtype=str)).map(_clean)
     same_sector = same_sector[same_sector["esto_flow"] != ""]
     if same_sector.empty:
@@ -301,7 +301,7 @@ def _build_pair_suggestions(
     working = working.loc[values.ne(0).any(axis=1)].copy()
     working = _add_deepest_sector_columns(working)
 
-    group_cols = ["9th_sector", "9th_sector_column", "fuels", "subfuels"]
+    group_cols = ["ninth_sector", "ninth_sector_column", "fuels", "subfuels"]
     grouped = (
         working.groupby(group_cols, dropna=False)
         .agg(
@@ -310,22 +310,22 @@ def _build_pair_suggestions(
             scenarios=("scenarios", lambda s: ",".join(sorted({str(v).strip() for v in s if _clean(v)}))),
         )
         .reset_index()
-        .rename(columns={"subfuels": "9th_fuel", "fuels": "9th_fuel_group"})
-        .sort_values(["9th_sector", "9th_fuel"], kind="stable")
+        .rename(columns={"subfuels": "ninth_fuel", "fuels": "ninth_fuel_group"})
+        .sort_values(["ninth_sector", "ninth_fuel"], kind="stable")
     )
 
     suggestion_rows: list[dict[str, object]] = []
     pairs = pairs.copy()
-    pairs["9th_sector"] = pairs["9th_sector"].map(_clean)
-    pairs["9th_fuel"] = pairs["9th_fuel"].map(_clean)
+    pairs["ninth_sector"] = pairs["ninth_sector"].map(_clean)
+    pairs["ninth_fuel"] = pairs["ninth_fuel"].map(_clean)
     pairs["esto_flow"] = pairs["esto_flow"].map(_clean)
     pairs["esto_product"] = pairs["esto_product"].map(_clean)
 
     for row in grouped.to_dict("records"):
-        sector_code = _clean(row["9th_sector"])
-        fuel_code = _clean(row["9th_fuel"])
+        sector_code = _clean(row["ninth_sector"])
+        fuel_code = _clean(row["ninth_fuel"])
         suggested_product = TARGET_FUEL_TO_ESTO_PRODUCT.get(fuel_code, "")
-        exact = pairs[(pairs["9th_sector"] == sector_code) & (pairs["9th_fuel"] == fuel_code)].copy()
+        exact = pairs[(pairs["ninth_sector"] == sector_code) & (pairs["ninth_fuel"] == fuel_code)].copy()
         exact_nonblank = exact[(exact["esto_flow"] != "") | (exact["esto_product"] != "")].copy()
         suggested_flow = _choose_suggested_flow(pairs, sector_code, fuel_code)
         exact_has_target = bool(
@@ -353,8 +353,8 @@ def _build_pair_suggestions(
             {
                 "sheet_group": "pair_core_synthetic",
                 "suggested_action": action,
-                "9th_sector": sector_code,
-                "9th_fuel": fuel_code,
+                "ninth_sector": sector_code,
+                "ninth_fuel": fuel_code,
                 "esto_flow": suggested_flow,
                 "esto_product": suggested_product,
                 "sector_match_method": _clean(exact_first.get("sector_match_method")) or "manual review",
@@ -362,8 +362,8 @@ def _build_pair_suggestions(
                 "esto_base_year_nonzero": _clean(exact_first.get("esto_base_year_nonzero")),
                 "ninth_pair_exists": bool(exact_has_any),
                 "mapping_note": "Nonzero 9th sector-fuel combination for new 16_x fuel; review ESTO flow and insert/update canonical pair manually.",
-                "orig_9th_sector": sector_code,
-                "orig_9th_fuel": fuel_code,
+                "orig_ninth_sector": sector_code,
+                "orig_ninth_fuel": fuel_code,
                 "faulty mapping note": faulty_note,
                 "nonzero_row_count": int(row["nonzero_row_count"]),
                 "economies": row["economies"],
@@ -379,8 +379,8 @@ def _build_codebook_suggestions(
     codebook: pd.DataFrame,
 ) -> pd.DataFrame:
     codebook = codebook.copy()
-    codebook["9th_label"] = codebook["9th_label"].map(_clean)
-    codebook["9th_column"] = codebook["9th_column"].map(_clean)
+    codebook["ninth_label"] = codebook["ninth_label"].map(_clean)
+    codebook["ninth_column"] = codebook["ninth_column"].map(_clean)
     codebook["esto_label"] = codebook["esto_label"].map(_clean)
     codebook["esto_column"] = codebook["esto_column"].map(_clean)
     codebook["name"] = codebook["name"].map(_clean)
@@ -390,14 +390,14 @@ def _build_codebook_suggestions(
 
     for fuel_code, esto_product in TARGET_FUEL_TO_ESTO_PRODUCT.items():
         exact_existing = codebook[
-            codebook["9th_label"].eq(fuel_code)
-            & codebook["9th_column"].eq("subfuels")
+            codebook["ninth_label"].eq(fuel_code)
+            & codebook["ninth_column"].eq("subfuels")
             & codebook["esto_label"].eq(esto_product)
             & codebook["esto_column"].eq("products")
         ]
         if exact_existing.empty:
             partial_existing = codebook[
-                codebook["9th_label"].eq(fuel_code)
+                codebook["ninth_label"].eq(fuel_code)
                 | codebook["esto_label"].eq(esto_product)
             ]
             action = "update_existing" if not partial_existing.empty else "add_row"
@@ -407,36 +407,36 @@ def _build_codebook_suggestions(
                 suggestions.append(
                     {
                         "suggested_action": action,
-                        "9th_label": fuel_code,
-                        "9th_column": "subfuels",
+                        "ninth_label": fuel_code,
+                        "ninth_column": "subfuels",
                         "esto_label": esto_product,
                         "esto_column": "products",
-                        "name": codebook.loc[codebook["9th_label"].eq(fuel_code), "name"].map(_clean).head(1).squeeze() or fuel_code,
+                        "name": codebook.loc[codebook["ninth_label"].eq(fuel_code), "name"].map(_clean).head(1).squeeze() or fuel_code,
                         "note": "Link new 16_x fuel code to its ESTO product code.",
                     }
                 )
 
     for row in MANUAL_CODEBOOK_SUGGESTIONS:
         exact_existing = codebook[
-            codebook["9th_label"].eq(_clean(row["9th_label"]))
-            & codebook["9th_column"].eq(_clean(row["9th_column"]))
+            codebook["ninth_label"].eq(_clean(row["ninth_label"]))
+            & codebook["ninth_column"].eq(_clean(row["ninth_column"]))
             & codebook["esto_label"].eq(_clean(row["esto_label"]))
             & codebook["esto_column"].eq(_clean(row["esto_column"]))
         ]
         if not exact_existing.empty:
             continue
         partial_existing = codebook[
-            codebook["9th_label"].eq(_clean(row["9th_label"]))
+            codebook["ninth_label"].eq(_clean(row["ninth_label"]))
             | codebook["esto_label"].eq(_clean(row["esto_label"]))
         ]
         suggestion = dict(row)
         suggestion["suggested_action"] = "update_existing" if not partial_existing.empty else "add_row"
         suggestions.append(suggestion)
     out = pd.DataFrame(suggestions).drop_duplicates(
-        subset=["9th_label", "9th_column", "esto_label", "esto_column"],
+        subset=["ninth_label", "ninth_column", "esto_label", "esto_column"],
         keep="first",
     )
-    return out.sort_values(["9th_column", "9th_label", "esto_column", "esto_label"], kind="stable")
+    return out.sort_values(["ninth_column", "ninth_label", "esto_column", "esto_label"], kind="stable")
 
 
 def _write_mapping_suggestions_workbook() -> dict[str, int]:
@@ -452,7 +452,7 @@ def _write_mapping_suggestions_workbook() -> dict[str, int]:
         ignore_index=True,
         sort=False,
     ).drop_duplicates(
-        subset=["sheet_group", "9th_sector", "9th_fuel", "esto_flow", "esto_product"],
+        subset=["sheet_group", "ninth_sector", "ninth_fuel", "esto_flow", "esto_product"],
         keep="first",
     )
     print("Building code_to_name suggestions...", flush=True)
@@ -466,8 +466,8 @@ def _write_mapping_suggestions_workbook() -> dict[str, int]:
     core_pair_suggestions = pair_suggestions[pair_suggestions["sheet_group"].eq("pair_core_synthetic")].copy()
     pair_cols = [
         "suggested_action",
-        "9th_sector",
-        "9th_fuel",
+        "ninth_sector",
+        "ninth_fuel",
         "esto_flow",
         "esto_product",
         "sector_match_method",
@@ -475,8 +475,8 @@ def _write_mapping_suggestions_workbook() -> dict[str, int]:
         "esto_base_year_nonzero",
         "ninth_pair_exists",
         "mapping_note",
-        "orig_9th_sector",
-        "orig_9th_fuel",
+        "orig_ninth_sector",
+        "orig_ninth_fuel",
         "faulty mapping note",
     ]
     with pd.ExcelWriter(MAPPING_OUTPUT_PATH, engine="openpyxl") as writer:

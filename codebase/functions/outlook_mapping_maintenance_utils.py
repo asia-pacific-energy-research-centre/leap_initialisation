@@ -842,12 +842,12 @@ def _build_crosswalk_target_conflicts(
         )
 
     pairs = _filter_researcher_rows(ninth_to_esto_pairs).copy().fillna("")
-    for col in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:
+    for col in ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]:
         if col not in pairs.columns:
             pairs[col] = ""
         pairs[col] = pairs[col].fillna("").astype(str).str.strip()
-    pairs = pairs[pairs[["9th_sector", "9th_fuel", "esto_flow", "esto_product"]].apply(lambda col: col.map(_clean).ne("")).all(axis=1)].copy()
-    pairs = pairs.drop_duplicates(subset=["9th_sector", "9th_fuel", "esto_flow", "esto_product"])
+    pairs = pairs[pairs[["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]].apply(lambda col: col.map(_clean).ne("")).all(axis=1)].copy()
+    pairs = pairs.drop_duplicates(subset=["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"])
 
     esto_targets = (
         esto_active.groupby(source_cols, as_index=False)
@@ -886,8 +886,7 @@ def _build_crosswalk_target_conflicts(
 
     merged = ninth_active.merge(
         pairs,
-        left_on=["ninth_sector", "ninth_fuel"],
-        right_on=["9th_sector", "9th_fuel"],
+        on=["ninth_sector", "ninth_fuel"],
         how="left",
     )
     merged["_ninth_row_key"] = merged["mapping_row_number"].astype(str)
@@ -994,16 +993,16 @@ def _build_crosswalk_target_conflicts(
 def _active_ninth_to_esto_pairs(ninth_to_esto_pairs: pd.DataFrame) -> pd.DataFrame:
     """Return active/non-faulty rows from master 9th -> ESTO pair mapping."""
     pairs = _filter_researcher_rows(ninth_to_esto_pairs).copy().fillna("")
-    for col in ["9th_sector", "9th_fuel", "esto_flow", "esto_product"]:
+    for col in ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]:
         if col not in pairs.columns:
             pairs[col] = ""
         pairs[col] = pairs[col].fillna("").astype(str).str.strip()
     pairs = pairs[
-        pairs[["9th_sector", "9th_fuel", "esto_flow", "esto_product"]]
+        pairs[["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]]
         .apply(lambda col: col.map(_clean).ne(""))
         .all(axis=1)
     ].copy()
-    return pairs.drop_duplicates(subset=["9th_sector", "9th_fuel", "esto_flow", "esto_product"])
+    return pairs.drop_duplicates(subset=["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"])
 
 
 def _build_implied_missing_crosswalk_pairs(
@@ -1022,8 +1021,8 @@ def _build_implied_missing_crosswalk_pairs(
         "candidate_status",
         "would_create_many_to_many",
         "candidate_crosswalk_cardinality",
-        "9th_sector",
-        "9th_fuel",
+        "ninth_sector",
+        "ninth_fuel",
         "esto_flow",
         "esto_product",
         "leap_sector_name_full_path",
@@ -1075,8 +1074,8 @@ def _build_implied_missing_crosswalk_pairs(
     master_pairs = _active_ninth_to_esto_pairs(ninth_to_esto_pairs)
     existing_keys = set(
         zip(
-            master_pairs["9th_sector"].astype(str),
-            master_pairs["9th_fuel"].astype(str),
+            master_pairs["ninth_sector"].astype(str),
+            master_pairs["ninth_fuel"].astype(str),
             master_pairs["esto_flow"].astype(str),
             master_pairs["esto_product"].astype(str),
         )
@@ -1095,9 +1094,7 @@ def _build_implied_missing_crosswalk_pairs(
 
     combined_pairs = pd.concat(
         [
-            master_pairs.rename(columns={"9th_sector": "ninth_sector", "9th_fuel": "ninth_fuel"})[
-                ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]
-            ],
+            master_pairs[["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]],
             implied[["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]],
         ],
         ignore_index=True,
@@ -1120,12 +1117,11 @@ def _build_implied_missing_crosswalk_pairs(
     implied["candidate_status"] = implied["would_create_many_to_many"].map(
         lambda value: "review_many_to_many_before_adding" if bool(value) else "candidate_to_add"
     )
-    implied = implied.rename(columns={"ninth_sector": "9th_sector", "ninth_fuel": "9th_fuel"})
     return (
         implied.loc[:, columns]
         .fillna("")
         .drop_duplicates()
-        .sort_values(["would_create_many_to_many", "9th_sector", "9th_fuel", "esto_flow", "esto_product"], ascending=[False, True, True, True, True])
+        .sort_values(["would_create_many_to_many", "ninth_sector", "ninth_fuel", "esto_flow", "esto_product"], ascending=[False, True, True, True, True])
         .reset_index(drop=True)
     )
 
@@ -1265,7 +1261,7 @@ def _researcher_export_frame(
     if "cardinality" not in out.columns:
         out["cardinality"] = ""
 
-    requested_cols = ["9th_sector", "9th_fuel", "esto_flow", "esto_product", "leap_flow", "leap_product"]
+    requested_cols = ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product", "leap_flow", "leap_product"]
     for col in requested_cols:
         if col not in out.columns:
             out[col] = ""

@@ -46,7 +46,7 @@ SHEET_LEAP_DISPLAY_NAMES = "leap_display_names"
 LEAP_COMBINED_ESTO_KEYS = ("leap_sector_name_full_path", "raw_leap_fuel_name")
 LEAP_COMBINED_ESTO_TARGETS = ("esto_flow", "esto_product")
 LEAP_COMBINED_NINTH_TARGETS = ("ninth_sector", "ninth_fuel")
-NINTH_PAIRS_SOURCE = ("9th_sector", "9th_fuel")
+NINTH_PAIRS_SOURCE = ("ninth_sector", "ninth_fuel")
 NINTH_PAIRS_TARGET = ("esto_flow", "esto_product")
 LEAP_DISPLAY_NAMES_REQUIRED = ("code", "leap_display_name")
 

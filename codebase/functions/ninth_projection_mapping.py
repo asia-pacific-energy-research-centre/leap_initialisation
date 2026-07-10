@@ -42,16 +42,16 @@ def add_ninth_pair_columns(df: pd.DataFrame) -> pd.DataFrame:
         sector_values = pd.DataFrame(
             {col: _clean_label_series(working[col]) for col in sector_cols}
         )
-        working["9th_sector"] = sector_values.bfill(axis=1).iloc[:, 0].fillna("")
+        working["ninth_sector"] = sector_values.bfill(axis=1).iloc[:, 0].fillna("")
     else:
-        working["9th_sector"] = ""
+        working["ninth_sector"] = ""
     if fuel_cols:
         fuel_values = pd.DataFrame(
             {col: _clean_label_series(working[col]) for col in fuel_cols}
         )
-        working["9th_fuel"] = fuel_values.bfill(axis=1).iloc[:, 0].fillna("")
+        working["ninth_fuel"] = fuel_values.bfill(axis=1).iloc[:, 0].fillna("")
     else:
-        working["9th_fuel"] = ""
+        working["ninth_fuel"] = ""
     return working
 
 
@@ -88,13 +88,13 @@ def build_ninth_projection_series(
     if not year_cols:
         return pd.DataFrame()
     working = ninth_df.copy()
-    working = working[(working["9th_sector"] != "") & (working["9th_fuel"] != "")]
+    working = working[(working["ninth_sector"] != "") & (working["ninth_fuel"] != "")]
     if working.empty:
         return pd.DataFrame()
     for year in year_cols:
         working[year] = pd.to_numeric(working[year], errors="coerce").fillna(0.0)
     grouped = (
-        working.groupby(["economy_key", "9th_sector", "9th_fuel"], dropna=False)[year_cols]
+        working.groupby(["economy_key", "ninth_sector", "ninth_fuel"], dropna=False)[year_cols]
         .sum()
         .reset_index()
     )
@@ -163,13 +163,13 @@ def _build_conservation_diagnostics(
 ) -> pd.DataFrame:
     """Return diagnostics proving allocation conserves source totals by 9th pair.
 
-    For each (economy_key, 9th_sector, 9th_fuel), this compares:
+    For each (economy_key, ninth_sector, ninth_fuel), this compares:
     - source values: the original 9th series
     - allocated values: sum across mapped ESTO rows
     """
     if source_by_pair.empty or allocated_rows.empty or not year_cols:
         return pd.DataFrame()
-    key_cols = ["economy_key", "9th_sector", "9th_fuel"]
+    key_cols = ["economy_key", "ninth_sector", "ninth_fuel"]
     source_by_pair = source_by_pair[key_cols + list(year_cols)].copy()
     allocated_by_pair = (
         allocated_rows.groupby(key_cols, dropna=False)[list(year_cols)]
@@ -197,8 +197,8 @@ def _build_conservation_diagnostics(
         rows.append(
             {
                 "economy_key": key[0],
-                "9th_sector": key[1],
-                "9th_fuel": key[2],
+                "ninth_sector": key[1],
+                "ninth_fuel": key[2],
                 "diagnostic_type": "conservation_mismatch",
                 "worst_year": worst_year,
                 "source_value_worst_year": source_value,
@@ -257,7 +257,7 @@ def allocate_ninth_projection_to_esto(
 
     How allocation works
     --------------------
-    1. Build a source series by (economy_key, 9th_sector, 9th_fuel).
+    1. Build a source series by (economy_key, ninth_sector, ninth_fuel).
     2. Use the mapping table to fan each source series out to one or more
        ESTO (flow, product) rows.
     3. Compute shares from base-year ESTO magnitudes.
@@ -273,7 +273,7 @@ def allocate_ninth_projection_to_esto(
     - Accepts a flow list or a mode string ("all", "off"/"none").
     - Triggered by ESTO flows listed in `sign_stable_flows`.
     - Once triggered for any mapped row, it is applied to the whole
-      (economy_key, 9th_sector, 9th_fuel) source pair to preserve totals.
+      (economy_key, ninth_sector, ninth_fuel) source pair to preserve totals.
     - Positive source years are split only across base-year-positive targets.
     - Negative source years are split only across base-year-negative targets.
     - If no same-sign targets exist for a given sign, it falls back to legacy
@@ -306,13 +306,13 @@ def allocate_ninth_projection_to_esto(
         empty_result = (pd.DataFrame(), pd.DataFrame())
         return (*empty_result, pd.DataFrame()) if return_allocation_provenance else empty_result
     mapping = mapping_df.copy()
-    mapping["9th_sector"] = mapping["9th_sector"].fillna("").astype(str).str.strip()
-    mapping["9th_fuel"] = mapping["9th_fuel"].fillna("").astype(str).str.strip()
+    mapping["ninth_sector"] = mapping["ninth_sector"].fillna("").astype(str).str.strip()
+    mapping["ninth_fuel"] = mapping["ninth_fuel"].fillna("").astype(str).str.strip()
     mapping["esto_flow"] = mapping["esto_flow"].fillna("").astype(str).str.strip()
     mapping["esto_product"] = mapping["esto_product"].fillna("").astype(str).str.strip()
-    mapping = mapping[(mapping["9th_sector"] != "") & (mapping["9th_fuel"] != "")]
+    mapping = mapping[(mapping["ninth_sector"] != "") & (mapping["ninth_fuel"] != "")]
     mapping = mapping.drop_duplicates(
-        subset=["9th_sector", "9th_fuel", "esto_flow", "esto_product"]
+        subset=["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]
     )
     if mapping.empty:
         empty_result = (pd.DataFrame(), pd.DataFrame())
@@ -333,7 +333,7 @@ def allocate_ninth_projection_to_esto(
     mapping_apec = mapping.merge(apec_base, on=["esto_flow", "esto_product"], how="left")
     mapping_apec["base_value_abs"] = mapping_apec["base_value_abs"].fillna(0.0)
     mapping_apec["apec_group_total"] = mapping_apec.groupby(
-        ["9th_sector", "9th_fuel"], dropna=False
+        ["ninth_sector", "ninth_fuel"], dropna=False
     )["base_value_abs"].transform("sum")
     mapping_apec["apec_share"] = 0.0
     apec_mask = mapping_apec["apec_group_total"] > 0
@@ -343,7 +343,7 @@ def allocate_ninth_projection_to_esto(
     )
 
     merged = mapping.merge(
-        ninth_series, on=["9th_sector", "9th_fuel"], how="inner"
+        ninth_series, on=["ninth_sector", "ninth_fuel"], how="inner"
     )
     merged = merged.merge(
         base_values[
@@ -363,25 +363,25 @@ def allocate_ninth_projection_to_esto(
     merged = merged.merge(
         mapping_apec[
             [
-                "9th_sector",
-                "9th_fuel",
+                "ninth_sector",
+                "ninth_fuel",
                 "esto_flow",
                 "esto_product",
                 "apec_group_total",
                 "apec_share",
             ]
         ],
-        on=["9th_sector", "9th_fuel", "esto_flow", "esto_product"],
+        on=["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"],
         how="left",
     )
     merged["apec_group_total"] = merged["apec_group_total"].fillna(0.0)
     merged["apec_share"] = merged["apec_share"].fillna(0.0)
     merged["group_total"] = merged.groupby(
-        ["economy_key", "9th_sector", "9th_fuel"], dropna=False
+        ["economy_key", "ninth_sector", "ninth_fuel"], dropna=False
     )["base_value_abs"].transform("sum")
     # Equal-share fallback must be per economy + 9th pair (not global across economies).
     merged["group_count"] = merged.groupby(
-        ["economy_key", "9th_sector", "9th_fuel"], dropna=False
+        ["economy_key", "ninth_sector", "ninth_fuel"], dropna=False
     )["esto_flow"].transform("count").astype(float)
     merged["share"] = 0.0
     merged["share_source"] = "economy"
@@ -405,7 +405,7 @@ def allocate_ninth_projection_to_esto(
     merged["apply_sign_stable_pair"] = False
     if sign_stable_flow_set:
         merged["apply_sign_stable"] = merged["esto_flow"].isin(sign_stable_flow_set)
-        key_cols = ["economy_key", "9th_sector", "9th_fuel"]
+        key_cols = ["economy_key", "ninth_sector", "ninth_fuel"]
         merged["apply_sign_stable_pair"] = (
             merged.groupby(key_cols, dropna=False)["apply_sign_stable"]
             .transform("max")
@@ -415,10 +415,10 @@ def allocate_ninth_projection_to_esto(
         merged["base_pos_abs"] = merged["base_value_abs"].where(merged["base_value"] > 0, 0.0)
         merged["base_neg_abs"] = merged["base_value_abs"].where(merged["base_value"] < 0, 0.0)
         merged["group_positive_total"] = merged.groupby(
-            ["economy_key", "9th_sector", "9th_fuel"], dropna=False
+            ["economy_key", "ninth_sector", "ninth_fuel"], dropna=False
         )["base_pos_abs"].transform("sum")
         merged["group_negative_total"] = merged.groupby(
-            ["economy_key", "9th_sector", "9th_fuel"], dropna=False
+            ["economy_key", "ninth_sector", "ninth_fuel"], dropna=False
         )["base_neg_abs"].transform("sum")
         merged["positive_share"] = 0.0
         merged["negative_share"] = 0.0
@@ -438,8 +438,8 @@ def allocate_ninth_projection_to_esto(
         merged[year] = pd.to_numeric(merged[year], errors="coerce").fillna(0.0)
     # Capture original source series before replacing year columns with allocated values.
     source_by_pair = (
-        merged[["economy_key", "9th_sector", "9th_fuel"] + year_cols]
-        .drop_duplicates(subset=["economy_key", "9th_sector", "9th_fuel"])
+        merged[["economy_key", "ninth_sector", "ninth_fuel"] + year_cols]
+        .drop_duplicates(subset=["economy_key", "ninth_sector", "ninth_fuel"])
         .copy()
     )
     for year in year_cols:
@@ -467,7 +467,7 @@ def allocate_ninth_projection_to_esto(
     if return_allocation_provenance:
         provenance = merged[
             [
-                "economy_key", "9th_sector", "9th_fuel", "esto_flow",
+                "economy_key", "ninth_sector", "ninth_fuel", "esto_flow",
                 "esto_product", "share", "share_source", "group_count", *year_cols,
             ]
         ].copy()
@@ -484,7 +484,7 @@ def allocate_ninth_projection_to_esto(
         )
         allocation_provenance = provenance.melt(
             id_vars=[
-                "economy_key", "9th_sector", "9th_fuel", "esto_flow",
+                "economy_key", "ninth_sector", "ninth_fuel", "esto_flow",
                 "esto_product", "share", "share_source", "allocation_method",
             ],
             value_vars=year_cols,
@@ -503,8 +503,8 @@ def allocate_ninth_projection_to_esto(
         merged["share_source"] != "economy",
         [
             "economy_key",
-            "9th_sector",
-            "9th_fuel",
+            "ninth_sector",
+            "ninth_fuel",
             "esto_flow",
             "esto_product",
             "share_source",
@@ -535,8 +535,8 @@ def allocate_ninth_projection_to_esto(
         if strict_conservation:
             sample_cols = [
                 "economy_key",
-                "9th_sector",
-                "9th_fuel",
+                "ninth_sector",
+                "ninth_fuel",
                 "worst_year",
                 "allocation_error_worst_year",
                 "max_abs_allocation_error",

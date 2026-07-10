@@ -773,7 +773,7 @@ def extract_8th_reference_tpes_fuel(workbook_path: Path) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
-def extract_optional_9th_fuel_source(
+def extract_optional_ninth_fuel_source(
     path: Path,
     sheet_name: str | None = None,
     source_sector: str = "FED",
@@ -856,7 +856,7 @@ def extract_optional_9th_fuel_source(
         if mapped is None:
             notes.append(
                 {
-                    "issue_type": "unmatched_optional_9th_fuel",
+                    "issue_type": "unmatched_optional_ninth_fuel",
                     "edition": "9th_optional",
                     "fuel": raw_label,
                     "year": "",
@@ -876,7 +876,7 @@ def extract_optional_9th_fuel_source(
                     "value": pd.to_numeric(row[col], errors="coerce"),
                     "units": "PJ",
                     "source_sheet": str(path.name),
-                    "source_label": "optional_9th_fuel_source",
+                    "source_label": "optional_ninth_fuel_source",
                 }
             )
 
@@ -1886,14 +1886,14 @@ def run_workflow(config: dict[str, Any] | None = None) -> dict[str, str]:
         fuel_path_raw = cfg.get("NINTH_FUEL_SOURCE_PATH")
         if fuel_path_raw is None:
             raise RuntimeError("USE_NINTH_FUEL_SOURCE=True but NINTH_FUEL_SOURCE_PATH is not set.")
-        optional_9th = extract_optional_9th_fuel_source(
+        optional_9th = extract_optional_ninth_fuel_source(
             Path(fuel_path_raw),
             sheet_name=cfg.get("NINTH_FUEL_SOURCE_SHEET"),
             source_sector=str(cfg.get("NINTH_FUEL_SOURCE_SECTOR", "FED")),
         )
         # Optional TPES fuel rows from same source/sheet when sector column is present.
         try:
-            optional_9th_tpes = extract_optional_9th_fuel_source(
+            optional_9th_tpes = extract_optional_ninth_fuel_source(
                 Path(fuel_path_raw),
                 sheet_name=cfg.get("NINTH_FUEL_SOURCE_SHEET"),
                 source_sector="TPES",

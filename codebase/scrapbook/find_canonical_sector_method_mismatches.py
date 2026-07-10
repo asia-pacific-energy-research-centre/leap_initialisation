@@ -68,7 +68,7 @@ def build_report(
 
     pairs = read_config_table(pairs_path)
     pairs.columns = [str(col).strip().lower() for col in pairs.columns]
-    for col in ["9th_sector", "9th_fuel", "esto_flow", "esto_product", "sector_match_method", "fuel_match_method", "mapping_note"]:
+    for col in ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product", "sector_match_method", "fuel_match_method", "mapping_note"]:
         if col not in pairs.columns:
             pairs[col] = ""
         pairs[col] = pairs[col].fillna("").astype(str).str.strip()
@@ -76,7 +76,7 @@ def build_report(
         pairs[col] = pairs[col].map(normalize_match_method)
 
     pairs["expected_sector_match_method"] = pairs.apply(
-        lambda row: _expected_code_method(row.get("9th_sector", ""), row.get("esto_flow", "")),
+        lambda row: _expected_code_method(row.get("ninth_sector", ""), row.get("esto_flow", "")),
         axis=1,
     )
 

@@ -258,10 +258,10 @@ def _derive_ninth_parent_lookups(codebook_path: Path) -> tuple[dict[str, bool], 
     codebook = read_config_table(codebook_path, sheet_name="code_to_name", dtype=str).fillna("")
     sector_codes = set(
         codebook.loc[
-            codebook["9th_column"].astype(str).str.strip().isin(
+            codebook["ninth_column"].astype(str).str.strip().isin(
                 ["sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"]
             ),
-            "9th_label",
+            "ninth_label",
         ]
         .astype(str)
         .str.strip()
@@ -269,8 +269,8 @@ def _derive_ninth_parent_lookups(codebook_path: Path) -> tuple[dict[str, bool], 
     )
     fuel_codes = set(
         codebook.loc[
-            codebook["9th_column"].astype(str).str.strip().isin(["fuels", "subfuels"]),
-            "9th_label",
+            codebook["ninth_column"].astype(str).str.strip().isin(["fuels", "subfuels"]),
+            "ninth_label",
         ]
         .astype(str)
         .str.strip()

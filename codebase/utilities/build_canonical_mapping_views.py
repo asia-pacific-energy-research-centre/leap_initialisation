@@ -144,13 +144,13 @@ def build_views(
         if not sectors:
             sectors = [str(row.get("sector_code_9th") or "").strip()]
         for sector in sectors:
-            matches = canonical_pairs[canonical_pairs["9th_sector"].astype(str).str.lower() == sector.lower()]
+            matches = canonical_pairs[canonical_pairs["ninth_sector"].astype(str).str.lower() == sector.lower()]
             coverage_rows.append(
                 {
                     "sheet_name": sheet,
                     "sector_code_9th": sector,
                     "canonical_pairs": int(len(matches)),
-                    "distinct_ninth_fuels": int(matches["9th_fuel"].nunique()),
+                    "distinct_ninth_fuels": int(matches["ninth_fuel"].nunique()),
                     "distinct_esto_products": int(matches["esto_product"].nunique()),
                     "covered": bool(not matches.empty),
                 }
@@ -174,7 +174,7 @@ def build_views(
     )
     sector_flow_mapping = build_sector_to_esto_flow_lookup(codebook_path)
     product_to_fuels = (
-        canonical_pairs.groupby(canonical_pairs["esto_product"].astype(str).str.strip().str.lower())["9th_fuel"]
+        canonical_pairs.groupby(canonical_pairs["esto_product"].astype(str).str.strip().str.lower())["ninth_fuel"]
         .apply(lambda s: sorted(set(v for v in s.astype(str).str.strip() if v)))
         .to_dict()
     )
@@ -223,8 +223,8 @@ def build_views(
                     "hard_conflict": True,
                     "sheet": "",
                     "fuel_label": "",
-                    "9th_sector": str(r.get("9th_sector", "")),
-                    "9th_fuel": str(r.get("9th_fuel", "")),
+                    "ninth_sector": str(r.get("ninth_sector", "")),
+                    "ninth_fuel": str(r.get("ninth_fuel", "")),
                     "details": str(r.get("details", "")),
                     "suggested_override": "Fix canonical key in ninth_pairs_to_esto_pairs.xlsx",
                 }
@@ -240,13 +240,13 @@ def build_views(
 
     if not leap_rows.empty:
         canonical_pairs = canonical_pairs.copy()
-        canonical_pairs["sector_norm"] = canonical_pairs["9th_sector"].astype(str).str.strip().str.lower()
-        canonical_pairs["fuel_norm"] = canonical_pairs["9th_fuel"].astype(str).str.strip().str.lower()
+        canonical_pairs["sector_norm"] = canonical_pairs["ninth_sector"].astype(str).str.strip().str.lower()
+        canonical_pairs["fuel_norm"] = canonical_pairs["ninth_fuel"].astype(str).str.strip().str.lower()
         canonical_pairs["esto_product_norm"] = canonical_pairs["esto_product"].astype(str).str.strip().str.lower()
         global_unique_fuel_by_product: dict[str, str] = {}
         global_unique_flow_by_product: dict[str, str] = {}
         for product, g in canonical_pairs.groupby("esto_product_norm", dropna=False):
-            fuels = sorted(g["9th_fuel"].dropna().astype(str).str.strip().replace("", pd.NA).dropna().unique().tolist())
+            fuels = sorted(g["ninth_fuel"].dropna().astype(str).str.strip().replace("", pd.NA).dropna().unique().tolist())
             flows = sorted(g["esto_flow"].dropna().astype(str).str.strip().replace("", pd.NA).dropna().unique().tolist())
             if len(fuels) == 1:
                 global_unique_fuel_by_product[str(product)] = fuels[0]
@@ -280,7 +280,7 @@ def build_views(
                     & (canonical_pairs["esto_product_norm"] == str(esto_product).strip().lower())
                 ]
                 candidates = child_matches
-            candidate_fuels = sorted(candidates["9th_fuel"].dropna().astype(str).str.strip().replace("", pd.NA).dropna().unique().tolist())
+            candidate_fuels = sorted(candidates["ninth_fuel"].dropna().astype(str).str.strip().replace("", pd.NA).dropna().unique().tolist())
 
             issue = ""
             hard = False
@@ -300,7 +300,7 @@ def build_views(
                 suggested_fuel = candidate_fuels[0] if len(candidate_fuels) == 1 else global_unique_fuel_by_product.get(product_key, "")
                 suggested_flow = ""
                 if suggested_fuel:
-                    sf = candidates[candidates["9th_fuel"] == suggested_fuel]["esto_flow"]
+                    sf = candidates[candidates["ninth_fuel"] == suggested_fuel]["esto_flow"]
                     suggested_flow = str(sf.iloc[0]) if not sf.empty else ""
                 if not suggested_flow:
                     suggested_flow = global_unique_flow_by_product.get(product_key, "")
@@ -352,8 +352,8 @@ def build_views(
                             suggested_flow = _resolve_sector_flow(sectors)
                         synthetic_rows.append(
                             {
-                                "9th_sector": synthetic_sector,
-                                "9th_fuel": synthetic_fuel,
+                                "ninth_sector": synthetic_sector,
+                                "ninth_fuel": synthetic_fuel,
                                 "esto_flow": suggested_flow,
                                 "esto_product": esto_product,
                                 "mapping_note": "projection_only_synthetic_pair (ESTO base-year absent/zero)",
@@ -381,8 +381,8 @@ def build_views(
                         "candidate_ninth_fuels": " | ".join(candidate_fuels),
                         "projection_fuel_candidates": " | ".join(sorted(set().union(*[sector_projection_fuels.get(str(s).strip().lower(), set()) for s in sectors])) if sectors else []),
                         "synthetic_pair_suggested": bool(projection_support),
-                        "synthetic_9th_sector": synthetic_sector,
-                        "synthetic_9th_fuel": synthetic_fuel,
+                        "synthetic_ninth_sector": synthetic_sector,
+                        "synthetic_ninth_fuel": synthetic_fuel,
                         "suggest_leap_fuel_label": fuel_label,
                         "suggest_ninth_fuel_override": suggested_fuel,
                         "suggest_esto_product_override": esto_product,
@@ -396,8 +396,8 @@ def build_views(
                             "hard_conflict": True,
                             "sheet": sheet,
                             "fuel_label": fuel_label,
-                            "9th_sector": " | ".join(sectors),
-                            "9th_fuel": " | ".join(candidate_fuels),
+                            "ninth_sector": " | ".join(sectors),
+                            "ninth_fuel": " | ".join(candidate_fuels),
                             "details": f"ESTO product '{esto_product}' maps to multiple 9th fuels for mapped sector(s).",
                             "suggested_override": "Add ninth_fuel_override in backup_leap_mappings.xlsx",
                         }
@@ -409,8 +409,8 @@ def build_views(
     if synthetic_df.empty:
         synthetic_df = pd.DataFrame(
             columns=[
-                "9th_sector",
-                "9th_fuel",
+                "ninth_sector",
+                "ninth_fuel",
                 "esto_flow",
                 "esto_product",
                 "mapping_note",
@@ -428,8 +428,8 @@ def build_views(
                 "hard_conflict",
                 "sheet",
                 "fuel_label",
-                "9th_sector",
-                "9th_fuel",
+                "ninth_sector",
+                "ninth_fuel",
                 "details",
                 "suggested_override",
             ]

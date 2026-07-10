@@ -92,7 +92,7 @@ def _load_pairs(pairs_path: Path | str | tuple) -> pd.DataFrame:
     else:
         df = read_config_table(pairs_path)
     df = df.fillna("")
-    df["9th_fuel"] = df["9th_fuel"].astype(str).str.strip()
+    df["ninth_fuel"] = df["ninth_fuel"].astype(str).str.strip()
     df["esto_product"] = df["esto_product"].astype(str).str.strip()
     return df
 
@@ -104,7 +104,7 @@ def _resolve_esto_product(
 ) -> tuple[str | None, list[str]]:
     if override:
         return override, []
-    subset = pairs_df[pairs_df["9th_fuel"] == ninth_fuel]
+    subset = pairs_df[pairs_df["ninth_fuel"] == ninth_fuel]
     products = [p for p in subset["esto_product"].tolist() if p]
     unique_products = sorted(set(products))
     if len(unique_products) == 1:

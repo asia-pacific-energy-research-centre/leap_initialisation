@@ -253,12 +253,12 @@ def _load_esto_product_to_ninth_fuel() -> dict[str, str]:
 
     ninth_to_esto_df = load_canonical_sheet(
         "ninth fuel to esto product",
-        ("9th_fuel", "esto_product"),
+        ("ninth_fuel", "esto_product"),
         dtype=str,
     ).fillna("")
     for _, row in ninth_to_esto_df.iterrows():
         esto_label = _normalize_label_text(row["esto_product"])
-        ninth_label = str(row["9th_fuel"]).strip()
+        ninth_label = str(row["ninth_fuel"]).strip()
         # A few aggregate ESTO products intentionally have multiple 9th
         # counterparts. Preserve the workbook's stable first-row choice, which
         # matches the previous loader's deterministic precedence.

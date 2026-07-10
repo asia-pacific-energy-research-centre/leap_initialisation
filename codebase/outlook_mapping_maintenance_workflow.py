@@ -1033,15 +1033,10 @@ def _canonical_display_names_as_researcher_rows() -> pd.DataFrame:
     """Convert canonical display-name rows to the legacy researcher export shape."""
     source = _read_canonical_sheet(SECTOR_FUEL_CODE_TO_NAME_SHEET)
     rows: list[dict[str, str]] = []
-    target_column = {
-        "ninth_sector": "9th_sector",
-        "ninth_fuel": "9th_fuel",
-        "esto_flow": "esto_flow",
-        "esto_product": "esto_product",
-    }
+    known_columns = {"ninth_sector", "ninth_fuel", "esto_flow", "esto_product"}
     for _, row in source.iterrows():
         code_type = str(row.get("code_type", "")).strip().lower()
-        column = target_column.get(code_type)
+        column = code_type if code_type in known_columns else None
         code = str(row.get("code", "")).strip()
         name = str(row.get("leap_display_name", "") or row.get("auto_name", "")).strip()
         if column and code:
@@ -1069,7 +1064,7 @@ def build_researcher_mappings_workbook(
     code_to_name = _canonical_display_names_as_researcher_rows()
     ninth_to_esto = _pair_cardinality_for_columns(
         _read_canonical_sheet(NINTH_PAIRS_TO_ESTO_PAIRS_SHEET),
-        source_cols=["9th_sector", "9th_fuel"],
+        source_cols=["ninth_sector", "ninth_fuel"],
         target_cols=["esto_flow", "esto_product"],
     )
 

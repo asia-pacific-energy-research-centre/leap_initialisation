@@ -20,10 +20,10 @@ def test_legacy_ninth_pairs_filename_resolves_to_canonical_workbook() -> None:
         REPO_ROOT / "config" / "ninth_pairs_to_esto_pairs.xlsx",
         dtype=str,
     ).fillna("")
-    sector = pairs[pairs["9th_sector"].eq("10_01_17_nonspecified_own_uses")]
+    sector = pairs[pairs["ninth_sector"].eq("10_01_17_nonspecified_own_uses")]
 
-    other_products = sector[sector["9th_fuel"].eq("07_x_other_petroleum_products")]
-    unallocated = sector[sector["9th_fuel"].eq("07_petroleum_products_unallocated")]
+    other_products = sector[sector["ninth_fuel"].eq("07_x_other_petroleum_products")]
+    unallocated = sector[sector["ninth_fuel"].eq("07_petroleum_products_unallocated")]
 
     assert set(other_products["esto_product"]) == {"07.17 Other products"}
     assert set(unallocated["esto_product"]) == {"07.99 PetProd nonspecified"}

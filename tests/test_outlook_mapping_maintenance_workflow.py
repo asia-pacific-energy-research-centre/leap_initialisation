@@ -134,8 +134,8 @@ def test_crosswalk_target_conflicts_reports_different_active_target() -> None:
     ninth_to_esto_pairs = pd.DataFrame(
         [
             {
-                "9th_sector": "14_industry_sector",
-                "9th_fuel": "08_gas",
+                "ninth_sector": "14_industry_sector",
+                "ninth_fuel": "08_gas",
                 "esto_flow": "14 Industry sector",
                 "esto_product": "08.01 Natural gas",
             }
@@ -181,8 +181,8 @@ def test_crosswalk_target_conflicts_labels_non_strict_cardinality_review() -> No
     ninth_to_esto_pairs = pd.DataFrame(
         [
             {
-                "9th_sector": "14_industry_sector",
-                "9th_fuel": "08_gas",
+                "ninth_sector": "14_industry_sector",
+                "ninth_fuel": "08_gas",
                 "esto_flow": "14 Industry sector",
                 "esto_product": "08.01 Natural gas",
             }
@@ -225,14 +225,14 @@ def test_crosswalk_target_conflicts_labels_rollup_covering_implied_components() 
     ninth_to_esto_pairs = pd.DataFrame(
         [
             {
-                "9th_sector": "09_02_chp_plants",
-                "9th_fuel": "15_04_black_liquor",
+                "ninth_sector": "09_02_chp_plants",
+                "ninth_fuel": "15_04_black_liquor",
                 "esto_flow": "09.01.02 CHP plants",
                 "esto_product": "15.04 Black liquor",
             },
             {
-                "9th_sector": "09_02_chp_plants",
-                "9th_fuel": "15_04_black_liquor",
+                "ninth_sector": "09_02_chp_plants",
+                "ninth_fuel": "15_04_black_liquor",
                 "esto_flow": "09.02.02 CHP plants",
                 "esto_product": "15.04 Black liquor",
             },
@@ -268,7 +268,7 @@ def test_implied_missing_crosswalk_pairs_reports_candidate_to_add() -> None:
         ]
     )
     ninth_to_esto_pairs = pd.DataFrame(
-        columns=["9th_sector", "9th_fuel", "esto_flow", "esto_product"]
+        columns=["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]
     )
 
     candidates = _build_implied_missing_crosswalk_pairs(esto, ninth, ninth_to_esto_pairs)
@@ -303,14 +303,14 @@ def test_implied_missing_crosswalk_pairs_labels_many_to_many_candidate() -> None
     ninth_to_esto_pairs = pd.DataFrame(
         [
             {
-                "9th_sector": "14_industry_sector",
-                "9th_fuel": "08_gas",
+                "ninth_sector": "14_industry_sector",
+                "ninth_fuel": "08_gas",
                 "esto_flow": "14 Industry sector",
                 "esto_product": "08.01 Natural gas",
             },
             {
-                "9th_sector": "16_other_sector",
-                "9th_fuel": "08_gas",
+                "ninth_sector": "16_other_sector",
+                "ninth_fuel": "08_gas",
                 "esto_flow": "14 Industry sector",
                 "esto_product": "08.02 LPG",
             },

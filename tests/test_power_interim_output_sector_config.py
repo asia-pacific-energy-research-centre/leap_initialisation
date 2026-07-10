@@ -132,8 +132,8 @@ def test_esto_product_mapping_reads_only_canonical_sheet(monkeypatch: pytest.Mon
         calls.append((sheet_name, tuple(required_columns)))
         return pd.DataFrame(
             [
-                {"9th_fuel": "01_coal", "esto_product": "01 Coal"},
-                {"9th_fuel": "12_solar_unallocated", "esto_product": "12.99 Solar nonspecified"},
+                {"ninth_fuel": "01_coal", "esto_product": "01 Coal"},
+                {"ninth_fuel": "12_solar_unallocated", "esto_product": "12.99 Solar nonspecified"},
             ]
         )
 
@@ -142,7 +142,7 @@ def test_esto_product_mapping_reads_only_canonical_sheet(monkeypatch: pytest.Mon
 
     mapping = workflow._load_esto_product_to_ninth_fuel()
 
-    assert calls == [("ninth fuel to esto product", ("9th_fuel", "esto_product"))]
+    assert calls == [("ninth fuel to esto product", ("ninth_fuel", "esto_product"))]
     assert mapping["01 Coal"] == "01_coal"
     assert mapping["12.99 Solar nonspecified"] == "12_solar_unallocated"
 

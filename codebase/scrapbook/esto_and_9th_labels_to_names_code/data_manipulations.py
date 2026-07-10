@@ -61,7 +61,7 @@ def build_code_to_name_columns(code_to_name_df):
     Inputs:
         code_to_name_df: Dataframe from the existing code_to_name sheet.
     Outputs:
-        Dataframe with columns: 9th_label, 9th_column, esto_label, esto_column, name.
+        Dataframe with columns: ninth_label, ninth_column, esto_label, esto_column, name.
     Side effects:
         None.
     """
@@ -108,7 +108,7 @@ def build_code_to_name_columns(code_to_name_df):
         labels = pivoted[pivoted["value_type"] == "label"].copy()
         labels = labels.rename(
             columns={
-                "9th": "9th_label",
+                "9th": "ninth_label",
                 "esto": "esto_label",
             }
         )
@@ -116,7 +116,7 @@ def build_code_to_name_columns(code_to_name_df):
         columns = pivoted[pivoted["value_type"] == "column_value"].copy()
         columns = columns.rename(
             columns={
-                "9th": "9th_column",
+                "9th": "ninth_column",
                 "esto": "esto_column",
             }
         )
@@ -124,7 +124,7 @@ def build_code_to_name_columns(code_to_name_df):
         merged = labels.merge(columns, on="name", how="outer")
         merged = merged.drop(columns=["value_type_x", "value_type_y"], errors="ignore")
 
-        final_cols = ["9th_label", "9th_column", "esto_label", "esto_column", "name"]
+        final_cols = ["ninth_label", "ninth_column", "esto_label", "esto_column", "name"]
         for col in final_cols:
             if col not in merged.columns:
                 merged[col] = ""

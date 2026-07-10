@@ -475,8 +475,8 @@ class TemplateBalanceExtractor:
                 dtype=str,
             ).fillna("")
             for _, row in pairs.iterrows():
-                sector = str(row.get("9th_sector", "")).strip()
-                fuel = str(row.get("9th_fuel", "")).strip()
+                sector = str(row.get("ninth_sector", "")).strip()
+                fuel = str(row.get("ninth_fuel", "")).strip()
                 flow = str(row.get("esto_flow", "")).strip()
                 product = str(row.get("esto_product", "")).strip()
                 if not (sector and fuel and flow and product):

@@ -9,13 +9,13 @@ workbook and which are the local copy being stale/junk.
 
 ## `canonical_ninth_pairs_missing_from_canonical.csv` (C2)
 
-Every `(9th_sector, 9th_fuel, esto_flow, esto_product)` row in the local
+Every `(ninth_sector, ninth_fuel, esto_flow, esto_product)` row in the local
 `ninth_pairs_to_esto_pairs` that is absent from canonical (1580 deduped).
 
 | Column | Meaning |
 | --- | --- |
-| `mc_9th_sector`, `mc_9th_fuel`, `mc_esto_flow`, `mc_esto_product` | the missing key-pair (4 key columns) |
-| `ninth_source_in_canonical` | is the `(9th_sector, 9th_fuel)` source present anywhere in canonical? |
+| `mc_ninth_sector`, `mc_ninth_fuel`, `mc_esto_flow`, `mc_esto_product` | the missing key-pair (4 key columns) |
+| `ninth_source_in_canonical` | is the `(ninth_sector, ninth_fuel)` source present anywhere in canonical? |
 | `canonical_esto_for_this_9th_source` | what ESTO pair(s) canonical maps that 9th source to instead (the alternative) |
 | `esto_target_in_canonical` | is the `(esto_flow, esto_product)` target present anywhere in canonical? |
 | `canonical_9th_for_this_esto_target` | what 9th source(s) canonical maps to that ESTO target instead |
@@ -32,7 +32,7 @@ junk in the local copy (blank or mis-columned keys) and can be ignored.
 
 The row-level count above massively overstates real gaps: `ninth_pairs` is
 heavily one-to-many, so a local row's full 4-tuple can be "missing" while the
-underlying `(9th_fuel -> esto_product)` relationship is still present in
+underlying `(ninth_fuel -> esto_product)` relationship is still present in
 canonical under a different sector/flow. This file reclassifies every missing
 row by whether the *relationship* survives in canonical:
 
@@ -66,7 +66,7 @@ different names).
 
 | Column | Meaning |
 | --- | --- |
-| `legacy_code`, `code_column` | the code and whether it came from `esto_label` or `9th_label` |
+| `legacy_code`, `code_column` | the code and whether it came from `esto_label` or `ninth_label` |
 | `legacy_name` | the display name the legacy table gave it |
 | `status` | `missing_code` (not in canonical) or `different_name` (canonical disagrees) |
 | `canonical_name_for_this_code` | the name canonical currently gives this code (blank if missing) |
@@ -91,7 +91,7 @@ electricity/heat interim workflow needs (e.g. `09_01_01_coal_power -> Coal`,
 
 ### `independent_product_mapping_additions_proposed.csv` — paste-ready
 
-The 9 aggregate `esto_product -> 9th_fuel` rows absent from canonical's
+The 9 aggregate `esto_product -> ninth_fuel` rows absent from canonical's
 `ninth fuel to esto product` sheet (`01 Coal -> 01_coal`,
 `06 Crude oil & NGL`, `07 Petroleum products`, `08 Gas`, `12 Solar`,
 `15.04 Black liqour`, etc.). These feed the interim parent-code fallback. Lower
@@ -100,19 +100,19 @@ represents via detailed codes, so confirm each is wanted before adding.
 
 ## `canonical_independent_product_mapping_diff.csv` (C5 relationships)
 
-Legacy `independent_product_mapping` esto_product->9th_fuel rows that are missing
+Legacy `independent_product_mapping` esto_product->ninth_fuel rows that are missing
 from or differ from canonical (35 rows).
 
 | Column | Meaning |
 | --- | --- |
-| `indep_esto_label`, `indep_9th_label` | the legacy esto_product -> 9th_fuel row |
-| `status` | `esto_product_absent_from_canonical_fuel_sheet` / `different_9th_fuel_in_canonical` / `present_plus_extra_canonical_targets` |
+| `indep_esto_label`, `indep_ninth_label` | the legacy esto_product -> ninth_fuel row |
+| `status` | `esto_product_absent_from_canonical_fuel_sheet` / `different_ninth_fuel_in_canonical` / `present_plus_extra_canonical_targets` |
 | `canonical_9th_for_esto` | what 9th fuel(s) canonical's `ninth fuel to esto product` sheet maps that esto product to |
 | `esto_in_canonical_pairs`, `this_9th_in_canonical_pairs` | element presence in `ninth_pairs_to_esto_pairs` |
 
 The 6 aggregate rows the interim workflow depends on show up as
 `esto_product_absent_from_canonical_fuel_sheet` (`01 Coal`, `06 Crude oil & NGL`,
 `07 Petroleum products`, `08 Gas`, `12 Solar`, `15.04 Black liqour`). The
-`different_9th_fuel_in_canonical` rows are mostly canonical being *more specific*
+`different_ninth_fuel_in_canonical` rows are mostly canonical being *more specific*
 than the legacy aggregate (e.g. `07.13 Lubricants`: legacy
 `07_petroleum_products` vs canonical `07_x_other_petroleum_products`).

@@ -3265,7 +3265,7 @@ def run_results_linked_transformation_supply_workflow(
                 reconciliation_table=reconciliation_table,
                 process_records=transformation_process_records,
                 economies=economy_list,
-                scenarios=export_scenario_list,
+                scenarios=balance_scenario_list,
                 resolve_scenario_key=_resolve_reconciliation_scenario_key,
                 results_dir=balance_csv_paths,
                 state_path=CAPACITY_UNMET_STATE_PATH,

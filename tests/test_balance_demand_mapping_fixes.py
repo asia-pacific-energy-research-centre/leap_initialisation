@@ -94,7 +94,7 @@ def _unresolved(rows: list[dict[str, str]]) -> pd.DataFrame:
 
 
 def _empty_canonical() -> pd.DataFrame:
-    return pd.DataFrame(columns=["9th_sector", "9th_fuel", "esto_flow", "esto_product"])
+    return pd.DataFrame(columns=["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"])
 
 
 def test_road_case_resolves_via_leap_rollup() -> None:
@@ -168,8 +168,8 @@ def test_ninth_rollup_sheet_is_consulted() -> None:
     canonical = pd.DataFrame(
         [
             {
-                "9th_sector": "09_08_coal_transformation_incl_own_use",
-                "9th_fuel": "01_coal",
+                "ninth_sector": "09_08_coal_transformation_incl_own_use",
+                "ninth_fuel": "01_coal",
                 "esto_flow": "09.08 Coal transformation",
                 "esto_product": "01 Coal",
             }
@@ -216,8 +216,8 @@ def test_esto_rollup_sheet_is_consulted() -> None:
     canonical = pd.DataFrame(
         [
             {
-                "9th_sector": "10_99_99_synthetic",
-                "9th_fuel": "01_coal",
+                "ninth_sector": "10_99_99_synthetic",
+                "ninth_fuel": "01_coal",
                 "esto_flow": "09.01.01 Electricity plants",  # leaf, not a combined target
                 "esto_product": "01 Coal",
             }

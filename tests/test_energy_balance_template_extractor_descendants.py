@@ -136,7 +136,7 @@ def test_parent_row_does_not_reuse_descendant_mapping_when_child_source_is_prese
 
 def test_load_mappings_reports_non_subtotal_many_to_many_rows(tmp_path: Path) -> None:
     workbook = tmp_path / "mapping_fixture.xlsx"
-    codebook = pd.DataFrame(columns=["name", "9th_label", "9th_column", "esto_label", "esto_column"])
+    codebook = pd.DataFrame(columns=["name", "ninth_label", "ninth_column", "esto_label", "esto_column"])
     esto_leap = pd.DataFrame(columns=["category", "leap_name", "original_label"])
     esto = pd.DataFrame(
         [
