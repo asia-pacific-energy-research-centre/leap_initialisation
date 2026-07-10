@@ -673,9 +673,15 @@ _PRESET_BASELINE_SEED = {
 # reproduced aggregated-demand rows exactly for 01_AUS and 20_USA (420/420 rows,
 # zero row/expression diffs for both).
 #
-# Transformation auto-regen modules remain UNVERIFIED. They may miss full-run
-# layers (capacity/production seeding, trade-target resets, catalog zero-fill)
-# unless proven by the same equivalence check before trusting them.
+# Audited 2026-07-10. Transformation auto-regen modules are NOT SAFELY
+# PATCHABLE and are gated in patch_baseline_seeds.run_patch(). The simplified
+# auto path failed for oil_refineries (01_AUS: 60 rows only-before and 57
+# expression diffs; 20_USA: 21 rows only-before and 83 expression diffs).
+# Routing through the split-target full-workflow helper fixed row presence but
+# still changed process-efficiency and auxiliary-fuel expressions (20_USA:
+# 7 expression diffs). Refresh these modules through the baseline/full supply
+# reconciliation workflow instead of module patching until exact equivalence is
+# proven.
 # _PRESET_PATCH_BASELINE_SEEDS = {
 #     # --- Pass mode ---
 #     # When RUN_MODE == "patch_baseline_seeds", run_with_config() skips the full

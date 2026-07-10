@@ -295,6 +295,12 @@ def test_aggregated_demand_patch_threads_reconciliation_config(monkeypatch, tmp_
     assert captured["use_sector_branches"] is True
 
 
+@pytest.mark.parametrize("module", ["oil_refineries", "lng", "transformation"])
+def test_transformation_auto_regen_modules_are_gated(module: str) -> None:
+    with pytest.raises(NotImplementedError, match="not safely patchable"):
+        patch_baseline_seeds.run_patch(module, economies=["20_USA"], run_workflow=True)
+
+
 def test_transfers_patch_scope_covers_every_transfer_process_title() -> None:
     # strip_prefixes must cover every sector title the transfers workflow can
     # produce, otherwise a patch leaves stale rows behind (and drops new rows,

@@ -968,6 +968,15 @@ def run_patch(
     _TEMPLATE_ID_LOOKUP_CACHE = None  # rebuild from template on each run_patch call
 
     cfg = MODULE_REGISTRY[module]
+    if cfg.auto_sector_keys:
+        raise NotImplementedError(
+            f"Module '{module}' is not safely patchable by patch_baseline_seeds. "
+            "Transformation auto-regeneration has not reproduced current full-run "
+            "seed rows row-for-row (oil_refineries spot check changed process "
+            "efficiency and auxiliary-fuel expressions). Re-run the baseline/full "
+            "supply reconciliation workflow for transformation seed refreshes."
+        )
+
     fresh_files: list[Path] | None = None
     if run_workflow and not cfg.auto_sector_keys:
         fresh_files = _run_source_workflow(module, economies)
