@@ -7,8 +7,16 @@ losses and own-use flows that do not fit cleanly in transformation modules.
 For each configured process it:
 - builds one proxy activity series, for example coal production for coal mines;
 - pulls the target loss/own-use series by fuel;
-- calculates fuel intensity as abs(target energy) / proxy activity;
+- calculates fuel intensity from the selected stage semantics;
 - writes audit CSV files and a LEAP import workbook.
+
+Baseline-seed and results-update passes are both initialisation: target energy
+is still matched year by year. Post-initialisation is a separate mode used only
+once the model is no longer trying to match external projection-year target
+energy values; then intensity should be held constant from the
+base-year-calibrated value. If the base year is zero but later projection years
+become nonzero, use the first valid nonzero projection year as the anchored
+intensity year.
 """
 from __future__ import annotations
 
@@ -63,6 +71,8 @@ from codebase.functions.other_loss_own_use_proxy_utils import (
     DEFAULT_MEASURE_UNITS,
     LEAP_BALANCE_FUEL_SETS,
     LEAP_BALANCE_ACTIVITY_FALLBACKS,
+    ESTO_NINTH_ACTIVITY_FALLBACKS,
+    _leap_balance_fallback_chain,
     _normalize_activity_source_mode,
     _normalize_balance_label,
     _normalize_source_token,
@@ -90,6 +100,7 @@ from codebase.functions.other_loss_own_use_proxy_utils import (
     build_ninth_proxy_activity_series,
     build_ninth_proxy_activity_series_with_fallback,
     build_proxy_activity_series,
+    build_proxy_activity_series_with_fallback,
     build_activity_series_for_mode,
     build_activity_source_gap_warnings,
     build_activity_source_fallback_report,
@@ -160,12 +171,26 @@ EXPORT_KEY_WORKBOOK_SHEET = "Export"
 
 # DEMAND_ROOT_PARTS imported from other_loss_own_use_proxy_utils
 
-# Activity source mode:
-# - "esto_ninth": first-run method. Activity uses ESTO base years and 9th
-#   Edition projection years.
-# - "leap_balance": second-run method. Activity uses a LEAP balance export
-#   workbook, such as data/leap balances exports/20_USA/...xlsx.
+# Activity source mode is separate from stage semantics:
+# - "esto_ninth": baseline-seed initialisation activity from ESTO base years
+#   and 9th Edition projection years.
+# - "leap_balance": results-update initialisation activity from a LEAP balance
+#   export workbook, such as data/leap balances exports/20_USA/...xlsx.
+# Both modes still match target energy unless PROXY_INTENSITY_MODE is changed
+# to post-initialisation anchored intensity.
 PROXY_ACTIVITY_SOURCE_MODE = "esto_ninth"
+
+# Intensity behavior:
+# - "target_matching_initialisation": intensity_y = abs(target_energy_y) /
+#   proxy_activity_y. This covers both baseline-seed and results-update passes.
+# - "post_initialisation_anchored_intensity": hold intensity constant from the
+#   base-year-calibrated value. If the base year is zero but later projection
+#   years become nonzero, use the first valid nonzero projection year as the
+#   anchored intensity year.
+PROXY_INTENSITY_MODE = "target_matching_initialisation"
+
+STRICT_PROXY_ACTIVITY_TARGET_CONSISTENCY = True
+WRITE_PROXY_ACTIVITY_TARGET_CONSISTENCY_ISSUES = True
 
 # LEAP balance workbook controls used when PROXY_ACTIVITY_SOURCE_MODE is
 # "leap_balance".
@@ -351,7 +376,14 @@ PROXY_CONFIG = [
         activity_value_mode="positive_only",
         esto_target_flows=["10.01.03 Liquefaction/regasification plants"],
         ninth_target_sectors=["10_01_03_liquefaction_regasification_plants"],
-        notes="Starter proxy: positive output of natural gas and LNG from liquefaction/regasification.",
+        notes=(
+            "Starter proxy: positive output of natural gas and LNG from "
+            "liquefaction/regasification. Economies that leave 09.06.02 empty "
+            "(e.g. 01_AUS books LNG as trade) fall back per "
+            "ESTO_NINTH_ACTIVITY_FALLBACKS: absolute LNG imports+exports "
+            "(covers liquefaction and regasification), then natural gas "
+            "production+imports."
+        ),
     ),
     make_proxy_config(
         enabled=False,#can be handled by auxiliary branch in leap so keeping disabled for now
@@ -776,6 +808,174 @@ def resolve_leap_balance_workbook_path(
     )
 
 
+def _normalize_intensity_mode(value: str | None) -> str:
+    mode = str(value or PROXY_INTENSITY_MODE).strip().lower()
+    initialisation_aliases = {
+        "initialisation",
+        "initialization",
+        "baseline_seed_initialisation",
+        "baseline_seed_initialization",
+        "results_update_initialisation",
+        "results_update_initialization",
+        "target_matching",
+        "target_matching_initialisation",
+        "target_matching_initialization",
+    }
+    post_initialisation_aliases = {
+        "post_initialisation",
+        "post_initialization",
+        "anchored",
+        "anchored_intensity",
+        "post_initialisation_anchored_intensity",
+        "post_initialization_anchored_intensity",
+    }
+    if mode in initialisation_aliases:
+        return "target_matching_initialisation"
+    if mode in post_initialisation_aliases:
+        return "post_initialisation_anchored_intensity"
+    raise ValueError(
+        f"Invalid intensity_mode={value!r}. Use 'target_matching_initialisation' "
+        "or 'post_initialisation_anchored_intensity'."
+    )
+
+
+def _calculate_target_matching_intensity(row: pd.Series) -> float:
+    proxy_activity = float(row["proxy_activity"])
+    if proxy_activity == 0.0:
+        return 0.0
+    return float(row["target_energy"]) / proxy_activity
+
+
+def _add_anchored_intensity_columns(
+    target: pd.DataFrame,
+    *,
+    base_year: int,
+) -> pd.DataFrame:
+    """Hold intensity from a fixed anchor year for post-initialisation mode."""
+    if target.empty:
+        out = target.copy()
+        out["anchor_year"] = pd.NA
+        return out
+    out_parts: list[pd.DataFrame] = []
+    group_cols = ["process_key", "fuel_branch_label"]
+    for _, group in target.groupby(group_cols, dropna=False, sort=False):
+        group = group.copy()
+        valid = group[
+            (group["proxy_activity"].astype(float) > 0.0)
+            & (group["target_energy"].astype(float) > 0.0)
+        ].sort_values("year")
+        base_valid = valid[valid["year"].astype(int).eq(int(base_year))]
+        if not base_valid.empty:
+            anchor_row = base_valid.iloc[0]
+        elif not valid.empty:
+            anchor_row = valid.iloc[0]
+        else:
+            group["intensity"] = 0.0
+            group["anchor_year"] = pd.NA
+            out_parts.append(group)
+            continue
+        anchor_intensity = float(anchor_row["target_energy"]) / float(anchor_row["proxy_activity"])
+        group["intensity"] = anchor_intensity
+        group["anchor_year"] = int(anchor_row["year"])
+        out_parts.append(group)
+    return pd.concat(out_parts, ignore_index=True) if out_parts else target.copy()
+
+
+def build_proxy_activity_target_consistency_issues(detail_df: pd.DataFrame) -> pd.DataFrame:
+    """Return rows where target energy is positive but proxy activity is zero."""
+    columns = [
+        "economy",
+        "process_key",
+        "process_label",
+        "fuel_branch_label",
+        "year",
+        "proxy_activity",
+        "target_energy",
+        "source_dataset",
+        "activity_source_mode",
+        "intensity_mode",
+        "anchor_year",
+        "issue_type",
+    ]
+    if detail_df.empty:
+        return pd.DataFrame(columns=columns)
+    working = detail_df.copy()
+    proxy_activity = pd.to_numeric(working["proxy_activity"], errors="coerce").fillna(0.0)
+    target_energy = pd.to_numeric(working["target_energy"], errors="coerce").fillna(0.0)
+    issues = working[(proxy_activity == 0.0) & (target_energy > 0.0)].copy()
+    if issues.empty:
+        return pd.DataFrame(columns=columns)
+    for col in columns:
+        if col not in issues.columns:
+            issues[col] = pd.NA
+    issues["issue_type"] = "positive_target_energy_with_zero_proxy_activity"
+    return issues[columns].sort_values(["process_key", "fuel_branch_label", "year"], kind="mergesort")
+
+
+def validate_proxy_activity_target_consistency(
+    detail_df: pd.DataFrame,
+    *,
+    strict: bool = STRICT_PROXY_ACTIVITY_TARGET_CONSISTENCY,
+    issues_path: Path | None = None,
+    print_warning: bool = True,
+    blocking_min_year: int | None = None,
+) -> pd.DataFrame:
+    """Raise or report impossible positive-target/zero-activity proxy rows.
+
+    Every issue row is written to ``issues_path``. When ``blocking_min_year``
+    is given (the export base year), only rows at or after it can raise:
+    pre-base-year rows never reach the LEAP import, so they stay report-only
+    diagnostics instead of failing the run.
+    """
+    issues = build_proxy_activity_target_consistency_issues(detail_df)
+    if issues_path is not None:
+        _write_csv_with_locked_file_fallback(issues, issues_path)
+    if issues.empty:
+        return issues
+    blocking = issues
+    if blocking_min_year is not None:
+        blocking = issues[
+            pd.to_numeric(issues["year"], errors="coerce").fillna(-1).astype(int)
+            >= int(blocking_min_year)
+        ]
+    if strict and not blocking.empty:
+        sample = [
+            (
+                str(row.process_key),
+                str(row.fuel_branch_label),
+                int(row.year),
+            )
+            for row in blocking.head(12).itertuples(index=False)
+        ]
+        window = (
+            f" at or after base year {int(blocking_min_year)}"
+            if blocking_min_year is not None
+            else ""
+        )
+        raise ValueError(
+            "Proxy activity/target consistency failed: "
+            f"{len(blocking)} row(s), {blocking['process_key'].nunique()} process(es) have "
+            f"proxy_activity == 0 while target_energy > 0{window}. "
+            f"Sample (process_key, fuel_branch_label, year): {sample}"
+        )
+    if not print_warning:
+        return issues
+    report_only = len(issues) - len(blocking)
+    suffix = (
+        f" ({report_only} pre-base-year row(s) report-only)"
+        if blocking_min_year is not None and report_only
+        else ""
+    )
+    if issues_path is not None:
+        print(
+            f"[WARN] Proxy activity/target consistency issues: {len(issues)}{suffix} "
+            f"(details saved to {issues_path})"
+        )
+    else:
+        print(f"[WARN] Proxy activity/target consistency issues: {len(issues)}{suffix}")
+    return issues
+
+
 def build_proxy_detail_table(
     *,
     esto_data: pd.DataFrame,
@@ -784,11 +984,14 @@ def build_proxy_detail_table(
     configs: Sequence[Mapping[str, object]],
     leap_balance_activity: pd.DataFrame | None = None,
     activity_source_mode: str = PROXY_ACTIVITY_SOURCE_MODE,
+    intensity_mode: str = PROXY_INTENSITY_MODE,
+    strict_proxy_activity_target_consistency: bool = STRICT_PROXY_ACTIVITY_TARGET_CONSISTENCY,
     base_year: int = EXPORT_BASE_YEAR,
     final_year: int = EXPORT_FINAL_YEAR,
 ) -> pd.DataFrame:
     detail_frames = []
     fuel_mapping_lookup = load_fuel_mapping_lookup()
+    normalized_intensity_mode = _normalize_intensity_mode(intensity_mode)
     for config in configs:
         if not bool(config.get("enabled", True)):
             continue
@@ -814,12 +1017,16 @@ def build_proxy_detail_table(
         if target.empty:
             continue
         target["proxy_activity"] = target["year"].map(activity).fillna(0.0)
-        target["intensity"] = target.apply(
-            lambda row: 0.0 if float(row["proxy_activity"]) == 0.0 else float(row["target_energy"]) / float(row["proxy_activity"]),
-            axis=1,
-        )
+        if normalized_intensity_mode == "target_matching_initialisation":
+            target["intensity"] = target.apply(_calculate_target_matching_intensity, axis=1)
+            target["anchor_year"] = pd.NA
+        elif normalized_intensity_mode == "post_initialisation_anchored_intensity":
+            target = _add_anchored_intensity_columns(target, base_year=base_year)
+        else:
+            raise AssertionError(f"Unexpected intensity mode: {normalized_intensity_mode}")
         target["activity_label"] = str(config.get("activity_label", ""))
         target["activity_source_mode"] = str(activity_source_mode)
+        target["intensity_mode"] = normalized_intensity_mode
         target["notes"] = str(config.get("notes", ""))
         detail_frames.append(target)
     if not detail_frames:
@@ -837,6 +1044,8 @@ def build_proxy_detail_table(
                 "target_energy",
                 "target_energy_signed",
                 "intensity",
+                "intensity_mode",
+                "anchor_year",
                 "activity_label",
                 "activity_source_mode",
                 "notes",
@@ -856,11 +1065,21 @@ def build_proxy_detail_table(
         "target_energy",
         "target_energy_signed",
         "intensity",
+        "intensity_mode",
+        "anchor_year",
         "activity_label",
         "activity_source_mode",
         "notes",
     ]
-    return out[ordered].sort_values(["process_label", "fuel_branch_label", "year"], kind="mergesort")
+    out = out[ordered].sort_values(["process_label", "fuel_branch_label", "year"], kind="mergesort")
+    validate_proxy_activity_target_consistency(
+        out,
+        strict=strict_proxy_activity_target_consistency,
+        issues_path=None,
+        print_warning=False,
+        blocking_min_year=base_year,
+    )
+    return out
 
 
 def build_output_fuel_esto_validation(
@@ -1047,6 +1266,9 @@ def assemble_proxy_workbook(
     include_leap_import: bool = False,
     configs: Sequence[Mapping[str, object]] = PROXY_CONFIG,
     activity_source_mode: str = PROXY_ACTIVITY_SOURCE_MODE,
+    intensity_mode: str = PROXY_INTENSITY_MODE,
+    strict_proxy_activity_target_consistency: bool = STRICT_PROXY_ACTIVITY_TARGET_CONSISTENCY,
+    write_proxy_activity_target_consistency_issues: bool = WRITE_PROXY_ACTIVITY_TARGET_CONSISTENCY_ISSUES,
     leap_balance_workbook_path: Path | str | None = LEAP_BALANCE_WORKBOOK_PATH,
     leap_balance_scenario: str = LEAP_BALANCE_SCENARIO,
     leap_balance_date_id: str | None = LEAP_BALANCE_DATE_ID,
@@ -1093,6 +1315,12 @@ def assemble_proxy_workbook(
             requested_rows.update(str(row) for row in leap_cfg.get("balance_rows", []) if str(row).strip())
             fuel_set_name = str(leap_cfg.get("fuel_set", "")).strip()
             requested_fuels.update(LEAP_BALANCE_FUEL_SETS.get(fuel_set_name, []))
+            # Include fallback rows/fuels so fallback activity can be built
+            # when the configured balance rows are zero for this economy.
+            for fallback_cfg in _leap_balance_fallback_chain(str(config.get("process_key", ""))):
+                requested_rows.update(str(row) for row in fallback_cfg.get("balance_rows", []) if str(row).strip())
+                fallback_fuel_set = str(fallback_cfg.get("fuel_set", "")).strip()
+                requested_fuels.update(LEAP_BALANCE_FUEL_SETS.get(fallback_fuel_set, []))
         leap_balance_activity = load_leap_balance_activity_table(
             balance_path,
             balance_rows=sorted(requested_rows),
@@ -1105,6 +1333,8 @@ def assemble_proxy_workbook(
         configs=configs,
         leap_balance_activity=leap_balance_activity,
         activity_source_mode=activity_source_mode,
+        intensity_mode=intensity_mode,
+        strict_proxy_activity_target_consistency=False,
         base_year=EXPORT_BASE_YEAR,
         final_year=EXPORT_FINAL_YEAR,
     )
@@ -1122,6 +1352,14 @@ def assemble_proxy_workbook(
     output_fuel_candidate_validation_path = output_dir / "proxy_output_fuel_esto_validation_all_candidates.csv"
     activity_source_warnings_path = output_dir / "proxy_activity_source_warnings.csv"
     activity_source_fallback_path = output_dir / "proxy_activity_source_fallbacks.csv"
+    consistency_issues_path = output_dir / "proxy_activity_target_consistency_issues.csv"
+    if write_proxy_activity_target_consistency_issues:
+        validate_proxy_activity_target_consistency(
+            detail_df,
+            strict=strict_proxy_activity_target_consistency,
+            issues_path=consistency_issues_path,
+            blocking_min_year=EXPORT_BASE_YEAR,
+        )
     if not leap_balance_activity.empty:
         leap_balance_activity.to_csv(leap_activity_path, index=False)
     fuel_mapping_lookup = load_fuel_mapping_lookup()
@@ -1188,7 +1426,8 @@ def assemble_proxy_workbook(
     _write_csv_with_locked_file_fallback(activity_source_fallbacks, activity_source_fallback_path)
     if not activity_source_fallbacks.empty:
         print(
-            "\n[INFO] Used broader 9th parent-sector activity for other loss/own-use proxy gaps."
+            "\n[INFO] Used fallback activity (broader 9th parent sector or alternative "
+            "source) for other loss/own-use proxy gaps."
         )
         print(
             f"[INFO] Activity source fallbacks: {len(activity_source_fallbacks)} "
@@ -1196,8 +1435,9 @@ def assemble_proxy_workbook(
         )
         for _, row in activity_source_fallbacks.head(20).iterrows():
             print(
-                "  - {process}: '{original}' -> '{fallback}'".format(
+                "  - {process} [{reason}]: '{original}' -> '{fallback}'".format(
                     process=str(row.get("process_label") or "").strip(),
+                    reason=str(row.get("fallback_reason") or "").strip(),
                     original=str(row.get("original_ninth_activity_sectors") or "").strip(),
                     fallback=str(row.get("fallback_ninth_activity_sectors") or "").strip(),
                 )
@@ -1367,6 +1607,9 @@ NOTEBOOK_IMPORT_SCENARIOS = [
 ]
 NOTEBOOK_INCLUDE_LEAP_IMPORT = False
 NOTEBOOK_ACTIVITY_SOURCE_MODE = PROXY_ACTIVITY_SOURCE_MODE
+NOTEBOOK_INTENSITY_MODE = PROXY_INTENSITY_MODE
+NOTEBOOK_STRICT_PROXY_ACTIVITY_TARGET_CONSISTENCY = STRICT_PROXY_ACTIVITY_TARGET_CONSISTENCY
+NOTEBOOK_WRITE_PROXY_ACTIVITY_TARGET_CONSISTENCY_ISSUES = WRITE_PROXY_ACTIVITY_TARGET_CONSISTENCY_ISSUES
 NOTEBOOK_LEAP_BALANCE_WORKBOOK_PATH = LEAP_BALANCE_WORKBOOK_PATH
 NOTEBOOK_LEAP_BALANCE_SCENARIO = LEAP_BALANCE_SCENARIO
 NOTEBOOK_LEAP_BALANCE_DATE_ID = LEAP_BALANCE_DATE_ID
@@ -1380,6 +1623,9 @@ def run_with_notebook_config() -> Path:
         import_scenario=NOTEBOOK_IMPORT_SCENARIOS,
         include_leap_import=NOTEBOOK_INCLUDE_LEAP_IMPORT,
         activity_source_mode=NOTEBOOK_ACTIVITY_SOURCE_MODE,
+        intensity_mode=NOTEBOOK_INTENSITY_MODE,
+        strict_proxy_activity_target_consistency=NOTEBOOK_STRICT_PROXY_ACTIVITY_TARGET_CONSISTENCY,
+        write_proxy_activity_target_consistency_issues=NOTEBOOK_WRITE_PROXY_ACTIVITY_TARGET_CONSISTENCY_ISSUES,
         leap_balance_workbook_path=NOTEBOOK_LEAP_BALANCE_WORKBOOK_PATH,
         leap_balance_scenario=NOTEBOOK_LEAP_BALANCE_SCENARIO,
         leap_balance_date_id=NOTEBOOK_LEAP_BALANCE_DATE_ID,

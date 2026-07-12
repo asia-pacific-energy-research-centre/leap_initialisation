@@ -279,6 +279,17 @@ diagnostics, and no invalid final workbook is written or substituted.
   `save_combined_supply_transformation_export`, which does not read the flag
   and enforces `raise_on_blocking=True` by default. Revert the flag to
   `False` to restore this rule's guarantee in full.
+- 2026-07-10: Reviewed. Reverted to `False`, confirmed against the
+  2026-07-08 and 2026-07-09 full 21-economy runs first: their consolidated
+  rule-findings CSVs contained zero warning-severity rows, so the downgrade
+  path had never actually fired on real data -- the revert changed no past
+  output. All 3 previously-failing writer tests passed with the flag `False`.
+  Set back to `True` the same day at the user's explicit instruction:
+  current blocking findings are judged not significant enough to hold up a
+  run. This again knowingly re-introduces the deviation this rule prohibits
+  and re-fails the same 3 tests; still pending a substantive review of what
+  the current blocking findings actually are before deciding whether to
+  leave `True` long-term.
 
 ## INIT-006: Baseline-seed scenario windows and refining capacity policy
 
@@ -657,3 +668,53 @@ efficiency, or the full transformation identity. Transformation v2 is deferred:
 efficiency`. Before v2, each module must specify whether losses are embedded in
 its efficiency or supplied by `other_loss_own_use_proxy`, to prevent the same
 loss energy being counted twice.
+
+## INIT-010: Other loss / own-use proxy activity fallbacks
+
+**Status:** Confirmed
+**Owner:** leap_initialisation
+**Type:** Data-quality guardrail
+**Affected areas:** `codebase/other_loss_own_use_proxy_workflow.py`; `codebase/functions/other_loss_own_use_proxy_utils.py`; other loss/own-use proxy seed rows
+
+### Situation
+
+Some economies report own-use/loss energy for a process while leaving the
+configured proxy-activity source empty. Example: 01_AUS reports large
+`10.01.03 Liquefaction/regasification plants` own-use but leaves the
+`09.06.02` transformation throughput flow zero in ESTO and absent in the 9th
+projection, because its LNG movements are booked as trade. With zero proxy
+activity and positive target energy, strict validation now raises instead of
+silently producing zero intensity.
+
+### Current rule
+
+`ESTO_NINTH_ACTIVITY_FALLBACKS` (baseline-seed initialisation activity) and
+the extended `LEAP_BALANCE_ACTIVITY_FALLBACKS` (results-update initialisation
+activity) hold per-process ordered fallback chains applied uniformly to every
+economy: the fallback is only evaluated when the configured activity is
+all-zero for the selected economy, and the first tier with a non-zero series
+wins. For
+liquefaction/regasification the chain is (1) absolute LNG imports plus
+exports, so one proxy covers both liquefaction (exports) and regasification
+(imports), then (2) absolute natural gas production plus imports. Fallback
+tiers obey the same ESTO/9th consistency rule as configured activity: if the
+tier's ESTO series is all-zero its 9th projection is zeroed too, so a tier
+cannot win on projection years alone. Applied fallbacks are recorded in
+`proxy_activity_source_fallbacks.csv` with
+`fallback_reason=configured_activity_all_zero_used_alternative_source`.
+
+Pump storage also has a conservative first-run fallback to positive hydro
+electricity output. Oil refining remains disabled in the proxy workflow because
+own-use is produced through auxiliary fuel output in `refining_workflow.py`.
+
+### Validation
+
+Run the focused other loss/own-use proxy tests after changing fallback chains
+or consistency behavior. Review `proxy_activity_source_fallbacks.csv` and
+`proxy_activity_target_consistency_issues.csv` for affected economies.
+
+### History
+
+- 2026-07-10: Recorded liquefaction/regasification and pump-storage fallback
+  behavior, strict positive-target/zero-activity validation, and the oil
+  refining proxy exception.

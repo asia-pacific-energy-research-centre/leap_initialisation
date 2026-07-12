@@ -421,11 +421,13 @@ those results to correct remaining gaps.
   & Distribution transformation module rather than via the proxy, because the
   activity driver is production rather than distribution output.
 
-  In the 'first' stage (baseline_seed) the proxy uses ESTO base-year own-use
-  ratios extrapolated with 9th projection activity scaling.  In the 'second'
-  stage (results_update) the proxy switches to using LEAP balance table values
-  for other losses and own use, so the proxy tracks what LEAP actually
-  computed in the previous pass rather than the ESTO-derived estimate.
+  In the 'first' stage (baseline_seed initialisation) the proxy uses ESTO
+  base-year activity plus 9th projection activity.  In the 'second' stage
+  (results-update initialisation) the proxy switches to using LEAP balance
+  table activity, so the proxy tracks what LEAP actually computed in the
+  previous pass rather than the ESTO-derived estimate.  Both stages still
+  match target energy year by year; post-initialisation anchored intensity is
+  a separate mode.
 
 -- TRANSFORMATION REFRESH (CURRENTLY DISABLED -- LEAP API BUGS) ------------
 

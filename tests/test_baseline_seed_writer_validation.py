@@ -147,7 +147,10 @@ def test_writer_accumulates_economy_failures_and_writes_no_final_workbook(
         lambda: pd.DataFrame(),
     )
 
-    with pytest.raises(BaselineSeedValidationError, match="05_PRC/SEED-001"):
+    # The consolidated summary reports aggregated rule counts (e.g. "SEED-001=1"),
+    # not per-economy prefixes -- economy attribution is verified below via the
+    # consolidated findings CSV instead.
+    with pytest.raises(BaselineSeedValidationError, match="SEED-001"):
         write_per_economy_combined_workbooks(
             economies=["20_USA", "05_PRC"],
             output_dir=output_dir,
@@ -162,7 +165,8 @@ def test_writer_accumulates_economy_failures_and_writes_no_final_workbook(
     consolidated = list(diagnostics.glob("*_consolidated_rule_findings.csv"))
     assert len(consolidated) == 1
     findings = pd.read_csv(consolidated[0])
-    assert "05_PRC" in set(findings["economy"])
+    seed_001 = findings[findings["rule_id"] == "SEED-001"]
+    assert set(seed_001["economy"]) == {"05_PRC"}
 
 
 def test_final_writer_writes_grouped_missing_branch_issue_summary(
@@ -411,6 +415,49 @@ def test_missing_configured_producer_for_economy_blocks_final_write(
     findings = pd.read_csv(consolidated)
     coverage = findings[findings["rule_id"].eq("SEED-012")]
     assert coverage["source_workflow"].tolist() == ["transformation_workflow"]
+    # The finding must explain why the probe rejected each configured path:
+    # here the transformation workbook exists but is named for another economy.
+    message = str(coverage["message"].iloc[0])
+    assert "1 configured workbook(s) exist only for other economies" in message
+
+
+def test_missing_producer_finding_names_nonexistent_workbook_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
+    _write_leap_workbook(source, [_row("1")])
+    absent_source = tmp_path / "transformation_leap_imports_20_USA_reference.xlsx"
+    template = tmp_path / "full model export.xlsx"
+    _write_template(template)
+    output_dir = tmp_path / "output"
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io._load_reference_export_data",
+        lambda: pd.DataFrame(),
+    )
+
+    with pytest.raises(BaselineSeedValidationError, match="SEED-012"):
+        write_per_economy_combined_workbooks(
+            economies=["20_USA"],
+            output_dir=output_dir,
+            id_lookup_path=template,
+            source_workbooks_by_workflow={
+                "supply_workflow": [source],
+                "transformation_workflow": [absent_source],
+            },
+        )
+    consolidated = next(
+        (output_dir / "supporting_files" / "baseline_seed_validation").glob(
+            "*_consolidated_rule_findings.csv"
+        )
+    )
+    findings = pd.read_csv(consolidated)
+    coverage = findings[findings["rule_id"].eq("SEED-012")]
+    assert coverage["source_workflow"].tolist() == ["transformation_workflow"]
+    message = str(coverage["message"].iloc[0])
+    assert "1 expected workbook(s) do not exist on disk" in message
+    # The concrete missing path is carried on the finding itself.
+    assert str(absent_source) in str(coverage["source_file"].iloc[0])
 
 
 def test_final_writer_can_skip_validation_for_side_combines(

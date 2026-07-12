@@ -32,6 +32,7 @@ from codebase.supply_reconciliation_config import (
 from codebase.utilities.workflow_utils import _resolve
 from codebase.utilities import workflow_common
 from codebase.functions.leap_expressions import build_data_expression_from_row
+from codebase.functions.leap_excel_io import add_leap_preamble, prepare_for_viewing_sheet_df
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP_EXPORTS_ROOT
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.configuration.all_products_and_flows import ESTO_PRODUCT_LIST, ESTO_SECTORS
@@ -53,6 +54,7 @@ from codebase.functions.baseline_seed_validation import (
     SOURCE_FILE_COLUMN,
     SOURCE_WORKFLOW_COLUMN,
     build_validation_issue_groups,
+    check_producer_coverage,
     complete_canonical_share_groups,
     prepare_seed_rows_for_write,
 )
@@ -1008,40 +1010,11 @@ def save_combined_supply_transformation_export(
     )
     # The import-shaped LEAP sheet is authoritative. Mirroring it here keeps
     # FOR_VIEWING free of physical duplicates and invalid IDs as well.
-    viewing_data = leap_data.copy()
-    viewing_preamble = leap_preamble.copy()
-
     with pd.ExcelWriter(combined_path, engine="openpyxl", mode="w") as writer:
-        leap_preamble.to_excel(writer, sheet_name="LEAP", index=False, header=False)
-        pd.DataFrame([list(leap_data.columns)]).to_excel(
-            writer,
-            sheet_name="LEAP",
-            index=False,
-            header=False,
-            startrow=len(leap_preamble),
-        )
-        leap_data.to_excel(
-            writer,
-            sheet_name="LEAP",
-            index=False,
-            header=False,
-            startrow=len(leap_preamble) + 1,
-        )
-        viewing_preamble.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
-        pd.DataFrame([list(viewing_data.columns)]).to_excel(
-            writer,
-            sheet_name="FOR_VIEWING",
-            index=False,
-            header=False,
-            startrow=len(viewing_preamble),
-        )
-        viewing_data.to_excel(
-            writer,
-            sheet_name="FOR_VIEWING",
-            index=False,
-            header=False,
-            startrow=len(viewing_preamble) + 1,
-        )
+        leap_df = add_leap_preamble(leap_data)
+        viewing_df = add_leap_preamble(prepare_for_viewing_sheet_df(leap_data))
+        leap_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
+        viewing_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
     print(f"Saved combined supply+transformation workbook to {combined_path}")
     return combined_path
 
@@ -1051,7 +1024,7 @@ def _resolve_other_loss_own_use_proxy_activity_source_mode(
     proxy_stage: str | None = None,
     iteration_run_mode: str | None = None,
 ) -> str:
-    """Resolve other loss/own-use proxy activity source from the run stage."""
+    """Resolve proxy activity source; results-update remains initialisation."""
     stage = str(proxy_stage or OTHER_LOSS_OWN_USE_PROXY_STAGE or "auto").strip().lower()
     if stage in {"first", "first_run", "first_clean", "baseline", "baseline_seed"}:
         return "esto_ninth"
@@ -1083,7 +1056,7 @@ def _resolve_other_loss_own_use_leap_balance_workbook_path(
     scenario: str | None = None,
     date_id: str | None = None,
 ) -> Path | None:
-    """Resolve the LEAP balance workbook only when the second-stage proxy needs it."""
+    """Resolve the LEAP balance workbook for results-update activity."""
     if str(activity_source_mode or "").strip().lower() != "leap_balance":
         return None
     try:
@@ -1099,7 +1072,7 @@ def _resolve_other_loss_own_use_leap_balance_workbook_path(
         )
     except Exception as exc:
         raise FileNotFoundError(
-            "Other loss/own-use proxy second-stage mode needs a LEAP balance "
+            "Other loss/own-use proxy results-update activity needs a LEAP balance "
             f"workbook for economy={economy!r}, "
             f"scenario={scenario or OTHER_LOSS_OWN_USE_LEAP_BALANCE_SCENARIO!r}. "
             "Set OTHER_LOSS_OWN_USE_LEAP_BALANCE_WORKBOOK_PATH explicitly or "
@@ -1646,21 +1619,36 @@ def write_per_economy_combined_workbooks(
             return "refining_workflow"
         return configured_source
 
-    def _current_source_frames(econ_token: str) -> tuple[list[pd.DataFrame], set[str]]:
+    def _current_source_frames(
+        econ_token: str,
+    ) -> tuple[list[pd.DataFrame], set[str], dict[str, dict[str, object]]]:
         current_frames: list[pd.DataFrame] = []
         found_sources: set[str] = set()
+        source_probe: dict[str, dict[str, object]] = {}
         for source_workflow, configured_paths in (source_workbooks_by_workflow or {}).items():
+            probe = source_probe.setdefault(str(source_workflow), {
+                "missing_paths": [],
+                "read_errors": [],
+                "other_economy_count": 0,
+                "searched_dirs": set(),
+            })
             for configured_path in configured_paths:
                 path = Path(configured_path)
+                probe["searched_dirs"].add(str(path.parent))
                 is_global_source = str(source_workflow) == "demand_zeroing_workflow"
-                if not path.exists() or (
-                    not is_global_source and econ_token.lower() not in path.name.lower()
-                ):
+                token_matches = is_global_source or econ_token.lower() in path.name.lower()
+                if not path.exists():
+                    if token_matches:
+                        probe["missing_paths"].append(str(path))
+                    continue
+                if not token_matches:
+                    probe["other_economy_count"] += 1
                     continue
                 try:
                     data, _ = _read_leap_data(path)
                 except Exception as exc:
                     print(f"[WARN] Failed reading {path.name}: {exc}")
+                    probe["read_errors"].append(f"{path}: {exc!r}")
                     continue
                 data[SOURCE_WORKFLOW_COLUMN] = data["Branch Path"].map(
                     lambda branch: _producer_for_row(str(source_workflow), branch)
@@ -1668,7 +1656,7 @@ def write_per_economy_combined_workbooks(
                 data[SOURCE_FILE_COLUMN] = str(path)
                 current_frames.append(data)
                 found_sources.add(str(source_workflow))
-        return current_frames, found_sources
+        return current_frames, found_sources, source_probe
 
     def _format_blocking_summary(*, blocking: pd.DataFrame, issue_groups: pd.DataFrame) -> str:
         grouped_bits: list[str] = []
@@ -1690,23 +1678,16 @@ def write_per_economy_combined_workbooks(
     for economy in economy_list:
         econ_token = workflow_common.format_filename_segment(economy) or economy
         region = get_region_for_economy(economy)
-        frames, found_sources = _current_source_frames(econ_token)
+        frames, found_sources, source_probe = _current_source_frames(econ_token)
 
-        if source_workbooks_by_workflow is not None:
-            missing_sources = sorted(set(source_workbooks_by_workflow) - found_sources)
-            for source_workflow in missing_sources:
-                producer_coverage_findings.append({
-                    "economy": econ_token,
-                    "rule_id": "SEED-012",
-                    "description": "Every configured producer supplies rows for each requested economy.",
-                    "severity": "error",
-                    "blocking": True,
-                    "status": "fail",
-                    "message": "Configured producer has no readable source workbook for this economy.",
-                    "evidence": source_workflow,
-                    SOURCE_WORKFLOW_COLUMN: source_workflow,
-                    SOURCE_FILE_COLUMN: "",
-                })
+        producer_coverage_findings.extend(
+            check_producer_coverage(
+                econ_token,
+                found_sources,
+                source_workbooks_by_workflow=source_workbooks_by_workflow,
+                source_probe=source_probe,
+            )
+        )
 
         if source_workbooks_by_workflow is None:
             # Compatibility fallback for notebook callers that have not supplied
@@ -1892,17 +1873,11 @@ def write_per_economy_combined_workbooks(
 
         # Collapse the wide year columns into a single LEAP Data(...) Expression
         # for any row that does not already carry one (rows with an existing
-        # Expression are left untouched). The workbook is then split across two
-        # sheets: LEAP carries only the Expression (what LEAP imports), while
-        # FOR_VIEWING keeps Method immediately before the wide year columns for
-        # human review. A blank spacer column separates the value block from the
-        # Level columns on both sheets.
+        # Expression are left untouched). LEAP carries only the Expression for
+        # import; FOR_VIEWING uses the shared Method + year-column layout.
         _leap_meta = ["BranchID", "VariableID", "ScenarioID", "RegionID",
                       "Branch Path", "Variable", "Scenario", "Region",
                       "Scale", "Units", "Per...", "Expression"]
-        _viewing_meta = ["BranchID", "VariableID", "ScenarioID", "RegionID",
-                         "Branch Path", "Variable", "Scenario", "Region",
-                         "Scale", "Units", "Per...", "Method"]
         _year_cols = sorted(
             [c for c in combined.columns if isinstance(c, (int, float)) and 500 < float(c) < 2200],
             key=float,
@@ -1929,20 +1904,15 @@ def write_per_economy_combined_workbooks(
                 return build_data_expression_from_row(row, _year_cols)
             combined["Expression"] = combined.apply(_resolve_expression, axis=1)
 
-        if "Method" not in combined.columns and _year_cols:
-            combined["Method"] = "Interp"
-
         _leap_meta_cols = [c for c in _leap_meta if c in combined.columns]
-        _viewing_meta_cols = [c for c in _viewing_meta if c in combined.columns]
         _level_cols = [c for c in combined.columns if str(c).startswith("Level")]
         _other = [c for c in combined.columns
-                  if c not in set(_leap_meta_cols + _viewing_meta_cols)
+                  if c not in set(_leap_meta_cols + _year_cols)
                   and c not in _year_cols
                   and c not in _level_cols]
 
         BLANK_SPACER = "__BLANK_SPACER__"
         leap_ordered = _leap_meta_cols + [BLANK_SPACER] + _level_cols + _other
-        viewing_ordered = _viewing_meta_cols + _year_cols + [BLANK_SPACER] + _level_cols + _other
 
         def _assemble_sheet(ordered_cols):
             frame = combined.reindex(columns=ordered_cols)
@@ -1962,7 +1932,7 @@ def write_per_economy_combined_workbooks(
             ], ignore_index=True)
 
         leap_df = _assemble_sheet(leap_ordered)
-        viewing_df = _assemble_sheet(viewing_ordered)
+        viewing_df = add_leap_preamble(prepare_for_viewing_sheet_df(combined))
 
         out_path = out_dir / f"leap_import_baseline_seed_{econ_token}_{run_stamp}.xlsx"
         prepared_workbooks.append((econ_token, leap_df, viewing_df, out_path))

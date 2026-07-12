@@ -380,6 +380,76 @@ def build_producer_coverage_issue_groups(findings: pd.DataFrame) -> pd.DataFrame
     return pd.DataFrame(rows, columns=columns)
 
 
+def check_producer_coverage(
+    economy: str,
+    found_sources: Iterable[str],
+    *,
+    source_workbooks_by_workflow: Mapping[str, object] | None,
+    source_probe: Mapping[str, Mapping[str, object]] | None = None,
+) -> list[dict[str, object]]:
+    """Return SEED-012 findings for producers with no readable source for this economy.
+
+    A producer is "missing" if it is configured (a key in
+    source_workbooks_by_workflow) but none of its source files were found for
+    this economy. Returns one SEED-012 finding per missing producer, or an
+    empty list if source_workbooks_by_workflow is None (caller has not
+    supplied current-run paths, so coverage cannot be assessed) or every
+    configured producer was found.
+
+    source_probe, when supplied, maps producer name to what the caller
+    observed while probing that producer's configured paths for this economy
+    (``missing_paths``, ``read_errors``, ``other_economy_count``,
+    ``searched_dirs``). It is used only to make the finding self-describing:
+    the message says why each path was rejected and SOURCE_FILE_COLUMN carries
+    the concrete paths, so a wrong-directory run is diagnosable from the
+    findings CSV alone.
+    """
+    if source_workbooks_by_workflow is None:
+        return []
+    missing_sources = sorted(set(source_workbooks_by_workflow) - set(found_sources))
+    findings: list[dict[str, object]] = []
+    for source_workflow in missing_sources:
+        message = "Configured producer has no readable source workbook for this economy."
+        source_files = ""
+        probe = (source_probe or {}).get(str(source_workflow))
+        if probe:
+            missing_paths = [str(p) for p in probe.get("missing_paths", [])]
+            read_errors = [str(e) for e in probe.get("read_errors", [])]
+            other_count = int(probe.get("other_economy_count", 0) or 0)
+            details: list[str] = []
+            if missing_paths:
+                details.append(
+                    f"{len(missing_paths)} expected workbook(s) do not exist on disk"
+                )
+            if read_errors:
+                details.append(
+                    f"{len(read_errors)} workbook(s) matched this economy but failed to read"
+                )
+            if other_count:
+                details.append(
+                    f"{other_count} configured workbook(s) exist only for other economies"
+                )
+            if not details:
+                searched = sorted(str(d) for d in probe.get("searched_dirs", set()))
+                details.append(
+                    "no configured path names this economy; searched: "
+                    + ("; ".join(searched) if searched else "(no configured paths)")
+                )
+            message = f"{message} ({'; '.join(details)})"
+            source_files = "|".join(missing_paths + read_errors)
+        findings.append(
+            _finding(
+                "SEED-012",
+                "fail",
+                message,
+                evidence=source_workflow,
+                economy=economy,
+                **{SOURCE_WORKFLOW_COLUMN: source_workflow, SOURCE_FILE_COLUMN: source_files},
+            )
+        )
+    return findings
+
+
 def build_validation_issue_groups(findings: pd.DataFrame) -> pd.DataFrame:
     """Build the grouped issue view used in diagnostics and console summaries."""
     frames = [
@@ -1710,6 +1780,7 @@ __all__ = [
     "build_producer_coverage_issue_groups",
     "build_share_issue_groups",
     "build_validation_issue_groups",
+    "check_producer_coverage",
     "SOURCE_FILE_COLUMN",
     "SOURCE_WORKFLOW_COLUMN",
     "enrich_seed_ids_from_template",

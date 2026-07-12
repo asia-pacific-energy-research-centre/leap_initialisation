@@ -215,8 +215,10 @@ RUN_ELECTRICITY_HEAT_INTERIM = False
 
 # Other loss / own-use proxy controls.
 # - "auto" syncs to CAPACITY_UNMET_PASS_MODE.
-# - "first" forces ESTO + 9th proxy activity.
-# - "second" forces LEAP-balance proxy activity.
+# - "first" forces ESTO + 9th proxy activity for baseline-seed initialisation.
+# - "second" forces LEAP-balance proxy activity for results-update initialisation.
+# These values choose activity source only; they are not post-initialisation
+# anchored-intensity modes.
 RUN_OTHER_LOSS_OWN_USE_PROXY = True
 OTHER_LOSS_OWN_USE_PROXY_STAGE = "auto"  # auto|first|second
 OTHER_LOSS_OWN_USE_OUTPUT_FUEL_SCOPE = "economy"  # economy|all_economies

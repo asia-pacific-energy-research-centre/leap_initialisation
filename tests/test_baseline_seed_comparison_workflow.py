@@ -242,6 +242,12 @@ def test_aggregated_demand_patch_scope_does_not_strip_entire_demand_tree() -> No
     ]
 
 
+def test_losses_own_use_patch_scope_strips_managed_subtree() -> None:
+    assert MODULE_REGISTRY["losses_own_use"].strip_prefixes == [
+        "Demand\\Other loss and own use\\"
+    ]
+
+
 def test_aggregated_demand_patch_threads_reconciliation_config(monkeypatch, tmp_path: Path) -> None:
     import codebase.aggregated_demand_workflow as aggregated_demand_workflow
     import codebase.functions.transformation_analysis_utils as transformation_core
@@ -293,6 +299,46 @@ def test_aggregated_demand_patch_threads_reconciliation_config(monkeypatch, tmp_
     assert captured["exclude_own_use_td_losses"] is True
     assert captured["excluded_sectors"] == ["15_02_road"]
     assert captured["use_sector_branches"] is True
+
+
+def test_losses_own_use_patch_generates_exact_fresh_workbook_paths(monkeypatch, tmp_path: Path) -> None:
+    import codebase.other_loss_own_use_proxy_workflow as proxy_workflow
+    import codebase.functions.transformation_analysis_utils as transformation_core
+    import codebase.supply_reconciliation_config as reconciliation_config
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(transformation_core, "prepare_transformation_assets", lambda: None)
+    monkeypatch.setattr(
+        transformation_core,
+        "ninth_data",
+        pd.DataFrame({"economy": ["20_USA", "00_APEC"]}),
+    )
+    monkeypatch.setattr(reconciliation_config, "OTHER_LOSS_OWN_USE_PROXY_STAGE", "first")
+    monkeypatch.setattr(reconciliation_config, "CAPACITY_UNMET_PASS_MODE", "baseline_seed")
+
+    def fake_assemble_proxy_workbook(**kwargs):
+        captured.update(kwargs)
+        return tmp_path / f"other_loss_own_use_proxy_{kwargs['economy']}_Reference_Target_Current_Accounts.xlsx"
+
+    monkeypatch.setattr(
+        proxy_workflow,
+        "assemble_proxy_workbook",
+        fake_assemble_proxy_workbook,
+    )
+
+    written = patch_baseline_seeds._run_source_workflow(
+        "losses_own_use",
+        ["20_USA"],
+    )
+
+    assert written == [
+        tmp_path / "other_loss_own_use_proxy_20_USA_Reference_Target_Current_Accounts.xlsx"
+    ]
+    assert captured["activity_source_mode"] == "esto_ninth"
+    assert captured["include_leap_import"] is False
+    assert captured["strict_proxy_activity_target_consistency"] is False
+    assert captured["write_proxy_activity_target_consistency_issues"] is True
 
 
 @pytest.mark.parametrize("module", ["oil_refineries", "lng", "transformation"])

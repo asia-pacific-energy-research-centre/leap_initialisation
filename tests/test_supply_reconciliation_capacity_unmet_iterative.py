@@ -208,7 +208,7 @@ def test_other_loss_own_use_second_stage_requires_balance_workbook(
         "resolve_leap_balance_workbook_path",
         _raise_missing,
     )
-    with pytest.raises(FileNotFoundError, match="second-stage mode needs a LEAP balance workbook"):
+    with pytest.raises(FileNotFoundError, match="results-update activity needs a LEAP balance workbook"):
         workflow._resolve_other_loss_own_use_leap_balance_workbook_path(
             economy="20_USA",
             activity_source_mode="leap_balance",

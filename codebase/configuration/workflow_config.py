@@ -76,23 +76,18 @@ GLOBAL_AGGREGATE_ECONOMY_LABEL = _resolve_global_aggregate(GLOBAL_ECONOMIES)
 # complete configured model horizon for every represented scenario.
 BASELINE_SEED_VALIDATION_BASE_YEAR = 2022
 BASELINE_SEED_VALIDATION_FINAL_YEAR = 2060
-# NOTE (2026-07-07, unreviewed): this flag contradicts the confirmed INIT-005
-# design decision in docs/special_rules_and_design_decisions.md ("Deferring
-# failure does not turn a blocking finding into a warning and does not permit
-# invalid rows to reach a final workbook"). With this set to True,
-# write_per_economy_combined_workbooks downgrades every blocking finding
-# (not just SEED-006/007/008) to a warning and still writes the workbook. It
-# currently causes 3 known failures in tests/test_baseline_seed_writer_validation.py
+# Set back to True (2026-07-10) at the user's explicit instruction: current
+# blocking findings are not considered significant enough to hold up a run.
+# This contradicts the confirmed INIT-005 design decision (deferring failure
+# must not turn a blocking finding into a warning) -- see
+# docs/special_rules_and_design_decisions.md (INIT-005 History) for the prior
+# 2026-07-07/2026-07-10 back-and-forth on this flag. It also re-fails 3 tests
+# in tests/test_baseline_seed_writer_validation.py that assert blocking
+# findings raise BaselineSeedValidationError
 # (test_final_writer_writes_diagnostics_before_conflict_blocks,
 # test_writer_accumulates_economy_failures_and_writes_no_final_workbook,
-# test_default_reference_validation_window_requires_2023_through_2060), all of
-# which assert that a blocking finding must raise BaselineSeedValidationError
-# and must not produce a final workbook. Left as-is at the user's explicit
-# instruction (2026-07-07) while SEED-006/007/008 generation-layer fixes were
-# verified independently of this flag (via save_combined_supply_transformation_export,
-# which does not read this flag and enforces raise_on_blocking=True by
-# default). Revert to False to restore the INIT-005 guarantee once whatever
-# run this was worked around is no longer needed.
+# test_default_reference_validation_window_requires_2023_through_2060).
+# Revert to False to restore the INIT-005 guarantee once reviewed.
 BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True
 
 # Retained modelling decision: refining Exogenous Capacity follows Historical

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from codebase import other_loss_own_use_proxy_workflow as workflow
 from codebase.functions.other_loss_own_use_proxy_utils import build_proxy_source_coverage_gaps
@@ -74,6 +75,7 @@ def test_proxy_config_scaffolds_all_own_use_children() -> None:
     assert actual == expected
     disabled = {cfg["process_key"] for cfg in workflow.PROXY_CONFIG if not cfg.get("enabled")}
     assert "ccs" in disabled
+    assert "oil_refineries" in disabled
     assert disabled == {
         "gas_works_plants", "gas_to_liquids_plants", "coke_ovens", "blast_furnaces",
         "patent_fuel_plants", "bkb_pb_plants", "liquefaction_plants_coal_to_oil",
@@ -1140,7 +1142,32 @@ def test_fuel_branch_labels_use_sentence_case_and_mapping_lookup() -> None:
     assert workflow._format_fuel_branch_label("07_09_lpg", fuel_mapping_lookup={"esto": {}, "ninth": {}}) == "LPG"
 
 
-def test_zero_activity_sets_intensity_to_zero() -> None:
+def test_strict_guardrail_raises_on_zero_activity_with_positive_target() -> None:
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "20USA",
+                "economy_key": "20_USA",
+                "flows": "10.01.06 Coal mines",
+                "products": "17 Electricity",
+                2022: -5.0,
+            }
+        ]
+    )
+    ninth = pd.DataFrame(columns=["economy_key", "sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors", "fuels", "subfuels", 2023])
+
+    with pytest.raises(ValueError, match="proxy_activity == 0 while target_energy > 0"):
+        workflow.build_proxy_detail_table(
+            esto_data=esto,
+            ninth_data=ninth,
+            economy="20_USA",
+            configs=[_coal_config()],
+            base_year=2022,
+            final_year=2022,
+        )
+
+
+def test_non_strict_guardrail_reports_zero_activity_with_positive_target() -> None:
     esto = pd.DataFrame(
         [
             {
@@ -1161,10 +1188,102 @@ def test_zero_activity_sets_intensity_to_zero() -> None:
         configs=[_coal_config()],
         base_year=2022,
         final_year=2022,
+        strict_proxy_activity_target_consistency=False,
     )
+    issues = workflow.build_proxy_activity_target_consistency_issues(detail)
 
     assert float(detail["proxy_activity"].iloc[0]) == 0.0
     assert float(detail["intensity"].iloc[0]) == 0.0
+    assert len(issues) == 1
+    assert issues.iloc[0]["issue_type"] == "positive_target_energy_with_zero_proxy_activity"
+
+
+def test_post_initialisation_intensity_uses_first_valid_nonzero_anchor() -> None:
+    cfg = workflow.make_proxy_config(
+        enabled=True,
+        process_key="test",
+        process_label="Test",
+        activity_label="Test activity",
+        esto_activity_flows=["01 Production"],
+        esto_activity_exact_products=["01.01 Coking coal"],
+        ninth_activity_sectors=["01_production"],
+        ninth_activity_subfuels=["01_01_coking_coal"],
+        activity_value_mode="positive_only",
+        esto_target_flows=["10.01.06 Coal mines"],
+        ninth_target_sectors=["10_01_06_coal_mines"],
+    )
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "20USA",
+                "economy_key": "20_USA",
+                "flows": "01 Production",
+                "products": "01.01 Coking coal",
+                2022: 100.0,
+            },
+            {
+                "economy": "20USA",
+                "economy_key": "20_USA",
+                "flows": "10.01.06 Coal mines",
+                "products": "01.01 Coking coal",
+                2022: 0.0,
+            },
+            {
+                "economy": "01AUS",
+                "economy_key": "01_AUS",
+                "flows": "10.01.06 Coal mines",
+                "products": "01.01 Coking coal",
+                2022: -1.0,
+            },
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy_key": "20_USA",
+                "sectors": "01_production",
+                "sub1sectors": "x",
+                "sub2sectors": "x",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "01_coal",
+                "subfuels": "01_01_coking_coal",
+                "subtotal_layout": False,
+                "subtotal_results": False,
+                2023: 100.0,
+                2024: 200.0,
+            },
+            {
+                "economy_key": "20_USA",
+                "sectors": "10_01_06_coal_mines",
+                "sub1sectors": "x",
+                "sub2sectors": "x",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "01_coal",
+                "subfuels": "01_01_coking_coal",
+                "subtotal_layout": False,
+                "subtotal_results": False,
+                2023: -5.0,
+                2024: -20.0,
+            },
+        ]
+    )
+
+    detail = workflow.build_proxy_detail_table(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="20_USA",
+        configs=[cfg],
+        base_year=2022,
+        final_year=2024,
+        intensity_mode="post_initialisation_anchored_intensity",
+    )
+
+    projected = detail[detail["source_dataset"].eq("ninth")].sort_values("year")
+    assert projected["anchor_year"].tolist() == [2023, 2023]
+    assert projected["intensity"].tolist() == [0.05, 0.05]
+    assert set(projected["intensity_mode"]) == {"post_initialisation_anchored_intensity"}
 
 
 def test_load_leap_balance_activity_table_reads_selected_fuels(tmp_path) -> None:
@@ -1292,6 +1411,262 @@ def test_pump_storage_config_uses_pumped_hydro_leap_row() -> None:
     assert cfg["activity_sources"]["leap_balance"]["balance_rows"] == ["Pumped hydro"]
     assert cfg["activity_sources"]["leap_balance"]["fuel_set"] == "electricity_output"
     assert cfg["activity_sources"]["leap_balance"]["value_mode"] == "positive_only"
+
+
+def _liquefaction_config() -> dict[str, object]:
+    return next(
+        item
+        for item in workflow.PROXY_CONFIG
+        if item["process_key"] == "liquefaction_regasification_plants"
+    )
+
+
+def _lng_trade_ninth_rows(subfuel: str, imports_value: float, exports_value: float) -> list[dict[str, object]]:
+    shared = {
+        "economy_key": "01_AUS",
+        "sub1sectors": "x",
+        "sub2sectors": "x",
+        "sub3sectors": "x",
+        "sub4sectors": "x",
+        "fuels": "08_gas",
+        "subfuels": subfuel,
+        "subtotal_layout": False,
+        "subtotal_results": False,
+    }
+    return [
+        {**shared, "sectors": "02_imports", 2023: imports_value},
+        {**shared, "sectors": "03_exports", 2023: exports_value},
+    ]
+
+
+def test_liquefaction_activity_falls_back_to_abs_lng_imports_plus_exports() -> None:
+    cfg = _liquefaction_config()
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "01AUS",
+                "economy_key": "01_AUS",
+                "flows": "02 Imports",
+                "products": "08.02 LNG",
+                2022: 5.0,
+            },
+            {
+                "economy": "01AUS",
+                "economy_key": "01_AUS",
+                "flows": "03 Exports",
+                "products": "08.02 LNG",
+                2022: -10.0,
+            },
+        ]
+    )
+    ninth = pd.DataFrame(_lng_trade_ninth_rows("08_02_lng", 3.0, -20.0))
+
+    series, fallback = workflow.build_proxy_activity_series_with_fallback(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="01_AUS",
+        config=cfg,
+        base_year=2022,
+        final_year=2023,
+    )
+
+    assert series[2022] == 15.0
+    assert series[2023] == 23.0
+    assert fallback is not None
+    assert fallback["fallback_key"] == "lng_imports_exports_abs"
+    assert fallback["fallback_reason"] == "configured_activity_all_zero_used_alternative_source"
+    assert fallback["fallback_esto_activity_flows"] == "02 Imports; 03 Exports"
+
+
+def test_liquefaction_activity_second_fallback_uses_natural_gas_production_imports() -> None:
+    cfg = _liquefaction_config()
+    # No ESTO LNG trade rows: tier 1 is zero in ESTO base years, which also
+    # zeroes its 9th projection (consistency rule), so tier 2 must win.
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "01AUS",
+                "economy_key": "01_AUS",
+                "flows": "01 Production",
+                "products": "08.01 Natural gas",
+                2022: 7.0,
+            },
+            {
+                "economy": "01AUS",
+                "economy_key": "01_AUS",
+                "flows": "02 Imports",
+                "products": "08.01 Natural gas",
+                2022: 2.0,
+            },
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            *_lng_trade_ninth_rows("08_02_lng", 3.0, -20.0),
+            {
+                "economy_key": "01_AUS",
+                "sectors": "01_production",
+                "sub1sectors": "x",
+                "sub2sectors": "x",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "08_gas",
+                "subfuels": "08_01_natural_gas",
+                "subtotal_layout": False,
+                "subtotal_results": False,
+                2023: 11.0,
+            },
+        ]
+    )
+
+    series, fallback = workflow.build_proxy_activity_series_with_fallback(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="01_AUS",
+        config=cfg,
+        base_year=2022,
+        final_year=2023,
+    )
+
+    assert series[2022] == 9.0
+    assert series[2023] == 11.0
+    assert fallback is not None
+    assert fallback["fallback_key"] == "natural_gas_production_imports_abs"
+    assert fallback["fallback_level"] == 2
+
+
+def test_activity_series_when_configured_proxy_is_nonzero_skips_fallback() -> None:
+    cfg = _liquefaction_config()
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "01AUS",
+                "economy_key": "01_AUS",
+                "flows": "09.06.02 Liquefaction/regasification plants",
+                "products": "08.02 LNG",
+                2022: 4.0,
+            },
+            {
+                "economy": "01AUS",
+                "economy_key": "01_AUS",
+                "flows": "02 Imports",
+                "products": "08.02 LNG",
+                2022: 100.0,
+            },
+        ]
+    )
+
+    series, fallback = workflow.build_proxy_activity_series_with_fallback(
+        esto_data=esto,
+        ninth_data=pd.DataFrame(_lng_trade_ninth_rows("08_02_lng", 0.0, 0.0)),
+        economy="01_AUS",
+        config=cfg,
+        base_year=2022,
+        final_year=2023,
+    )
+
+    assert series[2022] == 4.0
+    assert fallback is None
+
+
+def test_pump_storage_activity_falls_back_to_hydro_output() -> None:
+    cfg = next(item for item in workflow.PROXY_CONFIG if item["process_key"] == "pump_storage_plants")
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy_key": "01_AUS",
+                "sectors": "09_total_transformation_sector",
+                "sub1sectors": "09_01_electricity_plants",
+                "sub2sectors": "09_01_05_hydro",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "17_electricity",
+                "subfuels": "17_electricity",
+                "subtotal_layout": False,
+                "subtotal_results": False,
+                2023: 12.0,
+            }
+        ]
+    )
+
+    series, fallback = workflow.build_proxy_activity_series_with_fallback(
+        esto_data=pd.DataFrame(columns=["economy", "economy_key", "flows", "products", 2022]),
+        ninth_data=ninth,
+        economy="01_AUS",
+        config=cfg,
+        base_year=2022,
+        final_year=2023,
+    )
+
+    assert series[2023] == 12.0
+    assert fallback is not None
+    assert fallback["fallback_key"] == "hydro_electricity_output_positive"
+
+
+def test_fallback_report_includes_alternative_source_fallbacks() -> None:
+    cfg = _liquefaction_config()
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "01AUS",
+                "economy_key": "01_AUS",
+                "flows": "02 Imports",
+                "products": "08.02 LNG",
+                2022: 5.0,
+            },
+        ]
+    )
+    ninth = pd.DataFrame(_lng_trade_ninth_rows("08_02_lng", 3.0, -20.0))
+
+    report = workflow.build_activity_source_fallback_report(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="01_AUS",
+        configs=[cfg],
+        base_year=2022,
+        final_year=2023,
+    )
+
+    assert len(report) == 1
+    row = report.iloc[0]
+    assert row["process_key"] == "liquefaction_regasification_plants"
+    assert row["fallback_reason"] == "configured_activity_all_zero_used_alternative_source"
+    assert row["fallback_key"] == "lng_imports_exports_abs"
+
+
+def test_leap_balance_liquefaction_fallback_chain() -> None:
+    cfg = _liquefaction_config()
+    lng_trade_activity = pd.DataFrame(
+        [
+            {"year": 2023, "balance_row": "Imports", "fuel_label": "LNG", "value": 5.0},
+            {"year": 2023, "balance_row": "Exports", "fuel_label": "LNG", "value": -10.0},
+        ]
+    )
+
+    series = workflow.build_leap_balance_proxy_activity_series(
+        leap_balance_activity=lng_trade_activity,
+        config=cfg,
+        base_year=2023,
+        final_year=2023,
+    )
+
+    assert series == {2023: 15.0}
+
+    natural_gas_activity = pd.DataFrame(
+        [
+            {"year": 2023, "balance_row": "Production", "fuel_label": "Natural gas", "value": 7.0},
+            {"year": 2023, "balance_row": "Imports", "fuel_label": "Natural gas", "value": 2.0},
+        ]
+    )
+
+    series = workflow.build_leap_balance_proxy_activity_series(
+        leap_balance_activity=natural_gas_activity,
+        config=cfg,
+        base_year=2023,
+        final_year=2023,
+    )
+
+    assert series == {2023: 9.0}
 
 
 def test_nonspecified_own_use_has_dedicated_fuel_set() -> None:
@@ -1527,3 +1902,200 @@ def test_activity_source_gap_warning_when_esto_proxy_exists_but_ninth_is_zero() 
     assert row["warning_type"] == "esto_activity_nonzero_ninth_activity_all_zero"
     assert row["esto_activity_total"] == 5.0
     assert row["ninth_activity_total"] == 0.0
+
+
+# --- Base-year activity backfill + base-year-scoped strict consistency ---------
+
+
+def test_backfill_base_year_copies_first_nonzero_projection_value() -> None:
+    from codebase.functions.other_loss_own_use_proxy_utils import (
+        _backfill_base_year_activity_from_projection,
+    )
+
+    series = {2020: 0.0, 2021: 0.0, 2022: 0.0, 2023: 0.0, 2024: 5.0, 2025: 7.0}
+    out, donor = _backfill_base_year_activity_from_projection(series, base_year=2022)
+    assert donor == 2024
+    assert out[2022] == 5.0
+    # Pre-base years are deliberately left at zero.
+    assert out[2020] == 0.0 and out[2021] == 0.0
+    # Input series is not mutated.
+    assert series[2022] == 0.0
+
+
+def test_backfill_base_year_noop_when_base_year_nonzero_or_all_zero() -> None:
+    from codebase.functions.other_loss_own_use_proxy_utils import (
+        _backfill_base_year_activity_from_projection,
+    )
+
+    nonzero, donor = _backfill_base_year_activity_from_projection(
+        {2022: 3.0, 2023: 5.0}, base_year=2022
+    )
+    assert donor is None and nonzero[2022] == 3.0
+
+    all_zero, donor = _backfill_base_year_activity_from_projection(
+        {2022: 0.0, 2023: 0.0}, base_year=2022
+    )
+    assert donor is None and all_zero[2022] == 0.0
+
+
+def _consistency_detail(rows: list[tuple[int, float, float]]) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "economy": "01_AUS",
+                "process_key": "pump_storage_plants",
+                "process_label": "Pump storage plants",
+                "fuel_branch_label": "Electricity",
+                "year": year,
+                "proxy_activity": activity,
+                "target_energy": target,
+                "source_dataset": "esto",
+                "activity_source_mode": "esto_ninth",
+                "intensity_mode": "target_matching_initialisation",
+                "anchor_year": pd.NA,
+            }
+            for year, activity, target in rows
+        ]
+    )
+
+
+def test_strict_consistency_ignores_pre_base_year_rows(tmp_path) -> None:
+    # Pre-base-year positive-target/zero-activity rows never reach the LEAP
+    # import: they are written to the issues CSV but must not raise.
+    detail = _consistency_detail([(1990, 0.0, 1.2), (2000, 0.0, 1.3), (2022, 4.0, 1.1)])
+    issues_path = tmp_path / "issues.csv"
+
+    issues = workflow.validate_proxy_activity_target_consistency(
+        detail,
+        strict=True,
+        issues_path=issues_path,
+        blocking_min_year=2022,
+    )
+
+    assert issues["year"].tolist() == [1990, 2000]
+    saved = pd.read_csv(issues_path)
+    assert saved["year"].tolist() == [1990, 2000]
+
+
+def test_strict_consistency_still_raises_for_base_year_and_projection_rows(tmp_path) -> None:
+    detail = _consistency_detail([(1990, 0.0, 1.2), (2022, 0.0, 1.1), (2030, 0.0, 2.0)])
+    issues_path = tmp_path / "issues.csv"
+
+    with pytest.raises(ValueError, match="2 row\(s\).*at or after base year 2022"):
+        workflow.validate_proxy_activity_target_consistency(
+            detail,
+            strict=True,
+            issues_path=issues_path,
+            blocking_min_year=2022,
+        )
+    # Evidence (all rows, including pre-base) is on disk before the raise.
+    saved = pd.read_csv(issues_path)
+    assert saved["year"].tolist() == [1990, 2022, 2030]
+
+
+def test_strict_consistency_without_min_year_keeps_original_behaviour() -> None:
+    detail = _consistency_detail([(1990, 0.0, 1.2)])
+    with pytest.raises(ValueError, match="1 row\(s\)"):
+        workflow.validate_proxy_activity_target_consistency(detail, strict=True)
+
+
+# --- Alternative-source fallback: coverage-ranked tier selection ---------------
+
+
+def _fallback_selection_harness(monkeypatch, tier_series: dict[str, dict[int, float]]):
+    """Route build_proxy_activity_series to canned series keyed by esto flows."""
+    import codebase.functions.other_loss_own_use_proxy_utils as utils
+
+    tiers = [
+        {
+            "fallback_key": f"tier_{name}",
+            "activity_label": f"Tier {name}",
+            "esto": {"flows": [name], "value_mode": "absolute"},
+            "ninth": {"sector_codes": [name], "value_mode": "absolute"},
+        }
+        for name in tier_series
+    ]
+    monkeypatch.setitem(utils.ESTO_NINTH_ACTIVITY_FALLBACKS, "test_proc", tiers)
+
+    def _fake_series(*, esto_data, ninth_data, economy, config, base_year, final_year):
+        flows = config["activity_sources"]["esto"].get("flows", [])
+        if flows and flows[0] in tier_series:
+            return dict(tier_series[flows[0]])
+        return {2022: 0.0, 2023: 0.0}  # configured series: all zero
+
+    monkeypatch.setattr(utils, "build_proxy_activity_series", _fake_series)
+    config = {
+        "process_key": "test_proc",
+        "process_label": "Test process",
+        "activity_label": "Test activity",
+        "activity_sources": {"esto": {"flows": ["configured"]}, "ninth": {"sector_codes": []}},
+    }
+    return utils, config
+
+
+def test_fallback_prefers_tier_with_more_projection_coverage(monkeypatch) -> None:
+    utils, config = _fallback_selection_harness(
+        monkeypatch,
+        {
+            "hist_only": {2020: 5.0, 2022: 5.0, 2023: 0.0, 2024: 0.0},
+            "truncated": {2020: 1.0, 2022: 1.0, 2023: 1.0, 2024: 0.0},
+            "full": {2020: 2.0, 2022: 2.0, 2023: 2.0, 2024: 2.0},
+        },
+    )
+
+    series, info = utils.build_proxy_activity_series_with_fallback(
+        esto_data=None, ninth_data=None, economy="09_ROK",
+        config=config, base_year=2022, final_year=2024,
+    )
+
+    assert info is not None and info["fallback_key"] == "tier_full"
+    assert info["fallback_level"] == 3
+    assert series[2024] == 2.0
+
+
+def test_fallback_keeps_earliest_tier_on_coverage_tie(monkeypatch) -> None:
+    utils, config = _fallback_selection_harness(
+        monkeypatch,
+        {
+            "first_full": {2022: 1.0, 2023: 1.0, 2024: 1.0},
+            "second_full": {2022: 9.0, 2023: 9.0, 2024: 9.0},
+        },
+    )
+
+    _, info = utils.build_proxy_activity_series_with_fallback(
+        esto_data=None, ninth_data=None, economy="01_AUS",
+        config=config, base_year=2022, final_year=2024,
+    )
+
+    assert info is not None and info["fallback_key"] == "tier_first_full"
+
+
+def test_fallback_returns_configured_series_when_no_tier_has_values(monkeypatch) -> None:
+    utils, config = _fallback_selection_harness(
+        monkeypatch,
+        {"dead": {2022: 0.0, 2023: 0.0}},
+    )
+
+    series, info = utils.build_proxy_activity_series_with_fallback(
+        esto_data=None, ninth_data=None, economy="01_AUS",
+        config=config, base_year=2022, final_year=2024,
+    )
+
+    assert info is None
+    assert all(value == 0.0 for value in series.values())
+
+
+def test_liquefaction_chain_includes_combined_gas_trade_tier() -> None:
+    from codebase.functions.other_loss_own_use_proxy_utils import (
+        ESTO_NINTH_ACTIVITY_FALLBACKS,
+    )
+
+    chain = ESTO_NINTH_ACTIVITY_FALLBACKS["liquefaction_regasification_plants"]
+    combined = next(t for t in chain if t["fallback_key"] == "gas_trade_combined_abs")
+    # Both legs accept both product labels so an ESTO-vs-9th labeling
+    # disagreement (natural gas vs LNG) cannot zero the tier.
+    assert set(combined["esto"]["include_exact_products"]) == {
+        "08.01 Natural gas",
+        "08.02 LNG",
+    }
+    assert set(combined["ninth"]["subfuels"]) == {"08_01_natural_gas", "08_02_lng"}

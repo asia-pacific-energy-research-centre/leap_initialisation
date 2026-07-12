@@ -70,6 +70,7 @@ from codebase.functions.baseline_seed_validation import (
     _exclude_ignored_full_model_export_rows,
     load_template_rows,
 )
+from codebase.functions.leap_excel_io import add_leap_preamble, prepare_for_viewing_sheet_df
 
 BASELINE_SEED_DIR = REPO_ROOT / "outputs" / "leap_exports" / "supply_reconciliation"
 WORKBOOKS_DIR = BASELINE_SEED_DIR / "workbooks"
@@ -238,7 +239,7 @@ MODULE_REGISTRY: dict[str, ModuleConfig] = {
         workbook_glob="aggregated_demand_{econ}*.xlsx",
     ),
     "losses_own_use": ModuleConfig(
-        strip_prefixes=[],   # derived from source rows at runtime
+        strip_prefixes=["Demand\\Other loss and own use\\"],
         workbook_glob="other_loss_own_use_proxy_{econ}*.xlsx",
         workbook_dir=BASELINE_SEED_DIR,
     ),
@@ -796,17 +797,52 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
         return written
 
     elif module == "losses_own_use":
-        # Not wired: assemble_proxy_workbook's output depends on the run's proxy
-        # stage (OTHER_LOSS_OWN_USE_PROXY_STAGE "first" vs "second") and LEAP-balance
-        # inputs that this patcher cannot know were regenerated. Requiring a manual,
-        # deliberate regen avoids silently seeding from the wrong proxy stage.
-        raise NotImplementedError(
-            f"No source workflow is wired for '{module}': run "
-            "other_loss_own_use_proxy_workflow.assemble_proxy_workbook() manually per "
-            "economy (choosing the correct proxy stage), then re-run with "
-            "run_workflow=False (PATCH_RUN_WORKFLOW=False). Refusing to patch from "
-            "possibly stale workbooks."
+        from codebase import other_loss_own_use_proxy_workflow as proxy_workflow
+        from codebase.functions import transformation_analysis_utils as _core
+        from codebase.functions.supply_leap_io import (
+            _resolve_other_loss_own_use_proxy_activity_source_mode,
         )
+        from codebase.supply_reconciliation_config import (
+            CAPACITY_UNMET_PASS_MODE,
+            OTHER_LOSS_OWN_USE_LEAP_BALANCE_DATE_ID,
+            OTHER_LOSS_OWN_USE_LEAP_BALANCE_SCENARIO,
+            OTHER_LOSS_OWN_USE_LEAP_BALANCE_WORKBOOK_PATH,
+            OTHER_LOSS_OWN_USE_OUTPUT_FUEL_SCOPE,
+            OTHER_LOSS_OWN_USE_PROXY_STAGE,
+        )
+
+        _core.prepare_transformation_assets()
+        econ_list = economies or sorted(
+            e for e in _core.ninth_data["economy"].unique()
+            if not str(e).startswith("00_")
+        )
+        activity_source_mode = _resolve_other_loss_own_use_proxy_activity_source_mode(
+            proxy_stage=OTHER_LOSS_OWN_USE_PROXY_STAGE,
+            iteration_run_mode=CAPACITY_UNMET_PASS_MODE,
+        )
+        written: list[Path] = []
+        for economy in econ_list:
+            print(
+                "[INFO] Building other loss/own-use proxy workbook: "
+                f"{economy} ({activity_source_mode})"
+            )
+            out_path = proxy_workflow.assemble_proxy_workbook(
+                economy=economy,
+                scenarios=list(proxy_workflow.EXPORT_SCENARIOS),
+                include_leap_import=False,
+                activity_source_mode=activity_source_mode,
+                leap_balance_workbook_path=OTHER_LOSS_OWN_USE_LEAP_BALANCE_WORKBOOK_PATH,
+                leap_balance_scenario=OTHER_LOSS_OWN_USE_LEAP_BALANCE_SCENARIO,
+                leap_balance_date_id=OTHER_LOSS_OWN_USE_LEAP_BALANCE_DATE_ID,
+                output_fuel_scope=OTHER_LOSS_OWN_USE_OUTPUT_FUEL_SCOPE,
+                # Patch refreshes should complete from the fresh workbook while
+                # still writing proxy_activity_target_consistency_issues.csv.
+                # Strict mode remains the direct workflow default.
+                strict_proxy_activity_target_consistency=False,
+                write_proxy_activity_target_consistency_issues=True,
+            )
+            written.append(Path(out_path))
+        return written
 
     else:
         print(f"[INFO] No source workflow registered for '{module}'; skipping.")
@@ -907,6 +943,7 @@ def _patch_one(
     _assert_atomic_canonical_share_groups(combined, FULL_MODEL_EXPORT_PATH)
     combined = combined.drop(columns=[SOURCE_WORKFLOW_COLUMN], errors="ignore")
 
+    viewing = prepare_for_viewing_sheet_df(combined)
     cols = list(combined.columns)
     preamble = {c: pd.NA for c in cols}
     preamble[bp_col] = "Area:"
@@ -921,6 +958,7 @@ def _patch_one(
         pd.DataFrame([cols], columns=cols),
         combined,
     ], ignore_index=True)
+    viewing_df = add_leap_preamble(viewing)
 
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -928,7 +966,7 @@ def _patch_one(
 
     with pd.ExcelWriter(seed_path, engine="openpyxl") as writer:
         full_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
-        full_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
+        viewing_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
 
     print(f"  removed {n_removed}, added {len(new_aligned)} rows -> {seed_path.name}")
 

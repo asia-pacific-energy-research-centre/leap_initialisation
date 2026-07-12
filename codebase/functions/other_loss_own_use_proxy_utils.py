@@ -49,6 +49,12 @@ LEAP_BALANCE_FUEL_SETS: dict[str, list[str]] = {
         "Natural gas",
         "LNG",
     ],
+    "lng_only": [
+        "LNG",
+    ],
+    "natural_gas_only": [
+        "Natural gas",
+    ],
     "gas_works_gas_output": [
         "Gas works gas",
     ],
@@ -279,13 +285,118 @@ LEAP_BALANCE_FUEL_SETS: dict[str, list[str]] = {
     ],
 }
 
-LEAP_BALANCE_ACTIVITY_FALLBACKS: dict[str, dict[str, object]] = {
+# Per-process ordered fallback chains for LEAP-balance activity. Values may be
+# a single fallback dict or a list of dicts tried in order; the first fallback
+# with a non-zero series wins.
+LEAP_BALANCE_ACTIVITY_FALLBACKS: dict[str, object] = {
     "pump_storage_plants": {
         "balance_rows": ["Electricity Generation"],
         "fuel_set": "electricity_output",
         "value_mode": "positive_only",
     },
+    "liquefaction_regasification_plants": [
+        {
+            "balance_rows": ["Imports", "Exports"],
+            "fuel_set": "lng_only",
+            "value_mode": "absolute",
+        },
+        {
+            "balance_rows": ["Production", "Imports"],
+            "fuel_set": "natural_gas_only",
+            "value_mode": "absolute",
+        },
+    ],
 }
+
+# Per-process ordered fallback chains for first-run (esto_ninth) activity, the
+# alternative-source analogue of LEAP_BALANCE_ACTIVITY_FALLBACKS. Each tier is
+# a full esto+ninth activity definition tried in order when the configured
+# proxy activity is zero for the selected economy; the first tier with a
+# non-zero series wins. This applies to every economy: economies whose source
+# tables populate the configured activity never reach the fallback.
+ESTO_NINTH_ACTIVITY_FALLBACKS: dict[str, list[dict[str, object]]] = {
+    # Some economies (e.g. 01_AUS) report large 10.01.03 own-use but leave the
+    # 09.06.02 transformation throughput flow empty, booking LNG movements as
+    # trade instead. Absolute imports+exports of LNG covers both liquefaction
+    # (exports) and regasification (imports); if LNG trade is also zero, fall
+    # back to natural gas production plus imports.
+    "liquefaction_regasification_plants": [
+        {
+            "fallback_key": "lng_imports_exports_abs",
+            "activity_label": "Absolute LNG imports plus exports",
+            "esto": {
+                "flows": ["02 Imports", "03 Exports"],
+                "include_exact_products": ["08.02 LNG"],
+                "value_mode": "absolute",
+            },
+            "ninth": {
+                "sector_codes": ["02_imports", "03_exports"],
+                "subfuels": ["08_02_lng"],
+                "value_mode": "absolute",
+            },
+        },
+        {
+            "fallback_key": "natural_gas_production_imports_abs",
+            "activity_label": "Absolute natural gas production plus imports",
+            "esto": {
+                "flows": ["01 Production", "02 Imports"],
+                "include_exact_products": ["08.01 Natural gas"],
+                "value_mode": "absolute",
+            },
+            "ninth": {
+                "sector_codes": ["01_production", "02_imports"],
+                "subfuels": ["08_01_natural_gas"],
+                "value_mode": "absolute",
+            },
+        },
+        # ESTO and the 9th can disagree on whether gas imports are booked as
+        # natural gas or LNG (09_ROK/17_SGP: ESTO says 08.01 Natural gas, the
+        # 9th says 08_02_lng). The single-product tiers above then fail the
+        # ESTO/9th consistency rule or lose their projections; this combined
+        # tier accepts either label on either leg so the same physical trade
+        # is found in both datasets.
+        {
+            "fallback_key": "gas_trade_combined_abs",
+            "activity_label": "Absolute natural gas plus LNG trade",
+            "esto": {
+                "flows": ["02 Imports", "03 Exports"],
+                "include_exact_products": ["08.01 Natural gas", "08.02 LNG"],
+                "value_mode": "absolute",
+            },
+            "ninth": {
+                "sector_codes": ["02_imports", "03_exports"],
+                "subfuels": ["08_01_natural_gas", "08_02_lng"],
+                "value_mode": "absolute",
+            },
+        },
+    ],
+    "pump_storage_plants": [
+        {
+            "fallback_key": "hydro_electricity_output_positive",
+            "activity_label": "Positive hydro electricity output",
+            "esto": {
+                "flows": [],
+                "value_mode": "positive_only",
+            },
+            "ninth": {
+                "sector_codes": ["09_01_05_hydro"],
+                "fuels": ["17_electricity"],
+                "subfuels": ["17_electricity"],
+                "value_mode": "positive_only",
+            },
+        },
+    ],
+}
+
+
+def _leap_balance_fallback_chain(process_key: str) -> list[Mapping[str, object]]:
+    """Return the ordered LEAP-balance fallback list for one process key."""
+    value = LEAP_BALANCE_ACTIVITY_FALLBACKS.get(str(process_key or "").strip())
+    if isinstance(value, Mapping):
+        return [value]
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return [item for item in value if isinstance(item, Mapping)]
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -638,30 +749,27 @@ def build_leap_balance_proxy_activity_series(
         return series
 
     process_key = str(config.get("process_key", "")).strip()
-    fallback_cfg = LEAP_BALANCE_ACTIVITY_FALLBACKS.get(process_key)
-    if not isinstance(fallback_cfg, dict):
-        return series
+    for fallback_cfg in _leap_balance_fallback_chain(process_key):
+        fallback_rows = [str(item) for item in fallback_cfg.get("balance_rows", []) if str(item).strip()]
+        fallback_fuel_set = str(fallback_cfg.get("fuel_set", "")).strip()
+        fallback_fuels = LEAP_BALANCE_FUEL_SETS.get(fallback_fuel_set, [])
+        if not fallback_rows or not fallback_fuels:
+            continue
 
-    fallback_rows = [str(item) for item in fallback_cfg.get("balance_rows", []) if str(item).strip()]
-    fallback_fuel_set = str(fallback_cfg.get("fuel_set", "")).strip()
-    fallback_fuels = LEAP_BALANCE_FUEL_SETS.get(fallback_fuel_set, [])
-    if not fallback_rows or not fallback_fuels:
-        return series
-
-    fallback_series = build_leap_balance_activity_series(
-        leap_balance_activity,
-        balance_rows=fallback_rows,
-        fuels=fallback_fuels,
-        value_mode=str(fallback_cfg.get("value_mode", leap_cfg.get("value_mode", "signed_sum")) or "signed_sum"),
-        base_year=base_year,
-        final_year=final_year,
-    )
-    if any(abs(float(value)) > 0.0 for value in fallback_series.values()):
-        print(
-            "[INFO] LEAP-balance proxy activity fallback applied for "
-            f"{process_key}: rows={fallback_rows}, fuel_set={fallback_fuel_set}."
+        fallback_series = build_leap_balance_activity_series(
+            leap_balance_activity,
+            balance_rows=fallback_rows,
+            fuels=fallback_fuels,
+            value_mode=str(fallback_cfg.get("value_mode", leap_cfg.get("value_mode", "signed_sum")) or "signed_sum"),
+            base_year=base_year,
+            final_year=final_year,
         )
-        return fallback_series
+        if any(abs(float(value)) > 0.0 for value in fallback_series.values()):
+            print(
+                "[INFO] LEAP-balance proxy activity fallback applied for "
+                f"{process_key}: rows={fallback_rows}, fuel_set={fallback_fuel_set}."
+            )
+            return fallback_series
 
     return series
 
@@ -822,6 +930,156 @@ def build_proxy_activity_series(
     return {int(year): activity.get(int(year), 0.0) for year in wanted_years}
 
 
+def _activity_fallback_config(
+    config: Mapping[str, object],
+    fallback_cfg: Mapping[str, object],
+) -> dict[str, object]:
+    """Build a synthetic proxy config whose activity comes from one fallback tier."""
+    esto_cfg = dict(fallback_cfg.get("esto", {}) or {})
+    ninth_cfg = dict(fallback_cfg.get("ninth", {}) or {})
+    return {
+        "enabled": True,
+        "process_key": str(config.get("process_key", "")),
+        "process_label": str(config.get("process_label", "")),
+        "activity_sources": {
+            "esto": {
+                "flows": list(esto_cfg.get("flows", [])),
+                "product_prefixes": list(esto_cfg.get("product_prefixes", [])),
+                "include_exact_products": list(esto_cfg.get("include_exact_products", [])),
+                "exclude_products": list(esto_cfg.get("exclude_products", [])),
+                "value_mode": str(esto_cfg.get("value_mode", "absolute")),
+            },
+            "ninth": {
+                "sector_codes": list(ninth_cfg.get("sector_codes", [])),
+                "fuels": list(ninth_cfg.get("fuels", [])),
+                "subfuels": list(ninth_cfg.get("subfuels", [])),
+                "exclude_fuels": list(ninth_cfg.get("exclude_fuels", [])),
+                "exclude_subfuels": list(ninth_cfg.get("exclude_subfuels", [])),
+                "value_mode": str(ninth_cfg.get("value_mode", "absolute")),
+            },
+        },
+    }
+
+
+def build_proxy_activity_series_with_fallback(
+    *,
+    esto_data: pd.DataFrame,
+    ninth_data: pd.DataFrame,
+    economy: str,
+    config: Mapping[str, object],
+    base_year: int,
+    final_year: int,
+) -> tuple[dict[int, float], dict[str, object] | None]:
+    """Build first-run activity, trying alternative-source tiers when the configured proxy is zero.
+
+    Tiers come from ESTO_NINTH_ACTIVITY_FALLBACKS and are evaluated with the
+    same ESTO/9th consistency rules as the configured activity (an all-zero
+    ESTO series zeroes the 9th projection too), so a fallback only wins when
+    it produces usable base-year data.
+    """
+    series = build_proxy_activity_series(
+        esto_data=esto_data,
+        ninth_data=ninth_data,
+        economy=economy,
+        config=config,
+        base_year=base_year,
+        final_year=final_year,
+    )
+    if _series_has_nonzero_value(series):
+        return series, None
+
+    process_key = str(config.get("process_key", "")).strip()
+    activity_sources = config.get("activity_sources", {})
+    original_esto_flows = [str(item) for item in activity_sources.get("esto", {}).get("flows", [])]
+    original_ninth_sectors = [str(item) for item in activity_sources.get("ninth", {}).get("sector_codes", [])]
+    candidates: list[tuple[int, Mapping[str, object], dict[str, object], dict[int, float]]] = []
+    for level, fallback_cfg in enumerate(ESTO_NINTH_ACTIVITY_FALLBACKS.get(process_key, []), start=1):
+        candidate_config = _activity_fallback_config(config, fallback_cfg)
+        candidate = build_proxy_activity_series(
+            esto_data=esto_data,
+            ninth_data=ninth_data,
+            economy=economy,
+            config=candidate_config,
+            base_year=base_year,
+            final_year=final_year,
+        )
+        if not _series_has_nonzero_value(candidate):
+            continue
+        candidates.append((level, fallback_cfg, candidate_config, candidate))
+
+    # A tier that only covers part of the horizon (e.g. nonzero history but
+    # zero or truncated projections, as when ESTO and the 9th label the same
+    # gas trade differently) must not shadow a later tier that covers the
+    # whole run. Rank by how many projection years are nonzero (those reach
+    # the LEAP import), then by having any history (report-only; the
+    # base-year backfill can borrow), then keep the earliest tier on ties.
+    def _coverage_score(series_values: dict[int, float]) -> tuple[int, int]:
+        nonzero_projection_years = sum(
+            1
+            for year, value in series_values.items()
+            if int(year) > int(base_year) and abs(float(value)) > 0.0
+        )
+        has_history = any(
+            abs(float(value)) > 0.0
+            for year, value in series_values.items()
+            if int(year) <= int(base_year)
+        )
+        return nonzero_projection_years, int(has_history)
+
+    chosen = None
+    if candidates:
+        best_score = max(_coverage_score(item[3]) for item in candidates)
+        chosen = next(item for item in candidates if _coverage_score(item[3]) == best_score)
+    if chosen is not None:
+        level, fallback_cfg, candidate_config, candidate = chosen
+        fallback_esto = candidate_config["activity_sources"]["esto"]
+        fallback_ninth = candidate_config["activity_sources"]["ninth"]
+        return candidate, {
+            "economy": _normalize_economy(economy),
+            "process_key": process_key,
+            "process_label": str(config.get("process_label", "")),
+            "activity_label": str(fallback_cfg.get("activity_label", config.get("activity_label", ""))),
+            "original_ninth_activity_sectors": "; ".join(original_ninth_sectors),
+            "fallback_ninth_activity_sectors": "; ".join(fallback_ninth.get("sector_codes", [])),
+            "fallback_level": level,
+            "fallback_reason": "configured_activity_all_zero_used_alternative_source",
+            "fallback_uses_broad_parent_activity": False,
+            "fallback_activity_total": sum(abs(float(value)) for value in candidate.values()),
+            "fallback_key": str(fallback_cfg.get("fallback_key", "")),
+            "original_esto_activity_flows": "; ".join(original_esto_flows),
+            "fallback_esto_activity_flows": "; ".join(str(item) for item in fallback_esto.get("flows", [])),
+        }
+
+    return series, None
+
+
+def _backfill_base_year_activity_from_projection(
+    series: Mapping[int, float],
+    *,
+    base_year: int,
+) -> tuple[dict[int, float], int | None]:
+    """Copy the first nonzero projection-year activity into a zero base year.
+
+    Processes such as pump storage have no historical activity source (no ESTO
+    activity leg, and the 9th leg only covers projection years), which leaves
+    base-year activity at zero while base-year target energy is positive.
+    Only the base year is backfilled because only base-year-and-later rows
+    reach the LEAP import; earlier years are left untouched so they remain
+    visible in the consistency report. Returns the (possibly updated) series
+    and the donor year, or ``None`` when no backfill was needed or possible.
+    """
+    base = int(base_year)
+    if abs(float(series.get(base, 0.0) or 0.0)) > 0.0:
+        return dict(series), None
+    for year in sorted(int(y) for y in series if int(y) > base):
+        value = float(series.get(year, 0.0) or 0.0)
+        if abs(value) > 0.0:
+            out = dict(series)
+            out[base] = value
+            return out, year
+    return dict(series), None
+
+
 def build_activity_series_for_mode(
     *,
     esto_data: pd.DataFrame,
@@ -836,7 +1094,7 @@ def build_activity_series_for_mode(
     """Dispatch activity construction for first-run or LEAP-output second-run proxies."""
     mode = _normalize_activity_source_mode(activity_source_mode)
     if mode == "esto_ninth":
-        return build_proxy_activity_series(
+        series, _ = build_proxy_activity_series_with_fallback(
             esto_data=esto_data,
             ninth_data=ninth_data,
             economy=economy,
@@ -844,6 +1102,17 @@ def build_activity_series_for_mode(
             base_year=base_year,
             final_year=final_year,
         )
+        series, borrowed_year = _backfill_base_year_activity_from_projection(
+            series, base_year=base_year
+        )
+        if borrowed_year is not None:
+            print(
+                "[INFO] Base-year proxy activity backfilled from first nonzero "
+                f"projection year for {config.get('process_key', '')}: "
+                f"{base_year} <- {borrowed_year}. Target-matching intensity absorbs "
+                "the borrowed scale; pre-base years stay report-only."
+            )
+        return series
     if mode == "leap_balance":
         if leap_balance_activity is None:
             raise ValueError("leap_balance_activity is required when activity_source_mode='leap_balance'.")
@@ -955,7 +1224,7 @@ def build_activity_source_fallback_report(
     base_year: int,
     final_year: int,
 ) -> pd.DataFrame:
-    """Report 9th activity proxies that used a broader parent sector fallback."""
+    """Report proxies that used a parent-sector or alternative-source activity fallback."""
     rows: list[dict[str, object]] = []
     for config in configs:
         if not bool(config.get("enabled", True)):
@@ -967,17 +1236,27 @@ def build_activity_source_fallback_report(
             base_year=base_year,
         )
         has_esto_activity = any(abs(float(value)) > 0.0 for value in esto_activity.values())
-        if not has_esto_activity:
+        if has_esto_activity:
+            _, fallback_info = build_ninth_proxy_activity_series_with_fallback(
+                ninth_data=ninth_data,
+                economy=economy,
+                config=config,
+                base_year=base_year,
+                final_year=final_year,
+            )
+            if fallback_info is not None:
+                rows.append(fallback_info)
             continue
-        _, fallback_info = build_ninth_proxy_activity_series_with_fallback(
+        _, alternative_info = build_proxy_activity_series_with_fallback(
+            esto_data=esto_data,
             ninth_data=ninth_data,
             economy=economy,
             config=config,
             base_year=base_year,
             final_year=final_year,
         )
-        if fallback_info is not None:
-            rows.append(fallback_info)
+        if alternative_info is not None:
+            rows.append(alternative_info)
     columns = [
         "economy",
         "process_key",
@@ -989,6 +1268,9 @@ def build_activity_source_fallback_report(
         "fallback_reason",
         "fallback_uses_broad_parent_activity",
         "fallback_activity_total",
+        "fallback_key",
+        "original_esto_activity_flows",
+        "fallback_esto_activity_flows",
     ]
     if not rows:
         return pd.DataFrame(columns=columns)

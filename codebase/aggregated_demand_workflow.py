@@ -36,6 +36,7 @@ except Exception as exc:
 
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions.unified_name_lookup import load_active_mapping_sheet
+from codebase.functions.leap_excel_io import add_leap_preamble, prepare_for_viewing_sheet_df
 from codebase.mappings.canonical_loaders import load_leap_display_names
 from codebase.functions.ninth_projection_mapping import (
     add_ninth_pair_columns,
@@ -1423,31 +1424,21 @@ def save_aggregated_demand_as_leap_workbook(
             lambda x, _i=i: x.split("\\")[_i - 1] if len(x.split("\\")) >= _i else ""
         )
 
-    cols = list(export_df.columns)
-
-    preamble_row = {col: "" for col in cols}
-    preamble_row["Branch Path"] = "Area:"
-    preamble_row["Variable"] = model_name or ""
-    preamble_row["Scenario"] = "Ver:"
-    preamble_row["Region"] = "2"
-    empty_row = {col: pd.NA for col in cols}
-    header_row_data = {col: col for col in cols}
-
-    full_df = pd.concat(
-        [
-            pd.DataFrame([preamble_row]),
-            pd.DataFrame([empty_row]),
-            pd.DataFrame([header_row_data]),
+    leap_df = add_leap_preamble(export_df, model_name=model_name or "")
+    viewing_df = add_leap_preamble(
+        prepare_for_viewing_sheet_df(
             export_df,
-        ],
-        ignore_index=True,
+            base_year=BASE_YEAR,
+            final_year=PROJECTION_END_YEAR,
+        ),
+        model_name=model_name or "",
     )
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        full_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
-        full_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
+        leap_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
+        viewing_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
 
     print(f"[INFO] Saved {len(rows)} aggregated demand rows to {output_path}")
     try:
@@ -1585,28 +1576,19 @@ def save_demand_zeroing_workbook(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    cols = list(rows.columns)
-    preamble_row = {col: "" for col in cols}
-    preamble_row["Branch Path"] = "Area:"
-    preamble_row["Variable"] = model_name or ""
-    preamble_row["Scenario"] = "Ver:"
-    preamble_row["Region"] = "2"
-    empty_row = {col: pd.NA for col in cols}
-    header_row_data = {col: col for col in cols}
-
-    full_df = pd.concat(
-        [
-            pd.DataFrame([preamble_row]),
-            pd.DataFrame([empty_row]),
-            pd.DataFrame([header_row_data]),
+    leap_df = add_leap_preamble(rows, model_name=model_name or "")
+    viewing_df = add_leap_preamble(
+        prepare_for_viewing_sheet_df(
             rows,
-        ],
-        ignore_index=True,
+            base_year=BASE_YEAR,
+            final_year=PROJECTION_END_YEAR,
+        ),
+        model_name=model_name or "",
     )
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        full_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
-        full_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
+        leap_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
+        viewing_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
 
     print(f"[INFO] Saved {len(rows)} demand zeroing rows to {output_path}")
     return output_path

@@ -573,13 +573,15 @@ SCENARIOS = ["Target", "Reference", "Current Accounts"]
 # change every run; the preset only needs to change when the pass type changes.
 # Variables are unpacked into module scope so run_with_config() picks them up.
 #
-# BASELINE_SEED  — first pass. Uses ESTO base-year data to seed supply/
-#                  transformation. LEAP results are not yet available so
-#                  own-use proxy uses "first" stage.
+# BASELINE_SEED  — first initialisation pass. Uses ESTO base-year data to seed
+#                  supply/transformation. LEAP results are not yet available,
+#                  so own-use proxy uses the "first" activity source.
 #
-# RESULTS_UPDATE — iterative pass. LEAP has been recalculated after the
-#                  previous import; reads actual LEAP balance results to
-#                  close the gap, proxy runs in "second" stage.
+# RESULTS_UPDATE — iterative initialisation pass. LEAP has been recalculated
+#                  after the previous import; reads actual LEAP balance
+#                  results to close the gap, so own-use proxy uses the
+#                  "second" activity source. This is still initialisation
+#                  because target energy is still matched.
 #
 # NOTE — SCRAPE_LEAP_RESULTS is False in both presets and should stay that
 # way indefinitely. It depends on LEAP API behaviour that has outstanding
@@ -640,7 +642,9 @@ _PRESET_BASELINE_SEED = {
     "ZERO_OTHER_DEMAND_INCLUDE_IN_LEAP_IMPORT": True,
 
     # --- Other loss / own-use proxy ---
-    # Stage "first" uses ESTO/ninth proxy; "second" uses LEAP-balance proxy.
+    # "first" uses ESTO/ninth activity; "second" uses LEAP-balance activity.
+    # These are initialisation activity-source choices, not post-initialisation
+    # anchored-intensity modes.
     "OTHER_LOSS_OWN_USE_PROXY_STAGE": "first",
 
     # Set True to skip per-economy export generation when combined workbooks already
@@ -744,7 +748,9 @@ _PRESET_RESULTS_UPDATE = {
     "ZERO_OTHER_DEMAND_INCLUDE_IN_LEAP_IMPORT": True,
 
     # --- Other loss / own-use proxy ---
-    # Stage "second" uses LEAP-balance proxy (post-LEAP-run); "first" uses ESTO/ninth proxy.
+    # "second" uses LEAP-balance activity after a LEAP run; "first" uses
+    # ESTO/ninth activity. Both remain initialisation while target energy is
+    # still matched.
     "OTHER_LOSS_OWN_USE_PROXY_STAGE": "second",
 
     # Set True to skip per-economy export generation when combined workbooks already

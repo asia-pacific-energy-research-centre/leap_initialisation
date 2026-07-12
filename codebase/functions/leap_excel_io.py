@@ -3,6 +3,7 @@ import pandas as pd
 from pathlib import Path
 
 from codebase.configuration.config import region_id_name_dict, scenario_dict
+from codebase.functions.leap_expressions import expression_to_series, parse_expression
 
 # def get_leap_metadata(measure):
 #     """Fetch LEAP_units, LEAP_Scale, LEAP_Per from LEAP_MEASURE_CONFIG if available."""
@@ -433,6 +434,159 @@ def finalise_export_df(log_df, scenario, region, base_year, final_year
     return export_df
 
 
+def _coerce_four_digit_year(value) -> int | None:
+    """Return a four-digit year for column labels such as 2023 or "2023"."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if isinstance(value, int):
+        return value if 1000 <= value <= 3000 else None
+    if isinstance(value, float) and value.is_integer():
+        year = int(value)
+        return year if 1000 <= year <= 3000 else None
+    text = str(value).strip()
+    if text.isdigit() and len(text) == 4:
+        return int(text)
+    return None
+
+
+def _year_columns_in_order(df: pd.DataFrame) -> list[object]:
+    """Return existing four-digit year columns in numeric order."""
+    year_columns: list[tuple[int, object]] = []
+    for col in df.columns:
+        year = _coerce_four_digit_year(col)
+        if year is not None:
+            year_columns.append((year, col))
+    return [col for _, col in sorted(year_columns, key=lambda item: item[0])]
+
+
+def _expression_method(value) -> str:
+    """Return a compact method label for the human-facing viewing sheet."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    if text.startswith("Interp("):
+        return "Interp"
+    if text.startswith("Data("):
+        return "Data"
+    mode, payload = parse_expression(value)
+    if mode == "const" and payload is not None:
+        return "Constant"
+    if mode == "unknown":
+        return "Expression"
+    return ""
+
+
+def _expression_value_for_year(value, year: int):
+    """Return an expression value for a viewing year without inventing zeros."""
+    mode, payload = parse_expression(value)
+    if mode == "series" and isinstance(payload, dict):
+        return payload.get(int(year), pd.NA)
+    if mode == "const" and payload is not None:
+        return float(payload)
+    return pd.NA
+
+
+def prepare_for_viewing_sheet_df(
+    df: pd.DataFrame,
+    *,
+    base_year: int | None = None,
+    final_year: int | None = None,
+) -> pd.DataFrame:
+    """Return the standard human-facing FOR_VIEWING layout.
+
+    The LEAP import sheet remains expression-oriented.  FOR_VIEWING replaces
+    Expression with Method plus four-digit year columns, then inserts a blank
+    spacer directly after the last year and before any Level columns.
+    """
+    out = df.copy()
+    existing_year_cols = _year_columns_in_order(out)
+    existing_years = [_coerce_four_digit_year(col) for col in existing_year_cols]
+    existing_years = [year for year in existing_years if year is not None]
+
+    expression_years: list[int] = []
+    if "Expression" in out.columns:
+        for value in out["Expression"].tolist():
+            series = expression_to_series(value)
+            if isinstance(series, dict):
+                expression_years.extend(int(year) for year in series.keys())
+
+    if base_year is not None and final_year is not None:
+        target_years = list(range(int(base_year), int(final_year) + 1))
+    else:
+        target_years = sorted(set(existing_years + expression_years))
+
+    if not target_years and existing_years:
+        target_years = sorted(set(existing_years))
+
+    year_values = pd.DataFrame(index=out.index)
+    for year in target_years:
+        source_col = None
+        for candidate in (year, str(year), float(year)):
+            if candidate in out.columns:
+                source_col = candidate
+                break
+        if source_col is not None:
+            year_values[str(year)] = out[source_col]
+        elif "Expression" in out.columns:
+            year_values[str(year)] = out["Expression"].map(
+                lambda value, _year=year: _expression_value_for_year(value, _year)
+            )
+        else:
+            year_values[str(year)] = pd.NA
+
+    if "Method" in out.columns:
+        method_values = out["Method"]
+    elif "Expression" in out.columns:
+        method_values = out["Expression"].map(_expression_method)
+    else:
+        method_values = pd.Series("", index=out.index)
+
+    id_key_meta_cols = [
+        "BranchID", "VariableID", "ScenarioID", "RegionID",
+        "Branch Path", "Variable", "Scenario", "Region",
+        "Scale", "Units", "Per...",
+    ]
+    meta_cols = [col for col in id_key_meta_cols if col in out.columns]
+    level_cols = [col for col in out.columns if str(col).startswith("Level")]
+    excluded = set(meta_cols + level_cols + existing_year_cols + ["Expression", "Method", ""])
+    other_cols = [col for col in out.columns if col not in excluded]
+
+    viewing = out.loc[:, meta_cols].copy()
+    viewing["Method"] = method_values
+    for year in target_years:
+        viewing[str(year)] = year_values[str(year)]
+    if "" not in viewing.columns:
+        viewing[""] = pd.NA
+    for col in level_cols + other_cols:
+        viewing[col] = out[col]
+    return viewing
+
+
+def add_leap_preamble(df: pd.DataFrame, *, model_name: str = "") -> pd.DataFrame:
+    """Add the two-row LEAP preamble and header row to an export dataframe."""
+    cols = list(df.columns)
+    header_data_0 = {col: "" for col in cols}
+    if "Branch Path" in header_data_0:
+        header_data_0["Branch Path"] = "Area:"
+    if "Variable" in header_data_0:
+        header_data_0["Variable"] = model_name or ""
+    if "Scenario" in header_data_0:
+        header_data_0["Scenario"] = "Ver:"
+    if "Region" in header_data_0:
+        header_data_0["Region"] = "2"
+    return pd.concat(
+        [
+            pd.DataFrame([header_data_0], columns=cols),
+            pd.DataFrame([{col: pd.NA for col in cols}], columns=cols),
+            pd.DataFrame([cols], columns=cols),
+            df,
+        ],
+        ignore_index=True,
+    )
+
+
 def save_export_files(leap_export_df, export_df_for_viewing, leap_export_filename, base_year, final_year, model_name):
     """Save the export DataFrame and log DataFrame to an Excel file."""
     # --- Write to Excel ---
@@ -445,7 +599,11 @@ def save_export_files(leap_export_df, export_df_for_viewing, leap_export_filenam
     # Row 2: Column headers (will be set by pandas)
     
     leap_export_df2 = leap_export_df.copy()
-    export_df_for_viewing2 = export_df_for_viewing.copy()
+    export_df_for_viewing2 = prepare_for_viewing_sheet_df(
+        export_df_for_viewing,
+        base_year=base_year,
+        final_year=final_year,
+    )
 
     diagnostics_dir = Path(leap_export_filename).parent / "supporting_files" / "diagnostics"
     diagnostic_stem = Path(leap_export_filename).stem
@@ -475,36 +633,8 @@ def save_export_files(leap_export_df, export_df_for_viewing, leap_export_filenam
     leap_export_df2 = _ensure_level_spacer(leap_export_df2)
     export_df_for_viewing2 = _ensure_level_spacer(export_df_for_viewing2)
     
-    # Create header rows with all columns from the dataframe
-    # Row 0: Area and Version info
-    header_data_0 = {col: '' for col in leap_export_df2.columns}
-    header_data_0['Branch Path'] = 'Area:'
-    header_data_0['Variable'] = model_name
-    header_data_0['Scenario'] = 'Ver:'
-    header_data_0['Region'] = '2'
-    header_row_0 = pd.DataFrame([header_data_0])
-    
-    # Row 1: Empty row
-    nas = pd.DataFrame([{col: pd.NA for col in leap_export_df2.columns}])
-    
-    header_row_2 = pd.DataFrame([leap_export_df2.columns], columns=leap_export_df2.columns)
-    
-    # Concatenate header rows with data
-    leap_export_df2 = pd.concat([header_row_0, nas, header_row_2, leap_export_df2], ignore_index=True)
-    # Same for viewing sheet
-    header_data_0_view = {col: '' for col in export_df_for_viewing2.columns}
-    header_data_0_view['Branch Path'] = 'Area:'
-    header_data_0_view['Variable'] = model_name
-    header_data_0_view['Scenario'] = 'Ver:'
-    header_data_0_view['Region'] = '2'
-    header_row_0_view = pd.DataFrame([header_data_0_view])
-    
-    nas = pd.DataFrame([{col: pd.NA for col in export_df_for_viewing2.columns}])
-    
-    # Row 2: Column names row (for compatibility with some LEAP import formats)
-    header_row_2_view = pd.DataFrame([export_df_for_viewing2.columns], columns=export_df_for_viewing2.columns)
-    
-    export_df_for_viewing2 = pd.concat([header_row_0_view, nas, header_row_2_view, export_df_for_viewing2], ignore_index=True)
+    leap_export_df2 = add_leap_preamble(leap_export_df2, model_name=model_name)
+    export_df_for_viewing2 = add_leap_preamble(export_df_for_viewing2, model_name=model_name)
     
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
         export_df_for_viewing2.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False, startrow=0)
