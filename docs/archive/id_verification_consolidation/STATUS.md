@@ -5,10 +5,10 @@ Archived 2026-07-11. Executed on branch `consolidate-id-verification`.
 ## Outcome
 
 | Part | Status | Commit |
-|---|---|---|
+| --- | --- | --- |
 | Item 1 — four ID/branch-match implementations | Done, verified | `10e382a` |
 | Item 2 Part A — preflight state-override dedup | Done, verified | `535f09e` |
-| Item 2 Part B — diagnostic-CSV report helper trio | **Skipped** (prompt marks it optional polish) | — |
+| Item 2 Part B — diagnostic-CSV report helper | Done (2026-07-11 follow-up) | `e89765a` |
 
 ## What was done
 
@@ -61,9 +61,9 @@ compute them via the shared primitive extracted from (B).
 
 ## Left open
 
-Item 2 Part B: `_collect_metadata_mismatches_against_reference` /
-`_collect_gigajoule_template_rows` /
-`_collect_mapping_config_mismatches_against_reference` in
-`supply_results_saver.py` still repeat the non-empty check + mkdir + CSV write
-+ WARN-with-preview print pattern three times; a shared
-`_write_diagnostic_report` helper remains a valid small cleanup.
+Nothing. Part B was completed as a follow-up (`e89765a`): a shared
+`_write_diagnostic_report` helper now serves the metadata-mismatch and
+config-mapping-mismatch reports. Note the prompt's "trio" had drifted — the
+gigajoule rows now feed a merged unit-review report with its own single-WARN
+shape, so only the two preview-style blocks shared the boilerplate; the
+unit-review block was deliberately left unchanged.
