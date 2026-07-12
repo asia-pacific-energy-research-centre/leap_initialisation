@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 import pandas as pd
 from openpyxl.styles import Font, PatternFill
@@ -1097,6 +1097,37 @@ def _archive_results_file_snapshot(
     print(f"[INFO] Archived results workbook snapshot to {target_path}")
     return target_path
 
+
+
+def _write_diagnostic_report(
+    rows: pd.DataFrame,
+    path: Path,
+    *,
+    header: str,
+    count_label: str,
+    row_formatter: Callable[[pd.Series], str],
+    more_label: str,
+    preview_limit: int = 30,
+) -> bool:
+    """Write a sorted diagnostic CSV and print the standard WARN preview block.
+
+    Shared reporting boilerplate for the reference-mismatch diagnostics:
+    skip entirely when ``rows`` is empty, otherwise mkdir + sorted CSV write,
+    a header line, a count line naming the saved path, an up-to-
+    ``preview_limit`` row preview, and a "... plus N more" tail. Returns True
+    when a report was written.
+    """
+    if not isinstance(rows, pd.DataFrame) or rows.empty:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _sort_output_frame_for_csv(rows).to_csv(path, index=False)
+    print(header)
+    print(f"[WARN] {count_label}: {len(rows)} (details saved to {path})")
+    for _, row in rows.head(preview_limit).iterrows():
+        print(f"  - {row_formatter(row)}")
+    if len(rows) > preview_limit:
+        print(f"  ... plus {len(rows) - preview_limit} {more_label}")
+    return True
 
 
 def _resolve_ids_and_filter_unmatched_export_rows(
@@ -2551,38 +2582,31 @@ def save_results_linked_single_workbook(
         for _, row in by_column.iterrows():
             print(f"  - {row['column']}: {int(row['count'])} fill(s)")
 
-    if isinstance(metadata_mismatch_rows, pd.DataFrame) and not metadata_mismatch_rows.empty:
-        mismatch_report_path = _resolve(RESULTS_CHECKS_DIR) / RESULTS_METADATA_MISMATCH_REPORT_FILENAME
-        mismatch_report_path.parent.mkdir(parents=True, exist_ok=True)
-        _sort_output_frame_for_csv(metadata_mismatch_rows).to_csv(
-            mismatch_report_path,
-            index=False,
+    def _format_metadata_mismatch_row(row: pd.Series) -> str:
+        return (
+            "Branch Path='{bp}' | Variable='{var}' | Scenario='{sc}' | Region='{rg}' | "
+            "column='{col}' | generated='{gen}' | reference='{ref}'".format(
+                bp=str(row.get("Branch Path") or "").strip(),
+                var=str(row.get("Variable") or "").strip(),
+                sc=str(row.get("Scenario") or "").strip(),
+                rg=str(row.get("Region") or "").strip(),
+                col=str(row.get("column") or "").strip(),
+                gen=str(row.get("generated_value") or "").strip(),
+                ref=str(row.get("reference_value") or "").strip(),
+            )
         )
-        print(
+
+    _write_diagnostic_report(
+        metadata_mismatch_rows,
+        _resolve(RESULTS_CHECKS_DIR) / RESULTS_METADATA_MISMATCH_REPORT_FILENAME,
+        header=(
             "\n[WARN] Verification-export metadata mismatches detected "
             "(Scale/Units/Per...)."
-        )
-        print(
-            f"[WARN] Metadata mismatches: {len(metadata_mismatch_rows)} "
-            f"(details saved to {mismatch_report_path})"
-        )
-        for _, row in metadata_mismatch_rows.head(30).iterrows():
-            print(
-                "  - Branch Path='{bp}' | Variable='{var}' | Scenario='{sc}' | Region='{rg}' | "
-                "column='{col}' | generated='{gen}' | reference='{ref}'".format(
-                    bp=str(row.get("Branch Path") or "").strip(),
-                    var=str(row.get("Variable") or "").strip(),
-                    sc=str(row.get("Scenario") or "").strip(),
-                    rg=str(row.get("Region") or "").strip(),
-                    col=str(row.get("column") or "").strip(),
-                    gen=str(row.get("generated_value") or "").strip(),
-                    ref=str(row.get("reference_value") or "").strip(),
-                )
-            )
-        if len(metadata_mismatch_rows) > 30:
-            print(
-                f"  ... plus {len(metadata_mismatch_rows) - 30} more metadata mismatches"
-            )
+        ),
+        count_label="Metadata mismatches",
+        row_formatter=_format_metadata_mismatch_row,
+        more_label="more metadata mismatches",
+    )
 
     unit_review_report_path = (
         _resolve(RESULTS_CHECKS_DIR)
@@ -2642,43 +2666,31 @@ def save_results_linked_single_workbook(
         if obsolete_path.exists():
             obsolete_path.unlink()
 
-    if (
-        isinstance(mapping_config_mismatch_rows, pd.DataFrame)
-        and not mapping_config_mismatch_rows.empty
-    ):
-        mapping_mismatch_report_path = (
-            _resolve(RESULTS_CHECKS_DIR) / RESULTS_CONFIG_MAPPING_MISMATCH_REPORT_FILENAME
+    def _format_mapping_mismatch_row(row: pd.Series) -> str:
+        return (
+            "scope='{scope}' | branch='{branch}' | variable='{var}' | "
+            "field='{field}' | config='{cfg}' | reference='{ref}' | issue='{issue}'".format(
+                scope=str(row.get("match_scope") or "").strip(),
+                branch=str(row.get("branch_path") or "").strip(),
+                var=str(row.get("variable") or "").strip(),
+                field=str(row.get("field") or "").strip(),
+                cfg=str(row.get("config_value") or "").strip(),
+                ref=str(row.get("reference_values") or "").strip(),
+                issue=str(row.get("issue") or "").strip(),
+            )
         )
-        mapping_mismatch_report_path.parent.mkdir(parents=True, exist_ok=True)
-        _sort_output_frame_for_csv(mapping_config_mismatch_rows).to_csv(
-            mapping_mismatch_report_path,
-            index=False,
-        )
-        print(
+
+    _write_diagnostic_report(
+        mapping_config_mismatch_rows,
+        _resolve(RESULTS_CHECKS_DIR) / RESULTS_CONFIG_MAPPING_MISMATCH_REPORT_FILENAME,
+        header=(
             "\n[WARN] Analysis-input config mapping mismatches detected against "
             "full model export metadata."
-        )
-        print(
-            f"[WARN] Mapping mismatches: {len(mapping_config_mismatch_rows)} "
-            f"(details saved to {mapping_mismatch_report_path})"
-        )
-        for _, row in mapping_config_mismatch_rows.head(30).iterrows():
-            print(
-                "  - scope='{scope}' | branch='{branch}' | variable='{var}' | "
-                "field='{field}' | config='{cfg}' | reference='{ref}' | issue='{issue}'".format(
-                    scope=str(row.get("match_scope") or "").strip(),
-                    branch=str(row.get("branch_path") or "").strip(),
-                    var=str(row.get("variable") or "").strip(),
-                    field=str(row.get("field") or "").strip(),
-                    cfg=str(row.get("config_value") or "").strip(),
-                    ref=str(row.get("reference_values") or "").strip(),
-                    issue=str(row.get("issue") or "").strip(),
-                )
-            )
-        if len(mapping_config_mismatch_rows) > 30:
-            print(
-                f"  ... plus {len(mapping_config_mismatch_rows) - 30} more mapping mismatches"
-            )
+        ),
+        count_label="Mapping mismatches",
+        row_formatter=_format_mapping_mismatch_row,
+        more_label="more mapping mismatches",
+    )
 
     config_unmatched_path = (
         _resolve(RESULTS_CHECKS_DIR)
