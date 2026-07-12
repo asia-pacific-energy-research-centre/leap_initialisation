@@ -1193,35 +1193,55 @@ def load_template_rows(template_path: str | Path) -> pd.DataFrame:
     return data
 
 
-def enrich_seed_ids_from_template(
-    data: pd.DataFrame,
-    template_path: str | Path,
-) -> pd.DataFrame:
-    """Replace all four IDs with canonical values from the full-model export.
+@dataclass(frozen=True)
+class TemplateIdLookup:
+    """Canonical full-model-export ID lookups keyed on normalized lowercase text.
 
-    Branch and variable IDs are branch-specific. Scenario and region IDs come
-    from the template; a sole template RegionID is valid for renamed economy
-    regions because each target LEAP area uses that same region object.
-    Unmatched keys remain ``-1`` so the rule validator blocks the write.
+    Extracted from ``enrich_seed_ids_from_template`` so every verification
+    mechanism (seed enrichment, results-saver ID resolution, seed-file
+    validation reports) answers "is this row canonical, and with which IDs"
+    with the same algorithm.
     """
-    result = data.copy()
-    template = load_template_rows(template_path)
-    template = _exclude_ignored_full_model_export_rows(template)
 
-    template["__branch_key"] = template["Branch Path"].map(_normalized).str.lower()
-    template["__variable_key"] = template["Variable"].map(_normalized).str.lower()
-    template["__scenario_key"] = template["Scenario"].map(_normalized).str.lower()
-    template["__region_key"] = template["Region"].map(_normalized).str.lower()
+    branch_ids: Mapping[str, int]
+    variable_ids: Mapping[tuple[str, str], int]
+    scenario_ids: Mapping[str, int]
+    region_ids: Mapping[str, int]
+    sole_region_id: int | None
+    canonical_paths: Mapping[str, str]
+
+
+def normalize_template_key(value: object) -> str:
+    """Normalize a Branch Path/Variable/Scenario/Region value to its lookup key."""
+    return _normalized(value).lower()
+
+
+def build_template_id_lookup(template: pd.DataFrame | str | Path) -> TemplateIdLookup:
+    """Build canonical ID lookups from the full-model export (path or frame)."""
+    if isinstance(template, pd.DataFrame):
+        required = [*ID_COLUMNS, *LOGICAL_KEY_COLUMNS]
+        missing = [column for column in required if column not in template.columns]
+        if missing:
+            raise ValueError(f"Template frame is missing required columns {missing}.")
+        data = template.copy()
+    else:
+        data = load_template_rows(template)
+    data = _exclude_ignored_full_model_export_rows(data)
+
+    data["__branch_key"] = data["Branch Path"].map(_normalized).str.lower()
+    data["__variable_key"] = data["Variable"].map(_normalized).str.lower()
+    data["__scenario_key"] = data["Scenario"].map(_normalized).str.lower()
+    data["__region_key"] = data["Region"].map(_normalized).str.lower()
 
     canonical_paths = (
-        template.loc[template["__branch_key"].ne(""), ["__branch_key", "Branch Path"]]
+        data.loc[data["__branch_key"].ne(""), ["__branch_key", "Branch Path"]]
         .drop_duplicates("__branch_key")
         .set_index("__branch_key")["Branch Path"]
         .to_dict()
     )
 
     def _valid_id_rows(columns: list[str], id_column: str) -> pd.DataFrame:
-        selected = template[columns + [id_column]].copy()
+        selected = data[columns + [id_column]].copy()
         selected[id_column] = pd.to_numeric(selected[id_column], errors="coerce")
         return selected[selected[id_column].ge(0)].drop_duplicates(columns)
 
@@ -1234,19 +1254,37 @@ def enrich_seed_ids_from_template(
     region_ids = region_id_rows.set_index("__region_key")["RegionID"].to_dict()
     unique_region_ids = sorted(set(region_ids.values()))
     sole_region_id = unique_region_ids[0] if len(unique_region_ids) == 1 else None
+    return TemplateIdLookup(
+        branch_ids=branch_ids,
+        variable_ids=variable_ids,
+        scenario_ids=scenario_ids,
+        region_ids=region_ids,
+        sole_region_id=sole_region_id,
+        canonical_paths=canonical_paths,
+    )
 
+
+def apply_template_ids(data: pd.DataFrame, lookup: TemplateIdLookup) -> pd.DataFrame:
+    """Replace all four IDs with canonical values from the template lookup.
+
+    Branch and variable IDs are branch-specific. Scenario and region IDs come
+    from the template; a sole template RegionID is valid for renamed economy
+    regions because each target LEAP area uses that same region object.
+    Unmatched keys remain ``-1`` so the rule validator blocks the write.
+    """
+    result = data.copy()
     branch_keys = result.get("Branch Path", pd.Series("", index=result.index)).map(_normalized).str.lower()
     variable_keys = result.get("Variable", pd.Series("", index=result.index)).map(_normalized).str.lower()
     scenario_keys = result.get("Scenario", pd.Series("", index=result.index)).map(_normalized).str.lower()
     region_keys = result.get("Region", pd.Series("", index=result.index)).map(_normalized).str.lower()
 
-    result["Branch Path"] = branch_keys.map(canonical_paths).fillna(
+    result["Branch Path"] = branch_keys.map(lookup.canonical_paths).fillna(
         result.get("Branch Path", pd.Series("", index=result.index))
     )
-    result["BranchID"] = branch_keys.map(branch_ids).fillna(-1).astype(int)
+    result["BranchID"] = branch_keys.map(lookup.branch_ids).fillna(-1).astype(int)
     mapped_variable_ids = pd.Series(
         list(zip(branch_keys, variable_keys)), index=result.index
-    ).map(variable_ids)
+    ).map(lookup.variable_ids)
     existing_variable_ids = pd.to_numeric(
         result.get("VariableID", pd.Series(-1, index=result.index)), errors="coerce"
     )
@@ -1256,10 +1294,10 @@ def enrich_seed_ids_from_template(
         mapped_variable_ids.notna(), existing_variable_ids.where(existing_variable_ids.ge(0))
     )
     result["VariableID"] = mapped_variable_ids.fillna(-1).astype(int)
-    result["ScenarioID"] = scenario_keys.map(scenario_ids).fillna(-1).astype(int)
-    mapped_region_ids = region_keys.map(region_ids)
-    if sole_region_id is not None:
-        mapped_region_ids = mapped_region_ids.fillna(sole_region_id)
+    result["ScenarioID"] = scenario_keys.map(lookup.scenario_ids).fillna(-1).astype(int)
+    mapped_region_ids = region_keys.map(lookup.region_ids)
+    if lookup.sole_region_id is not None:
+        mapped_region_ids = mapped_region_ids.fillna(lookup.sole_region_id)
     result["RegionID"] = mapped_region_ids.fillna(-1).astype(int)
 
     # --- Known LEAP-label exception rescue pass ------------------------------
@@ -1273,11 +1311,23 @@ def enrich_seed_ids_from_template(
     # template or the seed row may carry either spelling.
     _rescue_ids_via_known_leap_label_exceptions(
         result,
-        branch_ids=branch_ids,
-        variable_ids=variable_ids,
-        canonical_paths=canonical_paths,
+        branch_ids=lookup.branch_ids,
+        variable_ids=lookup.variable_ids,
+        canonical_paths=lookup.canonical_paths,
     )
     return result
+
+
+def enrich_seed_ids_from_template(
+    data: pd.DataFrame,
+    template_path: str | Path,
+) -> pd.DataFrame:
+    """Replace all four IDs with canonical values from the full-model export.
+
+    Thin wrapper over ``build_template_id_lookup`` + ``apply_template_ids``;
+    see ``apply_template_ids`` for the matching semantics.
+    """
+    return apply_template_ids(data, build_template_id_lookup(template_path))
 
 
 def _rescue_ids_via_known_leap_label_exceptions(

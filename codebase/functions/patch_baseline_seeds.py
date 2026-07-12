@@ -62,6 +62,9 @@ if str(REPO_ROOT) not in sys.path:
 
 from codebase.functions.baseline_seed_validation import (
     SOURCE_WORKFLOW_COLUMN,
+    TemplateIdLookup,
+    build_template_id_lookup,
+    normalize_template_key,
     prepare_seed_rows_for_write,
     resolve_logical_duplicates,
     _exclude_ignored_full_model_export_rows,
@@ -426,18 +429,17 @@ def _fill_ids_from_template(df: pd.DataFrame, lookup: dict[str, dict]) -> None:
     df["RegionID"] = region_text.map(lookup["region"]).fillna(1).astype(int)
 
 
-def _load_template_valid_ids(
-    path: Path = FULL_MODEL_EXPORT_PATH,
-) -> dict[str, set]:
-    """Return valid non-(-1) values for each ID column and the full Branch Path set."""
-    lookup = _build_id_lookup(path)
-    return {
-        "Branch Path": set(lookup["branch"].keys()),
-        "BranchID": set(lookup["branch"].values()),
-        "VariableID": set(lookup["variable"].values()),
-        "ScenarioID": set(lookup["scenario"].values()),
-        "RegionID": set(lookup["region"].values()),
-    }
+_CANONICAL_TEMPLATE_LOOKUP_CACHE: dict[str, TemplateIdLookup] = {}
+
+
+def _canonical_template_lookup(path: Path) -> TemplateIdLookup:
+    """Cached canonical template lookup shared with baseline_seed_validation."""
+    key = str(Path(path).resolve())
+    lookup = _CANONICAL_TEMPLATE_LOOKUP_CACHE.get(key)
+    if lookup is None:
+        lookup = build_template_id_lookup(path)
+        _CANONICAL_TEMPLATE_LOOKUP_CACHE[key] = lookup
+    return lookup
 
 
 def validate_seed_files(
@@ -446,19 +448,18 @@ def validate_seed_files(
     ignore_prefixes: frozenset[str] = VALIDATION_IGNORE_PREFIXES,
     ignore_fuel_names: frozenset[str] = VALIDATION_IGNORE_FUEL_NAMES,
 ) -> int:
-    """Check all seed files against the template; return number of invalid rows found."""
+    """Check all seed files against the template; return number of invalid rows found.
+
+    Expected IDs come from the same canonical template lookup the baseline-seed
+    validator uses (``build_template_id_lookup``), so this printed report and
+    the enforcing validator cannot drift apart. Branch paths are matched
+    case-insensitively via the lookup's normalized canonical-path keys.
+    """
     if not template_path.exists():
         print(f"[WARN] Template not found, skipping validation: {template_path}")
         return 0
 
-    valid = _load_template_valid_ids(template_path)
-    id_lookup = _build_id_lookup(template_path)
-    valid_paths = valid["Branch Path"]
-    # Case-insensitive lookup: lowercase key → canonical path from template.
-    # LEAP branch names sometimes differ only in capitalisation from what the
-    # code-to-name mapping produces (e.g. "Natural Gas" vs "Natural gas").
-    # Treat these as matching so they don't generate spurious validation noise.
-    valid_paths_lower: dict[str, str] = {p.lower(): p for p in valid_paths}
+    lookup = _canonical_template_lookup(template_path)
 
     seed_files = sorted(seed_dir.glob("leap_import_baseline_seed_*.xlsx"))
     if not seed_files:
@@ -484,7 +485,8 @@ def validate_seed_files(
                 continue
 
             # Case-insensitive match: resolve to canonical template path if found.
-            canonical_bp = valid_paths_lower.get(bp.lower())
+            branch_key = normalize_template_key(bp)
+            canonical_bp = lookup.canonical_paths.get(branch_key)
             if canonical_bp is None:
                 bad_rows.append(f"  unknown path: {bp}")
                 continue
@@ -494,11 +496,18 @@ def validate_seed_files(
             variable = str(row.get("Variable", "") or "").strip()
             scenario = str(row.get("Scenario", "") or "").strip()
             region = str(row.get("Region", "") or "").strip()
+            expected_region = lookup.region_ids.get(normalize_template_key(region))
+            if expected_region is None:
+                expected_region = (
+                    lookup.sole_region_id if lookup.sole_region_id is not None else 1
+                )
             expected_ids = {
-                "BranchID": id_lookup["branch_lower"].get(bp.lower()),
-                "VariableID": id_lookup["variable"].get((bp.lower(), variable)),
-                "ScenarioID": id_lookup["scenario"].get(scenario),
-                "RegionID": id_lookup["region"].get(region, 1),
+                "BranchID": lookup.branch_ids.get(branch_key),
+                "VariableID": lookup.variable_ids.get(
+                    (branch_key, normalize_template_key(variable))
+                ),
+                "ScenarioID": lookup.scenario_ids.get(normalize_template_key(scenario)),
+                "RegionID": expected_region,
             }
             for col in _ID_COLS:
                 if col not in data.columns:

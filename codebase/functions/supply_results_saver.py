@@ -50,6 +50,10 @@ from codebase.mappings.canonical_mapping import (
 )
 from codebase.functions import supply_data_pipeline, leap_api, patch_baseline_seeds
 from codebase.functions.analysis_input_write_dispatcher import get_analysis_input_write_mode
+from codebase.functions.baseline_seed_validation import (
+    apply_template_ids,
+    build_template_id_lookup,
+)
 from codebase import (
     electricity_heat_interim_workflow,
     other_loss_own_use_proxy_workflow,
@@ -1095,6 +1099,125 @@ def _archive_results_file_snapshot(
 
 
 
+def _resolve_ids_and_filter_unmatched_export_rows(
+    df: pd.DataFrame,
+    source_data: pd.DataFrame,
+    source_path: Path,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Stamp canonical LEAP IDs and filter unmatched aggregate-demand rows.
+
+    ID resolution is delegated to the baseline-seed validator's canonical
+    template lookup (``build_template_id_lookup``/``apply_template_ids``) so
+    this writer and the final seed writer agree on what counts as a canonical
+    match. The aggregate-demand retain/drop rule (CROSS-001): a row under
+    ``Demand\\All demand aggregated\\`` with no canonical branch is dropped
+    when its source Activity Level is zero in every year, and retained with
+    ``BranchID=-1`` when nonzero, keeping the missing LEAP branch visible.
+    Returns the resolved frame and the unmatched-ID report
+    (Branch Path/Variable/Scenario/Region/reason).
+    """
+
+    def _norm(value: object) -> str:
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return ""
+        return str(value).strip().lower()
+
+    id_cols = ["BranchID", "VariableID", "ScenarioID", "RegionID"]
+    if source_data is None or source_data.empty:
+        out = df.copy()
+        for col in id_cols:
+            out[col] = -1
+        unmatched = out[["Branch Path", "Variable", "Scenario", "Region"]].copy()
+        unmatched["reason"] = (
+            "verification_export_missing"
+            if not source_path.exists()
+            else "verification_export_empty"
+        )
+        return out, unmatched
+
+    required_source_cols = [*id_cols, "Branch Path", "Variable", "Scenario", "Region"]
+    missing_source = [col for col in required_source_cols if col not in source_data.columns]
+    if missing_source:
+        print(
+            "[WARN] Verification export missing expected ID/key columns; using fallback -1 IDs: "
+            f"{missing_source}"
+        )
+        out = df.copy()
+        for col in id_cols:
+            out[col] = -1
+        unmatched = out[["Branch Path", "Variable", "Scenario", "Region"]].copy()
+        unmatched["reason"] = "verification_export_missing_required_columns"
+        return out, unmatched
+
+    out = df.copy().reset_index(drop=True)
+    # Drop pre-existing ID columns so upstream values never leak through; the
+    # canonical lookup below is the sole source of IDs in this workbook.
+    out = out.drop(columns=[col for col in id_cols if col in out.columns], errors="ignore")
+    lookup = build_template_id_lookup(source_data[required_source_cols])
+    out = apply_template_ids(out, lookup)
+    total = int(len(out))
+    matched = int(out["BranchID"].ne(-1).sum())
+    print(
+        "[INFO] Resolved IDs from verification export via the canonical template lookup: "
+        f"matched {matched}/{total}, unmatched {total - matched}."
+    )
+
+    # A nonzero aggregate-demand source with no canonical LEAP branch is
+    # intentionally retained with BranchID=-1. It cannot import, but its
+    # presence makes the missing model branch visible to the modeller.
+    # Zero-only scaffolding is removed so it does not create false gaps.
+    # Reviewed spelling aliases are excluded from the drop; the alias rescue
+    # inside apply_template_ids already matched them where the template allows.
+    reviewed_mapping_labels = {
+        _norm(value) for value in KNOWN_LEAP_LABEL_EXCEPTIONS.values()
+    }
+    branch_text = out["Branch Path"].fillna("").astype(str)
+    aggregate_missing_mask = (
+        out["BranchID"].eq(-1)
+        & branch_text.str.lower().str.startswith("demand\\all demand aggregated\\")
+        & ~branch_text.str.rsplit("\\", n=1).str[-1].map(_norm).isin(reviewed_mapping_labels)
+    )
+    year_cols = [column for column in out.columns if _is_year_header(column)]
+    activity_mask = out["Variable"].fillna("").astype(str).str.casefold().eq("activity level")
+    nonzero_activity_paths: set[str] = set()
+    if year_cols:
+        activity_values = out.loc[activity_mask, year_cols].apply(
+            pd.to_numeric,
+            errors="coerce",
+        ).fillna(0.0)
+        nonzero_activity_rows = activity_values.abs().gt(1e-9).any(axis=1)
+        nonzero_activity_paths = set(
+            branch_text.loc[activity_values.index[nonzero_activity_rows]]
+        )
+    retain_missing_mask = aggregate_missing_mask & branch_text.isin(nonzero_activity_paths)
+    drop_zero_placeholder_mask = aggregate_missing_mask & ~branch_text.isin(nonzero_activity_paths)
+    if retain_missing_mask.any():
+        retained_paths = sorted(set(branch_text[retain_missing_mask]))
+        print(
+            "[WARN] Retained "
+            f"{int(retain_missing_mask.sum())} aggregate-demand row(s) with BranchID=-1 "
+            "because their source Activity Level is nonzero. These rows expose LEAP "
+            f"branches that need to be added or mapped: {retained_paths}"
+        )
+    if drop_zero_placeholder_mask.any():
+        dropped_paths = sorted(set(branch_text[drop_zero_placeholder_mask]))
+        print(
+            "[INFO] Dropped "
+            f"{int(drop_zero_placeholder_mask.sum())} zero-only aggregate-demand "
+            "placeholder row(s) with no LEAP branch. "
+            f"Branches: {dropped_paths}"
+        )
+        out = out.loc[~drop_zero_placeholder_mask].copy()
+
+    unmatched = out[out["BranchID"].eq(-1)][
+        ["Branch Path", "Variable", "Scenario", "Region"]
+    ].copy()
+    if not unmatched.empty:
+        unmatched["reason"] = "no_verification_export_id_match"
+        unmatched = unmatched.drop_duplicates().reset_index(drop=True)
+    return out, unmatched
+
+
 def save_results_linked_single_workbook(
     *,
     reconciliation_table: pd.DataFrame,
@@ -1583,186 +1706,6 @@ def save_results_linked_single_workbook(
                 f"(sheet={source_sheet}): {exc}"
             )
             return pd.DataFrame(), source_path, source_sheet
-
-    def _merge_ids_from_reference_export(
-        df: pd.DataFrame,
-        source_data: pd.DataFrame,
-        source_path: Path,
-    ) -> tuple[pd.DataFrame, pd.DataFrame]:
-        if source_data is None or source_data.empty:
-            out = df.copy()
-            out["BranchID"] = -1
-            out["VariableID"] = -1
-            out["ScenarioID"] = -1
-            out["RegionID"] = -1
-            unmatched = out[["Branch Path", "Variable", "Scenario", "Region"]].copy()
-            unmatched["reason"] = (
-                "verification_export_missing"
-                if not source_path.exists()
-                else "verification_export_empty"
-            )
-            return out, unmatched
-
-        required_source_cols = [
-            "BranchID",
-            "VariableID",
-            "ScenarioID",
-            "RegionID",
-            "Branch Path",
-            "Variable",
-            "Scenario",
-            "Region",
-        ]
-        missing_source = [col for col in required_source_cols if col not in source_data.columns]
-        if missing_source:
-            print(
-                "[WARN] Verification export missing expected ID/key columns; using fallback -1 IDs: "
-                f"{missing_source}"
-            )
-            out = df.copy()
-            out["BranchID"] = -1
-            out["VariableID"] = -1
-            out["ScenarioID"] = -1
-            out["RegionID"] = -1
-            unmatched = out[["Branch Path", "Variable", "Scenario", "Region"]].copy()
-            unmatched["reason"] = "verification_export_missing_required_columns"
-            return out, unmatched
-
-        source_subset = source_data[required_source_cols].copy()
-        for col in ["BranchID", "VariableID", "ScenarioID", "RegionID"]:
-            source_subset[col] = pd.to_numeric(source_subset[col], errors="coerce").astype("Int64")
-
-        for col in ["Branch Path", "Variable", "Scenario", "Region"]:
-            source_subset[f"__k_{col}"] = source_subset[col].map(_normalize_merge_text)
-
-        key_cols = ["__k_Branch Path", "__k_Variable", "__k_Scenario", "__k_Region"]
-        id_cols = ["BranchID", "VariableID", "ScenarioID", "RegionID"]
-
-        # Detect conflicting duplicate keys in source IDs; keep first deterministic row.
-        source_dedup = source_subset.copy()
-        conflicting = (
-            source_dedup.groupby(key_cols, dropna=False)[id_cols]
-            .nunique(dropna=False)
-            .reset_index()
-        )
-        conflicting = conflicting[
-            (conflicting["BranchID"] > 1)
-            | (conflicting["VariableID"] > 1)
-            | (conflicting["ScenarioID"] > 1)
-            | (conflicting["RegionID"] > 1)
-        ]
-        if not conflicting.empty:
-            print(
-                "[WARN] Verification export contains conflicting ID rows for "
-                f"{len(conflicting)} key(s); using first match per key."
-            )
-        source_dedup = source_dedup.drop_duplicates(subset=key_cols, keep="first")
-        source_dedup = source_dedup[key_cols + id_cols]
-
-        out = df.copy()
-        # Drop any pre-existing ID columns so the merge doesn't produce BranchID_x/BranchID_y suffixes.
-        out = out.drop(columns=[col for col in id_cols if col in out.columns], errors="ignore")
-        for col in ["Branch Path", "Variable", "Scenario", "Region"]:
-            out[f"__k_{col}"] = out[col].map(_normalize_merge_text)
-
-        # Pass 1 — exact match on all four keys (Branch Path + Variable + Scenario + Region).
-        out = out.merge(source_dedup, on=key_cols, how="left")
-        matched_pass1 = int(out["BranchID"].notna().sum())
-        total = int(len(out))
-        print(
-            "[INFO] Merged IDs from verification export using "
-            "Branch Path/Variable/Scenario/Region keys: "
-            f"matched {matched_pass1}/{total}, unmatched {total - matched_pass1}."
-        )
-
-        # Pass 2 — fallback for rows still unmatched: look up by Branch Path + Variable only.
-        # BranchID and VariableID are branch-structure properties (not scenario/region-specific),
-        # so a row in another region's export is still a valid source for these IDs.
-        still_unmatched_mask = out["BranchID"].isna()
-        if still_unmatched_mask.any():
-            bp_var_key = ["__k_Branch Path", "__k_Variable"]
-            source_bp_var = (
-                source_data[required_source_cols].copy()
-                .assign(**{
-                    f"__k_{col}": source_data[col].map(_normalize_merge_text)
-                    for col in ["Branch Path", "Variable"]
-                })
-                .drop_duplicates(subset=bp_var_key, keep="first")
-                [bp_var_key + id_cols]
-            )
-            fallback = out.loc[still_unmatched_mask, [c for c in out.columns if c not in id_cols]].merge(
-                source_bp_var, on=bp_var_key, how="left"
-            )
-            for col in id_cols:
-                out.loc[still_unmatched_mask, col] = fallback[col].values
-            matched_pass2 = int(out["BranchID"].notna().sum()) - matched_pass1
-            if matched_pass2 > 0:
-                print(
-                    f"[INFO] Fallback merge (Branch Path + Variable only) recovered "
-                    f"{matched_pass2} additional ID matches."
-                )
-
-        # A nonzero aggregate-demand source with no canonical LEAP branch is
-        # intentionally retained with BranchID=-1. It cannot import, but its
-        # presence makes the missing model branch visible to the modeller.
-        # Zero-only scaffolding is removed so it does not create false gaps.
-        # Keep reviewed spelling aliases (for example Black liquor -> Black
-        # liqour) for the downstream alias rescue.
-        reviewed_mapping_labels = {
-            _normalize_merge_text(value)
-            for value in KNOWN_LEAP_LABEL_EXCEPTIONS.values()
-        }
-        branch_text = out["Branch Path"].fillna("").astype(str)
-        aggregate_missing_mask = (
-            out["BranchID"].isna()
-            & branch_text.str.lower().str.startswith("demand\\all demand aggregated\\")
-            & ~branch_text.str.rsplit("\\", n=1).str[-1].map(_normalize_merge_text).isin(
-                reviewed_mapping_labels
-            )
-        )
-        year_cols = [column for column in out.columns if _is_year_header(column)]
-        activity_mask = out["Variable"].fillna("").astype(str).str.casefold().eq("activity level")
-        nonzero_activity_paths: set[str] = set()
-        if year_cols:
-            activity_values = out.loc[activity_mask, year_cols].apply(
-                pd.to_numeric,
-                errors="coerce",
-            ).fillna(0.0)
-            nonzero_activity_rows = activity_values.abs().gt(1e-9).any(axis=1)
-            nonzero_activity_paths = set(
-                branch_text.loc[activity_values.index[nonzero_activity_rows]]
-            )
-        retain_missing_mask = aggregate_missing_mask & branch_text.isin(nonzero_activity_paths)
-        drop_zero_placeholder_mask = aggregate_missing_mask & ~branch_text.isin(nonzero_activity_paths)
-        if retain_missing_mask.any():
-            retained_paths = sorted(set(branch_text[retain_missing_mask]))
-            print(
-                "[WARN] Retained "
-                f"{int(retain_missing_mask.sum())} aggregate-demand row(s) with BranchID=-1 "
-                "because their source Activity Level is nonzero. These rows expose LEAP "
-                f"branches that need to be added or mapped: {retained_paths}"
-            )
-        if drop_zero_placeholder_mask.any():
-            dropped_paths = sorted(set(branch_text[drop_zero_placeholder_mask]))
-            print(
-                "[INFO] Dropped "
-                f"{int(drop_zero_placeholder_mask.sum())} zero-only aggregate-demand "
-                "placeholder row(s) with no LEAP branch. "
-                f"Branches: {dropped_paths}"
-            )
-            out = out.loc[~drop_zero_placeholder_mask].copy()
-
-        unmatched = out[out["BranchID"].isna()][
-            ["Branch Path", "Variable", "Scenario", "Region"]
-        ].copy()
-        if not unmatched.empty:
-            unmatched["reason"] = "no_verification_export_id_match"
-            unmatched = unmatched.drop_duplicates().reset_index(drop=True)
-        for col in id_cols:
-            out[col] = pd.to_numeric(out[col], errors="coerce").fillna(-1).astype(int)
-        drop_cols = key_cols
-        out = out.drop(columns=drop_cols, errors="ignore")
-        return out, unmatched
 
     def _collect_metadata_mismatches_against_reference(
         df: pd.DataFrame,
@@ -2305,7 +2248,7 @@ def save_results_linked_single_workbook(
         export_df,
         source_data=verification_data,
     )
-    export_df, unmatched_id_rows = _merge_ids_from_reference_export(
+    export_df, unmatched_id_rows = _resolve_ids_and_filter_unmatched_export_rows(
         export_df,
         source_data=verification_data,
         source_path=verification_path,
