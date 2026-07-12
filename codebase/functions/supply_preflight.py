@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Literal
 
 import pandas as pd
 from openpyxl.styles import Font, PatternFill
@@ -1122,13 +1122,119 @@ def _restore_preflight_state(state: dict[str, object]) -> None:
     importlib.reload(other_loss_own_use_proxy_workflow)
 
 
+def _build_preflight_config_overrides(
+    *,
+    source_files: dict[str, object],
+    preflight_root: Path,
+    scenarios: list[str],
+    mode: Literal["projection", "results_update"] = "projection",
+    economy: str = "00_APEC",
+    reduced_ref_path: Path | None = None,
+    reduced_tgt_path: Path | None = None,
+) -> dict[str, object]:
+    """Build the config-override dict shared by both compressed preflights.
+
+    Pure (no module mutation) so tests can assert the exact overrides each
+    mode produces. The common block covers scope, isolated output routing,
+    LEAP-import/scrape/cache disabling, and compressed two-year source
+    routing; ``results_update`` adds its pass semantics and the temporary
+    reduced REF/TGT balance-workbook routing on top.
+    """
+    if mode not in ("projection", "results_update"):
+        raise ValueError(f"Unknown preflight mode: {mode!r}")
+    if mode == "results_update" and (reduced_ref_path is None or reduced_tgt_path is None):
+        raise ValueError(
+            "results_update mode requires reduced_ref_path and reduced_tgt_path."
+        )
+    base_year = int(source_files["base_year"])
+    compressed_year = int(source_files["compressed_year"])
+    workbooks_dir = preflight_root / "workbooks"
+    overrides: dict[str, object] = {
+        # --- scope ---
+        "ECONOMIES": [economy],
+        "SCENARIOS": list(scenarios),
+        "FINAL_YEAR": compressed_year,
+        "BALANCE_EXPORT_YEARS": [base_year, compressed_year],
+        # --- isolated outputs / runtime / checks ---
+        "OUTPUT_DIR": preflight_root,
+        "EXPORT_OUTPUT_DIR": workbooks_dir,
+        "TRANSFORMATION_EXPORT_OUTPUT_DIR": workbooks_dir,
+        "YEARLY_BALANCE_DIR": preflight_root / "yearly_balance_tables",
+        "CONVENTIONAL_BALANCE_DIR": preflight_root / "conventional_balance_tables",
+        "RESULTS_CHECKS_DIR": preflight_root / "checks",
+        "RESULTS_RUNTIME_DIR": preflight_root / "runtime",
+        "RESULTS_SINGLE_FILE_NAME": f"preflight_compressed_{mode}_run.xlsx",
+        # --- disable LEAP imports / branch creation / scraping / caches ---
+        "LEAP_IMPORT_SUPPLY_TO_LEAP": False,
+        "LEAP_IMPORT_TRANSFORMATION_TO_LEAP": False,
+        "LEAP_IMPORT_TRANSFERS_TO_LEAP": False,
+        "LEAP_IMPORT_CREATE_BRANCHES": False,
+        "LEAP_IMPORT_FILL_BRANCHES": False,
+        "LEAP_IMPORT_INCLUDE_CURRENT_ACCOUNTS": False,
+        "AGGREGATED_DEMAND_INCLUDE_IN_LEAP_IMPORT": False,
+        "OTHER_LOSS_OWN_USE_INCLUDE_IN_LEAP_IMPORT": False,
+        "ZERO_OTHER_DEMAND_INCLUDE_IN_LEAP_IMPORT": False,
+        "RUN_LEAP_FUEL_BRANCH_PROBE_AT_START": False,
+        "SCRAPE_LEAP_RESULTS": False,
+        "TRANSFORMATION_SUPPLY_CACHE_ENABLED": False,
+        "SKIP_ECONOMIES_WITH_EXISTING_EXPORTS": False,
+        # --- compressed two-year source routing ---
+        "DIRECT_DEMAND_BASE_TABLE_PATH": source_files["esto_path"],
+        "DIRECT_DEMAND_PROJECTION_TABLE_PATH": source_files["ninth_path"],
+        "DIRECT_DEMAND_BASE_YEAR": base_year,
+        "DIRECT_DEMAND_PROJECTION_YEARS": (compressed_year,),
+        "BALANCE_DEMAND_BASE_TABLE_PATH": source_files["esto_path"],
+        "BALANCE_DEMAND_PROJECTION_TABLE_PATH": source_files["ninth_path"],
+    }
+    if mode == "results_update":
+        overrides.update(
+            {
+                # --- results_update pass semantics ---
+                "CAPACITY_UNMET_PASS_MODE": "results_update",
+                "USE_AGGREGATED_DEMAND_AS_DUMMY": False,
+                "OTHER_LOSS_OWN_USE_PROXY_STAGE": "second",
+                "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT": False,
+                "RUN_ELECTRICITY_HEAT_INTERIM": False,
+                # --- balance-demand routing to the temporary reduced workbooks ---
+                "BALANCE_DEMAND_REF_WORKBOOK_PATH": reduced_ref_path,
+                "BALANCE_DEMAND_TGT_WORKBOOK_PATH": reduced_tgt_path,
+                "BALANCE_DEMAND_EXPORTS_ROOT": preflight_root / "reduced_balance_exports",
+                "DIRECT_DEMAND_PROJECTION_ECONOMY": economy,
+                "DIRECT_DEMAND_BASE_ECONOMY": economy.replace("_", ""),
+            }
+        )
+    return overrides
+
+
 def _apply_preflight_compressed_state(
     *,
     source_files: dict[str, object],
     preflight_root: Path,
     scenarios: list[str],
+    mode: Literal["projection", "results_update"] = "projection",
+    economy: str = "00_APEC",
+    reduced_ref_path: Path | None = None,
+    reduced_tgt_path: Path | None = None,
 ) -> list[tuple[str, str, object]]:
-    """Patch module globals for the compressed two-year preflight run."""
+    """Patch module globals for a compressed two-year preflight run.
+
+    Shared by both compressed preflights. The two preflights themselves stay
+    separate per INIT-009 (each exercises code paths the other does not);
+    only this state-override step is common. ``projection`` is the 00_APEC
+    baseline-seed check; ``results_update`` additionally routes the
+    balance-demand loader to the temporary reduced REF/TGT workbooks and
+    forces results_update pass semantics. Returns the broadcast snapshot for
+    restoration (production values restored in the callers' ``finally``).
+    """
+    overrides = _build_preflight_config_overrides(
+        source_files=source_files,
+        preflight_root=preflight_root,
+        scenarios=scenarios,
+        mode=mode,
+        economy=economy,
+        reduced_ref_path=reduced_ref_path,
+        reduced_tgt_path=reduced_tgt_path,
+    )
     base_year = int(source_files["base_year"])
     compressed_year = int(source_files["compressed_year"])
 
@@ -1140,6 +1246,9 @@ def _apply_preflight_compressed_state(
     workflow_cfg.GLOBAL_FINAL_YEAR = compressed_year
     workflow_cfg.TRANSFORMATION_EXPORT_FINAL_YEAR = compressed_year
     workflow_cfg.MINOR_DEMAND_EXPORT_FINAL_YEAR = compressed_year
+    # Baseline-seed validation must use the same deliberately compressed
+    # two-year horizon as the generated preflight workbooks. Production values
+    # are restored in ``finally`` by _restore_preflight_state.
     workflow_cfg.BASELINE_SEED_VALIDATION_BASE_YEAR = base_year
     workflow_cfg.BASELINE_SEED_VALIDATION_FINAL_YEAR = compressed_year
 
@@ -1151,39 +1260,6 @@ def _apply_preflight_compressed_state(
     importlib.reload(electricity_heat_interim_workflow)
     importlib.reload(other_loss_own_use_proxy_workflow)
 
-    overrides: dict[str, object] = {
-            "ECONOMIES": ["00_APEC"],
-            "SCENARIOS": list(scenarios),
-            "FINAL_YEAR": compressed_year,
-            "BALANCE_EXPORT_YEARS": [base_year, compressed_year],
-            "OUTPUT_DIR": preflight_root,
-            "EXPORT_OUTPUT_DIR": preflight_root / "workbooks",
-            "TRANSFORMATION_EXPORT_OUTPUT_DIR": preflight_root / "workbooks",
-            "YEARLY_BALANCE_DIR": preflight_root / "yearly_balance_tables",
-            "CONVENTIONAL_BALANCE_DIR": preflight_root / "conventional_balance_tables",
-            "RESULTS_CHECKS_DIR": preflight_root / "checks",
-            "RESULTS_RUNTIME_DIR": preflight_root / "runtime",
-            "RESULTS_SINGLE_FILE_NAME": "preflight_compressed_projection_run.xlsx",
-            "LEAP_IMPORT_SUPPLY_TO_LEAP": False,
-            "LEAP_IMPORT_TRANSFORMATION_TO_LEAP": False,
-            "LEAP_IMPORT_TRANSFERS_TO_LEAP": False,
-            "LEAP_IMPORT_CREATE_BRANCHES": False,
-            "LEAP_IMPORT_FILL_BRANCHES": False,
-            "LEAP_IMPORT_INCLUDE_CURRENT_ACCOUNTS": False,
-            "AGGREGATED_DEMAND_INCLUDE_IN_LEAP_IMPORT": False,
-            "OTHER_LOSS_OWN_USE_INCLUDE_IN_LEAP_IMPORT": False,
-            "ZERO_OTHER_DEMAND_INCLUDE_IN_LEAP_IMPORT": False,
-            "RUN_LEAP_FUEL_BRANCH_PROBE_AT_START": False,
-            "SCRAPE_LEAP_RESULTS": False,
-            "TRANSFORMATION_SUPPLY_CACHE_ENABLED": False,
-            "SKIP_ECONOMIES_WITH_EXISTING_EXPORTS": False,
-            "DIRECT_DEMAND_BASE_TABLE_PATH": source_files["esto_path"],
-            "DIRECT_DEMAND_PROJECTION_TABLE_PATH": source_files["ninth_path"],
-            "DIRECT_DEMAND_BASE_YEAR": base_year,
-            "DIRECT_DEMAND_PROJECTION_YEARS": (compressed_year,),
-            "BALANCE_DEMAND_BASE_TABLE_PATH": source_files["esto_path"],
-            "BALANCE_DEMAND_PROJECTION_TABLE_PATH": source_files["ninth_path"],
-    }
     return _broadcast_config_overrides(overrides)
 
 
@@ -1605,98 +1681,10 @@ def _restore_config_overrides(snapshot: list[tuple[str, str, object]]) -> None:
             setattr(module, name, previous)
 
 
-def _apply_preflight_results_update_state(
-    *,
-    source_files: dict[str, object],
-    reduced_ref_path: Path,
-    reduced_tgt_path: Path,
-    preflight_root: Path,
-    scenarios: list[str],
-    economy: str,
-) -> list[tuple[str, str, object]]:
-    """Patch config for the compressed two-year 20_USA results-update preflight.
-
-    Mirrors the compressed-projection preflight's two-year source setup (compressed
-    ESTO/9th + module reloads) but additionally routes the balance-demand loader to
-    the temporary reduced REF/TGT workbooks, forces results_update mode, and
-    broadcasts every isolation/routing override across all consuming modules.
-    Returns the broadcast snapshot for restoration.
-    """
-    base_year = int(source_files["base_year"])
-    compressed_year = int(source_files["compressed_year"])
-
-    workflow_cfg.ENERGY_SOURCE_ESTO_BASE_TABLE_PATH = str(source_files["esto_path"])
-    workflow_cfg.ENERGY_SOURCE_ESTO_BASE_YEAR = base_year
-    workflow_cfg.ENERGY_SOURCE_NINTH_PROJECTION_TABLE_PATH = str(source_files["ninth_path"])
-    workflow_cfg.ENERGY_SOURCE_PROJECTION_START_YEAR = compressed_year
-    workflow_cfg.ENERGY_SOURCE_PROJECTION_FINAL_YEAR = compressed_year
-    workflow_cfg.GLOBAL_FINAL_YEAR = compressed_year
-    workflow_cfg.TRANSFORMATION_EXPORT_FINAL_YEAR = compressed_year
-    workflow_cfg.MINOR_DEMAND_EXPORT_FINAL_YEAR = compressed_year
-    # Baseline-seed validation must use the same deliberately compressed
-    # two-year horizon as the generated preflight workbooks. Production values
-    # are restored in ``finally`` by _restore_preflight_state.
-    workflow_cfg.BASELINE_SEED_VALIDATION_BASE_YEAR = base_year
-    workflow_cfg.BASELINE_SEED_VALIDATION_FINAL_YEAR = compressed_year
-
-    importlib.reload(supply_data_pipeline)
-    importlib.reload(aggregated_demand_workflow)
-    importlib.reload(transformation_workflow.core)
-    importlib.reload(transformation_workflow)
-    importlib.reload(transfers_workflow)
-    importlib.reload(electricity_heat_interim_workflow)
-    importlib.reload(other_loss_own_use_proxy_workflow)
-
-    workbooks_dir = preflight_root / "workbooks"
-    overrides: dict[str, object] = {
-        # --- scope ---
-        "ECONOMIES": [economy],
-        "SCENARIOS": list(scenarios),
-        "FINAL_YEAR": compressed_year,
-        "BALANCE_EXPORT_YEARS": [base_year, compressed_year],
-        # --- isolated outputs / runtime / checks ---
-        "OUTPUT_DIR": preflight_root,
-        "EXPORT_OUTPUT_DIR": workbooks_dir,
-        "TRANSFORMATION_EXPORT_OUTPUT_DIR": workbooks_dir,
-        "YEARLY_BALANCE_DIR": preflight_root / "yearly_balance_tables",
-        "CONVENTIONAL_BALANCE_DIR": preflight_root / "conventional_balance_tables",
-        "RESULTS_CHECKS_DIR": preflight_root / "checks",
-        "RESULTS_RUNTIME_DIR": preflight_root / "runtime",
-        "RESULTS_SINGLE_FILE_NAME": "preflight_compressed_results_update_run.xlsx",
-        # --- disable LEAP imports / branch creation / scraping / caches ---
-        "LEAP_IMPORT_SUPPLY_TO_LEAP": False,
-        "LEAP_IMPORT_TRANSFORMATION_TO_LEAP": False,
-        "LEAP_IMPORT_TRANSFERS_TO_LEAP": False,
-        "LEAP_IMPORT_CREATE_BRANCHES": False,
-        "LEAP_IMPORT_FILL_BRANCHES": False,
-        "LEAP_IMPORT_INCLUDE_CURRENT_ACCOUNTS": False,
-        "AGGREGATED_DEMAND_INCLUDE_IN_LEAP_IMPORT": False,
-        "OTHER_LOSS_OWN_USE_INCLUDE_IN_LEAP_IMPORT": False,
-        "ZERO_OTHER_DEMAND_INCLUDE_IN_LEAP_IMPORT": False,
-        "RUN_LEAP_FUEL_BRANCH_PROBE_AT_START": False,
-        "SCRAPE_LEAP_RESULTS": False,
-        "TRANSFORMATION_SUPPLY_CACHE_ENABLED": False,
-        "SKIP_ECONOMIES_WITH_EXISTING_EXPORTS": False,
-        # --- results_update pass semantics ---
-        "CAPACITY_UNMET_PASS_MODE": "results_update",
-        "USE_AGGREGATED_DEMAND_AS_DUMMY": False,
-        "OTHER_LOSS_OWN_USE_PROXY_STAGE": "second",
-        "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT": False,
-        "RUN_ELECTRICITY_HEAT_INTERIM": False,
-        # --- balance-demand routing to the temporary reduced workbooks ---
-        "BALANCE_DEMAND_REF_WORKBOOK_PATH": reduced_ref_path,
-        "BALANCE_DEMAND_TGT_WORKBOOK_PATH": reduced_tgt_path,
-        "BALANCE_DEMAND_EXPORTS_ROOT": preflight_root / "reduced_balance_exports",
-        "DIRECT_DEMAND_PROJECTION_ECONOMY": economy,
-        "DIRECT_DEMAND_BASE_ECONOMY": economy.replace("_", ""),
-        "DIRECT_DEMAND_BASE_YEAR": base_year,
-        "DIRECT_DEMAND_PROJECTION_YEARS": (compressed_year,),
-        "BALANCE_DEMAND_BASE_TABLE_PATH": source_files["esto_path"],
-        "BALANCE_DEMAND_PROJECTION_TABLE_PATH": source_files["ninth_path"],
-        "DIRECT_DEMAND_BASE_TABLE_PATH": source_files["esto_path"],
-        "DIRECT_DEMAND_PROJECTION_TABLE_PATH": source_files["ninth_path"],
-    }
-    return _broadcast_config_overrides(overrides)
+# NOTE: the results_update state override lives in
+# _apply_preflight_compressed_state(mode="results_update") — one shared helper
+# for both compressed preflights. The preflights themselves stay separate per
+# INIT-009.
 
 
 _BALANCE_DEMAND_ISSUE_SCHEMA_COLUMNS = [
@@ -1927,13 +1915,14 @@ def run_preflight_compressed_results_update(
     state = _snapshot_preflight_state()
     broadcast_snapshot: list[tuple[str, str, object]] | None = None
     try:
-        broadcast_snapshot = _apply_preflight_results_update_state(
+        broadcast_snapshot = _apply_preflight_compressed_state(
             source_files=source_files,
-            reduced_ref_path=reduced_ref["workbook_path"],
-            reduced_tgt_path=reduced_tgt["workbook_path"],
             preflight_root=preflight_root,
             scenarios=scenario_list,
+            mode="results_update",
             economy=economy,
+            reduced_ref_path=reduced_ref["workbook_path"],
+            reduced_tgt_path=reduced_tgt["workbook_path"],
         )
         run_error: Exception | None = None
         try:

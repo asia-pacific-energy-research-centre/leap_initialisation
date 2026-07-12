@@ -210,6 +210,120 @@ def test_temporary_workbook_resolution_used_by_balance_loader(monkeypatch, tmp_p
     assert resolved_tgt == sdm._resolve(tgt)
 
 
+# --- Shared state-override builder: exact per-mode override dicts --------------
+
+_RESULTS_UPDATE_ONLY_KEYS = {
+    "CAPACITY_UNMET_PASS_MODE",
+    "USE_AGGREGATED_DEMAND_AS_DUMMY",
+    "OTHER_LOSS_OWN_USE_PROXY_STAGE",
+    "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT",
+    "RUN_ELECTRICITY_HEAT_INTERIM",
+    "BALANCE_DEMAND_REF_WORKBOOK_PATH",
+    "BALANCE_DEMAND_TGT_WORKBOOK_PATH",
+    "BALANCE_DEMAND_EXPORTS_ROOT",
+    "DIRECT_DEMAND_PROJECTION_ECONOMY",
+    "DIRECT_DEMAND_BASE_ECONOMY",
+}
+
+
+def _override_inputs(tmp_path: Path) -> dict[str, object]:
+    return {
+        "source_files": {
+            "esto_path": tmp_path / "esto.csv",
+            "ninth_path": tmp_path / "ninth.csv",
+            "base_year": 2022,
+            "compressed_year": 2023,
+        },
+        "preflight_root": tmp_path / "preflight_root",
+        "scenarios": ["Reference", "Target"],
+    }
+
+
+def test_projection_override_dict_is_exact(tmp_path) -> None:
+    inputs = _override_inputs(tmp_path)
+    overrides = sp._build_preflight_config_overrides(**inputs)
+    root = inputs["preflight_root"]
+
+    assert overrides["ECONOMIES"] == ["00_APEC"]
+    assert overrides["SCENARIOS"] == ["Reference", "Target"]
+    assert overrides["FINAL_YEAR"] == 2023
+    assert overrides["BALANCE_EXPORT_YEARS"] == [2022, 2023]
+    assert overrides["OUTPUT_DIR"] == root
+    assert overrides["EXPORT_OUTPUT_DIR"] == root / "workbooks"
+    assert overrides["TRANSFORMATION_EXPORT_OUTPUT_DIR"] == root / "workbooks"
+    assert overrides["RESULTS_CHECKS_DIR"] == root / "checks"
+    assert overrides["RESULTS_RUNTIME_DIR"] == root / "runtime"
+    assert overrides["RESULTS_SINGLE_FILE_NAME"] == "preflight_compressed_projection_run.xlsx"
+    for flag in (
+        "LEAP_IMPORT_SUPPLY_TO_LEAP",
+        "LEAP_IMPORT_TRANSFORMATION_TO_LEAP",
+        "LEAP_IMPORT_TRANSFERS_TO_LEAP",
+        "LEAP_IMPORT_CREATE_BRANCHES",
+        "LEAP_IMPORT_FILL_BRANCHES",
+        "LEAP_IMPORT_INCLUDE_CURRENT_ACCOUNTS",
+        "AGGREGATED_DEMAND_INCLUDE_IN_LEAP_IMPORT",
+        "OTHER_LOSS_OWN_USE_INCLUDE_IN_LEAP_IMPORT",
+        "ZERO_OTHER_DEMAND_INCLUDE_IN_LEAP_IMPORT",
+        "RUN_LEAP_FUEL_BRANCH_PROBE_AT_START",
+        "SCRAPE_LEAP_RESULTS",
+        "TRANSFORMATION_SUPPLY_CACHE_ENABLED",
+        "SKIP_ECONOMIES_WITH_EXISTING_EXPORTS",
+    ):
+        assert overrides[flag] is False, flag
+    assert overrides["DIRECT_DEMAND_BASE_YEAR"] == 2022
+    assert overrides["DIRECT_DEMAND_PROJECTION_YEARS"] == (2023,)
+    # No results_update-only keys may leak into projection mode.
+    assert not (_RESULTS_UPDATE_ONLY_KEYS & set(overrides))
+
+
+def test_results_update_override_dict_extends_projection_exactly(tmp_path) -> None:
+    inputs = _override_inputs(tmp_path)
+    projection = sp._build_preflight_config_overrides(**inputs)
+    ref = tmp_path / "reduced_REF.xlsx"
+    tgt = tmp_path / "reduced_TGT.xlsx"
+    results_update = sp._build_preflight_config_overrides(
+        **inputs,
+        mode="results_update",
+        economy="20_USA",
+        reduced_ref_path=ref,
+        reduced_tgt_path=tgt,
+    )
+    root = inputs["preflight_root"]
+
+    # A future edit to one mode cannot silently drop a key the other needs:
+    # the results_update dict is the projection dict plus exactly the
+    # documented results_update-only keys.
+    assert set(results_update) - set(projection) == _RESULTS_UPDATE_ONLY_KEYS
+    differing = {
+        key for key in projection if projection[key] != results_update[key]
+    }
+    assert differing == {"ECONOMIES", "RESULTS_SINGLE_FILE_NAME"}
+
+    assert results_update["ECONOMIES"] == ["20_USA"]
+    assert (
+        results_update["RESULTS_SINGLE_FILE_NAME"]
+        == "preflight_compressed_results_update_run.xlsx"
+    )
+    assert results_update["CAPACITY_UNMET_PASS_MODE"] == "results_update"
+    assert results_update["USE_AGGREGATED_DEMAND_AS_DUMMY"] is False
+    assert results_update["OTHER_LOSS_OWN_USE_PROXY_STAGE"] == "second"
+    assert results_update["RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT"] is False
+    assert results_update["RUN_ELECTRICITY_HEAT_INTERIM"] is False
+    assert results_update["BALANCE_DEMAND_REF_WORKBOOK_PATH"] == ref
+    assert results_update["BALANCE_DEMAND_TGT_WORKBOOK_PATH"] == tgt
+    assert results_update["BALANCE_DEMAND_EXPORTS_ROOT"] == root / "reduced_balance_exports"
+    assert results_update["DIRECT_DEMAND_PROJECTION_ECONOMY"] == "20_USA"
+    assert results_update["DIRECT_DEMAND_BASE_ECONOMY"] == "20USA"
+
+
+def test_results_update_mode_requires_reduced_workbook_paths(tmp_path) -> None:
+    inputs = _override_inputs(tmp_path)
+    with pytest.raises(ValueError, match="reduced_ref_path and reduced_tgt_path"):
+        sp._build_preflight_config_overrides(**inputs, mode="results_update")
+    with pytest.raises(ValueError, match="Unknown preflight mode"):
+        sp._build_preflight_config_overrides(**inputs, mode="bogus")
+
+
 # --- Config broadcast: isolation + restoration --------------------------------
 
 
