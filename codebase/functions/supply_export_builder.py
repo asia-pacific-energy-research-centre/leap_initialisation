@@ -22,7 +22,11 @@ from codebase.functions.supply_export_rows import (
     coerce_value_by_year,
     sanitize_leap_label,
 )
-from codebase.functions.supply_value_series import build_supply_value_by_year
+from codebase.functions.supply_value_series import (
+    build_supply_value_by_year,
+    select_fuel_rows,
+)
+from codebase.utilities import workflow_common
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENERGY_SOURCE_CONFIG = workflow_cfg.get_energy_source_config()
@@ -59,6 +63,16 @@ SUPPLY_MEASURES = [
         "value": 0.0,
     },
 ]
+
+# Explicit exceptions to the source-fuel matching validation. A matched fuel
+# with zero production is valid; an unmatched fuel should be reviewed after
+# the complete workflow has run.
+SUPPLY_FUEL_MATCH_EXCEPTIONS = {
+    "biomass",
+    "green electricity",
+}
+_SUPPLY_FUEL_MATCH_ERRORS_REPORTED: set[tuple[str, str]] = set()
+
 if not getattr(workflow_cfg, "SUPPLY_INCLUDE_UNMET_REQUIREMENTS", False):
     SUPPLY_MEASURES = [
         measure for measure in SUPPLY_MEASURES if measure.get("name") != "Unmet Requirements"
@@ -154,6 +168,42 @@ def build_supply_log_rows(
         for fuel_key in sorted(fuel_config):
             entry = fuel_config[fuel_key]
             display_name = entry.get("fuel_name") or entry["fuel_label_esto"]
+            fuel_match_candidates = {
+                str(value or "").strip().casefold().replace("_", " ")
+                for value in (
+                    fuel_key,
+                    entry.get("fuel_name"),
+                    entry.get("fuel_label_esto"),
+                )
+                if str(value or "").strip()
+            }
+            is_match_exception = any(
+                exception in candidate
+                for candidate in fuel_match_candidates
+                for exception in SUPPLY_FUEL_MATCH_EXCEPTIONS
+            )
+            if not is_match_exception:
+                matched_fuel_rows = select_fuel_rows(
+                    data,
+                    entry.get("fuel_code_ninth"),
+                    entry.get("fuel_label_esto"),
+                    fuel_name=entry.get("fuel_name"),
+                    code_to_name_mapping=code_to_name_mapping,
+                )
+                if matched_fuel_rows.empty:
+                    error_key = (str(economy).strip(), str(display_name).strip())
+                    if error_key not in _SUPPLY_FUEL_MATCH_ERRORS_REPORTED:
+                        _SUPPLY_FUEL_MATCH_ERRORS_REPORTED.add(error_key)
+                        workflow_common.defer_or_raise(
+                            ValueError(
+                                "Configured supply fuel did not match any source row: "
+                                f"economy={economy}, fuel_key={fuel_key}, "
+                                f"fuel_name={display_name}, "
+                                f"fuel_label_esto={entry.get('fuel_label_esto')}, "
+                                f"fuel_code_ninth={entry.get('fuel_code_ninth')}"
+                            ),
+                            context=f"supply_fuel_match:{economy}:{display_name}",
+                        )
             branch_roots = _get_supply_branch_roots_for_entry(fuel_key, entry)
             required_flow_keys = {
                 str(measure.get("flow_key") or "").strip()
