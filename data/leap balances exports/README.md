@@ -1,12 +1,19 @@
 ﻿# LEAP Balance Exports
 
-This folder stores pre-scraped LEAP energy balance workbooks used by the balance
+This folder is the canonical raw-input location for all repositories in the
+workspace. It stores pre-scraped LEAP energy balance workbooks used by the balance
 table and results-supply workflows. Keep one economy folder per LEAP economy
 code, for example:
 
 ```text
 data/leap balances exports/20_USA/
 ```
+
+`leap_mappings` resolves this directory from the sibling repository layout. For
+an unusual checkout location, set `LEAP_BALANCE_EXPORTS_ROOT` explicitly. Do not
+copy raw balance workbooks into `leap_mappings` or `leap_dashboard`; generated
+mapping outputs remain under `leap_mappings/results/` and derived initialisation
+outputs remain under `leap_initialisation/outputs/`.
 
 ## Quick Extraction Summary
 
