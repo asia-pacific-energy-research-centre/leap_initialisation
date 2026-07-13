@@ -95,17 +95,44 @@ def select_fuel_rows(
                     return matched
             return df[_match_code_prefix_mask(df["products"], fuel_label_esto)]
         if "subfuels" in df.columns:
+            # A single ESTO product can correspond to multiple 9th fuel codes,
+            # or to a code that is ambiguous across mapping contexts.  In that
+            # case the canonical display-name mapping is the safer selector:
+            # e.g. 14_wind -> Wind and Solar's two nonspecified subfuels ->
+            # Solar nonspecified.  Do this before code-prefix matching so a
+            # missing/ambiguous fuel_code_ninth does not silently become zero.
+            if code_to_name_mapping and fuel_name:
+                mapped_subfuels = df["subfuels"].map(
+                    lambda value: map_code_label(value, code_to_name_mapping)
+                )
+                matched_by_name = df[mapped_subfuels.eq(fuel_name)]
+                if not matched_by_name.empty:
+                    return matched_by_name
             matched_subfuels = df[_match_code_prefix_mask(df["subfuels"], fuel_code_ninth)]
             if not matched_subfuels.empty:
                 return matched_subfuels
             # Some 9th rows carry the canonical fuel code in `fuels` with `subfuels=x`
             # (for example electricity exports). Fall back to fuels in that case.
             if "fuels" in df.columns:
+                if code_to_name_mapping and fuel_name:
+                    mapped_fuels = df["fuels"].map(
+                        lambda value: map_code_label(value, code_to_name_mapping)
+                    )
+                    matched_fuels_by_name = df[mapped_fuels.eq(fuel_name)]
+                    if not matched_fuels_by_name.empty:
+                        return matched_fuels_by_name
                 matched_fuels = df[_match_code_prefix_mask(df["fuels"], fuel_code_ninth)]
                 if not matched_fuels.empty:
                     return matched_fuels
             return matched_subfuels
         if "fuels" in df.columns:
+            if code_to_name_mapping and fuel_name:
+                mapped_fuels = df["fuels"].map(
+                    lambda value: map_code_label(value, code_to_name_mapping)
+                )
+                matched_by_name = df[mapped_fuels.eq(fuel_name)]
+                if not matched_by_name.empty:
+                    return matched_by_name
             return df[_match_code_prefix_mask(df["fuels"], fuel_code_ninth)]
         return df.iloc[0:0]
     except Exception as exc:
