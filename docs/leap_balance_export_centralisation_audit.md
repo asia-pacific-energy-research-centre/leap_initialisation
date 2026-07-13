@@ -28,6 +28,10 @@ is diagnostic output, not a raw balance input.
 | `leap_dashboard` capacity-unmet convergence input under `leap_initialisation/outputs/` | Intentionally retained as an optional derived diagnostic dependency. |
 | `leap_initialisation/outputs/leap_exports/` | Retained for generated LEAP products; not mixed with raw workbook ownership. |
 
-The legacy `leap_mappings/data/leap balances exports/` folder was not deleted or
-moved. It is therefore available for migration comparison, but the new resolver
-does not read it implicitly.
+The legacy copies were retained for migration comparison but moved out of the
+active input locations to:
+
+- `leap_mappings/data/archive/leap balances exports/`
+- `leap_dashboard/data/archive/leap balances exports/`
+
+The resolver does not read either archive location implicitly.
