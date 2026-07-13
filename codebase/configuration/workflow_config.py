@@ -303,9 +303,10 @@ SUPPLY_INCLUDE_UNMET_REQUIREMENTS = False
 # Source of truth for export branch-root selection when generating supply workbooks.
 SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 SUPPLY_ROOT_CLASSIFICATION_SOURCE_SHEET = "Export"
-# When True, raise if a fuel is not found in the source workbook lookup.
-# When False, warn and fall back to legacy ESTO-based classification.
-SUPPLY_ROOT_CLASSIFICATION_STRICT = False
+# The refreshed full-model export is the authority for whether a fuel belongs
+# under Resources\Primary or Resources\Secondary.  Fail clearly if a fuel is
+# absent instead of silently reinstating the legacy ESTO-based rule.
+SUPPLY_ROOT_CLASSIFICATION_STRICT = True
 
 ###############################
 # SUPPLY WORKFLOW (WRAPPER)

@@ -235,7 +235,11 @@ def _build_supply_measures_for_trade_mode() -> list[dict[str, object]]:
                 "flow_key": "max_production",
                 "units": "Petajoule",
                 "per": "",
-                "branch_root": "primary",
+                # The current LEAP model decides whether a fuel belongs under
+                # Resources\Primary or Resources\Secondary.  Leave this
+                # measure unfiltered so build_supply_log_rows can use the
+                # workbook-driven branch roots resolved for each fuel.
+                "branch_root": "all",
             },
         ]
     )
