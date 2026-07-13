@@ -2,6 +2,13 @@
 
 These are project-level instructions for Codex (and similar agents).
 
+## Economy-code reminder
+
+- `02_BD` means **Brunei Darussalam**. It does not mean Bangladesh.
+- `20_USA` means **United States of America**.
+- The complete dashboard economy code/name list is maintained in the sibling repository at `C:\Users\Work\github\leap_dashboard\config\common_esto_dashboard\series_config.json`.
+- That dashboard file uses compact keys (`02BD`, `20USA`); workflow/data inputs commonly use underscore-normalized codes (`02_BD`, `20_USA`).
+
 ## Repository routing
 
 - This repo is the active home for LEAP area initialisation workflows.
