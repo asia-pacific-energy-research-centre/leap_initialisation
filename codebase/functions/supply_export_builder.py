@@ -12,6 +12,7 @@ from codebase.functions.leap_excel_io import finalise_export_df, save_export_fil
 from codebase.functions.supply_branch_classification import (
     _SUPPLY_BRANCH_PATH_MISS_WARNED,
     _get_supply_branch_roots_for_entry,
+    _resolve_supply_branch_label_from_export,
     _supply_branch_exists_in_export_source,
 )
 from codebase.functions.supply_export_rows import (
@@ -153,7 +154,6 @@ def build_supply_log_rows(
         for fuel_key in sorted(fuel_config):
             entry = fuel_config[fuel_key]
             display_name = entry.get("fuel_name") or entry["fuel_label_esto"]
-            safe_name = sanitize_leap_label(display_name)
             branch_roots = _get_supply_branch_roots_for_entry(fuel_key, entry)
             required_flow_keys = {
                 str(measure.get("flow_key") or "").strip()
@@ -179,6 +179,14 @@ def build_supply_log_rows(
                 )
             for scenario in scenario_names:
                 for branch_root in branch_roots:
+                    branch_type = str(branch_root[-1] if branch_root else "").strip().lower()
+                    template_label = _resolve_supply_branch_label_from_export(
+                        branch_type,
+                        display_name,
+                        entry.get("fuel_label_esto"),
+                        fuel_key,
+                    )
+                    safe_name = sanitize_leap_label(template_label or display_name)
                     branch_path = build_branch_path(branch_root + [safe_name])
                     if not _supply_branch_exists_in_export_source(branch_path):
                         miss_key = f"{economy}|{scenario}|{branch_path}"
@@ -190,7 +198,6 @@ def build_supply_log_rows(
                                 f"{branch_path} (economy={economy}, scenario={scenario}, fuel={display_name})"
                             )
                         continue
-                    branch_type = str(branch_root[-1] if branch_root else "").strip().lower()
                     for measure in measures:
                         root_filter = str(measure.get("branch_root") or "").strip().lower()
                         if root_filter and root_filter not in {"all", branch_type}:

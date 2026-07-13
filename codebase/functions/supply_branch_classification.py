@@ -41,6 +41,7 @@ _SUPPLY_ROOT_LOOKUP_MISS_WARNED: set[str] = set()
 _SUPPLY_BRANCH_PATH_LOOKUP_CACHE: set[str] | None = None
 _SUPPLY_BRANCH_PATH_LOOKUP_SOURCE_INFO: dict[str, object] | None = None
 _SUPPLY_BRANCH_PATH_MISS_WARNED: set[str] = set()
+_SUPPLY_BRANCH_LABEL_LOOKUP_CACHE: dict[tuple[str, str], str] | None = None
 
 SECONDARY_ESTO_PRODUCT_MAJOR_CODES = {"02", "04", "07"}
 SECONDARY_ESTO_PRODUCT_EXACT = {
@@ -306,6 +307,59 @@ def _load_supply_branch_path_lookup_from_export():
     }
     _SUPPLY_BRANCH_PATH_LOOKUP_CACHE = lookup
     return _SUPPLY_BRANCH_PATH_LOOKUP_CACHE
+
+
+def _load_supply_branch_label_lookup_from_export():
+    """Load normalized resource fuel labels and their exact template spelling."""
+    global _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE
+    if _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE is not None:
+        return _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE
+
+    path = Path(str(SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH).replace("\\", "/"))
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    sheet = str(SUPPLY_ROOT_CLASSIFICATION_SOURCE_SHEET).strip() or "Export"
+    lookup: dict[tuple[str, str], str] = {}
+    if not path.exists():
+        _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE = lookup
+        return lookup
+
+    try:
+        rows = _read_branch_variable_rows_from_workbook(path, sheet_name=sheet)
+        for branch_path in rows.get("Branch Path", pd.Series(dtype=str)).astype(str):
+            parts = [part.strip() for part in str(branch_path or "").split("\\") if part.strip()]
+            if len(parts) < 3 or parts[0].lower() != "resources":
+                continue
+            root = parts[1].strip().title()
+            if root not in {"Primary", "Secondary"}:
+                continue
+            fuel_label = parts[2].strip()
+            normalized = _normalize_supply_lookup_fuel_name(fuel_label)
+            if normalized:
+                lookup.setdefault((root.lower(), normalized), fuel_label)
+    except Exception as exc:
+        print(
+            "[WARN] Failed reading exact supply branch labels from export source "
+            f"{path} (sheet={sheet}): {exc}"
+        )
+    _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE = lookup
+    return lookup
+
+
+def _resolve_supply_branch_label_from_export(root, *candidates):
+    """Return the exact template fuel label for a resolved resource root."""
+    lookup = _load_supply_branch_label_lookup_from_export()
+    root_key = str(root or "").strip().lower()
+    if root_key not in {"primary", "secondary"}:
+        return None
+    for candidate in candidates:
+        normalized = _normalize_supply_lookup_fuel_name(candidate)
+        if not normalized:
+            continue
+        label = lookup.get((root_key, normalized))
+        if label:
+            return label
+    return None
 
 
 def _supply_branch_exists_in_export_source(branch_path):
