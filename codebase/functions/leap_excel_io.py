@@ -500,7 +500,8 @@ def prepare_for_viewing_sheet_df(
     Expression with Method plus four-digit year columns, then inserts a blank
     spacer directly after the last year and before any Level columns.
     """
-    out = df.copy()
+    # ``__parent`` is internal workflow state and must not reach exports.
+    out = df.drop(columns=["__parent"], errors="ignore").copy()
     existing_year_cols = _year_columns_in_order(out)
     existing_years = [_coerce_four_digit_year(col) for col in existing_year_cols]
     existing_years = [year for year in existing_years if year is not None]
@@ -564,6 +565,11 @@ def prepare_for_viewing_sheet_df(
     return viewing
 
 
+def prepare_for_leap_sheet_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove columns that are valid only for viewing or internal processing."""
+    return df.drop(columns=["Method", "__parent"], errors="ignore").copy()
+
+
 def add_leap_preamble(df: pd.DataFrame, *, model_name: str = "") -> pd.DataFrame:
     """Add the two-row LEAP preamble and header row to an export dataframe."""
     cols = list(df.columns)
@@ -598,7 +604,7 @@ def save_export_files(leap_export_df, export_df_for_viewing, leap_export_filenam
     # Row 1: Empty
     # Row 2: Column headers (will be set by pandas)
     
-    leap_export_df2 = leap_export_df.copy()
+    leap_export_df2 = prepare_for_leap_sheet_df(leap_export_df)
     export_df_for_viewing2 = prepare_for_viewing_sheet_df(
         export_df_for_viewing,
         base_year=base_year,

@@ -70,7 +70,11 @@ from codebase.functions.baseline_seed_validation import (
     _exclude_ignored_full_model_export_rows,
     load_template_rows,
 )
-from codebase.functions.leap_excel_io import add_leap_preamble, prepare_for_viewing_sheet_df
+from codebase.functions.leap_excel_io import (
+    add_leap_preamble,
+    prepare_for_leap_sheet_df,
+    prepare_for_viewing_sheet_df,
+)
 
 BASELINE_SEED_DIR = REPO_ROOT / "outputs" / "leap_exports" / "supply_reconciliation"
 WORKBOOKS_DIR = BASELINE_SEED_DIR / "workbooks"
@@ -943,8 +947,9 @@ def _patch_one(
     _assert_atomic_canonical_share_groups(combined, FULL_MODEL_EXPORT_PATH)
     combined = combined.drop(columns=[SOURCE_WORKFLOW_COLUMN], errors="ignore")
 
+    leap_data = prepare_for_leap_sheet_df(combined)
     viewing = prepare_for_viewing_sheet_df(combined)
-    cols = list(combined.columns)
+    cols = list(leap_data.columns)
     preamble = {c: pd.NA for c in cols}
     preamble[bp_col] = "Area:"
     if "Scenario" in cols:
@@ -956,7 +961,7 @@ def _patch_one(
         pd.DataFrame([preamble]),
         pd.DataFrame([{c: pd.NA for c in cols}]),
         pd.DataFrame([cols], columns=cols),
-        combined,
+        leap_data,
     ], ignore_index=True)
     viewing_df = add_leap_preamble(viewing)
 

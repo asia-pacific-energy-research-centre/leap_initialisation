@@ -22,6 +22,8 @@ def test_for_viewing_sheet_uses_method_years_and_blank_spacer(tmp_path: Path) ->
                 "Units": "Petajoule",
                 "Per...": "",
                 "Expression": "Data(2022, 10, 2023, 20)",
+                "Method": "Interp",
+                "__parent": r"Demand",
                 "Level 1": "Demand",
                 "Level 2": "A",
             }
@@ -45,9 +47,12 @@ def test_for_viewing_sheet_uses_method_years_and_blank_spacer(tmp_path: Path) ->
     assert viewing_header[method_index + 4 : method_index + 6] == ["Level 1", "Level 2"]
 
     viewing = pd.read_excel(output_path, sheet_name="FOR_VIEWING", header=2)
-    assert viewing.loc[0, "Method"] == "Data"
+    assert viewing.loc[0, "Method"] == "Interp"
     assert float(viewing.loc[0, "2022"]) == 10.0
     assert float(viewing.loc[0, "2023"]) == 20.0
 
     leap_header = pd.read_excel(output_path, sheet_name="LEAP", header=None).iloc[2].tolist()
     assert "Expression" in leap_header
+    assert "Method" not in leap_header
+    assert "__parent" not in leap_header
+    assert "__parent" not in viewing_header

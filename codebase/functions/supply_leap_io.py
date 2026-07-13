@@ -32,7 +32,11 @@ from codebase.supply_reconciliation_config import (
 from codebase.utilities.workflow_utils import _resolve
 from codebase.utilities import workflow_common
 from codebase.functions.leap_expressions import build_data_expression_from_row
-from codebase.functions.leap_excel_io import add_leap_preamble, prepare_for_viewing_sheet_df
+from codebase.functions.leap_excel_io import (
+    add_leap_preamble,
+    prepare_for_leap_sheet_df,
+    prepare_for_viewing_sheet_df,
+)
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP_EXPORTS_ROOT
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.configuration.all_products_and_flows import ESTO_PRODUCT_LIST, ESTO_SECTORS
@@ -1011,7 +1015,7 @@ def save_combined_supply_transformation_export(
     # The import-shaped LEAP sheet is authoritative. Mirroring it here keeps
     # FOR_VIEWING free of physical duplicates and invalid IDs as well.
     with pd.ExcelWriter(combined_path, engine="openpyxl", mode="w") as writer:
-        leap_df = add_leap_preamble(leap_data)
+        leap_df = add_leap_preamble(prepare_for_leap_sheet_df(leap_data))
         viewing_df = add_leap_preamble(prepare_for_viewing_sheet_df(leap_data))
         leap_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
         viewing_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
@@ -1912,6 +1916,7 @@ def write_per_economy_combined_workbooks(
                   and c not in _level_cols]
 
         BLANK_SPACER = "__BLANK_SPACER__"
+        _other = [col for col in _other if col not in {"Method", "__parent"}]
         leap_ordered = _leap_meta_cols + [BLANK_SPACER] + _level_cols + _other
 
         def _assemble_sheet(ordered_cols):

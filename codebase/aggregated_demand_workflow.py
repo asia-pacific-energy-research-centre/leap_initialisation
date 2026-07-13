@@ -36,7 +36,11 @@ except Exception as exc:
 
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions.unified_name_lookup import load_active_mapping_sheet
-from codebase.functions.leap_excel_io import add_leap_preamble, prepare_for_viewing_sheet_df
+from codebase.functions.leap_excel_io import (
+    add_leap_preamble,
+    prepare_for_leap_sheet_df,
+    prepare_for_viewing_sheet_df,
+)
 from codebase.mappings.canonical_loaders import load_leap_display_names
 from codebase.functions.ninth_projection_mapping import (
     add_ninth_pair_columns,
@@ -1424,7 +1428,9 @@ def save_aggregated_demand_as_leap_workbook(
             lambda x, _i=i: x.split("\\")[_i - 1] if len(x.split("\\")) >= _i else ""
         )
 
-    leap_df = add_leap_preamble(export_df, model_name=model_name or "")
+    leap_df = add_leap_preamble(
+        prepare_for_leap_sheet_df(export_df), model_name=model_name or ""
+    )
     viewing_df = add_leap_preamble(
         prepare_for_viewing_sheet_df(
             export_df,
@@ -1576,7 +1582,9 @@ def save_demand_zeroing_workbook(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    leap_df = add_leap_preamble(rows, model_name=model_name or "")
+    leap_df = add_leap_preamble(
+        prepare_for_leap_sheet_df(rows), model_name=model_name or ""
+    )
     viewing_df = add_leap_preamble(
         prepare_for_viewing_sheet_df(
             rows,
