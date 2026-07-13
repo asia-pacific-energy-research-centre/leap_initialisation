@@ -76,7 +76,9 @@ from codebase.functions.leap_excel_io import (
     prepare_for_viewing_sheet_df,
 )
 
-BASELINE_SEED_DIR = REPO_ROOT / "outputs" / "leap_exports" / "supply_reconciliation"
+BASELINE_SEED_DIR = (
+    REPO_ROOT / "outputs" / "leap_exports" / "supply_reconciliation" / "baseline_seed"
+)
 WORKBOOKS_DIR = BASELINE_SEED_DIR / "workbooks"
 ARCHIVE_DIR = BASELINE_SEED_DIR / "archive"
 FULL_MODEL_EXPORT_PATH = REPO_ROOT / "data" / "full model export.xlsx"

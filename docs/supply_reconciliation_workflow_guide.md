@@ -483,8 +483,8 @@ default so it does not lengthen every run; enable it (ideally right before a ful
 Each preflight writes only under its own isolated root; production outputs and the
 production source workbooks/iterative state are never touched:
 
-- Projection: `outputs/leap_exports/supply_reconciliation/preflight_compressed_projection/`
-- Results-update: `outputs/leap_exports/supply_reconciliation/preflight_compressed_results_update/`
+- Projection: `outputs/leap_exports/supply_reconciliation/baseline_seed/preflight_compressed_projection/`
+- Results-update: `outputs/leap_exports/supply_reconciliation/results_update/preflight_compressed_results_update/`
   (temporary reduced REF/TGT workbooks under `runtime/reduced_balance_workbooks/`,
   compressed sources under `runtime/compressed_sources/`, and the balance-demand
   issue report under `checks/`). The results-update preflight always writes a
@@ -532,7 +532,7 @@ For each economy, expect several passes:
 - later passes reduce remaining gaps or reveal secondary issues caused by transformation interactions;
 - the final pass should leave only small residuals that can be allocated deliberately, usually to imports or another clearly documented balancing item.
 
-This process can take a long time because each pass requires LEAP recalculation and results export. In iterative capacity-unmet modes, each pass summary now reports convergence metrics such as the current gap, percent closure, and trend. A running CSV is also appended at `outputs/leap_exports/supply_reconciliation/supporting_files/runtime/capacity_unmet_convergence.csv`.
+This process can take a long time because each pass requires LEAP recalculation and results export. In iterative capacity-unmet modes, each pass summary now reports convergence metrics such as the current gap, percent closure, and trend. A running CSV is also appended under the active pass subtree at `outputs/leap_exports/supply_reconciliation/<pass_mode>/supporting_files/runtime/capacity_unmet_convergence.csv`.
 
 ## 12. How to interpret the reconciliation results
 
@@ -686,7 +686,7 @@ The baseline-seed validation step writes rule findings files that are meant to b
 
 The main location is:
 
-- `outputs/leap_exports/supply_reconciliation/preflight_compressed_projection/workbooks/supporting_files/baseline_seed_validation/`
+- `outputs/leap_exports/supply_reconciliation/baseline_seed/preflight_compressed_projection/workbooks/supporting_files/baseline_seed_validation/`
 
 For a specific economy, look for files named like:
 
@@ -733,7 +733,7 @@ For quick inspection in Excel or a notebook, the same pattern works well:
 #%%
 import pandas as pd
 
-path = r"C:\Users\Work\github\leap_initialisation\outputs\leap_exports\supply_reconciliation\preflight_compressed_projection\workbooks\supporting_files\baseline_seed_validation\combined_st_00_APEC_Target_Reference_Current_Accounts_rule_findings.csv"
+path = r"C:\Users\Work\github\leap_initialisation\outputs\leap_exports\supply_reconciliation\baseline_seed\preflight_compressed_projection\workbooks\supporting_files\baseline_seed_validation\combined_st_00_APEC_Target_Reference_Current_Accounts_rule_findings.csv"
 df = pd.read_csv(path)
 
 blocking = df[df["blocking"] == True]
@@ -839,7 +839,7 @@ Caps and override settings (`CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS`, `CAPA
 
 ### Convergence rate reporting and run history tracking
 
-Iterative capacity-unmet passes now calculate convergence metrics from the saved pass history. The pass summary includes the run id, pass count, first and current gap, gap closure percentage, last-pass gap delta, unresolved fuel count, and trend. Each pass also appends one row to `outputs/leap_exports/supply_reconciliation/supporting_files/runtime/capacity_unmet_convergence.csv`.
+Iterative capacity-unmet passes now calculate convergence metrics from the saved pass history. The pass summary includes the run id, pass count, first and current gap, gap closure percentage, last-pass gap delta, unresolved fuel count, and trend. Each pass also appends one row to `outputs/leap_exports/supply_reconciliation/<pass_mode>/supporting_files/runtime/capacity_unmet_convergence.csv`.
 
 The convergence history now has modeller-facing diagnostics helpers:
 
@@ -863,7 +863,7 @@ remove_convergence_run(run_id="capacity_unmet_20260710T010203456789Z")
 
 `build_capacity_unmet_run_diagnostics()` prints a short summary and writes `capacity_unmet_run_diagnostics_<run_id>.csv` to the runtime supporting-files folder. The CSV shows per-fuel start/end gap, gap delta, allocation split across primary production, transformation capacity, imports fallback, clipped amount, and whether the fuel remains unresolved. `compare_capacity_unmet_runs()` reports side-by-side gap trajectories, closure and pass-count deltas, unresolved-set differences, and warns when the two runs used different `mode` / `iteration_run_mode` values.
 
-**Files:** `codebase/supply_reconciliation_allocation.py`, `codebase/functions/capacity_unmet_convergence_diagnostics.py`, `codebase/supply_reconciliation_history.py`, `outputs/leap_exports/supply_reconciliation/supporting_files/runtime/capacity_unmet_convergence.csv`
+**Files:** `codebase/supply_reconciliation_allocation.py`, `codebase/functions/capacity_unmet_convergence_diagnostics.py`, `codebase/supply_reconciliation_history.py`, `outputs/leap_exports/supply_reconciliation/<pass_mode>/supporting_files/runtime/capacity_unmet_convergence.csv`
 
 ### All demand aggregated output improvements
 

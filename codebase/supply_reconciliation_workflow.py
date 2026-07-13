@@ -60,6 +60,7 @@ except Exception as exc:
 # Sentinel types, _resolve_module_cap_rule, and all workflow config constants
 # are defined in supply_reconciliation_config.py.  Import everything from there
 # so call sites in this file remain unchanged.
+import codebase.supply_reconciliation_config as _supply_reconciliation_config
 from codebase.supply_reconciliation_config import *  # noqa: F401,F403
 from codebase.supply_reconciliation_config import (  # private names excluded by *
     _ModuleCapRule,
@@ -200,6 +201,7 @@ import codebase.supply_reconciliation_history as _srh
 # Extracted function modules (moved from this file)
 # ---------------------------------------------------------------------------
 from codebase.functions.supply_preflight import (  # noqa: F401
+    _broadcast_config_overrides,
     _keep_windows_pc_awake,
     _emit_completion_beep,
     _format_scope_preview,
@@ -519,6 +521,24 @@ def run_results_linked_supply_workflow(*args, **kwargs):
     return _srs.run_results_linked_supply_workflow(*args, **kwargs)
 
 
+def _refresh_output_paths_for_current_pass_mode() -> None:
+    """Apply the selected pass mode to this workflow and all imported consumers."""
+    refreshed_paths = _supply_reconciliation_config.refresh_output_paths_for_pass_mode(
+        CAPACITY_UNMET_PASS_MODE
+    )
+    globals()["CAPACITY_UNMET_PASS_MODE"] = (
+        _supply_reconciliation_config.CAPACITY_UNMET_PASS_MODE
+    )
+    for name, value in refreshed_paths.items():
+        globals()[name] = value
+    _broadcast_config_overrides(
+        {
+            "CAPACITY_UNMET_PASS_MODE": CAPACITY_UNMET_PASS_MODE,
+            **refreshed_paths,
+        }
+    )
+
+
 # -----------------------------------------------------------------------------
 # Notebook Runtime Variables (single editable block)
 # -----------------------------------------------------------------------------
@@ -802,6 +822,7 @@ THROW_ERROR_AFTER_RUN = True
 # Unpack preset — does not overwrite ECONOMIES/SCENARIOS set above. Presets can
 # override the defaults immediately above, including PREFLIGHT_* toggles.
 globals().update(ACTIVE_PRESET)
+_refresh_output_paths_for_current_pass_mode()
 
 # ---------------------------------------------------------------------------
 # Output logging
@@ -963,6 +984,7 @@ def _run_with_config_inner() -> dict[str, object]:
     this skips the full workflow and just patches existing baseline seed files
     via patch_baseline_seeds.run_patch(PATCH_MODULE, PATCH_ECONOMIES).
     """
+    _refresh_output_paths_for_current_pass_mode()
     if RUN_MODE == "patch_baseline_seeds":
         _run_workflow = globals().get("PATCH_RUN_WORKFLOW", True)
         _modules = [PATCH_MODULE] if isinstance(PATCH_MODULE, str) else list(PATCH_MODULE)

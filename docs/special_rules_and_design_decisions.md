@@ -539,7 +539,7 @@ issues, not one:
 real `20_USA` LEAP balance-export workbooks under
 `data/leap balances exports/20_USA/` (read only — never edited here);
 isolated outputs under
-`outputs/leap_exports/supply_reconciliation/preflight_compressed_results_update/`.
+`outputs/leap_exports/supply_reconciliation/results_update/preflight_compressed_results_update/`.
 
 ### Situation
 

@@ -149,7 +149,19 @@ ENERGY_SOURCE_CONFIG = workflow_cfg.get_energy_source_config()
 RESULTS_DIR = REPO_ROOT / "outputs" / "leap_results_dashboard" / "USA"
 COMPARISON_LONG_PATH = RESULTS_DIR / "comparison_long.csv"  # demand comparison input
 MAPPING_STATUS_PATH = RESULTS_DIR / "mapping_status.xlsx"  # demand mapping input
-OUTPUT_DIR = INTEGRATED_LEAP_EXPORTS_ROOT  # workflow output root
+# Keep the default here, before output paths are derived. The active preset in
+# supply_reconciliation_workflow.py refreshes these paths after it selects its
+# pass mode.
+CAPACITY_UNMET_PASS_MODE = "results_update"
+_PASS_MODE_SUBDIR = {
+    "baseline_seed": "baseline_seed",
+    "results_update": "results_update",
+}
+_PASS_MODE_ALIASES = {
+    "first_clean": "baseline_seed",
+    "consecutive": "results_update",
+}
+OUTPUT_DIR = INTEGRATED_LEAP_EXPORTS_ROOT / _PASS_MODE_SUBDIR[CAPACITY_UNMET_PASS_MODE]
 RECONCILIATION_FILENAME = "results_supply_reconciliation.csv"  # core merged output
 YEARLY_BALANCE_DIR = BALANCE_TABLES_ROOT / "supply_reconciliation" / "yearly_balance_tables"
 CONVENTIONAL_BALANCE_DIR = (
@@ -314,12 +326,49 @@ CAPACITY_CLEAR_OUTPUT_TRADE_TARGETS = True
 # - "consecutive" -> "results_update"
 # The iterative pass now prefers balance-table outputs for observed trade
 # instead of legacy LEAP results workbooks.
-CAPACITY_UNMET_PASS_MODE = "results_update"
 SCRAPE_LEAP_RESULTS = False  # keep False unless explicitly re-enabling live LEAP scraping
 CAPACITY_UNMET_STATE_PATH = RESULTS_RUNTIME_DIR / "capacity_unmet_iterative_state.json"
 CAPACITY_UNMET_RESULTS_DIR = YEARLY_BALANCE_DIR
 CAPACITY_UNMET_IMPORT_SHEETS: tuple[str, ...] = ("imports primary", "imports secondary")
 CAPACITY_UNMET_EXPORT_SHEETS: tuple[str, ...] = ("exports primary", "exports secondary")
+
+
+def refresh_output_paths_for_pass_mode(capacity_unmet_pass_mode: str) -> dict[str, Path]:
+    """Refresh pass-specific output paths after a notebook preset is applied."""
+    normalized_mode = str(capacity_unmet_pass_mode).strip().lower()
+    normalized_mode = _PASS_MODE_ALIASES.get(normalized_mode, normalized_mode)
+    if normalized_mode not in _PASS_MODE_SUBDIR:
+        raise ValueError(
+            "Invalid CAPACITY_UNMET_PASS_MODE="
+            f"{capacity_unmet_pass_mode!r}. Expected 'baseline_seed' or 'results_update'."
+        )
+
+    global CAPACITY_UNMET_PASS_MODE
+    global OUTPUT_DIR, EXPORT_OUTPUT_DIR, TRANSFORMATION_EXPORT_OUTPUT_DIR
+    global RESULTS_SINGLE_FILE_ARCHIVE_DIR, RESULTS_CHECKS_DIR, RESULTS_RUNTIME_DIR
+    global CAPACITY_UNMET_STATE_PATH, LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH
+
+    CAPACITY_UNMET_PASS_MODE = normalized_mode
+    OUTPUT_DIR = INTEGRATED_LEAP_EXPORTS_ROOT / _PASS_MODE_SUBDIR[normalized_mode]
+    EXPORT_OUTPUT_DIR = OUTPUT_DIR / "workbooks"
+    TRANSFORMATION_EXPORT_OUTPUT_DIR = EXPORT_OUTPUT_DIR
+    RESULTS_SINGLE_FILE_ARCHIVE_DIR = OUTPUT_DIR / "supporting_files" / "archive"
+    RESULTS_CHECKS_DIR = OUTPUT_DIR / "supporting_files" / "checks"
+    RESULTS_RUNTIME_DIR = OUTPUT_DIR / "supporting_files" / "runtime"
+    CAPACITY_UNMET_STATE_PATH = RESULTS_RUNTIME_DIR / "capacity_unmet_iterative_state.json"
+    LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH = (
+        RESULTS_CHECKS_DIR / "transformation_supply_fuel_branch_catalog_probe.csv"
+    )
+    return {
+        "OUTPUT_DIR": OUTPUT_DIR,
+        "EXPORT_OUTPUT_DIR": EXPORT_OUTPUT_DIR,
+        "TRANSFORMATION_EXPORT_OUTPUT_DIR": TRANSFORMATION_EXPORT_OUTPUT_DIR,
+        "RESULTS_SINGLE_FILE_ARCHIVE_DIR": RESULTS_SINGLE_FILE_ARCHIVE_DIR,
+        "RESULTS_CHECKS_DIR": RESULTS_CHECKS_DIR,
+        "RESULTS_RUNTIME_DIR": RESULTS_RUNTIME_DIR,
+        "CAPACITY_UNMET_STATE_PATH": CAPACITY_UNMET_STATE_PATH,
+        "LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH": LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH,
+    }
 
 # ---------------------------------------------------------------------------
 # Capacity-unmet iterative config — edit these dicts directly.

@@ -761,7 +761,9 @@ def run_baseline_seed_comparison(
 # --- Frequently changed notebook settings ---
 
 REFERENCE_SEED_DIR = REPO_ROOT / "data" / "backup_tgt_ref_ca_20260625"
-CANDIDATE_SEED_DIR = REPO_ROOT / "outputs" / "leap_exports" / "supply_reconciliation"
+CANDIDATE_SEED_DIR = (
+    REPO_ROOT / "outputs" / "leap_exports" / "supply_reconciliation" / "baseline_seed"
+)
 COMPARISON_OUTPUT_DIR = CANDIDATE_SEED_DIR / "supporting_files" / "baseline_seed_comparison"
 RUN_COMPARISON = False
 ECONOMIES_TO_COMPARE: list[str] | None = None  # Example: ["20_USA"]
