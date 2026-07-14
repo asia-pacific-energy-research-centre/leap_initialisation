@@ -751,14 +751,12 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
         )
 
     elif module == "supply":
-        # supply_workflow.assemble_supply_workbooks writes to its own EXPORT_OUTPUT_DIR
-        # (outputs/leap_exports/) which differs from WORKBOOKS_DIR.  Wire this up once
-        # the supply workflow supports a configurable export_output_dir.
-        raise NotImplementedError(
-            f"No source workflow is wired for '{module}': run "
-            "supply_workflow.assemble_supply_workbooks() manually, copy the outputs "
-            "into the workbooks dir, then re-run with run_workflow=False "
-            "(PATCH_RUN_WORKFLOW=False). Refusing to patch from possibly stale workbooks."
+        from codebase import supply_workflow as _w
+        econ_list = economies or []
+        return _w.assemble_supply_workbooks(
+            economies=econ_list,
+            export_output_dir=WORKBOOKS_DIR,
+            filename_template=_w.supply_data_pipeline.EXPORT_FILENAME_TEMPLATE,
         )
 
     elif module == "aggregated_demand":

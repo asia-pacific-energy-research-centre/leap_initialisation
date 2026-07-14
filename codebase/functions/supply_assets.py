@@ -22,7 +22,6 @@ from codebase.functions.esto_data_utils import (
     normalize_year_columns,
 )
 from codebase.utilities.esto_reference_loader import (
-    apply_esto_subtotal_mapping as apply_matt_subtotal_mapping,
     filter_esto_subtotals as filter_matt_subtotals,
     load_augmented_reference_tables,
 )
@@ -44,7 +43,6 @@ ENERGY_SOURCE_CONFIG = workflow_cfg.get_energy_source_config()
 ESTO_DATA_PATH = ENERGY_SOURCE_CONFIG.esto_base_table_path
 NINTH_DATA_PATH = ENERGY_SOURCE_CONFIG.ninth_projection_table_path
 CONFIG_DIR = REPO_ROOT / "config"
-SUBTOTAL_MAPPING_PATH = CONFIG_DIR / "ESTO_subtotal_mapping.xlsx"
 NINTH_TO_ESTO_MAPPING_PATH = (OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs")
 CODE_TO_NAME_PATHS = [
     OUTLOOK_MAPPINGS_MASTER_PATH,
@@ -98,7 +96,6 @@ def prepare_supply_assets(
     esto_data_raw, ninth_data_raw = load_augmented_reference_tables(
         esto_path=ESTO_DATA_PATH,
         ninth_path=NINTH_DATA_PATH,
-        subtotal_mapping_path=SUBTOTAL_MAPPING_PATH,
         synthetic_rules_path=CONFIG_DIR / "synthetic_reference_rows.csv",
         cache_dir=REFERENCE_CACHE_DIR,
         apply_esto_subtotal_map=True,
@@ -117,12 +114,7 @@ def prepare_supply_assets(
     ninth_data = filter_reference_scenario(ninth_data_raw, "9th data")
     if "subtotal_results" in ninth_data.columns:
         ninth_data = ninth_data[ninth_data["subtotal_results"] == False].copy()
-    esto_data_with_subtotals = apply_matt_subtotal_mapping(
-        esto_data_raw, SUBTOTAL_MAPPING_PATH
-    )
-    # The subtotal-labeled debug output is intentionally disabled here to keep
-    # asset preparation side effects aligned with the existing workflow.
-    esto_data = filter_matt_subtotals(esto_data_with_subtotals)
+    esto_data = filter_matt_subtotals(esto_data_raw)
 
     economy_list = workflow_common.normalize_economies(
         economies or workflow_cfg.SUPPLY_ECONOMIES_TO_ANALYZE

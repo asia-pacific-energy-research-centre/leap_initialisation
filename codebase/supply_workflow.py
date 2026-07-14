@@ -58,6 +58,8 @@ def assemble_supply_workbooks(
     economies: Iterable[str] | None = None,
     export_dataset_key: str = "esto",
     scenario_names: Sequence[str] | None = None,
+    export_output_dir: Path | str = supply_data_pipeline.EXPORT_OUTPUT_DIR,
+    filename_template: str = supply_data_pipeline.EXPORT_FILENAME_TEMPLATE,
 ) -> list[supply_data_pipeline.Path]:
     """
     Run the simplified supply export pipeline.
@@ -88,8 +90,8 @@ def assemble_supply_workbooks(
         dataset_key=export_dataset_key,
         economies=run_economies,
         scenario_names=scenarios,
-        export_output_dir=supply_data_pipeline.EXPORT_OUTPUT_DIR,
-        filename_template=supply_data_pipeline.EXPORT_FILENAME_TEMPLATE,
+        export_output_dir=export_output_dir,
+        filename_template=filename_template,
     )
     return [path for _, path in export_paths]
 
@@ -100,6 +102,8 @@ def run_supply_export_and_import(
     scenario_names: Sequence[str] | None = None,
     include_leap_import: bool = False,
     import_scenario: str | Sequence[str] | None = None,
+    export_output_dir: Path | str = supply_data_pipeline.EXPORT_OUTPUT_DIR,
+    filename_template: str = supply_data_pipeline.EXPORT_FILENAME_TEMPLATE,
 ) -> list[supply_data_pipeline.Path]:
     """Run the export preparation and optionally fill LEAP using the generated workbooks."""
     _print_reset_reminder_for_import(include_leap_import)
@@ -111,6 +115,8 @@ def run_supply_export_and_import(
         economies=economies,
         export_dataset_key=export_dataset_key,
         scenario_names=scenarios,
+        export_output_dir=export_output_dir,
+        filename_template=filename_template,
     )
     if include_leap_import:
         scenario_choices = workflow_common.resolve_import_scenarios(
@@ -134,11 +140,15 @@ def quick_supply_export(
     economies: Iterable[str] | None = None,
     export_dataset_key: str = "esto",
     scenario_names: Sequence[str] | None = None,
+    export_output_dir: Path | str = supply_data_pipeline.EXPORT_OUTPUT_DIR,
+    filename_template: str = supply_data_pipeline.EXPORT_FILENAME_TEMPLATE,
 ) -> list[supply_data_pipeline.Path]:
     return assemble_supply_workbooks(
         economies=economies,
         export_dataset_key=export_dataset_key,
         scenario_names=scenario_names,
+        export_output_dir=export_output_dir,
+        filename_template=filename_template,
     )
 
 
@@ -148,6 +158,8 @@ def run_supply_pipeline(
     scenario_names: Sequence[str] | None = None,
     include_leap_import: bool = False,
     import_scenario: str | Sequence[str] | None = None,
+    export_output_dir: Path | str = supply_data_pipeline.EXPORT_OUTPUT_DIR,
+    filename_template: str = supply_data_pipeline.EXPORT_FILENAME_TEMPLATE,
 ) -> list[supply_data_pipeline.Path]:
     return run_supply_export_and_import(
         economies=economies,
@@ -155,6 +167,8 @@ def run_supply_pipeline(
         scenario_names=scenario_names,
         include_leap_import=include_leap_import,
         import_scenario=import_scenario,
+        export_output_dir=export_output_dir,
+        filename_template=filename_template,
     )
 
 #%%

@@ -175,11 +175,7 @@ def collect_transformation_rows(
 
         scenario_esto = core.normalize_esto_economy_codes(core.esto_data_raw.copy())
         scenario_esto = core.filter_total_energy_rows(scenario_esto)
-        scenario_esto_with_subtotals = core.apply_matt_subtotal_mapping(
-            scenario_esto,
-            core.SUBTOTAL_MAPPING_PATH,
-        )
-        scenario_esto = core.filter_matt_subtotals(scenario_esto_with_subtotals)
+        scenario_esto = core.filter_matt_subtotals(scenario_esto)
         scenario_esto_year_cols = sorted([col for col in scenario_esto.columns if str(col).isdigit()])
 
         if should_aggregate:

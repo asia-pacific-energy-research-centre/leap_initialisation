@@ -40,7 +40,6 @@ from codebase.functions.leap_core import (
     sanitize_leap_branch_path,
 )
 from codebase.utilities.esto_reference_loader import (
-    apply_esto_subtotal_mapping as apply_matt_subtotal_mapping,
     filter_esto_subtotals as filter_matt_subtotals,
     load_augmented_reference_tables,
     save_subtotal_labeled_data,
@@ -107,7 +106,6 @@ NINTH_DATA_PATH = ENERGY_SOURCE_CONFIG.ninth_projection_table_path
 # Backward-compatible alias for older notebook imports. Prefer ESTO_DATA_PATH.
 MATT_DATA_PATH = ESTO_DATA_PATH
 CONFIG_DIR = REPO_ROOT / "config"
-SUBTOTAL_MAPPING_PATH = CONFIG_DIR / "ESTO_subtotal_mapping.xlsx"
 NINTH_TO_ESTO_MAPPING_PATH = (OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs")
 CODE_TO_NAME_PATHS = [
     OUTLOOK_MAPPINGS_MASTER_PATH,
@@ -1777,7 +1775,6 @@ def prepare_transformation_assets() -> None:
     esto_data_raw, ninth_data_raw = load_augmented_reference_tables(
         esto_path=ESTO_DATA_PATH,
         ninth_path=NINTH_DATA_PATH,
-        subtotal_mapping_path=SUBTOTAL_MAPPING_PATH,
         synthetic_rules_path=CONFIG_DIR / "synthetic_reference_rows.csv",
         cache_dir=REFERENCE_CACHE_DIR,
         apply_esto_subtotal_map=True,
@@ -1803,14 +1800,7 @@ def prepare_transformation_assets() -> None:
     esto_data_raw = normalize_esto_economy_codes(esto_data_raw)
     esto_data_raw = filter_total_energy_rows(esto_data_raw)
     ninth_data = filter_total_energy_rows(ninth_data)
-    esto_data_with_subtotals = apply_matt_subtotal_mapping(esto_data_raw, SUBTOTAL_MAPPING_PATH)
-    # if SAVE_ESTO_SUBTOTAL_LABELED:
-    #     save_subtotal_labeled_data(
-    #         esto_data_with_subtotals,
-    #         ESTO_SUBTOTAL_LABELED_OUTPUT_PATH,
-    #         "ESTO (Matt) data",
-    #     )
-    esto_data = filter_matt_subtotals(esto_data_with_subtotals)
+    esto_data = filter_matt_subtotals(esto_data_raw)
     _should_aggregate, _aggregate_label, _ = workflow_common.resolve_aggregate_economy(
         ECONOMIES_TO_ANALYZE,
         aggregate_label=ALL_ECONOMY_LABEL,

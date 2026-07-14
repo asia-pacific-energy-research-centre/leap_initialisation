@@ -593,21 +593,9 @@ class TemplateBalanceExtractor:
             return ~(duplicate | remove_row)
 
         def load_esto_subtotal_lookup() -> dict[tuple[str, str], bool]:
-            try:
-                subtotals = read_config_table(
-                    self.mapping_pairs_path.parent / "ESTO_subtotal_mapping.xlsx",
-                    dtype=str,
-                ).fillna("")
-            except Exception:
-                return {}
-            required = {"flows", "products", "is_subtotal"}
-            if not required.issubset(set(subtotals.columns)):
-                return {}
-            return {
-                (clean(row.get("flows", "")), clean(row.get("products", ""))): truthy(row.get("is_subtotal", False))
-                for _, row in subtotals.iterrows()
-                if clean(row.get("flows", "")) and clean(row.get("products", ""))
-            }
+            # The current mapping workbook already carries authored subtotal flags
+            # on the pair sheets, so no separate ESTO subtotal workbook is needed.
+            return {}
 
         def load_ninth_subtotal_lookup() -> dict[tuple[str, str], bool]:
             # Authored ``ninth_pair_is_subtotal`` values are read directly from

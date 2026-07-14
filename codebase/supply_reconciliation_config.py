@@ -12,6 +12,12 @@ Edit this file to change:
 Imported by supply_reconciliation_workflow.py via `from ... import *` plus explicit
 private-name imports.  Do not import from supply_reconciliation_workflow — that
 would create a circular dependency.
+
+Preset precedence: settings marked ``PRESET-CONTROLLED DEFAULT`` below are
+defaults only. Both active presets in supply_reconciliation_workflow.py define
+the same names, and ``globals().update(ACTIVE_PRESET)`` replaces these values
+when the workflow cell runs. Edit the active preset for a run-specific value;
+edit this file only to change the fallback used outside that workflow.
 """
 from __future__ import annotations
 
@@ -149,9 +155,9 @@ ENERGY_SOURCE_CONFIG = workflow_cfg.get_energy_source_config()
 RESULTS_DIR = REPO_ROOT / "outputs" / "leap_results_dashboard" / "USA"
 COMPARISON_LONG_PATH = RESULTS_DIR / "comparison_long.csv"  # demand comparison input
 MAPPING_STATUS_PATH = RESULTS_DIR / "mapping_status.xlsx"  # demand mapping input
-# Keep the default here, before output paths are derived. The active preset in
-# supply_reconciliation_workflow.py refreshes these paths after it selects its
-# pass mode.
+# PRESET-CONTROLLED DEFAULT: both active presets replace this value. Keep the
+# fallback here before output paths are derived; the workflow refreshes paths
+# after its active preset selects the pass mode.
 CAPACITY_UNMET_PASS_MODE = "results_update"
 _PASS_MODE_SUBDIR = {
     "baseline_seed": "baseline_seed",
@@ -210,12 +216,16 @@ LEAP_IMPORT_TRANSFORMATION_TO_LEAP = True
 LEAP_IMPORT_TRANSFERS_TO_LEAP = True
 LEAP_IMPORT_LOG_LEVEL = "summary"  # detailed|summary|quiet
 LEAP_IMPORT_WARNING_PRINT_LIMIT = 20
+# PRESET-CONTROLLED DEFAULT: both active presets replace this value.
 RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT = False
 
-# Economies that require hydrogen process detail in LEAP balance exports.
-# Malaysia uses both Electrolysers and SMR with CCS, so its balance workbook
-# must expose at least Level 2 detail for the update pass to work safely.
-HYDROGEN_DUAL_PROCESS_ECONOMIES = {"10_MAS"}
+# All LEAP balance exports must use at least Level 2 detail so module branch
+# rows (e.g. 'Oil Refining/Oil Refining', hydrogen process rows) are visible.
+# The readiness check rejects flat Level 1 exports for every economy; see
+# _workbook_has_level2_detail in codebase/functions/supply_demand_mapping.py.
+# Set to False only for a deliberate temporary bypass, such as working with a
+# legacy flat export while diagnosing a separate workflow issue.
+REQUIRE_LEVEL2_BALANCE_EXPORT_DETAIL = True
 
 # Electricity and heat interim controls.
 # When True, three simplified power transformation modules are built from ESTO
@@ -223,6 +233,7 @@ HYDROGEN_DUAL_PROCESS_ECONOMIES = {"10_MAS"}
 # (CHP plants, dual output electricity+heat), and 'Heat plant interim' (heat
 # plants).  All three are written into a single export workbook per economy.
 # Set to False when the full power model is in use.
+# PRESET-CONTROLLED DEFAULT: both active presets replace this value.
 RUN_ELECTRICITY_HEAT_INTERIM = False
 
 # Other loss / own-use proxy controls.
@@ -232,6 +243,7 @@ RUN_ELECTRICITY_HEAT_INTERIM = False
 # These values choose activity source only; they are not post-initialisation
 # anchored-intensity modes.
 RUN_OTHER_LOSS_OWN_USE_PROXY = True
+# PRESET-CONTROLLED DEFAULT: both active presets replace this value.
 OTHER_LOSS_OWN_USE_PROXY_STAGE = "auto"  # auto|first|second
 OTHER_LOSS_OWN_USE_OUTPUT_FUEL_SCOPE = "economy"  # economy|all_economies
 OTHER_LOSS_OWN_USE_INCLUDE_IN_LEAP_IMPORT = True
@@ -914,16 +926,19 @@ DIRECT_DEMAND_INCLUDE_SIBLING_PARENT_TOTALS = True
 # aggregated demand (from aggregated_demand_workflow) instead of LEAP balance exports.
 # Useful for a first baseline_seed pass on new economies with no balance exports yet.
 # Supports both single and multi-economy runs; each economy is built independently.
+# PRESET-CONTROLLED DEFAULT: both active presets replace this value.
 USE_AGGREGATED_DEMAND_AS_DUMMY = True
 
 # When True (requires USE_AGGREGATED_DEMAND_AS_DUMMY), also write a LEAP import
 # workbook containing the Demand\All demand aggregated\{fuel} branches so LEAP
 # has the correct demand values after import.  Without this the aggregated-demand
 # branches are used internally for reconciliation but are never written to LEAP.
+# PRESET-CONTROLLED DEFAULT: both active presets replace this value.
 WRITE_AGGREGATED_DEMAND_WORKBOOK = True
 
 # Controls whether the aggregated-demand workbook is automatically imported into
 # LEAP via the API.  When False the file is still written for manual import.
+# PRESET-CONTROLLED DEFAULT: both active presets replace this value.
 AGGREGATED_DEMAND_INCLUDE_IN_LEAP_IMPORT = True
 
 # When True (and WRITE_AGGREGATED_DEMAND_WORKBOOK is True), own-use (10_01) and
@@ -946,11 +961,13 @@ AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES = True
 #   15_06_nonspecified_transport     16_01_buildings
 #   16_02_agriculture_and_fishing    16_05_nonspecified_others
 # Example: ["15_transport_sector"]  or  ["15_02_road", "15_03_rail"]
+# PRESET-CONTROLLED DEFAULT: both active presets replace this value.
 AGGREGATED_DEMAND_EXCLUDED_SECTORS: list[str] | None = None
 # When True, aggregated demand branches are written as
 # Demand\All demand aggregated\{SectorLabel}\{fuel} instead of the flat
 # Demand\All demand aggregated\{fuel} path. Enable when LEAP has per-sector
 # sub-branches configured under the aggregated demand node.
+# PRESET-CONTROLLED DEFAULT: both active presets replace this value.
 AGGREGATED_DEMAND_USE_SECTOR_BRANCHES: bool = False
 
 # Maps LEAP demand branch group names to the ESTO sector/sub1sector codes they
@@ -1016,10 +1033,12 @@ ZERO_OTHER_DEMAND_EXCLUDE_OWN_USE_PROXY_BRANCHES = True
 # workbook that zeros every non-share Demand branch from the full model export,
 # so those branches produce no energy use.  Share variables (Device Share, Sales
 # Share, Stock Share) are left untouched to avoid "shares don't sum to 100" errors.
+# PRESET-CONTROLLED DEFAULT: both active presets replace this value.
 ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT = False
 
 # Controls whether the demand-zeroing workbook is automatically imported into LEAP
 # via the API.  When False the workbook is still written for manual LEAP import.
+# PRESET-CONTROLLED DEFAULT: both active presets replace this value.
 ZERO_OTHER_DEMAND_INCLUDE_IN_LEAP_IMPORT = True
 
 BALANCE_DEMAND_REF_WORKBOOK_PATH = DEFAULT_BALANCE_REF_WORKBOOK_PATH

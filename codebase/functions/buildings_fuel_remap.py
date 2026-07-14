@@ -24,7 +24,6 @@ from codebase.functions.ninth_projection_mapping import (
     normalize_economy_key,
 )
 from codebase.scrapbook.utilities import (
-    apply_matt_subtotal_mapping,
     filter_matt_subtotals,
     load_augmented_reference_tables,
 )
@@ -64,12 +63,11 @@ def _normalize_year_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns=rename_map)
 
 
-def _load_esto_data(path: Path, subtotal_mapping_path: Path) -> pd.DataFrame:
+def _load_esto_data(path: Path) -> pd.DataFrame:
     archive_config_dir_once_per_day()
     df, _ = load_augmented_reference_tables(
         esto_path=path,
         ninth_path=Path("data/merged_file_energy_ALL_20251106.csv"),
-        subtotal_mapping_path=subtotal_mapping_path,
         synthetic_rules_path=Path("config/synthetic_reference_rows.csv"),
         cache_dir=Path("data/.cache/buildings_reference_tables"),
         apply_esto_subtotal_map=True,
@@ -349,7 +347,6 @@ def remap_buildings_export_fuels(
     output_path: str | Path,
     mapping_csv_path: str | Path | None,
     esto_data_path: str | Path,
-    subtotal_mapping_path: str | Path,
     economy: str,
     base_year: int,
     mapping_dict: dict[str, dict[str, dict[str, dict[str, object]]]] | None = None,
@@ -363,7 +360,6 @@ def remap_buildings_export_fuels(
     output_path = Path(output_path)
     mapping_csv = Path(mapping_csv_path) if mapping_csv_path is not None else None
     esto_data_path = Path(esto_data_path)
-    subtotal_mapping_path = Path(subtotal_mapping_path)
 
     header_rows, df, columns = read_export_sheet(input_path, sheet_name)
     series_format = detect_series_format(df)
@@ -377,7 +373,7 @@ def remap_buildings_export_fuels(
         mapping_rows = _load_mapping(mapping_csv)
     else:
         raise ValueError("Provide either mapping_dict or mapping_csv_path.")
-    esto_df = _load_esto_data(esto_data_path, subtotal_mapping_path)
+    esto_df = _load_esto_data(esto_data_path)
     economy_key = normalize_economy_key(economy)
     base_values = build_esto_base_year_values(esto_df, base_year)
 

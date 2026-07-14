@@ -285,15 +285,54 @@ LEAP_BALANCE_FUEL_SETS: dict[str, list[str]] = {
     ],
 }
 
+# Row labels for LEAP's power-generation Transformation branches. Real "full
+# model output" balance exports do not break these out individually -- they
+# collapse generation into the "* interim" placeholder rows instead -- so any
+# activity source built from these rows needs the matching interim row as its
+# next fallback.
+POWER_BRANCH_INTERIM_FALLBACK_ROWS: dict[str, str] = {
+    "Electricity Generation": "Electricity interim",
+    "CHP plants": "CHP interim",
+    "Heat plants": "Heat plant interim",
+}
+
+# Balance-export row carrying total demand-side activity. Any process whose
+# LEAP-balance activity is sourced from a Demand branch other than the
+# Demand/Other loss and own use target branch itself (that would be
+# circular) should add a fallback tier here using
+# balance_rows=[DEMAND_AGGREGATE_FALLBACK_ROW] and its own fuel_set, since
+# real balance exports do not break Demand out by branch -- only this one
+# aggregate row exists. No current process sources activity from a Demand
+# branch, so nothing uses this yet.
+DEMAND_AGGREGATE_FALLBACK_ROW = "All demand aggregated"
+
 # Per-process ordered fallback chains for LEAP-balance activity. Values may be
 # a single fallback dict or a list of dicts tried in order; the first fallback
 # with a non-zero series wins.
 LEAP_BALANCE_ACTIVITY_FALLBACKS: dict[str, object] = {
-    "pump_storage_plants": {
-        "balance_rows": ["Electricity Generation"],
-        "fuel_set": "electricity_output",
-        "value_mode": "positive_only",
-    },
+    "pump_storage_plants": [
+        {
+            "balance_rows": ["Electricity Generation"],
+            "fuel_set": "electricity_output",
+            "value_mode": "positive_only",
+        },
+        {
+            "balance_rows": [POWER_BRANCH_INTERIM_FALLBACK_ROWS["Electricity Generation"]],
+            "fuel_set": "electricity_output",
+            "value_mode": "absolute",
+        },
+    ],
+    "electricity_chp_and_heat_plants": [
+        {
+            "balance_rows": [
+                POWER_BRANCH_INTERIM_FALLBACK_ROWS["Electricity Generation"],
+                POWER_BRANCH_INTERIM_FALLBACK_ROWS["CHP plants"],
+                POWER_BRANCH_INTERIM_FALLBACK_ROWS["Heat plants"],
+            ],
+            "fuel_set": "electricity_heat_output",
+            "value_mode": "absolute",
+        },
+    ],
     "liquefaction_regasification_plants": [
         {
             "balance_rows": ["Imports", "Exports"],
@@ -733,22 +772,30 @@ def build_leap_balance_proxy_activity_series(
     base_year: int,
     final_year: int,
 ) -> dict[int, float]:
-    """Sum configured LEAP balance fuels/rows into one proxy activity series."""
+    """Sum configured LEAP balance fuels/rows into one proxy activity series.
+
+    Tries the primary rows, then each configured fallback tier, and keeps
+    whichever candidate covers the most projection years (ties keep the
+    earliest candidate, i.e. primary over fallback). A primary tier that is
+    only nonzero in the base year must not shadow a fallback tier that
+    covers the whole run -- mirrors the coverage scoring in
+    build_proxy_activity_series_with_fallback for ESTO/9th activity.
+    """
     leap_cfg = config["activity_sources"].get("leap_balance", {})
     fuel_set_name = str(leap_cfg.get("fuel_set", "")).strip()
     fuels = LEAP_BALANCE_FUEL_SETS.get(fuel_set_name, [])
-    series = build_leap_balance_activity_series(
+    primary_rows = [str(item) for item in leap_cfg.get("balance_rows", []) if str(item).strip()]
+    primary_series = build_leap_balance_activity_series(
         leap_balance_activity,
-        balance_rows=leap_cfg.get("balance_rows", []),
+        balance_rows=primary_rows,
         fuels=fuels,
         value_mode=str(leap_cfg.get("value_mode", "signed_sum") or "signed_sum"),
         base_year=base_year,
         final_year=final_year,
     )
-    if any(abs(float(value)) > 0.0 for value in series.values()):
-        return series
 
     process_key = str(config.get("process_key", "")).strip()
+    candidates: list[tuple[dict[int, float], list[str], str]] = [(primary_series, primary_rows, fuel_set_name)]
     for fallback_cfg in _leap_balance_fallback_chain(process_key):
         fallback_rows = [str(item) for item in fallback_cfg.get("balance_rows", []) if str(item).strip()]
         fallback_fuel_set = str(fallback_cfg.get("fuel_set", "")).strip()
@@ -764,14 +811,30 @@ def build_leap_balance_proxy_activity_series(
             base_year=base_year,
             final_year=final_year,
         )
-        if any(abs(float(value)) > 0.0 for value in fallback_series.values()):
-            print(
-                "[INFO] LEAP-balance proxy activity fallback applied for "
-                f"{process_key}: rows={fallback_rows}, fuel_set={fallback_fuel_set}."
-            )
-            return fallback_series
+        if _series_has_nonzero_value(fallback_series):
+            candidates.append((fallback_series, fallback_rows, fallback_fuel_set))
 
-    return series
+    nonzero_candidates = [item for item in candidates if _series_has_nonzero_value(item[0])]
+    if not nonzero_candidates:
+        return primary_series
+
+    def _projection_coverage(series_values: dict[int, float]) -> int:
+        return sum(
+            1
+            for year, value in series_values.items()
+            if int(year) > int(base_year) and abs(float(value)) > 0.0
+        )
+
+    best_score = max(_projection_coverage(item[0]) for item in nonzero_candidates)
+    chosen_series, chosen_rows, chosen_fuel_set = next(
+        item for item in nonzero_candidates if _projection_coverage(item[0]) == best_score
+    )
+    if chosen_rows != primary_rows:
+        print(
+            "[INFO] LEAP-balance proxy activity fallback applied for "
+            f"{process_key}: rows={chosen_rows}, fuel_set={chosen_fuel_set}."
+        )
+    return chosen_series
 
 
 # ---------------------------------------------------------------------------

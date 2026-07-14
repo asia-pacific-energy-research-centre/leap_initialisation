@@ -13,7 +13,6 @@ from codebase.functions.leap_series_comparison import ComparisonRunConfig, run_l
 def _write_common_reference_inputs(tmp_path: Path) -> dict[str, Path]:
     esto_path = tmp_path / "esto.csv"
     ninth_path = tmp_path / "ninth.csv"
-    subtotal_map_path = tmp_path / "subtotal_mapping.xlsx"
     ninth_to_esto_path = tmp_path / "ninth_to_esto.xlsx"
 
     esto_df = pd.DataFrame(
@@ -22,6 +21,7 @@ def _write_common_reference_inputs(tmp_path: Path) -> dict[str, Path]:
                 "economy": "01AUS",
                 "flows": "09.08.01 Coke ovens",
                 "products": "07.01 Motor gasoline",
+                "is_subtotal": False,
                 "2022": 100.0,
             }
         ]
@@ -48,17 +48,6 @@ def _write_common_reference_inputs(tmp_path: Path) -> dict[str, Path]:
     )
     ninth_df.to_csv(ninth_path, index=False)
 
-    subtotal_map_df = pd.DataFrame(
-        [
-            {
-                "flow": "09.08.01 Coke ovens",
-                "product": "07.01 Motor gasoline",
-                "is_subtotal": False,
-            }
-        ]
-    )
-    subtotal_map_df.to_excel(subtotal_map_path, index=False)
-
     ninth_to_esto_df = pd.DataFrame(
         [
             {
@@ -74,7 +63,6 @@ def _write_common_reference_inputs(tmp_path: Path) -> dict[str, Path]:
     return {
         "esto_path": esto_path,
         "ninth_path": ninth_path,
-        "subtotal_map_path": subtotal_map_path,
         "ninth_to_esto_path": ninth_to_esto_path,
     }
 
@@ -102,7 +90,6 @@ def _build_config(
         region="United States",
         esto_data_path=reference_inputs["esto_path"],
         ninth_data_path=reference_inputs["ninth_path"],
-        subtotal_mapping_path=reference_inputs["subtotal_map_path"],
         ninth_to_esto_mapping_path=reference_inputs["ninth_to_esto_path"],
         base_year=2022,
         projection_start_year=2023,

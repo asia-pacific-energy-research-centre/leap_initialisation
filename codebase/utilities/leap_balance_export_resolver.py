@@ -241,10 +241,18 @@ def load_leap_balance_activity_table(
     rows: list[dict[str, object]] = []
     xls = pd.ExcelFile(workbook)
     for sheet_name in xls.sheet_names:
-        if not str(sheet_name).lower().startswith("ebal|"):
+        name = str(sheet_name).strip()
+        if name.lower().startswith("ebal|"):
+            year_text = name.split("|", 1)[1]
+        elif name.isdigit():
+            # Raw "full model output" exports from LEAP use bare-year sheet
+            # names (e.g. "2022") rather than the "EBal|2022" convention used
+            # by this pipeline's own generated balance workbooks.
+            year_text = name
+        else:
             continue
         try:
-            year = int(str(sheet_name).split("|", 1)[1])
+            year = int(year_text)
         except Exception:
             continue
         raw = pd.read_excel(workbook, sheet_name=sheet_name, header=None)

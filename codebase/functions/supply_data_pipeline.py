@@ -37,7 +37,6 @@ from codebase.functions.esto_data_utils import (
     resolve_dataset,
 )
 from codebase.utilities.esto_reference_loader import (
-    apply_esto_subtotal_mapping as apply_matt_subtotal_mapping,
     filter_esto_subtotals as filter_matt_subtotals,
     load_augmented_reference_tables,
 )
@@ -135,7 +134,6 @@ NINTH_DATA_PATH = ENERGY_SOURCE_CONFIG.ninth_projection_table_path
 # Backward-compatible aliases for older notebook imports. Prefer the names above.
 MATT_DATA_PATH = ESTO_DATA_PATH
 CONFIG_DIR = REPO_ROOT / "config"
-SUBTOTAL_MAPPING_PATH = CONFIG_DIR / "ESTO_subtotal_mapping.xlsx"
 NINTH_TO_ESTO_MAPPING_PATH = (OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs")
 CODE_TO_NAME_PATHS = [
     OUTLOOK_MAPPINGS_MASTER_PATH,
@@ -251,7 +249,6 @@ def prepare_supply_assets(
     """Compatibility wrapper for loading supply datasets and mappings."""
     supply_assets_module.ESTO_DATA_PATH = ESTO_DATA_PATH
     supply_assets_module.NINTH_DATA_PATH = NINTH_DATA_PATH
-    supply_assets_module.SUBTOTAL_MAPPING_PATH = SUBTOTAL_MAPPING_PATH
     supply_assets_module.NINTH_TO_ESTO_MAPPING_PATH = NINTH_TO_ESTO_MAPPING_PATH
     supply_assets_module.CODE_TO_NAME_PATHS = CODE_TO_NAME_PATHS
     supply_assets_module.BASE_YEAR = BASE_YEAR

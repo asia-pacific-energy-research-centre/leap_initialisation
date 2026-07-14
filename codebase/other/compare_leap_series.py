@@ -49,11 +49,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to 9th projection table.",
     )
     parser.add_argument(
-        "--subtotal-mapping-path",
-        default="config/ESTO_subtotal_mapping.xlsx",
-        help="Path to ESTO subtotal mapping workbook.",
-    )
-    parser.add_argument(
         "--ninth-to-esto-mapping-path",
         default=str(OUTLOOK_MAPPINGS_MASTER_PATH),
         help="Path to 9th<->ESTO mapping file used for projection allocation.",
@@ -93,7 +88,6 @@ def main() -> int:
         region=args.region,
         esto_data_path=args.esto_data_path,
         ninth_data_path=args.ninth_data_path,
-        subtotal_mapping_path=args.subtotal_mapping_path,
         ninth_to_esto_mapping_path=args.ninth_to_esto_mapping_path,
         base_year=args.base_year,
         projection_start_year=args.projection_start_year,

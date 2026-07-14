@@ -51,7 +51,7 @@ from codebase.functions.leap_core import (
 from codebase.functions.leap_excel_io import finalise_export_df, save_export_files
 from codebase.functions.leap_labels import clean_fuel_label_for_leap
 from codebase.functions.leap_expressions import build_data_expression_from_row
-from codebase.scrapbook.utilities import apply_matt_subtotal_mapping, filter_matt_subtotals
+from codebase.scrapbook.utilities import filter_matt_subtotals
 from codebase.utilities import fuel_catalog_preflight, workflow_common
 from codebase.utilities.workflow_utils import (
     _normalize_economy,
@@ -129,7 +129,6 @@ from codebase.functions.other_loss_own_use_proxy_utils import (
 ENERGY_SOURCE_CONFIG = workflow_cfg.get_energy_source_config()
 ESTO_DATA_PATH = ENERGY_SOURCE_CONFIG.esto_base_table_path
 NINTH_DATA_PATH = ENERGY_SOURCE_CONFIG.ninth_projection_table_path
-ESTO_SUBTOTAL_MAPPING_PATH = REPO_ROOT / "config" / "ESTO_subtotal_mapping.xlsx"
 LEAP_MAPPINGS_PATH = OUTLOOK_MAPPINGS_MASTER_PATH
 OUTPUT_FUEL_VALIDATION_ESTO_PATHS = [
     REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv",
@@ -663,11 +662,13 @@ def load_esto_data(path: Path | str = ESTO_DATA_PATH) -> pd.DataFrame:
     df = pd.read_csv(_resolve(path), low_memory=False)
     df = _normalize_year_columns(df)
     df["economy_key"] = df["economy"].apply(_normalize_economy)
-    try:
-        labeled = apply_matt_subtotal_mapping(df, _resolve(ESTO_SUBTOTAL_MAPPING_PATH))
-        df = filter_matt_subtotals(labeled)
-    except Exception as exc:
-        print(f"[WARN] ESTO subtotal filtering skipped: {exc}")
+    if "is_subtotal" in df.columns:
+        df["is_subtotal"] = (
+            df["is_subtotal"].fillna(False).astype(str).str.strip().str.lower().isin({"true", "1", "yes"})
+        )
+        df = filter_matt_subtotals(df)
+    else:
+        print("[WARN] ESTO subtotal filtering skipped: input data has no is_subtotal column")
     total_products = {"19 Total", "20 Total Renewables", "21 Modern renewables"}
     if "products" in df.columns:
         df = df[~df["products"].astype(str).isin(total_products)].copy()

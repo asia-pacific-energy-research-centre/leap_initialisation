@@ -10,7 +10,10 @@ from codebase.functions.baseline_seed_validation import (
     BaselineSeedValidationError,
     build_validation_issue_groups,
 )
-from codebase.functions.supply_leap_io import write_per_economy_combined_workbooks
+from codebase.functions.supply_leap_io import (
+    save_combined_supply_transformation_export,
+    write_per_economy_combined_workbooks,
+)
 from codebase.configuration.workflow_config import get_baseline_seed_validation_years
 
 
@@ -482,6 +485,94 @@ def test_final_writer_can_skip_validation_for_side_combines(
     assert written[0].exists()
     output = pd.read_excel(written[0], sheet_name="LEAP", header=2)
     assert output["Branch Path"].iloc[0] == "Resources\\Primary\\Natural gas"
+
+
+def _write_leap_and_viewing_workbook(path: Path, rows: list[dict[str, object]]) -> None:
+    """Like _write_leap_workbook, but also adds the FOR_VIEWING sheet that
+    save_combined_supply_transformation_export reads unconditionally."""
+    columns = list(rows[0])
+    preamble = {column: pd.NA for column in columns}
+    preamble["Branch Path"] = "Area:"
+    preamble["Scenario"] = "Ver:"
+    preamble["Region"] = "2"
+    full = pd.concat(
+        [
+            pd.DataFrame([preamble]),
+            pd.DataFrame([{column: pd.NA for column in columns}]),
+            pd.DataFrame([columns], columns=columns),
+            pd.DataFrame(rows),
+        ],
+        ignore_index=True,
+    )
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        full.to_excel(writer, sheet_name="LEAP", index=False, header=False)
+        full.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
+
+
+def test_combined_export_blocks_by_default_on_conflicting_duplicates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """save_combined_supply_transformation_export must still block on genuine
+    blocking findings when BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS
+    is False, matching write_per_economy_combined_workbooks' default behavior."""
+    source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
+    _write_leap_and_viewing_workbook(source, [_row("Data(2023,1)"), _row("Data(2023,2)")])
+    template = tmp_path / "full model export.xlsx"
+    _write_template(template)
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io.RESULTS_VERIFICATION_EXPORT_PATH", template
+    )
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io.workflow_cfg.BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS",
+        False,
+    )
+    output_dir = tmp_path / "output"
+
+    with pytest.raises(BaselineSeedValidationError):
+        save_combined_supply_transformation_export(
+            supply_export_paths=[source],
+            transformation_export_paths=[],
+            transfer_export_paths=[],
+            output_dir=output_dir,
+            economy_label="20_USA",
+            scenarios=["Reference"],
+        )
+
+
+def test_combined_export_downgrades_blocking_findings_when_configured(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression test: save_combined_supply_transformation_export previously
+    never wired BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS through
+    to prepare_seed_rows_for_write, so every baseline-seed combined workbook
+    write raised BaselineSeedValidationError regardless of the config flag,
+    silently skipping every economy's workbook for the whole run."""
+    source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
+    _write_leap_and_viewing_workbook(source, [_row("Data(2023,1)"), _row("Data(2023,2)")])
+    template = tmp_path / "full model export.xlsx"
+    _write_template(template)
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io.RESULTS_VERIFICATION_EXPORT_PATH", template
+    )
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io.workflow_cfg.BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS",
+        True,
+    )
+    output_dir = tmp_path / "output"
+
+    written = save_combined_supply_transformation_export(
+        supply_export_paths=[source],
+        transformation_export_paths=[],
+        transfer_export_paths=[],
+        output_dir=output_dir,
+        economy_label="20_USA",
+        scenarios=["Reference"],
+    )
+
+    assert written is not None
+    assert written.exists()
 
 
 #%%

@@ -991,6 +991,9 @@ def save_combined_supply_transformation_export(
         for source in set(source_workflow_by_path.values())
         if scenario_list
     }
+    blocking_findings_are_warnings = bool(
+        getattr(workflow_cfg, "BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS", False)
+    )
     validation = prepare_seed_rows_for_write(
         leap_data,
         template_path=_resolve(RESULTS_VERIFICATION_EXPORT_PATH),
@@ -998,7 +1001,15 @@ def save_combined_supply_transformation_export(
         diagnostic_stem=diagnostic_stem,
         required_years_by_scenario=required_years_by_scenario,
         required_scenarios_by_source=required_scenarios_by_source,
+        blocking_findings_are_warnings=blocking_findings_are_warnings,
     )
+    if blocking_findings_are_warnings and not validation.blocking_findings.empty:
+        rule_counts = validation.blocking_findings["rule_id"].value_counts().sort_index()
+        summary = ", ".join(f"{rule_id}={count}" for rule_id, count in rule_counts.items())
+        print(
+            f"[WARN] Baseline-seed validation findings were downgraded to warnings "
+            f"for {economy_label} ({summary})."
+        )
     leap_data = validation.resolved_rows.drop(
         columns=[SOURCE_WORKFLOW_COLUMN, SOURCE_FILE_COLUMN, "source_excel_row"],
         errors="ignore",

@@ -22,6 +22,16 @@ view rather than through the LEAP API. Export the Energy Balance results to
 Excel, with separate balance sheets for the relevant scenario/year combinations,
 then save the exported workbooks in the economy folder here.
 
+**Always export with at least Level 2 detail.** Level 1 exports collapse every
+module to a single flat row (and demand to "All demand aggregated"), which the
+branch-path mappings cannot match, so most transformation and own-use series
+are silently dropped downstream. The `results_update` readiness check rejects
+Level 1 workbooks for every economy (it looks for indented branch rows in
+column A). If a temporary bypass is necessary, set
+`REQUIRE_LEVEL2_BALANCE_EXPORT_DETAIL = False` in
+`codebase/supply_reconciliation_config.py`; this disables the guard in both
+the readiness preflight and per-economy demand build.
+
 The Python workflows read those exported workbooks directly. The extractor uses
 the sheet layout as follows:
 

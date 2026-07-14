@@ -24,10 +24,11 @@ from codebase.utilities.leap_results_dashboard_v2.reference_loader import (
 )
 
 
-def apply_esto_subtotal_mapping(df: pd.DataFrame, mapping_path) -> pd.DataFrame:
-    """Merge subtotal mapping onto the ESTO data to flag subtotal rows.
+def apply_esto_subtotal_mapping(df: pd.DataFrame, mapping_path=None) -> pd.DataFrame:
+    """Normalize the existing ESTO ``is_subtotal`` column.
 
-    Returns the dataframe with a boolean ``is_subtotal`` column added.
+    The active ESTO CSVs already carry ``is_subtotal``. This helper keeps the
+    historical name but no longer reads a separate subtotal workbook.
     """
     if "is_subtotal" in df.columns:
         out = df.copy()
@@ -41,79 +42,10 @@ def apply_esto_subtotal_mapping(df: pd.DataFrame, mapping_path) -> pd.DataFrame:
         )
         return out
 
-    mapping = read_config_table(mapping_path, dtype=str)
-    normalized_cols = {col: str(col).strip().lower() for col in mapping.columns}
-    mapping = mapping.rename(columns=normalized_cols)
-
-    if {"flow", "product", "is_subtotal"}.issubset(mapping.columns) or {
-        "flows",
-        "products",
-        "is_subtotal",
-    }.issubset(mapping.columns):
-        if {"flows", "products"}.issubset(mapping.columns):
-            mapping = mapping.rename(columns={"flows": "flow", "products": "product"})
-        mapping = mapping[["flow", "product", "is_subtotal"]].copy()
-        mapping["flow"] = mapping["flow"].astype(str).str.strip()
-        mapping["product"] = mapping["product"].astype(str).str.strip()
-        mapping["is_subtotal"] = (
-            mapping["is_subtotal"]
-            .astype(str)
-            .str.strip()
-            .str.lower()
-            .isin(["true", "1", "yes"])
-        )
-        mapping = (
-            mapping.groupby(["flow", "product"], dropna=False)["is_subtotal"]
-            .any()
-            .reset_index()
-        )
-        out = df.copy()
-        out["flow"] = out["flows"].astype(str).str.strip()
-        out["product"] = out["products"].astype(str).str.strip()
-        out = out.merge(mapping, on=["flow", "product"], how="left")
-        out["is_subtotal"] = out["is_subtotal"].fillna(False)
-        out = out.drop(columns=[c for c in ["flow", "product"] if c in out.columns])
-    else:
-        mapping["is_subtotal"] = (
-            mapping["is_subtotal"]
-            .astype(str)
-            .str.strip()
-            .str.lower()
-            .isin(["true", "1", "yes"])
-        )
-        flows_mapping = mapping[mapping["type"] == "FLOWS"].copy()
-        flows_mapping["flow_value"] = (
-            flows_mapping["new"].astype(str).str.strip()
-            + " "
-            + flows_mapping["new_name"].astype(str).str.strip()
-        )
-        out = df.copy()
-        out["flow_value"] = out["flows"].astype(str).str.strip()
-        out = out.merge(
-            flows_mapping[["flow_value", "is_subtotal"]],
-            on="flow_value",
-            how="left",
-        )
-        out = out.rename(columns={"is_subtotal": "flow_is_subtotal"})
-
-        products_mapping = mapping[mapping["type"] == "PRODUCTS"].copy()
-        products_mapping["product_value"] = (
-            products_mapping["new"].astype(str).str.strip()
-            + " "
-            + products_mapping["new_name"].astype(str).str.strip()
-        )
-        out["product_value"] = out["products"].astype(str).str.strip()
-        out = out.merge(
-            products_mapping[["product_value", "is_subtotal"]],
-            on="product_value",
-            how="left",
-        )
-        out = out.rename(columns={"is_subtotal": "product_is_subtotal"})
-        out["flow_is_subtotal"] = out["flow_is_subtotal"].fillna(False)
-        out["product_is_subtotal"] = out["product_is_subtotal"].fillna(False)
-        out["is_subtotal"] = out["flow_is_subtotal"] | out["product_is_subtotal"]
-        drop_cols = ["flow_value", "flow_is_subtotal", "product_value", "product_is_subtotal"]
-        out = out.drop(columns=[c for c in drop_cols if c in out.columns])
+    raise ValueError(
+        "ESTO subtotal labeling now requires an input column named 'is_subtotal'. "
+        "The legacy subtotal workbook is no longer consulted."
+    )
 
     year_cols = [col for col in out.columns if str(col).isdigit()]
     leading_cols = [col for col in ["economy", "flows", "products"] if col in out.columns]
@@ -164,7 +96,6 @@ def load_augmented_reference_tables(
     *,
     esto_path,
     ninth_path,
-    subtotal_mapping_path=None,
     explicit_reassignments_path=None,
     explicit_mappings_path=None,
     canonical_pairs_path=None,
@@ -182,7 +113,6 @@ def load_augmented_reference_tables(
     """
     esto_path = Path(esto_path)
     ninth_path = Path(ninth_path)
-    subtotal_mapping_path = Path(subtotal_mapping_path) if subtotal_mapping_path else None
     explicit_reassignments_path = (
         Path(explicit_reassignments_path) if explicit_reassignments_path else None
     )
@@ -195,7 +125,6 @@ def load_augmented_reference_tables(
     cache_payload = {
         "esto": _file_signature(esto_path),
         "ninth": _file_signature(ninth_path),
-        "subtotal_mapping": _file_signature(subtotal_mapping_path) if subtotal_mapping_path else {},
         "explicit_reassignments": _file_signature(explicit_reassignments_path) if explicit_reassignments_path else {},
         "explicit_mappings": _file_signature(explicit_mappings_path) if explicit_mappings_path else {},
         "canonical_pairs": _file_signature(canonical_pairs_path) if canonical_pairs_path else {},
@@ -217,8 +146,8 @@ def load_augmented_reference_tables(
     esto_df = read_config_table(esto_path)
     ninth_df = read_config_table(ninth_path, low_memory=False)
 
-    if apply_esto_subtotal_map and subtotal_mapping_path:
-        esto_df = apply_esto_subtotal_mapping(esto_df, subtotal_mapping_path)
+    if apply_esto_subtotal_map:
+        esto_df = apply_esto_subtotal_mapping(esto_df)
     if filter_esto_subtotals_flag:
         esto_df = filter_esto_subtotals(esto_df)
     if filter_ninth_subtotals_flag:

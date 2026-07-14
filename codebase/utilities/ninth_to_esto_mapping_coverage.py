@@ -16,7 +16,6 @@ from codebase.scrapbook.utilities import load_augmented_reference_tables
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SUBTOTAL_MAPPING_PATH = REPO_ROOT / "config" / "ESTO_subtotal_mapping.xlsx"
 DEFAULT_SYNTHETIC_RULES_PATH = REPO_ROOT / "config" / "synthetic_reference_rows.csv"
 DEFAULT_REFERENCE_CACHE_DIR = REPO_ROOT / "data" / ".cache" / "mapping_coverage_reference_tables"
 
@@ -138,7 +137,6 @@ def run_mapping_coverage_check(
     base_year: int = 2022,
     projection_years: Sequence[int] = tuple(range(2023, 2071)),
     scenario: str = "reference",
-    subtotal_mapping_path: str | Path | None = DEFAULT_SUBTOTAL_MAPPING_PATH,
     synthetic_rules_path: str | Path | None = DEFAULT_SYNTHETIC_RULES_PATH,
     cache_dir: str | Path | None = DEFAULT_REFERENCE_CACHE_DIR,
 ) -> dict[str, object]:
@@ -146,7 +144,6 @@ def run_mapping_coverage_check(
     esto_data_path = _resolve(esto_data_path)
     ninth_data_path = _resolve(ninth_data_path)
     output_dir = _resolve(output_dir)
-    subtotal_mapping_path = _resolve(subtotal_mapping_path) if subtotal_mapping_path else None
     synthetic_rules_path = _resolve(synthetic_rules_path) if synthetic_rules_path else None
     cache_dir = _resolve(cache_dir) if cache_dir else None
 
@@ -162,7 +159,6 @@ def run_mapping_coverage_check(
     esto_df, ninth_df = load_augmented_reference_tables(
         esto_path=esto_data_path,
         ninth_path=ninth_data_path,
-        subtotal_mapping_path=subtotal_mapping_path,
         synthetic_rules_path=synthetic_rules_path,
         cache_dir=cache_dir or DEFAULT_REFERENCE_CACHE_DIR,
         apply_esto_subtotal_map=True,

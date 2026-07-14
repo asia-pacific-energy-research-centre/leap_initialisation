@@ -21,7 +21,6 @@ from codebase.functions.ninth_projection_mapping import (
     normalize_economy_key,
 )
 from codebase.scrapbook.utilities import (
-    apply_matt_subtotal_mapping,
     filter_matt_subtotals,
     load_augmented_reference_tables,
 )
@@ -75,7 +74,6 @@ class ComparisonRunConfig:
     region: str
     esto_data_path: str | Path
     ninth_data_path: str | Path
-    subtotal_mapping_path: str | Path
     ninth_to_esto_mapping_path: str | Path
     base_year: int = 2022
     projection_start_year: int = 2023
@@ -109,7 +107,6 @@ class TransportResultsComparisonConfig:
     ninth_data_path: str | Path = (
         Path("data") / "merged_file_energy_ALL_20251106.csv"
     )
-    subtotal_mapping_path: str | Path = Path("config") / "ESTO_subtotal_mapping.xlsx"
     ninth_to_esto_mapping_path: str | Path = OUTLOOK_MAPPINGS_MASTER_PATH
     base_year: int = 2022
     projection_start_year: int = 2023
@@ -312,14 +309,12 @@ def _load_mapping(mapping_csv: Path) -> pd.DataFrame:
 
 def _load_esto_data(
     esto_data_path: Path,
-    subtotal_mapping_path: Path,
     ninth_data_path: Path | None = None,
 ) -> pd.DataFrame:
     _ninth_path = ninth_data_path if ninth_data_path is not None else Path("data/merged_file_energy_ALL_20251106.csv")
     df, _ = load_augmented_reference_tables(
         esto_path=esto_data_path,
         ninth_path=_ninth_path,
-        subtotal_mapping_path=subtotal_mapping_path,
         synthetic_rules_path=Path("config/synthetic_reference_rows.csv"),
         cache_dir=Path("data/.cache/leap_series_comparison_reference_tables"),
         apply_esto_subtotal_map=True,
@@ -816,7 +811,6 @@ def run_leap_series_comparison(config: ComparisonRunConfig) -> ComparisonArtifac
     mapping_csv = Path(config.mapping_csv)
     esto_data_path = Path(config.esto_data_path)
     ninth_data_path = Path(config.ninth_data_path)
-    subtotal_mapping_path = Path(config.subtotal_mapping_path)
     ninth_to_esto_mapping_path = Path(config.ninth_to_esto_mapping_path)
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -846,7 +840,6 @@ def run_leap_series_comparison(config: ComparisonRunConfig) -> ComparisonArtifac
     economy_key = normalize_economy_key(config.economy)
     esto_df = _load_esto_data(
         esto_data_path,
-        subtotal_mapping_path,
         ninth_data_path=getattr(config, "ninth_data_path_for_esto", None),
     )
     ninth_df = _load_ninth_data(ninth_data_path, esto_path=getattr(config, "esto_data_path_for_ninth", None))
@@ -1526,7 +1519,6 @@ def run_transport_results_table_comparison(
     code_to_name_path = Path(config.code_to_name_path)
     esto_data_path = Path(config.esto_data_path)
     ninth_data_path = Path(config.ninth_data_path)
-    subtotal_mapping_path = Path(config.subtotal_mapping_path)
     ninth_to_esto_mapping_path = Path(config.ninth_to_esto_mapping_path)
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1585,7 +1577,7 @@ def run_transport_results_table_comparison(
         aggregate_all_economies=aggregate_all_economies,
     )
 
-    esto_df = _load_esto_data(esto_data_path, subtotal_mapping_path)
+    esto_df = _load_esto_data(esto_data_path)
     if aggregate_all_economies:
         esto_econ = esto_df.copy()
     else:

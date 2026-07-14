@@ -25,7 +25,6 @@ from codebase.functions.ninth_projection_mapping import (
     normalize_economy_key,
 )
 from codebase.scrapbook.utilities import (
-    apply_matt_subtotal_mapping,
     filter_matt_subtotals,
     load_augmented_reference_tables,
 )
@@ -60,12 +59,11 @@ def _normalize_year_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns=rename_map)
 
 
-def _load_esto_data(path: Path, subtotal_mapping_path: Path) -> pd.DataFrame:
+def _load_esto_data(path: Path) -> pd.DataFrame:
     archive_config_dir_once_per_day()
     df, _ = load_augmented_reference_tables(
         esto_path=path,
         ninth_path=Path("data/merged_file_energy_ALL_20251106.csv"),
-        subtotal_mapping_path=subtotal_mapping_path,
         synthetic_rules_path=Path("config/synthetic_reference_rows.csv"),
         cache_dir=Path("data/.cache/industry_reference_tables"),
         apply_esto_subtotal_map=True,
@@ -163,34 +161,18 @@ def _load_mapping(mapping_path: Path) -> dict[str, MappingRow]:
 
 
 def _load_subtotal_products_for_flow(
-    subtotal_mapping_path: Path,
+    esto_df: pd.DataFrame,
     flow_name: str,
 ) -> set[str]:
     """Return subtotal products flagged for a specific ESTO flow."""
-    try:
-        mapping = read_config_table(subtotal_mapping_path, dtype=str)
-    except Exception:
+    if "is_subtotal" not in esto_df.columns:
         return set()
-
-    mapping = mapping.rename(columns={col: str(col).strip().lower() for col in mapping.columns})
-    if {"flows", "products", "is_subtotal"}.issubset(mapping.columns):
-        mapping = mapping.rename(columns={"flows": "flow", "products": "product"})
-    if not {"flow", "product", "is_subtotal"}.issubset(mapping.columns):
-        return set()
-
-    mapping["flow"] = mapping["flow"].astype(str).str.strip()
-    mapping["product"] = mapping["product"].astype(str).str.strip()
-    mapping["is_subtotal"] = (
-        mapping["is_subtotal"]
-        .astype(str)
-        .str.strip()
-        .str.lower()
-        .isin(["true", "1", "yes"])
-    )
-    subset = mapping[
-        (mapping["flow"] == str(flow_name).strip()) & mapping["is_subtotal"]
-    ]
-    return set(subset["product"].dropna().astype(str).str.strip().tolist())
+    work = esto_df.copy()
+    work["flows"] = work["flows"].astype(str).str.strip()
+    work["products"] = work["products"].astype(str).str.strip()
+    work["is_subtotal"] = work["is_subtotal"].fillna(False).map(lambda value: str(value).strip().lower() in {"true", "1", "yes"})
+    subset = work[(work["flows"] == str(flow_name).strip()) & work["is_subtotal"]]
+    return set(subset["products"].dropna().astype(str).str.strip().tolist())
 
 
 def _resolve_mapping(mapping_by_fuel: dict[str, MappingRow], fuel: str) -> MappingRow | None:
@@ -652,7 +634,6 @@ def remap_industry_export_fuels(
     mapping_csv_path: str | Path,
     esto_data_path: str | Path,
     ninth_data_path: str | Path,
-    subtotal_mapping_path: str | Path,
     economy: str,
     base_year: int,
     scenario: str = "reference",
@@ -674,7 +655,6 @@ def remap_industry_export_fuels(
     mapping_csv_path = Path(mapping_csv_path)
     esto_data_path = Path(esto_data_path)
     ninth_data_path = Path(ninth_data_path)
-    subtotal_mapping_path = Path(subtotal_mapping_path)
 
     header_rows, df, columns = read_export_sheet(input_path, sheet_name)
     input_series_format = detect_series_format(df)
@@ -690,17 +670,14 @@ def remap_industry_export_fuels(
     id_cols = [col for col in ["BranchID", "VariableID", "ScenarioID", "RegionID"] if col in columns]
 
     economy_key = normalize_economy_key(economy)
-    esto_df = _load_esto_data(esto_data_path, subtotal_mapping_path)
+    esto_df = _load_esto_data(esto_data_path)
     base_values = build_esto_base_year_values(esto_df, base_year)
     ninth_df = pd.read_csv(ninth_data_path)
 
     if hydrogen_subfuels is None:
         hydrogen_subfuels = DEFAULT_HYDROGEN_SUBFUELS
 
-    subtotal_products = _load_subtotal_products_for_flow(
-        subtotal_mapping_path=subtotal_mapping_path,
-        flow_name=esto_industry_flow,
-    )
+    subtotal_products = _load_subtotal_products_for_flow(esto_df, esto_industry_flow)
     if subtotal_products:
         filtered_mapping: dict[str, MappingRow] = {}
         removed_rows: list[dict[str, str]] = []

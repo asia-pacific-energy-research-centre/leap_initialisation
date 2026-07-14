@@ -15,6 +15,7 @@ from codebase.functions.leap_series_adapter import (
     extract_row_series,
     scale_row_series,
 )
+from codebase.utilities.esto_reference_loader import apply_esto_subtotal_mapping
 
 
 class TestSeriesAdapterAndRemaps(unittest.TestCase):
@@ -45,6 +46,30 @@ class TestSeriesAdapterAndRemaps(unittest.TestCase):
         self.assertEqual(float(scaled.get("2022", scaled.get(2022))), 5.0)
         self.assertEqual(float(scaled.get("2023", scaled.get(2023))), 5.0)
 
+    def test_esto_subtotal_mapping_uses_existing_column_only(self) -> None:
+        df = pd.DataFrame(
+            [
+                {
+                    "economy": "20USA",
+                    "flows": "16.01 Commercial and public services",
+                    "products": "17 Electricity",
+                    "is_subtotal": "TRUE",
+                    "2022": 1.0,
+                },
+                {
+                    "economy": "20USA",
+                    "flows": "16.01 Commercial and public services",
+                    "products": "16 Others",
+                    "is_subtotal": "false",
+                    "2022": 2.0,
+                },
+            ]
+        )
+
+        labeled = apply_esto_subtotal_mapping(df, mapping_path=Path("does/not/matter.xlsx"))
+
+        self.assertListEqual(labeled["is_subtotal"].tolist(), [True, False])
+
     def _write_export_workbook(
         self,
         path: Path,
@@ -65,7 +90,7 @@ class TestSeriesAdapterAndRemaps(unittest.TestCase):
             data=data,
         )
 
-    def _write_industry_support_files(self, tmp: Path) -> tuple[Path, Path, Path, Path]:
+    def _write_industry_support_files(self, tmp: Path) -> tuple[Path, Path, Path]:
         mapping_path = tmp / "industry_mapping.csv"
         mapping_df = pd.DataFrame(
             [
@@ -87,6 +112,7 @@ class TestSeriesAdapterAndRemaps(unittest.TestCase):
                     "economy": "20USA",
                     "flows": "14 Industry sector",
                     "products": "07.01 Motor gasoline",
+                    "is_subtotal": False,
                     "2022": 100.0,
                     "2023": 100.0,
                 }
@@ -108,13 +134,12 @@ class TestSeriesAdapterAndRemaps(unittest.TestCase):
             ]
         )
         ninth_df.to_csv(ninth_path, index=False)
-        subtotal_mapping = Path(__file__).resolve().parents[1] / "config" / "ESTO_subtotal_mapping.xlsx"
-        return mapping_path, esto_path, ninth_path, subtotal_mapping
+        return mapping_path, esto_path, ninth_path
 
     def test_industry_remap_supports_expression_and_year_columns(self) -> None:
         with TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
-            mapping_path, esto_path, ninth_path, subtotal_mapping = self._write_industry_support_files(tmp)
+            mapping_path, esto_path, ninth_path = self._write_industry_support_files(tmp)
 
             common_cols = [
                 "BranchID",
@@ -170,7 +195,6 @@ class TestSeriesAdapterAndRemaps(unittest.TestCase):
                 mapping_csv_path=mapping_path,
                 esto_data_path=esto_path,
                 ninth_data_path=ninth_path,
-                subtotal_mapping_path=subtotal_mapping,
                 economy="20_USA",
                 base_year=2022,
             )
@@ -216,7 +240,6 @@ class TestSeriesAdapterAndRemaps(unittest.TestCase):
                 mapping_csv_path=mapping_path,
                 esto_data_path=esto_path,
                 ninth_data_path=ninth_path,
-                subtotal_mapping_path=subtotal_mapping,
                 economy="20_USA",
                 base_year=2022,
             )
@@ -260,13 +283,11 @@ class TestSeriesAdapterAndRemaps(unittest.TestCase):
             esto_path = tmp / "esto.csv"
             pd.DataFrame(
                 [
-                    {"economy": "20USA", "flows": "16.02 Residential", "products": "17 Electricity", "2022": 100.0},
-                    {"economy": "20USA", "flows": "16.02 Residential", "products": "16 Others", "2022": 50.0},
-                    {"economy": "20USA", "flows": "16.02 Residential", "products": "12 Solar", "2022": 50.0},
+                    {"economy": "20USA", "flows": "16.02 Residential", "products": "17 Electricity", "is_subtotal": False, "2022": 100.0},
+                    {"economy": "20USA", "flows": "16.02 Residential", "products": "16 Others", "is_subtotal": False, "2022": 50.0},
+                    {"economy": "20USA", "flows": "16.02 Residential", "products": "12 Solar", "is_subtotal": False, "2022": 50.0},
                 ]
             ).to_csv(esto_path, index=False)
-            subtotal_mapping = Path(__file__).resolve().parents[1] / "config" / "ESTO_subtotal_mapping.xlsx"
-
             base_cols = [
                 "BranchID",
                 "VariableID",
@@ -335,7 +356,6 @@ class TestSeriesAdapterAndRemaps(unittest.TestCase):
                 output_path=year_output,
                 mapping_csv_path=mapping_path,
                 esto_data_path=esto_path,
-                subtotal_mapping_path=subtotal_mapping,
                 economy="20_USA",
                 base_year=2022,
             )
@@ -356,7 +376,6 @@ class TestSeriesAdapterAndRemaps(unittest.TestCase):
                 output_path=expr_output,
                 mapping_csv_path=mapping_path,
                 esto_data_path=esto_path,
-                subtotal_mapping_path=subtotal_mapping,
                 economy="20_USA",
                 base_year=2022,
             )

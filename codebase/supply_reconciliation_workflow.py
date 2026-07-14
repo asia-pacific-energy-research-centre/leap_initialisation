@@ -252,7 +252,7 @@ from codebase.functions.supply_demand_mapping import (  # noqa: F401
     _build_balance_demand_scenario_map,
     _compact_economy_code,
     _resolve_balance_demand_workbooks_for_economy,
-    _workbook_has_hydrogen_process_detail,
+    _workbook_has_level2_detail,
     _build_projection_only_mapping_status,
     load_balance_demand_inputs,
     load_direct_leap_demand_inputs,
@@ -591,7 +591,11 @@ SCENARIOS = ["Target", "Reference", "Current Accounts"]
 # Set ACTIVE_PRESET to one of the dicts below, then run the cell.
 # ECONOMIES and SCENARIOS above are intentionally kept separate because they
 # change every run; the preset only needs to change when the pass type changes.
-# Variables are unpacked into module scope so run_with_config() picks them up.
+# Every key in the active preset is unpacked into module scope by
+# globals().update(ACTIVE_PRESET) below, so it replaces any existing global of
+# the same name imported from supply_reconciliation_config.py. Entries marked
+# "overrides config default" do exactly that; unmarked entries are workflow-only.
+# Edit a preset for a run-specific setting, and edit config only for its fallback.
 #
 # BASELINE_SEED  — first initialisation pass. Uses ESTO base-year data to seed
 #                  supply/transformation. LEAP results are not yet available,
@@ -621,16 +625,16 @@ _PRESET_BASELINE_SEED = {
     "PREFLIGHT_COMPRESSED_PROJECTION_ONLY": False,
     "RUN_PREFLIGHT_COMPRESSED_PROJECTION": True,
     # --- Pass mode ---
-    "CAPACITY_UNMET_PASS_MODE": "baseline_seed",
-    "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT": True,
+    "CAPACITY_UNMET_PASS_MODE": "baseline_seed",  # overrides config default
+    "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT": True,  # overrides config default
     # Set True when the full power model is not ready; builds three interim
     # power transformation modules (Electricity interim, CHP interim, Heat plant interim).
-    "RUN_ELECTRICITY_HEAT_INTERIM": True,
+    "RUN_ELECTRICITY_HEAT_INTERIM": True,  # overrides config default
 
     # --- Demand source ---
     # When True, use ESTO/ninth aggregated demand (aggregated_demand_workflow)
     # instead of LEAP balance exports. Only works for single-economy runs.
-    "USE_AGGREGATED_DEMAND_AS_DUMMY": True,
+    "USE_AGGREGATED_DEMAND_AS_DUMMY": True,  # overrides config default
     # Optional list of 9th-edition sector or sub1sector codes to omit from the
     # aggregated demand sum.  None means no extra exclusions.
     # Top-level sectors (sectors col):
@@ -645,27 +649,27 @@ _PRESET_BASELINE_SEED = {
     #   15_06_nonspecified_transport     16_01_buildings
     #   16_02_agriculture_and_fishing    16_05_nonspecified_others
     # Example: ["15_transport_sector"]  or  ["15_02_road", "15_03_rail"]
-    "AGGREGATED_DEMAND_EXCLUDED_SECTORS": None,#can be set to ["15_transport_sector"]  or  ["15_02_road", "15_03_rail"]
+    "AGGREGATED_DEMAND_EXCLUDED_SECTORS": None,  # overrides config default
     
     # Write Demand\All demand aggregated\{fuel} branches to a LEAP import workbook
     # so LEAP receives the aggregated demand values (not just used internally).
-    "WRITE_AGGREGATED_DEMAND_WORKBOOK": True,
-    "AGGREGATED_DEMAND_INCLUDE_IN_LEAP_IMPORT": True,
+    "WRITE_AGGREGATED_DEMAND_WORKBOOK": True,  # overrides config default
+    "AGGREGATED_DEMAND_INCLUDE_IN_LEAP_IMPORT": True,  # overrides config default
     # When True, branches are written as Demand\All demand aggregated\{SectorLabel}\{fuel}
     # instead of the flat Demand\All demand aggregated\{fuel}.
     # Enable when LEAP has per-sector sub-branches under the aggregated demand node.
-    "AGGREGATED_DEMAND_USE_SECTOR_BRANCHES": False,
+    "AGGREGATED_DEMAND_USE_SECTOR_BRANCHES": False,  # overrides config default
     # When True, also generate a LEAP import workbook that zeros every non-share
     # Demand branch from the full model export, so those branches produce no energy
     # use while the aggregated demand branches provide the actual demand values.
-    "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT": True,
-    "ZERO_OTHER_DEMAND_INCLUDE_IN_LEAP_IMPORT": True,
+    "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT": True,  # overrides config default
+    "ZERO_OTHER_DEMAND_INCLUDE_IN_LEAP_IMPORT": True,  # overrides config default
 
     # --- Other loss / own-use proxy ---
     # "first" uses ESTO/ninth activity; "second" uses LEAP-balance activity.
     # These are initialisation activity-source choices, not post-initialisation
     # anchored-intensity modes.
-    "OTHER_LOSS_OWN_USE_PROXY_STAGE": "first",
+    "OTHER_LOSS_OWN_USE_PROXY_STAGE": "first",  # overrides config default
 
     # Set True to skip per-economy export generation when combined workbooks already
     # exist on disk — useful for resuming a partial run or quickly re-generating the
@@ -696,6 +700,12 @@ _PRESET_BASELINE_SEED = {
 # generation. Temp-copy patch checks against current full-run baseline seeds
 # reproduced aggregated-demand rows exactly for 01_AUS and 20_USA (420/420 rows,
 # zero row/expression diffs for both).
+#
+# Audited 2026-07-14. "supply" is now PATCHABLE through
+# supply_workflow.assemble_supply_workbooks(export_output_dir=WORKBOOKS_DIR)
+# and was spot-verified for 20_USA end-to-end in the patcher. The seed was
+# restored after the check, so this is a workflow wiring verdict rather than a
+# persistent seed change.
 #
 # Audited 2026-07-10. Transformation auto-regen modules are NOT SAFELY
 # PATCHABLE and are gated in patch_baseline_seeds.run_patch(). The simplified
@@ -734,10 +744,10 @@ _PRESET_RESULTS_UPDATE = {
     "RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE": True,
 
     # --- Pass mode ---
-    "CAPACITY_UNMET_PASS_MODE": "results_update",
-    "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT": False,
+    "CAPACITY_UNMET_PASS_MODE": "results_update",  # overrides config default
+    "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT": False,  # overrides config default
     # Set True when the full power model is not ready.
-    "RUN_ELECTRICITY_HEAT_INTERIM": False,
+    "RUN_ELECTRICITY_HEAT_INTERIM": False,  # overrides config default
 
     # --- Demand sector exclusions ---
     # Optional list of 9th-edition sector or sub1sector codes to omit from the
@@ -754,24 +764,24 @@ _PRESET_RESULTS_UPDATE = {
     #   15_06_nonspecified_transport     16_01_buildings
     #   16_02_agriculture_and_fishing    16_05_nonspecified_others
     # Example: ["15_transport_sector"]  or  ["15_02_road", "15_03_rail"]
-    "AGGREGATED_DEMAND_EXCLUDED_SECTORS": None,
-    "USE_AGGREGATED_DEMAND_AS_DUMMY": True,
-    "WRITE_AGGREGATED_DEMAND_WORKBOOK": True,
-    "AGGREGATED_DEMAND_INCLUDE_IN_LEAP_IMPORT": True,
+    "AGGREGATED_DEMAND_EXCLUDED_SECTORS": None,  # overrides config default
+    "USE_AGGREGATED_DEMAND_AS_DUMMY": True,  # overrides config default
+    "WRITE_AGGREGATED_DEMAND_WORKBOOK": True,  # overrides config default
+    "AGGREGATED_DEMAND_INCLUDE_IN_LEAP_IMPORT": True,  # overrides config default
     # When True, branches are written as Demand\All demand aggregated\{SectorLabel}\{fuel}
     # instead of the flat Demand\All demand aggregated\{fuel}.
     # Enable when LEAP has per-sector sub-branches under the aggregated demand node.
-    "AGGREGATED_DEMAND_USE_SECTOR_BRANCHES": False,
+    "AGGREGATED_DEMAND_USE_SECTOR_BRANCHES": False,  # overrides config default
     # Keep stale detailed demand branches from surviving update imports when the
     # aggregated-demand dummy is still the active demand source.
-    "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT": True,
-    "ZERO_OTHER_DEMAND_INCLUDE_IN_LEAP_IMPORT": True,
+    "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT": True,  # overrides config default
+    "ZERO_OTHER_DEMAND_INCLUDE_IN_LEAP_IMPORT": True,  # overrides config default
 
     # --- Other loss / own-use proxy ---
     # "second" uses LEAP-balance activity after a LEAP run; "first" uses
     # ESTO/ninth activity. Both remain initialisation while target energy is
     # still matched.
-    "OTHER_LOSS_OWN_USE_PROXY_STAGE": "second",
+    "OTHER_LOSS_OWN_USE_PROXY_STAGE": "second",  # overrides config default
 
     # Set True to skip per-economy export generation when combined workbooks already
     # exist on disk — useful for resuming a partial run or quickly re-generating the
@@ -945,17 +955,17 @@ def _run_results_update_readiness_check() -> None:
             issues.append(f"{economy}: missing balance workbook(s): {missing_text}")
             continue
 
-        if economy in HYDROGEN_DUAL_PROCESS_ECONOMIES:
+        if REQUIRE_LEVEL2_BALANCE_EXPORT_DETAIL:
             missing_detail_paths = [
                 path
                 for path in (ref_workbook, tgt_workbook)
-                if not _workbook_has_hydrogen_process_detail(path)
+                if not _workbook_has_level2_detail(path)
             ]
             if missing_detail_paths:
                 detail_text = ", ".join(str(path) for path in missing_detail_paths)
                 issues.append(
-                    f"{economy}: balance workbook(s) need at least Level 2 hydrogen "
-                    f"process detail: {detail_text}"
+                    f"{economy}: balance workbook(s) were exported at Level 1 detail; "
+                    f"re-export with at least Level 2 detail: {detail_text}"
                 )
 
     if issues:

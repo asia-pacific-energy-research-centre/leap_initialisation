@@ -1292,16 +1292,13 @@ def _resolve_balance_demand_workbooks_for_economy(economy: str) -> tuple[Path, P
     return ref_workbook, tgt_workbook
 
 
-def _workbook_has_hydrogen_process_detail(
-    workbook_path: Path | str,
-    *,
-    required_tokens: tuple[str, ...] = ("Electrolysers", "SMR with CCS"),
-) -> bool:
-    """Return True when a workbook exposes the hydrogen process rows we need.
+def _workbook_has_level2_detail(workbook_path: Path | str) -> bool:
+    """Return True when a balance workbook was exported with Level 2+ detail.
 
-    We use this as a coarse Level 2 guard for economies that genuinely need
-    hydrogen process detail. A Level 1 export usually collapses the hydrogen
-    sector to totals and leaves these process labels absent.
+    Level 1 exports collapse every module to a single flat row in column A.
+    Level 2+ exports indent child rows with leading spaces (e.g. '   Oil
+    Refining' under 'Oil Refining'), which is what the branch-path mappings
+    key on, so any indented sector row is a reliable detail signal.
     """
     path = _resolve(workbook_path)
     if not path.exists():
@@ -1314,28 +1311,18 @@ def _workbook_has_hydrogen_process_detail(
         print(f"[WARN] Could not inspect balance workbook {path}: {exc}")
         return False
 
-    wanted = {str(token).strip().lower() for token in required_tokens if str(token).strip()}
-    if not wanted:
-        return True
-    found: set[str] = set()
     try:
         for sheet in wb.worksheets:
             try:
-                for row in sheet.iter_rows(values_only=True):
-                    for value in row:
-                        text = str(value or "").strip().lower()
-                        if not text:
-                            continue
-                        for token in wanted:
-                            if token in text:
-                                found.add(token)
-                        if found == wanted:
-                            return True
+                for row in sheet.iter_rows(min_row=4, max_col=1, values_only=True):
+                    value = row[0]
+                    if isinstance(value, str) and value.strip() and value != value.lstrip(" "):
+                        return True
             except Exception:
                 continue
     finally:
         wb.close()
-    return found == wanted
+    return False
 
 
 def _build_projection_only_mapping_status(balance_mapping_workbook: Path | str) -> pd.DataFrame:
@@ -1511,19 +1498,19 @@ def load_balance_demand_inputs(
                 "economy."
             )
             return comparison_long, mapping_status, issues, matching_diagnostics
-        if economy_text in HYDROGEN_DUAL_PROCESS_ECONOMIES:
+        if REQUIRE_LEVEL2_BALANCE_EXPORT_DETAIL:
             missing_detail_paths = [
                 path
                 for path in (ref_workbook_path, tgt_workbook_path)
-                if path and not _workbook_has_hydrogen_process_detail(path)
+                if path and not _workbook_has_level2_detail(path)
             ]
             if missing_detail_paths:
                 missing_text = ", ".join(str(path) for path in missing_detail_paths)
                 raise ValueError(
-                    "Economy 10_MAS requires at least Level 2 LEAP balance export detail "
-                    "so the hydrogen process rows are visible. The current workbook(s) do "
-                    "not expose both Electrolysers and SMR with CCS: "
-                    f"{missing_text}"
+                    f"Economy {economy_text} balance export workbook(s) were exported at "
+                    "Level 1 detail (no indented branch rows). Re-export the LEAP Energy "
+                    "Balance with at least Level 2 detail so module branch rows are "
+                    f"visible: {missing_text}"
                 )
         base_economy = (
             DIRECT_DEMAND_BASE_ECONOMY
