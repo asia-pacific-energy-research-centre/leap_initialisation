@@ -1216,7 +1216,13 @@ def prepare_supply_primary_table(
     economies: Iterable[str] | None = None,
     dataset_key: str = EXPORT_DATASET_KEY,
 ) -> pd.DataFrame:
-    """Build production and stock-change rows by fuel/year from the supply dataset."""
+    """Build production and stock-change rows by fuel/year from supply sources.
+
+    Production always uses ESTO's observed base year, then the existing
+    ESTO-shaped lookup for mapped 9th projection years.  This avoids a zero in
+    a 9th base-year row replacing valid historical production in ESTO.  The
+    selected supply dataset still supplies stock changes.
+    """
     output_columns = [
         "economy",
         "year",
@@ -1229,6 +1235,10 @@ def prepare_supply_primary_table(
     flow_codes = supply_data_pipeline.FLOW_CODES_BY_DATASET.get(dataset_key)
     if not flow_codes:
         raise KeyError(f"Unknown supply dataset key: {dataset_key}")
+    production_data, production_year_cols = supply_data_pipeline.resolve_dataset(
+        dataset_map, "esto"
+    )
+    production_flow_codes = supply_data_pipeline.FLOW_CODES_BY_DATASET["esto"]
 
     economy_list = workflow_common.normalize_economies(
         economies or supply_data_pipeline.ECONOMIES_TO_ANALYZE
@@ -1240,12 +1250,12 @@ def prepare_supply_primary_table(
     for economy in economy_list:
         for fuel_key, entry in sorted(sector_config.items()):
             production_by_year = supply_data_pipeline.build_supply_value_by_year(
-                data,
-                year_cols,
+                production_data,
+                production_year_cols,
                 economy,
                 entry,
                 "production",
-                flow_codes.get("production"),
+                production_flow_codes["production"],
                 BASE_YEAR,
                 FINAL_YEAR,
                 projection_lookup=supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP,

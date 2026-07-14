@@ -66,9 +66,23 @@ def select_flow_rows(df, economy, flow_value):
     """Select rows for a flow value using flows or sectors column."""
     try:
         if "flows" in df.columns:
-            return select_rows(df, {"economy": economy, "flows": flow_value})
+            selected = select_rows(df, {"economy": economy, "flows": flow_value})
+            if not selected.empty:
+                return selected
+            # ESTO source tables use compact economy codes (for example
+            # ``20USA``), while reconciliation uses underscore-normalized
+            # codes (``20_USA``).  Keep the exact match first so native 9th
+            # rows are untouched, then bridge only that representation gap.
+            normalized_economy = normalize_economy_key(economy)
+            normalized_rows = df["economy"].map(normalize_economy_key).eq(normalized_economy)
+            return df.loc[normalized_rows & df["flows"].eq(flow_value)]
         if "sectors" in df.columns:
-            return select_rows(df, {"economy": economy, "sectors": flow_value})
+            selected = select_rows(df, {"economy": economy, "sectors": flow_value})
+            if not selected.empty:
+                return selected
+            normalized_economy = normalize_economy_key(economy)
+            normalized_rows = df["economy"].map(normalize_economy_key).eq(normalized_economy)
+            return df.loc[normalized_rows & df["sectors"].eq(flow_value)]
         return df.iloc[0:0]
     except Exception as exc:
         print(f"Failed to select flow rows for {flow_value}: {exc}")

@@ -228,21 +228,8 @@ def _build_supply_measures_for_trade_mode() -> list[dict[str, object]]:
             for measure in measures
             if str(measure.get("name") or "").strip().lower() != "imports"
         ]
-    measures.extend(
-        [
-            {
-                "name": "Maximum Production",
-                "flow_key": "max_production",
-                "units": "Petajoule",
-                "per": "",
-                # The current LEAP model decides whether a fuel belongs under
-                # Resources\Primary or Resources\Secondary.  Leave this
-                # measure unfiltered so build_supply_log_rows can use the
-                # workbook-driven branch roots resolved for each fuel.
-                "branch_root": "all",
-            },
-        ]
-    )
+    # Maximum Production is part of the standard supply measures so the
+    # standalone exporter and reconciliation baseline-seed path stay aligned.
     return measures
 
 
@@ -1886,9 +1873,12 @@ def write_per_economy_combined_workbooks(
         _leap_meta = ["BranchID", "VariableID", "ScenarioID", "RegionID",
                       "Branch Path", "Variable", "Scenario", "Region",
                       "Scale", "Units", "Per...", "Expression"]
+        # Excel reads source-workbook headers back as strings in some paths;
+        # recognise both ``2022`` and ``"2022"`` before building the final
+        # baseline-seed Data(...) expression.
         _year_cols = sorted(
-            [c for c in combined.columns if isinstance(c, (int, float)) and 500 < float(c) < 2200],
-            key=float,
+            [c for c in combined.columns if _parse_year_column_token(c) is not None],
+            key=lambda column: int(_parse_year_column_token(column)),
         )
         if "Expression" not in combined.columns:
             combined["Expression"] = pd.NA
@@ -1897,9 +1887,7 @@ def write_per_economy_combined_workbooks(
             ca_labels = {"current accounts", "current account"}
             def _resolve_expression(row):
                 existing = row.get("Expression")
-                if existing is not None and not (
-                    isinstance(existing, float) and pd.isna(existing)
-                ) and str(existing).strip():
+                if existing is not None and not pd.isna(existing) and str(existing).strip():
                     return str(existing)
                 if not any(pd.notna(row.get(year)) for year in _year_cols):
                     return existing

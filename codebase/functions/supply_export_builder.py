@@ -56,6 +56,15 @@ SUPPLY_MEASURES = [
     {"name": "Imports", "flow_key": "imports", "units": "Petajoule", "per": ""},
     {"name": "Exports", "flow_key": "exports", "units": "Petajoule", "per": ""},
     {
+        "name": "Maximum Production",
+        "flow_key": "max_production",
+        "units": "Petajoule",
+        "per": "",
+        # Branch classification decides whether this belongs in Primary or
+        # Secondary resources for the current LEAP template.
+        "branch_root": "all",
+    },
+    {
         "name": "Unmet Requirements",
         "flow_key": None,
         "units": "Percent",
