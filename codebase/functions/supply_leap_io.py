@@ -1903,6 +1903,16 @@ def write_per_economy_combined_workbooks(
                     return str(existing)
                 if not any(pd.notna(row.get(year)) for year in _year_cols):
                     return existing
+                if (
+                    str(row.get("Variable", "")).strip().lower() == "maximum production"
+                    and any(
+                        pd.notna(row.get(year))
+                        and float(row.get(year))
+                        >= float(workflow_cfg.SUPPLY_UNLIMITED_PRODUCTION_YEAR_VALUE)
+                        for year in _year_cols
+                    )
+                ):
+                    return "Unlimited"
                 scenario = str(row.get("Scenario", "")).strip().lower()
                 if scenario in ca_labels:
                     # Current Accounts holds a single historical base-year value;

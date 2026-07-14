@@ -116,6 +116,12 @@ APEC_ECONOMY_REGION_MAP: dict[str, str] = {
 EXPORT_ECONOMY_REGION_OVERRIDES = {"20USA": EXPORT_REGION}
 
 
+def _is_unlimited_production_entry(fuel_entry):
+    """Return whether an ESTO product uses LEAP's explicit Unlimited expression."""
+    product = str((fuel_entry or {}).get("fuel_label_esto") or "").strip()
+    return product in workflow_cfg.SUPPLY_UNLIMITED_PRODUCTION_ESTO_PRODUCTS
+
+
 def get_region_for_economy(economy_code):
     """Return the LEAP region name that should be used for an economy."""
     try:
@@ -227,6 +233,11 @@ def build_supply_log_rows(
                     projection_years=projection_years,
                     code_to_name_mapping=code_to_name_mapping,
                 )
+                if flow_key == "max_production" and _is_unlimited_production_entry(entry):
+                    default_flow_values_by_year[flow_key] = {
+                        year: float(workflow_cfg.SUPPLY_UNLIMITED_PRODUCTION_YEAR_VALUE)
+                        for year in range(base_year, final_year + 1)
+                    }
             for scenario in scenario_names:
                 for branch_root in branch_roots:
                     branch_type = str(branch_root[-1] if branch_root else "").strip().lower()
@@ -254,18 +265,27 @@ def build_supply_log_rows(
                             continue
                         flow_key = measure.get("flow_key")
                         if flow_key:
-                            override_value_by_year = _resolve_supply_override(
-                                flow_value_overrides,
-                                scenario,
-                                fuel_key,
-                                entry,
-                                flow_key,
-                                base_year,
-                                final_year,
-                            )
-                            value_by_year = override_value_by_year or default_flow_values_by_year.get(
-                                flow_key, {year: 0.0 for year in range(base_year, final_year + 1)}
-                            )
+                            if flow_key == "max_production" and _is_unlimited_production_entry(entry):
+                                value_by_year = default_flow_values_by_year.get(
+                                    flow_key,
+                                    {
+                                        year: float(workflow_cfg.SUPPLY_UNLIMITED_PRODUCTION_YEAR_VALUE)
+                                        for year in range(base_year, final_year + 1)
+                                    },
+                                )
+                            else:
+                                override_value_by_year = _resolve_supply_override(
+                                    flow_value_overrides,
+                                    scenario,
+                                    fuel_key,
+                                    entry,
+                                    flow_key,
+                                    base_year,
+                                    final_year,
+                                )
+                                value_by_year = override_value_by_year or default_flow_values_by_year.get(
+                                    flow_key, {year: 0.0 for year in range(base_year, final_year + 1)}
+                                )
                         else:
                             value_by_year = coerce_value_by_year(
                                 measure.get("value", 0.0), base_year, final_year

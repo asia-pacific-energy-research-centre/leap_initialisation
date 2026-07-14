@@ -309,6 +309,22 @@ SUPPLY_ROOT_CLASSIFICATION_SOURCE_SHEET = "Export"
 # the legacy ESTO-based rule is used only for those missing fuels.
 SUPPLY_ROOT_CLASSIFICATION_STRICT = False
 
+# LEAP's explicit unlimited-production expression is written to the import
+# sheet, while the human-facing FOR_VIEWING sheet carries the numeric value
+# LEAP uses for the same setting.
+SUPPLY_UNLIMITED_PRODUCTION_YEAR_VALUE = 1e15
+SUPPLY_UNLIMITED_PRODUCTION_ESTO_PRODUCTS = frozenset(
+    {
+        "09 Nuclear",
+        "10 Hydro",
+        "11 Geothermal",
+        "12.01 of which: Photovoltaics",
+        "12.99 Solar nonspecified",
+        "13 Tide, wave, ocean",
+        "14 Wind",
+    }
+)
+
 ###############################
 # SUPPLY WORKFLOW (WRAPPER)
 ###############################
