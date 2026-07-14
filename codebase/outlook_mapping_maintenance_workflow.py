@@ -25,6 +25,8 @@ import openpyxl
 from openpyxl import load_workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 
+from codebase.mapping_tools.excel_sheet_utils import safe_excel_sheet_name  # noqa: E402
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 try:
     if str(REPO_ROOT) not in sys.path:
@@ -233,8 +235,10 @@ def _write_mapping_conflict_report(
     if output_path.exists():
         _assert_not_open(output_path)
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+        used_sheet_names: set[str] = set()
         for sheet_name, sheet_df in report_sheets.items():
-            sheet_df.to_excel(writer, sheet_name=sheet_name[:31], index=False)
+            safe_sheet_name = safe_excel_sheet_name(sheet_name, used_sheet_names)
+            sheet_df.to_excel(writer, sheet_name=safe_sheet_name, index=False)
 
 
 def _write_excel_report(output_path: Path, sheets: dict[str, pd.DataFrame]) -> None:
@@ -244,8 +248,9 @@ def _write_excel_report(output_path: Path, sheets: dict[str, pd.DataFrame]) -> N
         _assert_not_open(output_path)
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+        used_sheet_names: set[str] = set()
         for sheet_name, sheet_df in sheets.items():
-            safe_name = sheet_name[:31]
+            safe_name = safe_excel_sheet_name(sheet_name, used_sheet_names)
             sheet_df.to_excel(writer, sheet_name=safe_name, index=False)
             worksheet = writer.book[safe_name]
             worksheet.freeze_panes = "A2"
@@ -929,12 +934,14 @@ def _replace_sheet_with_dataframe(workbook_path: Path, sheet_name: str, frame: p
             "load it in editable mode. Close and re-save the workbook in Excel, or "
             "restore a recent copy from config/archive, then re-run this workflow."
         ) from exc
-    if sheet_name in workbook.sheetnames:
-        sheet_index = workbook.sheetnames.index(sheet_name)
-        del workbook[sheet_name]
-        worksheet = workbook.create_sheet(title=sheet_name, index=sheet_index)
+    safe_sheet_name = safe_excel_sheet_name(sheet_name)
+    existing_sheet_name = sheet_name if sheet_name in workbook.sheetnames else safe_sheet_name
+    if existing_sheet_name in workbook.sheetnames:
+        sheet_index = workbook.sheetnames.index(existing_sheet_name)
+        del workbook[existing_sheet_name]
+        worksheet = workbook.create_sheet(title=safe_sheet_name, index=sheet_index)
     else:
-        worksheet = workbook.create_sheet(title=sheet_name)
+        worksheet = workbook.create_sheet(title=safe_sheet_name)
     for row in dataframe_to_rows(frame, index=False, header=True):
         worksheet.append(row)
     workbook.save(workbook_path)
@@ -1095,8 +1102,10 @@ def build_researcher_mappings_workbook(
     }
 
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+        used_sheet_names: set[str] = set()
         for sheet_name, sheet_df in sheets.items():
-            sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
+            safe_sheet_name = safe_excel_sheet_name(sheet_name, used_sheet_names)
+            sheet_df.to_excel(writer, sheet_name=safe_sheet_name, index=False)
 
     return {
         "researcher_mappings_workbook": str(output_path),

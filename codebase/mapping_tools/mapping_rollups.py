@@ -17,6 +17,8 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 
+from codebase.mapping_tools.excel_sheet_utils import safe_excel_sheet_name
+
 #%%
 ROLLUP_SHEET_COLUMNS = {
     "leap_rollup_rules": [
@@ -385,7 +387,7 @@ def ensure_rollup_sheets(workbook_path: Path) -> None:
                     existing_headers.append(column)
                 changed = True
             continue
-        worksheet = workbook.create_sheet(title=sheet_name)
+        worksheet = workbook.create_sheet(title=safe_excel_sheet_name(sheet_name))
         worksheet.append(columns)
         changed = True
     if changed:
@@ -406,7 +408,7 @@ def ensure_individual_mapping_exception_sheet(workbook_path: Path) -> None:
             existing_headers.append(column)
         workbook.save(workbook_path)
         return
-    worksheet = workbook.create_sheet(title="individual_mapping_exceptions")
+    worksheet = workbook.create_sheet(title=safe_excel_sheet_name("individual_mapping_exceptions"))
     worksheet.append(INDIVIDUAL_MAPPING_EXCEPTION_COLUMNS)
     workbook.save(workbook_path)
 
@@ -414,12 +416,14 @@ def ensure_individual_mapping_exception_sheet(workbook_path: Path) -> None:
 def replace_sheet_with_dataframe(workbook_path: Path, sheet_name: str, frame: pd.DataFrame) -> None:
     """Replace one workbook sheet with a dataframe."""
     workbook = load_workbook(workbook_path)
-    if sheet_name in workbook.sheetnames:
-        sheet_index = workbook.sheetnames.index(sheet_name)
-        del workbook[sheet_name]
-        worksheet = workbook.create_sheet(title=sheet_name, index=sheet_index)
+    safe_sheet_name = safe_excel_sheet_name(sheet_name)
+    existing_sheet_name = sheet_name if sheet_name in workbook.sheetnames else safe_sheet_name
+    if existing_sheet_name in workbook.sheetnames:
+        sheet_index = workbook.sheetnames.index(existing_sheet_name)
+        del workbook[existing_sheet_name]
+        worksheet = workbook.create_sheet(title=safe_sheet_name, index=sheet_index)
     else:
-        worksheet = workbook.create_sheet(title=sheet_name)
+        worksheet = workbook.create_sheet(title=safe_sheet_name)
     for row in dataframe_to_rows(frame, index=False, header=True):
         worksheet.append(row)
     workbook.save(workbook_path)

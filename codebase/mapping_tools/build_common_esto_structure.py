@@ -15,6 +15,8 @@ from typing import Any
 
 import pandas as pd
 
+from codebase.mapping_tools.excel_sheet_utils import safe_excel_sheet_name
+
 #%%
 COMMON_STRUCTURE_VERSION = "common_esto_v1"
 AXIS_PARTITION_SOURCE_COMPONENT_LIMIT = 50
@@ -948,13 +950,17 @@ def save_outputs(
     with pd.ExcelWriter(output_dir / "common_esto_rows.xlsx", engine="openpyxl") as writer:
         common_rows_df.to_excel(writer, sheet_name="common_esto_rows", index=False)
         map_df.to_excel(writer, sheet_name="esto_to_common_esto_map", index=False)
+        used_sheet_names: set[str] = {"common_esto_rows", "esto_to_common_esto_map"}
         for name, df in qa_outputs.items():
-            df.to_excel(writer, sheet_name=name[:31], index=False)
+            sheet_name = safe_excel_sheet_name(name, used_sheet_names)
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
     with pd.ExcelWriter(output_dir / "common_esto_structure.xlsx", engine="openpyxl") as writer:
         common_rows_df.to_excel(writer, sheet_name="common_esto_rows", index=False)
         map_df.to_excel(writer, sheet_name="esto_to_common_esto_map", index=False)
+        used_sheet_names = {"common_esto_rows", "esto_to_common_esto_map"}
         for name, df in qa_outputs.items():
-            df.to_excel(writer, sheet_name=name[:31], index=False)
+            sheet_name = safe_excel_sheet_name(name, used_sheet_names)
+            df.to_excel(writer, sheet_name=sheet_name, index=False)
 
 
 def build_common_esto_for_scope(

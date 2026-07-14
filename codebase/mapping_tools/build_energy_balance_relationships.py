@@ -13,6 +13,8 @@ import sys
 
 import pandas as pd
 
+from codebase.mapping_tools.excel_sheet_utils import safe_excel_sheet_name
+
 #%%
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -66,8 +68,14 @@ def save_relationship_outputs(
         relationship_df.to_excel(writer, sheet_name="energy_balance_relationships", index=False)
         relationship_catalogue_df.to_excel(writer, sheet_name="relationship_catalogue", index=False)
         rolled_mapping_rows_df.to_excel(writer, sheet_name="rolled_mapping_rows", index=False)
+        used_sheet_names: set[str] = {
+            "energy_balance_relationships",
+            "relationship_catalogue",
+            "rolled_mapping_rows",
+        }
         for qa_name, qa_df in qa_tables.items():
-            qa_df.to_excel(writer, sheet_name=qa_name[:31], index=False)
+            sheet_name = safe_excel_sheet_name(qa_name, used_sheet_names)
+            qa_df.to_excel(writer, sheet_name=sheet_name, index=False)
 
 
 def build_energy_balance_relationships(
