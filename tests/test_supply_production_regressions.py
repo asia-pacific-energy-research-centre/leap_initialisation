@@ -199,4 +199,12 @@ def test_wind_maximum_production_is_written_to_standalone_supply_workbook(
         & (exported["Variable"] == "Maximum Production")
         & (exported["Scenario"] == "Reference")
     ].iloc[0]
-    assert float(row[2023]) == pytest.approx(1e15)
+    assert row["Expression"] == "Unlimited"
+
+    viewing = pd.read_excel(workbook_path, sheet_name="FOR_VIEWING", header=2)
+    viewing_row = viewing.loc[
+        (viewing["Branch Path"] == "Resources\\Primary\\Wind")
+        & (viewing["Variable"] == "Maximum Production")
+        & (viewing["Scenario"] == "Reference")
+    ].iloc[0]
+    assert float(viewing_row["2023"]) == pytest.approx(1e15)

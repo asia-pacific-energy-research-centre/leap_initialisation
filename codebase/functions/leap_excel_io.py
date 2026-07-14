@@ -3,6 +3,7 @@ import pandas as pd
 from pathlib import Path
 
 from codebase.configuration.config import region_id_name_dict, scenario_dict
+from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions.leap_expressions import expression_to_series, parse_expression
 
 # def get_leap_metadata(measure):
@@ -570,6 +571,27 @@ def prepare_for_leap_sheet_df(df: pd.DataFrame) -> pd.DataFrame:
     return df.drop(columns=["Method", "__parent"], errors="ignore").copy()
 
 
+def _write_unlimited_production_expressions(df: pd.DataFrame) -> pd.DataFrame:
+    """Write LEAP's Unlimited expression for unlimited Maximum Production rows."""
+    if df.empty or "Variable" not in df.columns:
+        return df
+    year_columns = _year_columns_in_order(df)
+    if not year_columns:
+        return df
+    numeric_years = df[year_columns].apply(pd.to_numeric, errors="coerce")
+    unlimited_rows = (
+        df["Variable"].astype(str).str.strip().str.casefold().eq("maximum production")
+        & numeric_years.ge(float(workflow_cfg.SUPPLY_UNLIMITED_PRODUCTION_YEAR_VALUE)).any(axis=1)
+    )
+    if not unlimited_rows.any():
+        return df
+    out = df.copy()
+    if "Expression" not in out.columns:
+        out["Expression"] = pd.NA
+    out.loc[unlimited_rows, "Expression"] = "Unlimited"
+    return out
+
+
 def add_leap_preamble(df: pd.DataFrame, *, model_name: str = "") -> pd.DataFrame:
     """Add the two-row LEAP preamble and header row to an export dataframe."""
     cols = list(df.columns)
@@ -604,7 +626,11 @@ def save_export_files(leap_export_df, export_df_for_viewing, leap_export_filenam
     # Row 1: Empty
     # Row 2: Column headers (will be set by pandas)
     
-    leap_export_df2 = prepare_for_leap_sheet_df(leap_export_df)
+    # Keep the sentinel in FOR_VIEWING for its year-by-year display, while the
+    # LEAP import sheet receives the expression the application understands.
+    leap_export_df2 = _write_unlimited_production_expressions(
+        prepare_for_leap_sheet_df(leap_export_df)
+    )
     export_df_for_viewing2 = prepare_for_viewing_sheet_df(
         export_df_for_viewing,
         base_year=base_year,
