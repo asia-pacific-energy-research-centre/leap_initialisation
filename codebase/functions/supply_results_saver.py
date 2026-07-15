@@ -3391,6 +3391,7 @@ def run_results_linked_transformation_supply_workflow(
                 leap_balance_workbook_path=OTHER_LOSS_OWN_USE_LEAP_BALANCE_WORKBOOK_PATH,
                 leap_balance_scenario=OTHER_LOSS_OWN_USE_LEAP_BALANCE_SCENARIO,
                 leap_balance_date_id=OTHER_LOSS_OWN_USE_LEAP_BALANCE_DATE_ID,
+                output_root=OUTPUT_DIR / "supporting_files" / "other_loss_own_use_proxy",
             )
         econ_agg_demand: list[Path] = []
         if WRITE_AGGREGATED_DEMAND_WORKBOOK and USE_AGGREGATED_DEMAND_AS_DUMMY:

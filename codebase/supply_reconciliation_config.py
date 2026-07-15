@@ -357,8 +357,8 @@ def refresh_output_paths_for_pass_mode(
 ) -> dict[str, Path]:
     """Refresh pass-specific output paths after a notebook preset is applied.
 
-    A nonblank ``run_output_label`` isolates all generated workbooks, caches,
-    diagnostics, state, and timing history below ``runs/<label>``.
+    A nonblank ``run_output_label`` isolates all generated workbooks, balance
+    tables, caches, diagnostics, state, and timing history below ``runs/<label>``.
     """
     normalized_mode = str(capacity_unmet_pass_mode).strip().lower()
     normalized_mode = _PASS_MODE_ALIASES.get(normalized_mode, normalized_mode)
@@ -370,6 +370,7 @@ def refresh_output_paths_for_pass_mode(
 
     global CAPACITY_UNMET_PASS_MODE, RUN_OUTPUT_LABEL
     global OUTPUT_DIR, EXPORT_OUTPUT_DIR, TRANSFORMATION_EXPORT_OUTPUT_DIR
+    global YEARLY_BALANCE_DIR, CONVENTIONAL_BALANCE_DIR, CAPACITY_UNMET_RESULTS_DIR
     global RESULTS_SINGLE_FILE_ARCHIVE_DIR, RESULTS_CHECKS_DIR, RESULTS_RUNTIME_DIR
     global CAPACITY_UNMET_STATE_PATH, LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH
 
@@ -389,6 +390,15 @@ def refresh_output_paths_for_pass_mode(
     else:
         RUN_OUTPUT_LABEL = None
         OUTPUT_DIR = INTEGRATED_LEAP_EXPORTS_ROOT / _PASS_MODE_SUBDIR[normalized_mode]
+    if RUN_OUTPUT_LABEL:
+        YEARLY_BALANCE_DIR = OUTPUT_DIR / "balance_tables" / "yearly_balance_tables"
+        CONVENTIONAL_BALANCE_DIR = OUTPUT_DIR / "balance_tables" / "conventional_balance_tables"
+    else:
+        YEARLY_BALANCE_DIR = BALANCE_TABLES_ROOT / "supply_reconciliation" / "yearly_balance_tables"
+        CONVENTIONAL_BALANCE_DIR = (
+            BALANCE_TABLES_ROOT / "supply_reconciliation" / "conventional_balance_tables"
+        )
+    CAPACITY_UNMET_RESULTS_DIR = YEARLY_BALANCE_DIR
     EXPORT_OUTPUT_DIR = OUTPUT_DIR / "workbooks"
     TRANSFORMATION_EXPORT_OUTPUT_DIR = EXPORT_OUTPUT_DIR
     RESULTS_SINGLE_FILE_ARCHIVE_DIR = OUTPUT_DIR / "supporting_files" / "archive"
@@ -403,6 +413,9 @@ def refresh_output_paths_for_pass_mode(
         "RUN_OUTPUT_LABEL": RUN_OUTPUT_LABEL,
         "EXPORT_OUTPUT_DIR": EXPORT_OUTPUT_DIR,
         "TRANSFORMATION_EXPORT_OUTPUT_DIR": TRANSFORMATION_EXPORT_OUTPUT_DIR,
+        "YEARLY_BALANCE_DIR": YEARLY_BALANCE_DIR,
+        "CONVENTIONAL_BALANCE_DIR": CONVENTIONAL_BALANCE_DIR,
+        "CAPACITY_UNMET_RESULTS_DIR": CAPACITY_UNMET_RESULTS_DIR,
         "RESULTS_SINGLE_FILE_ARCHIVE_DIR": RESULTS_SINGLE_FILE_ARCHIVE_DIR,
         "RESULTS_CHECKS_DIR": RESULTS_CHECKS_DIR,
         "RESULTS_RUNTIME_DIR": RESULTS_RUNTIME_DIR,

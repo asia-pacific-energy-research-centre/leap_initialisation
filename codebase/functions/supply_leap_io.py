@@ -1099,6 +1099,7 @@ def build_other_loss_own_use_proxy_workbooks_for_results_supply(
     leap_balance_workbook_path: Path | str | None = None,
     leap_balance_scenario: str | None = None,
     leap_balance_date_id: str | None = None,
+    output_root: Path | str | None = None,
 ) -> list[Path]:
     """Build one other loss/own-use proxy workbook per economy for this run."""
     economy_list = workflow_common.normalize_economies(economies)
@@ -1131,6 +1132,7 @@ def build_other_loss_own_use_proxy_workbooks_for_results_supply(
             leap_balance_scenario=leap_balance_scenario or OTHER_LOSS_OWN_USE_LEAP_BALANCE_SCENARIO,
             leap_balance_date_id=leap_balance_date_id,
             output_fuel_scope=output_fuel_scope or OTHER_LOSS_OWN_USE_OUTPUT_FUEL_SCOPE,
+            output_root=output_root,
         )
         paths.append(Path(output_path))
     return paths

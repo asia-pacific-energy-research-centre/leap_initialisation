@@ -1274,6 +1274,7 @@ def assemble_proxy_workbook(
     leap_balance_scenario: str = LEAP_BALANCE_SCENARIO,
     leap_balance_date_id: str | None = LEAP_BALANCE_DATE_ID,
     output_fuel_scope: str = OUTPUT_FUEL_VALIDATION_SCOPE,
+    output_root: Path | str | None = None,
     export_key_workbook_path: Path | str = EXPORT_KEY_WORKBOOK_PATH,
     export_key_sheet: str = EXPORT_KEY_WORKBOOK_SHEET,
     measure_units: Mapping[str, Mapping[str, object]] | None = None,
@@ -1342,7 +1343,8 @@ def assemble_proxy_workbook(
     if detail_df.empty:
         raise ValueError("No proxy detail rows were generated; check config and source data.")
 
-    output_dir = _resolve(OUTPUT_ROOT) / _normalize_economy(economy)
+    resolved_output_root = _resolve(output_root or OUTPUT_ROOT)
+    output_dir = resolved_output_root / _normalize_economy(economy)
     output_dir.mkdir(parents=True, exist_ok=True)
     detail_path = output_dir / "proxy_activity_intensity_detail.csv"
     summary_path = output_dir / "proxy_activity_summary.csv"
@@ -1531,6 +1533,8 @@ def assemble_proxy_workbook(
         raise ValueError("Export dataframe is empty.")
     expression_df = build_expression_export_df(export_df, base_year=EXPORT_BASE_YEAR)
     output_path = Path(_resolve_export_filename(_normalize_economy(economy), scenario_list, export_filename))
+    if output_root is not None:
+        output_path = output_dir / output_path.name
     save_export_files(
         leap_export_df=expression_df,
         export_df_for_viewing=export_df,
