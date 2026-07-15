@@ -1635,13 +1635,17 @@ def build_proxy_source_coverage_gaps(
         return "; ".join(cleaned)
 
     def _match_esto_config(row_flow: str, row_product: str, config: Mapping[str, object]) -> tuple[bool, bool]:
-        target_flows = {str(flow).strip() for flow in config.get("esto_target_flows", []) if str(flow).strip()}
+        target_esto = config.get("target_sources", {}).get("esto", {})
+        target_flows = {
+            str(flow).strip()
+            for flow in target_esto.get("flows", config.get("esto_target_flows", []))
+            if str(flow).strip()
+        }
         if row_flow not in target_flows:
             return False, False
-        esto_cfg = config.get("activity_sources", {}).get("esto", {})
-        prefixes = list(esto_cfg.get("product_prefixes", []))
-        exact_products = {str(item).strip() for item in esto_cfg.get("include_exact_products", []) if str(item).strip()}
-        exclude_products = {str(item).strip().lower() for item in esto_cfg.get("exclude_products", []) if str(item).strip()}
+        prefixes = list(target_esto.get("product_prefixes", []))
+        exact_products = {str(item).strip() for item in target_esto.get("include_exact_products", []) if str(item).strip()}
+        exclude_products = {str(item).strip().lower() for item in target_esto.get("exclude_products", []) if str(item).strip()}
         if row_product and row_product.lower() in exclude_products:
             return True, False
         if prefixes or exact_products:
@@ -1651,14 +1655,18 @@ def build_proxy_source_coverage_gaps(
         return True, True
 
     def _match_ninth_config(row_sector: str, row_fuel: str, config: Mapping[str, object]) -> tuple[bool, bool]:
-        target_sectors = {str(sector).strip() for sector in config.get("ninth_target_sectors", []) if str(sector).strip()}
+        target_ninth = config.get("target_sources", {}).get("ninth", {})
+        target_sectors = {
+            str(sector).strip()
+            for sector in target_ninth.get("sector_codes", config.get("ninth_target_sectors", []))
+            if str(sector).strip()
+        }
         if row_sector not in target_sectors:
             return False, False
-        ninth_cfg = config.get("activity_sources", {}).get("ninth", {})
-        fuels = {str(item).strip().lower() for item in ninth_cfg.get("fuels", []) if str(item).strip()}
-        subfuels = {str(item).strip().lower() for item in ninth_cfg.get("subfuels", []) if str(item).strip()}
-        exclude_fuels = {str(item).strip().lower() for item in ninth_cfg.get("exclude_fuels", []) if str(item).strip()}
-        exclude_subfuels = {str(item).strip().lower() for item in ninth_cfg.get("exclude_subfuels", []) if str(item).strip()}
+        fuels = {str(item).strip().lower() for item in target_ninth.get("fuels", []) if str(item).strip()}
+        subfuels = {str(item).strip().lower() for item in target_ninth.get("subfuels", []) if str(item).strip()}
+        exclude_fuels = {str(item).strip().lower() for item in target_ninth.get("exclude_fuels", []) if str(item).strip()}
+        exclude_subfuels = {str(item).strip().lower() for item in target_ninth.get("exclude_subfuels", []) if str(item).strip()}
         if row_fuel and row_fuel.lower() in exclude_fuels.union(exclude_subfuels):
             return True, False
         if fuels or subfuels:

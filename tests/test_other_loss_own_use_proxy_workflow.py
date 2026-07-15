@@ -44,6 +44,44 @@ def test_proxy_source_coverage_gaps_are_filtered_to_requested_economy() -> None:
     assert gaps.iloc[0]["source_code"] == "10.99 Test own use"
 
 
+def test_source_coverage_uses_nested_target_sector_config() -> None:
+    """Configured 9th target sectors must not become false-positive gaps."""
+    config = workflow.make_proxy_config(
+        enabled=True,
+        process_key="electricity_chp_and_heat_plants",
+        process_label="Electricity, CHP and heat plants",
+        esto_target_flows=["10.01.01 Electricity, CHP and heat plants"],
+        ninth_target_sectors=["10_01_01_electricity_chp_and_heat_plants"],
+    )
+    ninth = pd.DataFrame([
+        {
+            "economy_key": "02_BD",
+            "scenarios": "target",
+            "sectors": "10_01_01_electricity_chp_and_heat_plants",
+            "sub1sectors": "x",
+            "sub2sectors": "x",
+            "sub3sectors": "x",
+            "sub4sectors": "x",
+            "fuels": "17_electricity",
+            "subfuels": "x",
+            "subtotal_layout": False,
+            "subtotal_results": False,
+            2023: -20.0,
+        }
+    ])
+
+    gaps = build_proxy_source_coverage_gaps(
+        esto_data=pd.DataFrame(),
+        ninth_data=ninth,
+        configs=[config],
+        economy="02_BD",
+        base_year=2022,
+        final_year=2023,
+    )
+
+    assert gaps.empty
+
+
 def test_proxy_config_scaffolds_all_own_use_children() -> None:
     expected = {
         "10_01_01_electricity_chp_and_heat_plants",
