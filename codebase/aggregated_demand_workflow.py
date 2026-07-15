@@ -298,19 +298,19 @@ def _apply_first_projection_year_bridge(
     blend_weight: float = FIRST_PROJECTION_YEAR_BLEND_WEIGHT,
     enabled: bool = APPLY_FIRST_PROJECTION_YEAR_BRIDGE_DEFAULT,
 ) -> pd.DataFrame:
-    """Reduce the first projection year and carry the same offset forward.
+    """Bridge the first projection year toward the base year and carry the offset forward.
 
     The ESTO base year and ninth projection start can come from slightly
     different source vintages. When the first projected year is materially
-    above the base year, this helper computes a reduction from the first
-    projected year and applies the same absolute reduction to every projected
-    year in the series.
+    above or below the base year, this helper computes a bridge adjustment
+    from the first projected year and applies the same offset to every
+    projected year in the series.
 
         reduced = base + blend_weight * (projection - base)
         offset = projection - reduced
 
-    Each projected year is then reduced by ``offset`` and clipped at zero.
-    Flat, declining, and zero-base series are left unchanged.
+    Each projected year is then adjusted by ``offset`` and clipped at zero.
+    Flat and zero-base series are left unchanged.
     """
     if not enabled or demand_df is None or demand_df.empty:
         return demand_df
@@ -337,19 +337,19 @@ def _apply_first_projection_year_bridge(
         projection_value = float(
             pd.to_numeric(grp.loc[projection_mask, "value"], errors="coerce").fillna(0.0).sum()
         )
-        if base_value <= 0 or projection_value <= base_value:
+        if base_value <= 0 or projection_value == base_value:
             adjusted_groups.append(grp)
             continue
 
         adjusted_first_year = base_value + (projection_value - base_value) * float(blend_weight)
-        reduction_amount = max(projection_value - adjusted_first_year, 0.0)
-        if reduction_amount <= 0:
+        offset = projection_value - adjusted_first_year
+        if offset == 0:
             adjusted_groups.append(grp)
             continue
 
         future_mask = year_series.ge(int(projection_start_year))
         future_values = pd.to_numeric(grp.loc[future_mask, "value"], errors="coerce").fillna(0.0)
-        grp.loc[future_mask, "value"] = (future_values - reduction_amount).clip(lower=0.0)
+        grp.loc[future_mask, "value"] = (future_values - offset).clip(lower=0.0)
         if future_mask.any():
             adjusted_count += 1
         adjusted_groups.append(grp)

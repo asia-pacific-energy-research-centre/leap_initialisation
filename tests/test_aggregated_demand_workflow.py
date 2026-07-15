@@ -162,9 +162,50 @@ def test_first_projection_year_bridge_applies_same_offset_to_all_projection_year
     assert values[("Electricity", 2023)] == pytest.approx(100.0)
     assert values[("Electricity", 2024)] == pytest.approx(110.0)
     assert values[("Electricity", 2025)] == pytest.approx(0.0)
-    assert values[("Gas", 2023)] == pytest.approx(40.0)
-    assert values[("Gas", 2024)] == pytest.approx(45.0)
+    assert values[("Gas", 2023)] == pytest.approx(50.0)
+    assert values[("Gas", 2024)] == pytest.approx(55.0)
     assert values[("Hydrogen", 2023)] == pytest.approx(30.0)
+
+
+def test_first_projection_year_bridge_also_closes_first_year_drops():
+    raw = pd.DataFrame(
+        [
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "leap_fuel_name": "Electricity",
+                "year": 2022,
+                "value": 100.0,
+            },
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "leap_fuel_name": "Electricity",
+                "year": 2023,
+                "value": 80.0,
+            },
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "leap_fuel_name": "Electricity",
+                "year": 2024,
+                "value": 90.0,
+            },
+        ]
+    )
+
+    bridged = _apply_first_projection_year_bridge(
+        raw,
+        base_year=2022,
+        projection_start_year=2023,
+        blend_weight=0.0,
+        enabled=True,
+    )
+
+    values = bridged.set_index("year")["value"].to_dict()
+    assert values[2022] == pytest.approx(100.0)
+    assert values[2023] == pytest.approx(100.0)
+    assert values[2024] == pytest.approx(110.0)
 
 
 def test_build_aggregated_demand_bridge_mode_switch(monkeypatch):
