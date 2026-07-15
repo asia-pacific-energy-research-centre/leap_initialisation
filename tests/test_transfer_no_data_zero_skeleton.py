@@ -8,6 +8,7 @@ import pandas as pd
 
 from codebase.functions import supply_leap_io
 from codebase.functions import transformation_record_builder as record_builder
+from codebase import transfers_workflow
 
 
 def _minimal_transfer_catalog() -> pd.DataFrame:
@@ -73,11 +74,16 @@ def test_transfer_override_writer_keeps_no_data_economy(
 ) -> None:
     """No-data economies still receive one producer workbook per scenario."""
     calls: list[tuple[str, str, int]] = []
+    projection_scenarios: list[str | None] = []
+
+    def _fake_build_transfer_rows(economy, use_output_targets, scenario=None):
+        projection_scenarios.append(scenario)
+        return []
 
     monkeypatch.setattr(
         supply_leap_io.transfers_workflow,
         "build_transfer_rows",
-        lambda economy, use_output_targets: [],
+        _fake_build_transfer_rows,
     )
 
     def _fake_save(
@@ -125,6 +131,36 @@ def test_transfer_override_writer_keeps_no_data_economy(
     ]
     assert all(record_count == 0 for _, _, record_count in calls)
     assert all("05_PRC" in path.name for path in paths)
+    assert projection_scenarios == ["target", "reference", "reference"]
+
+
+def test_transfer_projection_routes_generic_crosswalk_flow_to_active_subflow() -> None:
+    """Canonical 08 Transfers projections must feed the historical transfer flow."""
+    projection = pd.DataFrame(
+        {
+            "economy_key": ["20USA"],
+            "esto_flow": ["08 Transfers"],
+            "esto_product": ["07.11 Ethane"],
+            2023: [25.0],
+        }
+    )
+    history = pd.DataFrame(
+        {
+            "economy": ["20_USA", "20_USA"],
+            "flows": ["08.01 Recycled products", "08.99 Transfers nonspecified"],
+            "products": ["07.11 Ethane", "07.11 Ethane"],
+            2022: [0.0, 10.0],
+        }
+    )
+
+    routed = transfers_workflow._route_transfer_projection_to_historical_flow(
+        projection,
+        history,
+        base_year=2022,
+    )
+
+    assert routed.loc[0, "esto_flow"] == "08.99 Transfers nonspecified"
+    assert routed.loc[0, 2023] == 25.0
 
 
 #%%

@@ -650,6 +650,23 @@ def merge_projection_into_esto(
         right_on=["economy_key", "esto_flow", "esto_product"],
         how="left",
     )
+    missing_match_mask = merged[[f"{year}_proj" for year in proj_cols]].isna().all(axis=1)
+    if missing_match_mask.any():
+        missing_rows = merged.loc[missing_match_mask, ["economy", "flows", "products"]]
+        affected_flows = (
+            missing_rows.groupby("flows", dropna=False)
+            .size()
+            .sort_values(ascending=False)
+        )
+        flow_summary = ", ".join(
+            f"{flow} ({count})" for flow, count in affected_flows.head(8).items()
+        )
+        print(
+            "[WARN] No mapped 9th projection match for "
+            f"{len(missing_rows)} ESTO rows across {missing_rows['economy'].nunique()} economies; "
+            "projection years will be zero-filled. "
+            f"Affected flows: {flow_summary}"
+        )
     for year in proj_cols:
         proj_col = f"{year}_proj"
         merged[year] = merged[proj_col].fillna(0.0)

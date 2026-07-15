@@ -37,6 +37,7 @@ except Exception as exc:
     print(f"Failed to add repo root to sys.path: {exc}")
 
 from codebase.functions import transformation_analysis_utils as core
+from codebase.functions.ninth_projection_mapping import normalize_economy_key
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions import leap_api, leap_exports
 from codebase.functions.analysis_input_write_dispatcher import (
@@ -536,6 +537,87 @@ def select_transfer_flows(
     return []
 
 
+def _route_transfer_projection_to_historical_flow(
+    projection_df: pd.DataFrame,
+    historical_transfer_data: pd.DataFrame,
+    base_year: int,
+) -> pd.DataFrame:
+    """Route generic ``08 Transfers`` projections to an active ESTO subflow.
+
+    The canonical 9th-to-ESTO crosswalk intentionally targets ``08 Transfers``.
+    ESTO history, however, commonly records the same values in one of its
+    transfer subflows (for USA this is ``08.99 Transfers nonspecified``).  Use
+    the largest absolute base-year subflow as the destination so the existing
+    transfer-process configuration continues to see one coherent time series.
+    """
+    if projection_df.empty or historical_transfer_data.empty:
+        return projection_df
+    if base_year not in historical_transfer_data.columns:
+        return projection_df
+    working = projection_df.copy()
+    history = historical_transfer_data.copy()
+    history[base_year] = pd.to_numeric(history[base_year], errors="coerce").fillna(0.0)
+    history["flows"] = history["flows"].astype(str).str.strip()
+    history["economy_key"] = history["economy"].apply(normalize_economy_key)
+    subflow_history = history[history["flows"].isin(TRANSFER_SUBFLOWS)]
+    if subflow_history.empty:
+        return working
+    flow_scores = (
+        subflow_history.groupby(["economy_key", "flows"], dropna=False)[base_year]
+        .apply(lambda values: values.abs().sum())
+        .reset_index(name="base_year_abs")
+    )
+    preferred_flows = (
+        flow_scores.sort_values(["economy_key", "base_year_abs", "flows"], ascending=[True, False, True])
+        .drop_duplicates("economy_key")
+    )
+    preferred_lookup = dict(
+        zip(preferred_flows["economy_key"], preferred_flows["flows"])
+    )
+    canonical_mask = working["esto_flow"].astype(str).str.strip().eq("08 Transfers")
+    working.loc[canonical_mask, "esto_flow"] = working.loc[
+        canonical_mask, "economy_key"
+    ].map(preferred_lookup).fillna("08 Transfers")
+    return working
+
+
+def build_transfer_data_for_scenario(scenario: str) -> tuple[pd.DataFrame, list[int]]:
+    """Build transfer-only data with ESTO history and scenario-specific 9th projections."""
+    if core.esto_data_raw is None or core.ninth_data_raw is None:
+        core.prepare_transformation_assets()
+    historical = core.esto_data_raw.copy()
+    historical["flows"] = historical["flows"].astype(str).str.strip()
+    historical = historical[historical["flows"].isin(TRANSFER_FLOW_CODES)].copy()
+    if historical.empty:
+        return historical, []
+
+    ninth_transfer_data = core.ninth_data_raw[
+        core.ninth_data_raw["sectors"].astype(str).str.strip().eq("08_transfers")
+    ].copy()
+    projection_df, _ = core.build_esto_projection_table(
+        ninth_data=ninth_transfer_data,
+        esto_data=historical,
+        mapping_path=core.NINTH_TO_ESTO_MAPPING_PATH,
+        base_year=core.BASE_YEAR,
+        projection_years=core.PROJECTION_YEAR_RANGE,
+        scenario=scenario,
+        sign_stable_flows="all",
+        strict_conservation=False,
+    )
+    projection_df = _route_transfer_projection_to_historical_flow(
+        projection_df,
+        historical,
+        core.BASE_YEAR,
+    )
+    transfer_data = core.merge_projection_into_esto(
+        historical,
+        projection_df,
+        core.PROJECTION_YEAR_RANGE,
+    )
+    year_cols = sorted(column for column in transfer_data.columns if str(column).isdigit())
+    return transfer_data, year_cols
+
+
 def _normalize_transfer_process_name(process_config: dict, flow_code: str) -> str:
     """Return a standardized process name aligned to the three transfer categories."""
     raw = (
@@ -627,9 +709,15 @@ def build_transfer_rows(
     feedstock_method: str | None = None,
     data_override: pd.DataFrame | None = None,
     year_cols_override: list[int] | None = None,
+    scenario: str | None = None,
 ) -> list[dict]:
     """Return transfer rows for the given economy."""
-    data = data_override if data_override is not None else core.esto_data
+    if data_override is not None:
+        data = data_override
+    elif scenario is not None:
+        data, year_cols_override = build_transfer_data_for_scenario(scenario)
+    else:
+        data = core.esto_data
     if DROP_SUBTOTALS_FIRST:
         data = core.filter_matt_subtotals(data)
         data = core.filter_total_energy_rows(data)

@@ -745,18 +745,6 @@ def save_transfer_exports_with_supply_overrides(
     if not scenario_list or not economy_list:
         return []
 
-    base_transfer_records_by_economy: dict[str, list[dict]] = {}
-    for economy in economy_list:
-        economy_records = transfers_workflow.build_transfer_rows(
-            economy=economy,
-            use_output_targets=False,
-        )
-        base_transfer_records_by_economy[str(economy)] = (
-            transfers_workflow.merge_transfer_rows(economy_records)
-            if economy_records
-            else []
-        )
-
     empty_target_rows = pd.DataFrame(
         columns=[
             "record_index",
@@ -772,7 +760,20 @@ def save_transfer_exports_with_supply_overrides(
     )
     saved_paths: list[Path] = []
     for scenario in scenario_list:
-        for economy, economy_records in base_transfer_records_by_economy.items():
+        projection_scenario = (
+            "target" if str(scenario).strip().lower() == "target" else "reference"
+        )
+        for economy in economy_list:
+            economy_records = transfers_workflow.build_transfer_rows(
+                economy=economy,
+                use_output_targets=False,
+                scenario=projection_scenario,
+            )
+            economy_records = (
+                transfers_workflow.merge_transfer_rows(economy_records)
+                if economy_records
+                else []
+            )
             scenario_records = apply_transformation_target_overrides_for_scenario(
                 economy_records,
                 empty_target_rows,
