@@ -210,6 +210,82 @@ def test_wind_maximum_production_is_written_to_standalone_supply_workbook(
     assert float(viewing_row["2023"]) == pytest.approx(1e15)
 
 
+def test_zero_supply_rows_are_retained_in_export(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Zero-valued supply rows should still be written to the workbook."""
+    captured = {}
+
+    def fake_build_supply_log_rows(*args, **kwargs):
+        return [
+            {
+                "BranchID": 1,
+                "VariableID": 2,
+                "ScenarioID": 3,
+                "RegionID": 4,
+                "Branch Path": "Resources\\Primary\\Ammonia",
+                "Variable": "Imports",
+                "Scenario": "Reference",
+                "Region": "United States",
+                "Scale": "",
+                "Units": "Petajoule",
+                "Per...": "",
+                2022: 0.0,
+                2023: 0.0,
+            }
+        ]
+
+    def fake_finalise_export_df(log_df, scenario, region, base_year, final_year):
+        return pd.DataFrame(
+            [
+                {
+                    "BranchID": 1,
+                    "VariableID": 2,
+                    "ScenarioID": 3,
+                    "RegionID": 4,
+                    "Branch Path": "Resources\\Primary\\Ammonia",
+                    "Variable": "Imports",
+                    "Scenario": "Reference",
+                    "Region": "United States",
+                    "Scale": "",
+                    "Units": "Petajoule",
+                    "Per...": "",
+                    2022: 0.0,
+                    2023: 0.0,
+                }
+            ]
+        )
+
+    def fake_save_export_files(leap_export_df, export_df_for_viewing, export_path, *args, **kwargs):
+        captured["leap"] = leap_export_df.copy()
+        captured["viewing"] = export_df_for_viewing.copy()
+        captured["path"] = Path(export_path)
+
+    monkeypatch.setattr(supply_export_builder, "build_supply_log_rows", fake_build_supply_log_rows)
+    monkeypatch.setattr(supply_export_builder, "finalise_export_df", fake_finalise_export_df)
+    monkeypatch.setattr(supply_export_builder, "save_export_files", fake_save_export_files)
+    monkeypatch.setattr(supply_export_builder, "build_ninth_bucket_allocator", lambda *args, **kwargs: None)
+
+    exports = supply_export_builder.generate_supply_exports(
+        {"esto": (pd.DataFrame(), [2022])},
+        {},
+        {},
+        dataset_key="esto",
+        economies=["20_USA"],
+        scenario_names=["Reference"],
+        base_year=2022,
+        final_year=2023,
+        export_output_dir=tmp_path,
+        filename_template="supply_{economy}.xlsx",
+    )
+
+    assert exports == [("20_USA", tmp_path / "supply_20_USA.xlsx")]
+    assert captured["path"] == tmp_path / "supply_20_USA.xlsx"
+    assert (captured["leap"]["Branch Path"] == "Resources\\Primary\\Ammonia").any()
+    assert float(captured["leap"].iloc[0][2022]) == pytest.approx(0.0)
+
+
 def test_wind_maximum_production_stays_unlimited_in_baseline_seed_writer(
     tmp_path: Path,
 ) -> None:

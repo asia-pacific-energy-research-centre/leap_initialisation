@@ -403,27 +403,6 @@ def generate_supply_exports(
         if export_df is None:
             print(f"Skipping export for {economy} because no data survived pivot.")
             continue
-        year_columns = [
-            column for column in export_df.columns if isinstance(column, int)
-        ]
-        if year_columns and not keep_all_zero_rows:
-            numeric_years = (
-                export_df[year_columns]
-                .apply(pd.to_numeric, errors="coerce")
-                .fillna(0.0)
-            )
-            nonzero_mask = numeric_years.abs().sum(axis=1) > 0.0
-            dropped_count = int((~nonzero_mask).sum())
-            if dropped_count:
-                print(
-                    f"[INFO] Dropping {dropped_count} all-zero supply rows from export for {economy}."
-                )
-            export_df = export_df.loc[nonzero_mask].copy()
-        if export_df.empty:
-            print(
-                f"Skipping export for {economy} because all supply rows are zero after filtering."
-            )
-            continue
         os.makedirs(export_output_dir, exist_ok=True)
         export_path = Path(export_output_dir) / filename_template.format(
             economy=economy, scenarios=scenario_filename
