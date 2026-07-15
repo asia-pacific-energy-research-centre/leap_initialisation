@@ -125,6 +125,7 @@ from codebase.utilities.workflow_common import archive_config_dir_once_per_day
 from codebase.utilities import workflow_common
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP_EXPORTS_ROOT
 from codebase.utilities.workflow_utils import _resolve
+from codebase.utilities.economy_run_lock import economy_run_locks
 from codebase.supply_reconciliation_utils import (
     _canonical_transformation_fuel_label,
     _load_code_to_name_table,
@@ -524,11 +525,13 @@ def run_results_linked_supply_workflow(*args, **kwargs):
 def _refresh_output_paths_for_current_pass_mode() -> None:
     """Apply the selected pass mode to this workflow and all imported consumers."""
     refreshed_paths = _supply_reconciliation_config.refresh_output_paths_for_pass_mode(
-        CAPACITY_UNMET_PASS_MODE
+        CAPACITY_UNMET_PASS_MODE,
+        RUN_OUTPUT_LABEL,
     )
     globals()["CAPACITY_UNMET_PASS_MODE"] = (
         _supply_reconciliation_config.CAPACITY_UNMET_PASS_MODE
     )
+    globals()["RUN_OUTPUT_LABEL"] = _supply_reconciliation_config.RUN_OUTPUT_LABEL
     for name, value in refreshed_paths.items():
         globals()[name] = value
     _broadcast_config_overrides(
@@ -546,6 +549,7 @@ def _refresh_output_paths_for_current_pass_mode() -> None:
 # ECONOMIES = ["20_USA"]
 # SCENARIOS = list(workflow_cfg.SUPPLY_NOTEBOOK_SCENARIOS)
 # CAPACITY_UNMET_PASS_MODE = "results_update"  # baseline_seed|results_update
+# RUN_OUTPUT_LABEL = "usa_seed"  # required when this full run overlaps another
 # SCRAPE_LEAP_RESULTS = False
 # RUN_LEAP_FUEL_BRANCH_PROBE_AT_START = True
 # RESULTS_WRITE_LEGACY_SIDECAR_FILES = False
@@ -797,6 +801,7 @@ ACTIVE_PRESET = _PRESET_BASELINE_SEED
 # Default run mode; presets other than _PRESET_PATCH_BASELINE_SEEDS don't set
 # RUN_MODE, so reset it here each time before unpacking the active preset.
 RUN_MODE = "full"
+RUN_OUTPUT_LABEL = None
 PATCH_MODULE = []
 PATCH_ECONOMIES = None
 PATCH_RUN_WORKFLOW = True
@@ -837,7 +842,9 @@ _refresh_output_paths_for_current_pass_mode()
 # ---------------------------------------------------------------------------
 # Output logging
 # ---------------------------------------------------------------------------
-_WORKFLOW_LOG_PATH = REPO_ROOT / "outputs" / "logs" / "supply_reconciliation_workflow.log"
+def _workflow_log_path() -> Path:
+    """Keep full-run logs alongside their isolated runtime outputs."""
+    return Path(RESULTS_RUNTIME_DIR) / "supply_reconciliation_workflow.log"
 
 
 class _TeeWriter:
@@ -981,7 +988,7 @@ def _run_results_update_readiness_check() -> None:
 
 def run_with_config() -> dict[str, object]:
     """Run the notebook-configured workflow while optionally preventing PC sleep."""
-    with _log_to_file(_WORKFLOW_LOG_PATH) as log_path:
+    with _log_to_file(_workflow_log_path()) as log_path:
         print(f"[LOG] Writing output to: {log_path}")
         with _keep_windows_pc_awake(enabled=bool(KEEP_PC_AWAKE_WHILE_RUNNING)):
             return _run_with_config_inner()
@@ -1003,6 +1010,27 @@ def _run_with_config_inner() -> dict[str, object]:
         for _mod in _modules:
             patch_baseline_seeds.run_patch(_mod, PATCH_ECONOMIES, run_workflow=_run_workflow)
         return {}
+
+    economies_for_lock = workflow_common.normalize_economies(ECONOMIES)
+    lock_directory = (
+        REPO_ROOT
+        / "outputs"
+        / "leap_exports"
+        / "supply_reconciliation"
+        / "supporting_files"
+        / "runtime"
+        / "economy_locks"
+    )
+    with economy_run_locks(
+        economies_for_lock,
+        lock_directory=lock_directory,
+        workflow_name="supply_reconciliation",
+    ):
+        return _run_with_config_locked()
+
+
+def _run_with_config_locked() -> dict[str, object]:
+    """Run the full workflow after economy-specific output locks are acquired."""
 
     workflow_common.THROW_ERROR_AFTER_RUN = bool(THROW_ERROR_AFTER_RUN)
     workflow_common.clear_deferred_errors()

@@ -75,6 +75,7 @@ from codebase.functions.leap_excel_io import (
     prepare_for_leap_sheet_df,
     prepare_for_viewing_sheet_df,
 )
+from codebase.utilities.economy_run_lock import economy_run_locks
 
 BASELINE_SEED_DIR = (
     REPO_ROOT / "outputs" / "leap_exports" / "supply_reconciliation" / "baseline_seed"
@@ -1029,6 +1030,26 @@ def run_patch(
             "supply reconciliation workflow for transformation seed refreshes."
         )
 
+    requested_economies = economies or sorted(
+        token for token in (_econ_token(path.stem) for path in BASELINE_SEED_DIR.glob("leap_import_baseline_seed_*.xlsx"))
+        if token
+    )
+    lock_directory = BASELINE_SEED_DIR.parent / "supporting_files" / "runtime" / "economy_locks"
+    with economy_run_locks(
+        requested_economies,
+        lock_directory=lock_directory,
+        workflow_name=f"patch_baseline_seeds:{module}",
+    ):
+        _run_patch_locked(module, economies, run_workflow, cfg)
+
+
+def _run_patch_locked(
+    module: str,
+    economies: list[str] | None,
+    run_workflow: bool,
+    cfg: ModuleConfig,
+) -> None:
+    """Patch seed files while the requested economy files are exclusively reserved."""
     fresh_files: list[Path] | None = None
     if run_workflow and not cfg.auto_sector_keys:
         fresh_files = _run_source_workflow(module, economies)

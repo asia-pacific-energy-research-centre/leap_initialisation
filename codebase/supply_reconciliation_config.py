@@ -22,6 +22,7 @@ edit this file only to change the fallback used outside that workflow.
 from __future__ import annotations
 
 import dataclasses
+import re
 import sys
 from pathlib import Path
 
@@ -159,6 +160,10 @@ MAPPING_STATUS_PATH = RESULTS_DIR / "mapping_status.xlsx"  # demand mapping inpu
 # fallback here before output paths are derived; the workflow refreshes paths
 # after its active preset selects the pass mode.
 CAPACITY_UNMET_PASS_MODE = "results_update"
+# Optional label for an isolated run-output tree.  Give every concurrent full
+# run a distinct label, e.g. "usa_seed" or "jpn_update".  Leave None to keep
+# the established pass-mode output directory for legacy single-run use.
+RUN_OUTPUT_LABEL: str | None = None
 _PASS_MODE_SUBDIR = {
     "baseline_seed": "baseline_seed",
     "results_update": "results_update",
@@ -345,8 +350,15 @@ CAPACITY_UNMET_IMPORT_SHEETS: tuple[str, ...] = ("imports primary", "imports sec
 CAPACITY_UNMET_EXPORT_SHEETS: tuple[str, ...] = ("exports primary", "exports secondary")
 
 
-def refresh_output_paths_for_pass_mode(capacity_unmet_pass_mode: str) -> dict[str, Path]:
-    """Refresh pass-specific output paths after a notebook preset is applied."""
+def refresh_output_paths_for_pass_mode(
+    capacity_unmet_pass_mode: str,
+    run_output_label: str | None = None,
+) -> dict[str, Path]:
+    """Refresh pass-specific output paths after a notebook preset is applied.
+
+    A nonblank ``run_output_label`` isolates all generated workbooks, caches,
+    diagnostics, state, and timing history below ``runs/<label>``.
+    """
     normalized_mode = str(capacity_unmet_pass_mode).strip().lower()
     normalized_mode = _PASS_MODE_ALIASES.get(normalized_mode, normalized_mode)
     if normalized_mode not in _PASS_MODE_SUBDIR:
@@ -355,13 +367,27 @@ def refresh_output_paths_for_pass_mode(capacity_unmet_pass_mode: str) -> dict[st
             f"{capacity_unmet_pass_mode!r}. Expected 'baseline_seed' or 'results_update'."
         )
 
-    global CAPACITY_UNMET_PASS_MODE
+    global CAPACITY_UNMET_PASS_MODE, RUN_OUTPUT_LABEL
     global OUTPUT_DIR, EXPORT_OUTPUT_DIR, TRANSFORMATION_EXPORT_OUTPUT_DIR
     global RESULTS_SINGLE_FILE_ARCHIVE_DIR, RESULTS_CHECKS_DIR, RESULTS_RUNTIME_DIR
     global CAPACITY_UNMET_STATE_PATH, LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH
 
     CAPACITY_UNMET_PASS_MODE = normalized_mode
-    OUTPUT_DIR = INTEGRATED_LEAP_EXPORTS_ROOT / _PASS_MODE_SUBDIR[normalized_mode]
+    label = str(run_output_label or "").strip()
+    if label:
+        safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "_", label).strip("_.")
+        if not safe_label:
+            raise ValueError("RUN_OUTPUT_LABEL must include at least one letter or number.")
+        RUN_OUTPUT_LABEL = safe_label
+        OUTPUT_DIR = (
+            INTEGRATED_LEAP_EXPORTS_ROOT
+            / _PASS_MODE_SUBDIR[normalized_mode]
+            / "runs"
+            / safe_label
+        )
+    else:
+        RUN_OUTPUT_LABEL = None
+        OUTPUT_DIR = INTEGRATED_LEAP_EXPORTS_ROOT / _PASS_MODE_SUBDIR[normalized_mode]
     EXPORT_OUTPUT_DIR = OUTPUT_DIR / "workbooks"
     TRANSFORMATION_EXPORT_OUTPUT_DIR = EXPORT_OUTPUT_DIR
     RESULTS_SINGLE_FILE_ARCHIVE_DIR = OUTPUT_DIR / "supporting_files" / "archive"
@@ -373,6 +399,7 @@ def refresh_output_paths_for_pass_mode(capacity_unmet_pass_mode: str) -> dict[st
     )
     return {
         "OUTPUT_DIR": OUTPUT_DIR,
+        "RUN_OUTPUT_LABEL": RUN_OUTPUT_LABEL,
         "EXPORT_OUTPUT_DIR": EXPORT_OUTPUT_DIR,
         "TRANSFORMATION_EXPORT_OUTPUT_DIR": TRANSFORMATION_EXPORT_OUTPUT_DIR,
         "RESULTS_SINGLE_FILE_ARCHIVE_DIR": RESULTS_SINGLE_FILE_ARCHIVE_DIR,
