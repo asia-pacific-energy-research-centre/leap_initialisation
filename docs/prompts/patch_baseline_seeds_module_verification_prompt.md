@@ -3,14 +3,17 @@
 Use this prompt when working on `codebase/functions/patch_baseline_seeds.py` or
 when refreshing baseline seed files from module-specific workbooks.
 
-## Current Context
+## Current Context and Finalisation Goal
 
-`patch_baseline_seeds.py` supports patching a single module into the existing
+`patch_baseline_seeds.py` supports patching one or more modules into the existing
 `leap_import_baseline_seed_{econ}_*.xlsx` files without running the full supply
-reconciliation workflow.
+reconciliation workflow. The supply, transfers, and losses/own-use source
+workflows are now wired and have passed representative end-to-end checks.
 
-Do not call `supply_reconciliation_workflow.run_with_config()` for these tasks.
-Call the patcher directly.
+For final operational checks, exercise the preset entry point as well as the
+direct `run_patch()` function. The preset must set
+`RUN_MODE="patch_baseline_seeds"`, the requested `PATCH_MODULE` list,
+`PATCH_ECONOMIES`, and `PATCH_RUN_WORKFLOW=True`.
 
 Known verified/fixed areas:
 
@@ -86,17 +89,21 @@ Requirements:
 - After all economies finish, run `validate_seed_files()` and report the result.
 - Report final `git status --short`.
 
-## Module Verification Goal
+## Finalisation Goal
 
-For each module, either:
+Treat the patcher as an operational seed-refresh path, equivalent to the
+baseline/full-workflow refresh for its owned branch prefixes. Final checks are:
 
-1. prove the patch output is row-for-row equivalent to what the full workflow
-   wrote into the seeds, fixing the patcher until it is; or
-2. explicitly conclude the module is not safely patchable and make it raise with
-   a clear message.
+1. run the preset path for representative economies and then the requested
+   economy set;
+2. confirm the module-owned rows are replaced without touching unrelated
+   prefixes;
+3. run `validate_seed_files()` after each module batch;
+4. record known proxy coverage/share diagnostics separately from patch failures.
 
-Then update the verdict comment above `_PRESET_PATCH_BASELINE_SEEDS` in
-`codebase/supply_reconciliation_workflow.py`. Do not enable the preset itself.
+Update the verdict comment above `_PRESET_PATCH_BASELINE_SEEDS` in
+`codebase/supply_reconciliation_workflow.py` once the final Brunei
+losses/own-use retry completes. Do not enable the preset as the module default.
 
 ## Verification Recipe
 
@@ -248,27 +255,29 @@ Demand\All demand aggregated\
 
 ### losses_own_use
 
-Currently blocked/manual unless explicitly wired with the correct proxy stage.
-Do not silently infer whether the proxy stage is `"first"` or `"second"`.
+Operationally patchable through the wired proxy source workflow. The current
+`auto` stage resolves the activity source from the pass configuration; record
+that resolved mode in each run report. Proxy coverage gaps and pre-base-year
+consistency notices are diagnostics to report, not reasons to suppress seed
+validation.
 
 Before allowing manual `run_workflow=False` patching, fix strip-prefix behavior
 so stale old rows are removed even when absent from the fresh source workbook.
 
 ### supply
 
-Likely not safely patchable without full reconciliation state. Confirm and gate
-with a clear message rather than approximating resource rows.
+Operationally patchable through `supply_workflow.assemble_supply_workbooks`.
+The shared 9th-bucket allocation and signed supply-quantity normalization must
+be active before refreshing seeds.
 
-## Deliverables For A Verification Task
+## Deliverables For A Finalisation Task
 
-1. Per-module verdict: verified, fixed-and-verified, or not patchable.
-2. Equivalence-diff numbers as evidence.
-3. Minimal fixes in `patch_baseline_seeds.py` or the owning workflow.
-4. Contract tests for prefix coverage, option threading, or canonical naming.
+1. Final module verdicts and the representative economies used.
+2. Equivalence/row-scope diff numbers where available.
+3. Known diagnostics separated from patch failures.
+4. Contract tests and the exact preset configuration used.
 5. Updated verdict comment above `_PRESET_PATCH_BASELINE_SEEDS`.
-6. Seeds restored to pre-task state unless the user explicitly asked to keep
-   patched seeds.
-7. Final `validate_seed_files()` result and `git status --short`.
+6. Final `validate_seed_files()` result and `git status --short`.
 
 Suggested tests:
 
@@ -282,8 +291,8 @@ C:\Users\Work\miniconda3\python.exe -m pytest tests\test_module_attribute_contra
 ## Hard Constraints
 
 - Preserve unrelated working-tree changes.
-- Never modify seeds during verification without a backup and `finally` restore.
-- Do not enable `_PRESET_PATCH_BASELINE_SEEDS`.
+- During controlled verification, back up and restore seeds in a `finally` block.
+- For an explicitly requested refresh, retain patched seeds after validation.
 - Do not touch unrelated `_PRESET_*` blocks.
 - Do not broaden patch scope beyond the requested module.
 - If equivalence requires full reconciliation state, gate the module instead of
