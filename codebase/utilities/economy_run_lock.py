@@ -22,10 +22,25 @@ def _lock_token(value: str) -> str:
 def _process_is_running(pid: object) -> bool:
     """Return whether a local process still exists; unknown PIDs are treated as live."""
     try:
-        os.kill(int(pid), 0)
+        process_id = int(pid)
+    except (TypeError, ValueError):
+        return True
+    if os.name == "nt":
+        # ``os.kill(pid, 0)`` is not a valid existence probe on Windows; it
+        # raises WinError 87 even for a valid PID.  OpenProcess returns a
+        # handle only while the target process exists.
+        import ctypes
+
+        process_handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, process_id)
+        if not process_handle:
+            return False
+        ctypes.windll.kernel32.CloseHandle(process_handle)
+        return True
+    try:
+        os.kill(process_id, 0)
     except ProcessLookupError:
         return False
-    except (PermissionError, TypeError, ValueError):
+    except PermissionError:
         return True
     return True
 
