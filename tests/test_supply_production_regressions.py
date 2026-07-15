@@ -208,3 +208,59 @@ def test_wind_maximum_production_is_written_to_standalone_supply_workbook(
         & (viewing["Scenario"] == "Reference")
     ].iloc[0]
     assert float(viewing_row["2023"]) == pytest.approx(1e15)
+
+
+def test_wind_maximum_production_stays_unlimited_in_baseline_seed_writer(
+    tmp_path: Path,
+) -> None:
+    """The baseline-seed combine step must preserve Unlimited for max production rows."""
+    source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
+    row = {
+        "BranchID": 2338,
+        "VariableID": 2027,
+        "ScenarioID": 2,
+        "RegionID": 1,
+        "Branch Path": "Resources\\Primary\\Wind",
+        "Variable": "Maximum Production",
+        "Scenario": "Reference",
+        "Region": "United States",
+        "Scale": "",
+        "Units": "Petajoule",
+        "Per...": "",
+        "Expression": "Data(2023,1e+15, 2024,1e+15)",
+        2023: 1e15,
+        2024: 1e15,
+    }
+    columns = list(row)
+    preamble = {column: pd.NA for column in columns}
+    preamble["Branch Path"] = "Area:"
+    preamble["Scenario"] = "Ver:"
+    preamble["Region"] = "2"
+    workbook_df = pd.concat(
+        [
+            pd.DataFrame([preamble]),
+            pd.DataFrame([{column: pd.NA for column in columns}]),
+            pd.DataFrame([columns], columns=columns),
+            pd.DataFrame([row]),
+        ],
+        ignore_index=True,
+    )
+    with pd.ExcelWriter(source, engine="openpyxl") as writer:
+        workbook_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
+        workbook_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
+
+    combined_paths = supply_leap_io.write_per_economy_combined_workbooks(
+        economies=["20_USA"],
+        output_dir=tmp_path / "baseline_seed",
+        source_workbooks_by_workflow={"supply_workflow": [source]},
+        enforce_validation=False,
+    )
+
+    assert len(combined_paths) == 1
+    combined = pd.read_excel(combined_paths[0], sheet_name="LEAP", header=2)
+    row = combined.loc[
+        (combined["Branch Path"] == "Resources\\Primary\\Wind")
+        & (combined["Variable"] == "Maximum Production")
+        & (combined["Scenario"] == "Reference")
+    ].iloc[0]
+    assert row["Expression"] == "Unlimited"

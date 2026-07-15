@@ -1898,11 +1898,6 @@ def write_per_economy_combined_workbooks(
             base_year = int(min(_year_cols))
             ca_labels = {"current accounts", "current account"}
             def _resolve_expression(row):
-                existing = row.get("Expression")
-                if existing is not None and not pd.isna(existing) and str(existing).strip():
-                    return str(existing)
-                if not any(pd.notna(row.get(year)) for year in _year_cols):
-                    return existing
                 if (
                     str(row.get("Variable", "")).strip().lower() == "maximum production"
                     and any(
@@ -1913,6 +1908,11 @@ def write_per_economy_combined_workbooks(
                     )
                 ):
                     return "Unlimited"
+                existing = row.get("Expression")
+                if existing is not None and not pd.isna(existing) and str(existing).strip():
+                    return str(existing)
+                if not any(pd.notna(row.get(year)) for year in _year_cols):
+                    return existing
                 scenario = str(row.get("Scenario", "")).strip().lower()
                 if scenario in ca_labels:
                     # Current Accounts holds a single historical base-year value;
