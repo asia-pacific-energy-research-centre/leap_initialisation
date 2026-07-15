@@ -31,6 +31,7 @@ This guide is based on the documented workflow logic. It should be checked again
 - [9. Manual run loop](#9-manual-run-loop)
 - [10. Why the LEAP API is not used as the main method](#10-why-the-leap-api-is-not-used-as-the-main-method)
 - [11. How many iterations are expected](#11-how-many-iterations-are-expected)
+- [Concurrent runs](#concurrent-runs)
 
 ### Interpreting results
 
@@ -533,6 +534,14 @@ For each economy, expect several passes:
 - the final pass should leave only small residuals that can be allocated deliberately, usually to imports or another clearly documented balancing item.
 
 This process can take a long time because each pass requires LEAP recalculation and results export. In iterative capacity-unmet modes, each pass summary now reports convergence metrics such as the current gap, percent closure, and trend. A running CSV is also appended under the active pass subtree at `outputs/leap_exports/supply_reconciliation/<pass_mode>/supporting_files/runtime/capacity_unmet_convergence.csv`.
+
+## Concurrent runs
+
+Full workbook-mode runs can proceed at the same time when their economy scopes do not overlap. The workflow automatically creates a run label from its pass type, economy scope, and scenarios (for example, `UPDATE_20_USA_TGT_REF_CA`) and writes its workbooks, balance tables, diagnostics, runtime state, timing, and loss/own-use proxy artifacts below that labelled run folder.
+
+Each economy has a cross-process lock. A second run that includes an economy already being written stops with a clear error rather than overwriting files. Therefore, it is safe to run a baseline seed for one economy while patching or updating another economy, but it is not safe to run a patch, baseline seed, or results-update pass concurrently for the same economy.
+
+Keep `RUN_OUTPUT_LABEL = "auto"` for the normal isolated layout. A literal label is allowed for deliberate manual grouping. Do not run LEAP API imports concurrently: the protection covers workbook files and workflow state, not concurrent writes to the same LEAP application or area.
 
 ## 12. How to interpret the reconciliation results
 

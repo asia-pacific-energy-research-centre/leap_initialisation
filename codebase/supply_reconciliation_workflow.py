@@ -588,6 +588,11 @@ def _refresh_output_paths_for_current_pass_mode() -> None:
 # CAPACITY_UNMET_PASS_MODE = "results_update"  # baseline_seed|results_update
 # RUN_OUTPUT_LABEL = "auto"  # e.g. UPDATE_20_USA_TGT_REF_CA (default below)
 # RUN_OUTPUT_LABEL = "manual_description"  # optional literal override
+# Concurrent workbook runs are safe for different economies. Each full run
+# gets a labelled output tree and an economy lock; a second writer for the
+# same economy is rejected rather than allowed to overwrite its state/files.
+# Do not run concurrent LEAP API imports, or a patch and results-update run
+# for the same economy. See the workflow guide's “Concurrent runs” section.
 # SCRAPE_LEAP_RESULTS = False
 # RUN_LEAP_FUEL_BRANCH_PROBE_AT_START = True
 # RESULTS_WRITE_LEGACY_SIDECAR_FILES = False
