@@ -23,6 +23,7 @@ from codebase.functions.supply_export_rows import (
     sanitize_leap_label,
 )
 from codebase.functions.supply_value_series import (
+    build_ninth_bucket_allocator,
     build_supply_value_by_year,
     select_fuel_rows,
 )
@@ -172,6 +173,7 @@ def build_supply_log_rows(
     projection_years=None,
     flow_value_overrides=None,
     supply_measures=None,
+    bucket_allocator=None,
 ):
     """Build log entries for supply measures per fuel."""
     try:
@@ -241,6 +243,7 @@ def build_supply_log_rows(
                     projection_lookup=projection_lookup,
                     projection_years=projection_years,
                     code_to_name_mapping=code_to_name_mapping,
+                    bucket_allocator=bucket_allocator,
                 )
                 if flow_key == "max_production" and _is_unlimited_production_entry(entry):
                     default_flow_values_by_year[flow_key] = {
@@ -345,6 +348,18 @@ def generate_supply_exports(
     flow_codes = FLOW_CODES_BY_DATASET.get(dataset_key)
     if not flow_codes:
         raise KeyError(f"Unknown dataset key for flow codes: {dataset_key}")
+    # Split shared 9th buckets across their ESTO products by base-year ESTO
+    # shares; without this every sibling product would take the full bucket.
+    bucket_allocator = None
+    if "esto" in dataset_map:
+        esto_data, _ = resolve_dataset_func(dataset_map, "esto")
+        bucket_allocator = build_ninth_bucket_allocator(
+            data,
+            fuel_config,
+            code_to_name_mapping,
+            esto_data,
+            base_year,
+        )
     if projection_lookup is None:
         projection_lookup = projection_lookup_default
     default_economies = (
@@ -375,6 +390,7 @@ def generate_supply_exports(
             projection_years=projection_years,
             flow_value_overrides=economy_flow_overrides,
             supply_measures=supply_measures,
+            bucket_allocator=bucket_allocator,
         )
         if not log_rows:
             print(f"No supply rows generated for {economy}")

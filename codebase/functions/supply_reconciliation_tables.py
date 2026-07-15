@@ -1158,6 +1158,16 @@ def prepare_projected_supply_table(
     flow_codes = supply_data_pipeline.FLOW_CODES_BY_DATASET.get(dataset_key)
     if not flow_codes:
         raise KeyError(f"Unknown supply dataset key: {dataset_key}")
+    bucket_allocator = None
+    if "esto" in dataset_map:
+        esto_data, _ = supply_data_pipeline.resolve_dataset(dataset_map, "esto")
+        bucket_allocator = supply_data_pipeline.build_ninth_bucket_allocator(
+            data,
+            sector_config,
+            code_to_name_mapping,
+            esto_data,
+            BASE_YEAR,
+        )
 
     economy_list = workflow_common.normalize_economies(
         economies or supply_data_pipeline.ECONOMIES_TO_ANALYZE
@@ -1180,6 +1190,7 @@ def prepare_projected_supply_table(
                 projection_lookup=supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP,
                 projection_years=supply_data_pipeline.PROJECTION_YEAR_RANGE,
                 code_to_name_mapping=code_to_name_mapping,
+                bucket_allocator=bucket_allocator,
             )
             exports_by_year = supply_data_pipeline.build_supply_value_by_year(
                 data,
@@ -1193,6 +1204,7 @@ def prepare_projected_supply_table(
                 projection_lookup=supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP,
                 projection_years=supply_data_pipeline.PROJECTION_YEAR_RANGE,
                 code_to_name_mapping=code_to_name_mapping,
+                bucket_allocator=bucket_allocator,
             )
             for year in range(BASE_YEAR, FINAL_YEAR + 1):
                 imports_value = float(imports_by_year.get(year, 0.0))
@@ -1239,6 +1251,13 @@ def prepare_supply_primary_table(
         dataset_map, "esto"
     )
     production_flow_codes = supply_data_pipeline.FLOW_CODES_BY_DATASET["esto"]
+    bucket_allocator = supply_data_pipeline.build_ninth_bucket_allocator(
+        data,
+        sector_config,
+        code_to_name_mapping,
+        production_data,
+        BASE_YEAR,
+    )
 
     economy_list = workflow_common.normalize_economies(
         economies or supply_data_pipeline.ECONOMIES_TO_ANALYZE
@@ -1274,6 +1293,7 @@ def prepare_supply_primary_table(
                 projection_lookup=supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP,
                 projection_years=supply_data_pipeline.PROJECTION_YEAR_RANGE,
                 code_to_name_mapping=code_to_name_mapping,
+                bucket_allocator=bucket_allocator,
             )
             for year in range(BASE_YEAR, FINAL_YEAR + 1):
                 rows.append(

@@ -3048,6 +3048,12 @@ def run_results_linked_transformation_supply_workflow(
             for f in sorted(_config_dir.glob("*"))
             if f.is_file()
         } if _config_dir.exists() else {}
+        # The canonical mapping workbook lives in the leap_mappings repo, so a
+        # mapping edit must invalidate this cache too — the cached assets embed
+        # sector_config/code_to_name_mapping derived from it.
+        from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH as _mappings_master
+        if _mappings_master.exists():
+            _config_mtimes["__outlook_mappings_master__"] = _mappings_master.stat().st_mtime
         _ts_key_payload = _json.dumps({
             "economies": sorted(economy_list),
             "dataset_key": str(export_dataset_key),

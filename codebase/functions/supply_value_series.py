@@ -1,6 +1,8 @@
 """Supply flow selection and year-series construction helpers."""
 from __future__ import annotations
 
+import hashlib
+
 import pandas as pd
 
 from codebase.functions.esto_data_utils import (
@@ -9,10 +11,24 @@ from codebase.functions.esto_data_utils import (
     sum_years,
     try_debug_breakpoint,
 )
-from codebase.functions.ninth_projection_mapping import normalize_economy_key
+from codebase.functions.ninth_projection_mapping import (
+    build_esto_base_year_values,
+    compute_esto_base_year_shares,
+    normalize_economy_key,
+)
 from codebase.functions.supply_config_builder import map_code_label
 
 OUTPUT_FLOW_KEYS = {"exports"}
+
+# ESTO flow labels keyed by supply flow key, used to look up base-year ESTO
+# values when splitting a shared 9th bucket across its ESTO products.
+ESTO_FLOW_LABELS_BY_KEY = {
+    "production": "01 Production",
+    "imports": "02 Imports",
+    "exports": "03 Exports",
+    "stock_changes": "06 Stock changes",
+    "tpes": "07 Total primary energy supply",
+}
 
 
 def is_output_flow(flow_key):
@@ -122,6 +138,16 @@ def select_fuel_rows(
                 matched_by_name = df[mapped_subfuels.eq(fuel_name)]
                 if not matched_by_name.empty:
                     return matched_by_name
+            # Exact code equality must precede prefix matching: codes such as
+            # 01_x_thermal_coal collapse to the bare ('01',) numeric prefix
+            # (segment extraction stops at "x"), so prefix matching alone would
+            # also grab 01_01_coking_coal, 01_05_lignite, and every other
+            # sibling subfuel in the family.
+            code_text = str(fuel_code_ninth or "").strip()
+            if code_text:
+                exact_subfuels = df[df["subfuels"].astype(str).str.strip().eq(code_text)]
+                if not exact_subfuels.empty:
+                    return exact_subfuels
             matched_subfuels = df[_match_code_prefix_mask(df["subfuels"], fuel_code_ninth)]
             if not matched_subfuels.empty:
                 return matched_subfuels
@@ -135,6 +161,10 @@ def select_fuel_rows(
                     matched_fuels_by_name = df[mapped_fuels.eq(fuel_name)]
                     if not matched_fuels_by_name.empty:
                         return matched_fuels_by_name
+                if code_text:
+                    exact_fuels = df[df["fuels"].astype(str).str.strip().eq(code_text)]
+                    if not exact_fuels.empty:
+                        return exact_fuels
                 matched_fuels = df[_match_code_prefix_mask(df["fuels"], fuel_code_ninth)]
                 if not matched_fuels.empty:
                     return matched_fuels
@@ -147,10 +177,115 @@ def select_fuel_rows(
                 matched_by_name = df[mapped_fuels.eq(fuel_name)]
                 if not matched_by_name.empty:
                     return matched_by_name
+            code_text = str(fuel_code_ninth or "").strip()
+            if code_text:
+                exact_fuels = df[df["fuels"].astype(str).str.strip().eq(code_text)]
+                if not exact_fuels.empty:
+                    return exact_fuels
             return df[_match_code_prefix_mask(df["fuels"], fuel_code_ninth)]
         return df.iloc[0:0]
     except Exception as exc:
         print(f"Failed to select fuel rows: {exc}")
+        try_debug_breakpoint()
+        raise
+
+
+class NinthBucketAllocator:
+    """Split shared 9th-edition fuel buckets across their ESTO products.
+
+    Several ESTO products can map to the same coarse 9th fuel code (for
+    example 02.01 Coke oven coke through 02.08 BKB/PB all map to
+    02_coal_products). A direct per-product row match then hands every
+    product the full bucket total, overcounting the bucket N times. This
+    allocator groups the configured products that match an identical 9th
+    row set and returns each product's base-year ESTO share of that bucket,
+    so the bucket series can be scaled into per-product series that sum back
+    to the bucket total — the same base-year-share method
+    allocate_ninth_projection_to_esto uses for projection years.
+    """
+
+    def __init__(self, siblings_by_product, esto_base_values):
+        self._siblings_by_product = siblings_by_product
+        self._esto_base_values = esto_base_values
+        self._share_cache: dict[tuple, dict[str, float]] = {}
+
+    def share(self, economy, flow_key, fuel_label_esto):
+        """Return the product's share of its bucket for one economy/flow."""
+        product = str(fuel_label_esto or "").strip()
+        siblings = self._siblings_by_product.get(product)
+        if not siblings:
+            return 1.0
+        economy_key = normalize_economy_key(economy)
+        esto_flow = ESTO_FLOW_LABELS_BY_KEY.get(str(flow_key or "").strip().lower(), "")
+        cache_key = (economy_key, esto_flow, siblings)
+        shares = self._share_cache.get(cache_key)
+        if shares is None:
+            shares = compute_esto_base_year_shares(
+                self._esto_base_values,
+                economy_key,
+                esto_flow,
+                list(siblings),
+            )
+            self._share_cache[cache_key] = shares
+        return float(shares.get(product, 1.0))
+
+
+def build_ninth_bucket_allocator(
+    data,
+    fuel_config,
+    code_to_name_mapping,
+    esto_data,
+    base_year,
+):
+    """Return a NinthBucketAllocator for ninth-style data, or None.
+
+    Products are grouped by the exact row set they select in ``data`` — this
+    covers both products sharing a coarse ``fuel_code_ninth`` and products
+    whose display-name match resolves to the same bucket rows.
+    """
+    try:
+        dataset_is_ninth_style = (
+            data is not None
+            and "sectors" in data.columns
+            and "flows" not in data.columns
+        )
+        if not dataset_is_ninth_style or not fuel_config:
+            return None
+        if esto_data is None or esto_data.empty:
+            return None
+        products_by_signature: dict[str, list[str]] = {}
+        for fuel_key in sorted(fuel_config):
+            entry = fuel_config[fuel_key]
+            product = str(entry.get("fuel_label_esto") or fuel_key).strip()
+            matched = select_fuel_rows(
+                data,
+                entry.get("fuel_code_ninth"),
+                entry.get("fuel_label_esto"),
+                fuel_name=entry.get("fuel_name"),
+                code_to_name_mapping=code_to_name_mapping,
+            )
+            if matched.empty:
+                continue
+            signature = hashlib.md5(matched.index.values.tobytes()).hexdigest()
+            products_by_signature.setdefault(signature, []).append(product)
+        siblings_by_product = {
+            product: tuple(products)
+            for products in products_by_signature.values()
+            if len(products) > 1
+            for product in products
+        }
+        if not siblings_by_product:
+            return None
+        esto_base_values = build_esto_base_year_values(esto_data, base_year)
+        shared_groups = sorted({products for products in siblings_by_product.values()})
+        print(
+            "[INFO] Supply 9th-bucket allocation active for "
+            f"{len(shared_groups)} shared bucket group(s): "
+            + "; ".join(" + ".join(group) for group in shared_groups)
+        )
+        return NinthBucketAllocator(siblings_by_product, esto_base_values)
+    except Exception as exc:
+        print(f"Failed to build ninth bucket allocator: {exc}")
         try_debug_breakpoint()
         raise
 
@@ -260,15 +395,18 @@ def build_supply_value_by_year(
     projection_lookup=None,
     projection_years=None,
     code_to_name_mapping=None,
+    bucket_allocator=None,
 ):
     """Return a full year mapping for one economy/fuel/flow.
 
     - For 9th-style datasets (sector-coded), read all years directly from source rows.
+      When ``bucket_allocator`` is given, a product that shares its 9th bucket with
+      sibling products receives its base-year ESTO share of the bucket series.
     - For ESTO-style datasets, use base-year source plus projected years from lookup.
     """
     dataset_is_ninth_style = "sectors" in data.columns and "flows" not in data.columns
     if dataset_is_ninth_style:
-        return get_flow_series_for_fuel(
+        series = get_flow_series_for_fuel(
             data,
             year_cols,
             economy,
@@ -279,6 +417,13 @@ def build_supply_value_by_year(
             final_year,
             code_to_name_mapping=code_to_name_mapping,
         )
+        if bucket_allocator is not None:
+            share = bucket_allocator.share(
+                economy, flow_key, fuel_config.get("fuel_label_esto")
+            )
+            if share != 1.0:
+                series = {year: value * share for year, value in series.items()}
+        return series
 
     projection_years = [
         year for year in (projection_years or []) if year <= final_year

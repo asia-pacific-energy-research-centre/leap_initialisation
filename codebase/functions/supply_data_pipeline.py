@@ -78,6 +78,7 @@ from codebase.functions.supply_config_builder import (
 from codebase.functions.supply_value_series import (
     OUTPUT_FLOW_KEYS,
     _get_projection_series,
+    build_ninth_bucket_allocator,
     build_supply_value_by_year,
     get_flow_series_for_fuel,
     get_flow_total_for_fuel,
