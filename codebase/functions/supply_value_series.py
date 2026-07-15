@@ -18,6 +18,15 @@ from codebase.functions.ninth_projection_mapping import (
 )
 from codebase.functions.supply_config_builder import map_code_label
 
+# LEAP supply controls represent quantities, not signed balance entries.  The
+# source balances can carry a negative sign for any of these flows, while TPES
+# and stock changes intentionally retain their balance signs.
+NON_NEGATIVE_SUPPLY_FLOW_KEYS = {
+    "production",
+    "imports",
+    "exports",
+    "max_production",
+}
 OUTPUT_FLOW_KEYS = {"exports"}
 
 # ESTO flow labels keyed by supply flow key, used to look up base-year ESTO
@@ -41,7 +50,7 @@ def is_output_flow(flow_key):
 def normalize_supply_flow_total(flow_key, total_value):
     """Normalize the sign of a supply flow total based on its LEAP meaning."""
     try:
-        if is_output_flow(flow_key):
+        if str(flow_key or "").strip().lower() in NON_NEGATIVE_SUPPLY_FLOW_KEYS:
             return abs(total_value)
         return total_value
     except Exception as exc:

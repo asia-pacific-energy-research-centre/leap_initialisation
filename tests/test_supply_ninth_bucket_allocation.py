@@ -170,4 +170,35 @@ def test_no_allocator_preserves_legacy_behavior() -> None:
     assert values == {2022: 100.0, 2023: 110.0}
 
 
+def test_supply_quantity_flows_use_positive_magnitudes() -> None:
+    """Signed balance entries become non-negative LEAP supply quantities."""
+    data = _ninth_df()
+    negative_rows = pd.DataFrame([
+        {"economy": "20_USA", "sectors": "01_production", "fuels": "01_coal",
+         "subfuels": "01_01_coking_coal", 2022: -10.0, 2023: -12.0},
+        {"economy": "20_USA", "sectors": "02_imports", "fuels": "01_coal",
+         "subfuels": "01_01_coking_coal", 2022: -3.0, 2023: -4.0},
+        {"economy": "20_USA", "sectors": "06_stock_changes", "fuels": "01_coal",
+         "subfuels": "01_01_coking_coal", 2022: -2.0, 2023: -1.0},
+    ])
+    data = pd.concat([data, negative_rows], ignore_index=True)
+    fuel = _fuel_config()["01.01 Coking coal"]
+
+    production = build_supply_value_by_year(
+        data, [2022, 2023], "20_USA", fuel, "production", "01_production", 2022, 2023
+    )
+    imports = build_supply_value_by_year(
+        data, [2022, 2023], "20_USA", fuel, "imports", "02_imports", 2022, 2023
+    )
+    stock_changes = build_supply_value_by_year(
+        data, [2022, 2023], "20_USA", fuel, "stock_changes", "06_stock_changes", 2022, 2023
+    )
+
+    # Existing positive coking rows plus the negative rows above are summed,
+    # then supply quantities use magnitude; signed balance flows remain signed.
+    assert production == {2022: 3.0, 2023: 4.0}
+    assert imports == {2022: 3.0, 2023: 4.0}
+    assert stock_changes == {2022: -2.0, 2023: -1.0}
+
+
 #%%
