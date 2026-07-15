@@ -3176,6 +3176,7 @@ def run_results_linked_transformation_supply_workflow(
     balance_paths = save_year_balance_tables(
         reconciliation_table,
         years=BALANCE_EXPORT_YEARS,
+        output_dir=YEARLY_BALANCE_DIR,
         economies=economy_list,
         scenarios=balance_scenario_list,
     )
@@ -3250,6 +3251,7 @@ def run_results_linked_transformation_supply_workflow(
             supply_primary_table,
             assets[4],
             years=BALANCE_EXPORT_YEARS,
+            output_dir=CONVENTIONAL_BALANCE_DIR,
             economies=economy_list,
             scenarios=balance_scenario_list,
         )
@@ -3302,7 +3304,12 @@ def run_results_linked_transformation_supply_workflow(
                 _skip_trans = sorted(_resolve(EXPORT_OUTPUT_DIR).glob(f"transformation_leap_imports_{economy}*.xlsx"))
                 _skip_transfer = sorted(_resolve(EXPORT_OUTPUT_DIR).glob(f"transfer_leap_imports_{economy}*.xlsx"))
                 _skip_elec_heat = sorted(_resolve(EXPORT_OUTPUT_DIR).glob(f"electricity_heat_interim_{economy}*.xlsx"))
-                _skip_proxy_dir = _resolve(INTEGRATED_LEAP_EXPORTS_ROOT.parent / "standalone")
+                _skip_proxy_dir = (
+                    _resolve(OUTPUT_DIR)
+                    / "supporting_files"
+                    / "other_loss_own_use_proxy"
+                    / str(economy)
+                )
                 _skip_proxy = sorted(_skip_proxy_dir.glob(f"other_loss_own_use_proxy_{economy}*.xlsx"))
                 _skip_agg_demand = sorted(_resolve(EXPORT_OUTPUT_DIR).glob(f"aggregated_demand_{economy}*.xlsx"))
                 print(f"[INFO] [{economy}] skipped (existing exports reused).")

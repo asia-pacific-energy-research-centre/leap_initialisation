@@ -37,6 +37,7 @@ How to think about the whole workflow
 from __future__ import annotations
 
 import importlib
+import hashlib
 from contextlib import contextmanager
 from functools import lru_cache
 from datetime import datetime, timezone
@@ -544,7 +545,8 @@ def _automatic_run_output_label() -> str | None:
     if len(economies) <= 3:
         economy_part = "_".join(str(economy).upper() for economy in economies)
     else:
-        economy_part = f"{len(economies)}ECON"
+        economy_scope = "|".join(sorted(str(economy).upper() for economy in economies))
+        economy_part = f"{len(economies)}ECON_{hashlib.sha1(economy_scope.encode()).hexdigest()[:6].upper()}"
     scenario_part = "_".join(_scenario_label_for_run_output(scenario) for scenario in SCENARIOS)
     return "_".join(part for part in (prefix, economy_part, scenario_part) if part)
 
