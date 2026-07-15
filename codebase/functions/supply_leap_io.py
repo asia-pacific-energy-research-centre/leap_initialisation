@@ -36,6 +36,7 @@ from codebase.functions.leap_excel_io import (
     add_leap_preamble,
     prepare_for_leap_sheet_df,
     prepare_for_viewing_sheet_df,
+    _write_unlimited_production_expressions,
 )
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP_EXPORTS_ROOT
 from codebase.configuration import workflow_config as workflow_cfg
@@ -1898,16 +1899,6 @@ def write_per_economy_combined_workbooks(
             base_year = int(min(_year_cols))
             ca_labels = {"current accounts", "current account"}
             def _resolve_expression(row):
-                if (
-                    str(row.get("Variable", "")).strip().lower() == "maximum production"
-                    and any(
-                        pd.notna(row.get(year))
-                        and float(row.get(year))
-                        >= float(workflow_cfg.SUPPLY_UNLIMITED_PRODUCTION_YEAR_VALUE)
-                        for year in _year_cols
-                    )
-                ):
-                    return "Unlimited"
                 existing = row.get("Expression")
                 if existing is not None and not pd.isna(existing) and str(existing).strip():
                     return str(existing)
@@ -1933,8 +1924,8 @@ def write_per_economy_combined_workbooks(
         _other = [col for col in _other if col not in {"Method", "__parent"}]
         leap_ordered = _leap_meta_cols + [BLANK_SPACER] + _level_cols + _other
 
-        def _assemble_sheet(ordered_cols):
-            frame = combined.reindex(columns=ordered_cols)
+        def _assemble_sheet(frame: pd.DataFrame, ordered_cols):
+            frame = frame.reindex(columns=ordered_cols)
             # The header row is written as data (header=False), so the spacer's
             # displayed label is blank while its column name stays unique.
             display_cols = ["" if c == BLANK_SPACER else c for c in ordered_cols]
@@ -1950,7 +1941,8 @@ def write_per_economy_combined_workbooks(
                 frame,
             ], ignore_index=True)
 
-        leap_df = _assemble_sheet(leap_ordered)
+        leap_export_df = _write_unlimited_production_expressions(prepare_for_leap_sheet_df(combined))
+        leap_df = _assemble_sheet(leap_export_df, leap_ordered)
         viewing_df = add_leap_preamble(prepare_for_viewing_sheet_df(combined))
 
         out_path = out_dir / f"leap_import_baseline_seed_{econ_token}_{run_stamp}.xlsx"

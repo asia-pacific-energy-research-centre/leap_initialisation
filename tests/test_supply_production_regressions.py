@@ -264,3 +264,11 @@ def test_wind_maximum_production_stays_unlimited_in_baseline_seed_writer(
         & (combined["Scenario"] == "Reference")
     ].iloc[0]
     assert row["Expression"] == "Unlimited"
+
+    viewing = pd.read_excel(combined_paths[0], sheet_name="FOR_VIEWING", header=2)
+    viewing_row = viewing.loc[
+        (viewing["Branch Path"] == "Resources\\Primary\\Wind")
+        & (viewing["Variable"] == "Maximum Production")
+        & (viewing["Scenario"] == "Reference")
+    ].iloc[0]
+    assert float(viewing_row["2024"]) == pytest.approx(1e15)
