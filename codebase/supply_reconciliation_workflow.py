@@ -522,16 +522,51 @@ def run_results_linked_supply_workflow(*args, **kwargs):
     return _srs.run_results_linked_supply_workflow(*args, **kwargs)
 
 
+def _scenario_label_for_run_output(scenario: object) -> str:
+    """Return a compact stable scenario token for an automatic run label."""
+    normalized = re.sub(r"[^a-z0-9]+", "", str(scenario).lower())
+    known_labels = {
+        "target": "TGT",
+        "reference": "REF",
+        "currentaccount": "CA",
+        "currentaccounts": "CA",
+    }
+    return known_labels.get(normalized, re.sub(r"[^A-Za-z0-9]+", "", str(scenario)).upper()[:12] or "UNKNOWN")
+
+
+def _automatic_run_output_label() -> str | None:
+    """Build a concise label such as ``UPDATE_20_USA_TGT_REF_CA``."""
+    if str(RUN_MODE).strip().lower() == "patch_baseline_seeds":
+        return None
+    mode = _resolve_capacity_unmet_pass_mode(CAPACITY_UNMET_PASS_MODE)
+    prefix = "SEED" if mode == "baseline_seed" else "UPDATE"
+    economies = workflow_common.normalize_economies(ECONOMIES)
+    if len(economies) <= 3:
+        economy_part = "_".join(str(economy).upper() for economy in economies)
+    else:
+        economy_part = f"{len(economies)}ECON"
+    scenario_part = "_".join(_scenario_label_for_run_output(scenario) for scenario in SCENARIOS)
+    return "_".join(part for part in (prefix, economy_part, scenario_part) if part)
+
+
+def _resolve_run_output_label() -> str | None:
+    """Resolve the notebook's literal or automatic output-label setting."""
+    requested = str(RUN_OUTPUT_LABEL or "").strip()
+    if requested.lower() == "auto":
+        return _automatic_run_output_label()
+    return requested or None
+
+
 def _refresh_output_paths_for_current_pass_mode() -> None:
     """Apply the selected pass mode to this workflow and all imported consumers."""
     refreshed_paths = _supply_reconciliation_config.refresh_output_paths_for_pass_mode(
         CAPACITY_UNMET_PASS_MODE,
-        RUN_OUTPUT_LABEL,
+        _resolve_run_output_label(),
     )
     globals()["CAPACITY_UNMET_PASS_MODE"] = (
         _supply_reconciliation_config.CAPACITY_UNMET_PASS_MODE
     )
-    globals()["RUN_OUTPUT_LABEL"] = _supply_reconciliation_config.RUN_OUTPUT_LABEL
+    globals()["ACTIVE_RUN_OUTPUT_LABEL"] = _supply_reconciliation_config.RUN_OUTPUT_LABEL
     for name, value in refreshed_paths.items():
         globals()[name] = value
     _broadcast_config_overrides(
@@ -549,7 +584,8 @@ def _refresh_output_paths_for_current_pass_mode() -> None:
 # ECONOMIES = ["20_USA"]
 # SCENARIOS = list(workflow_cfg.SUPPLY_NOTEBOOK_SCENARIOS)
 # CAPACITY_UNMET_PASS_MODE = "results_update"  # baseline_seed|results_update
-# RUN_OUTPUT_LABEL = "usa_seed"  # required when this full run overlaps another
+# RUN_OUTPUT_LABEL = "auto"  # e.g. UPDATE_20_USA_TGT_REF_CA (default below)
+# RUN_OUTPUT_LABEL = "manual_description"  # optional literal override
 # SCRAPE_LEAP_RESULTS = False
 # RUN_LEAP_FUEL_BRANCH_PROBE_AT_START = True
 # RESULTS_WRITE_LEGACY_SIDECAR_FILES = False
@@ -801,7 +837,7 @@ ACTIVE_PRESET = _PRESET_BASELINE_SEED
 # Default run mode; presets other than _PRESET_PATCH_BASELINE_SEEDS don't set
 # RUN_MODE, so reset it here each time before unpacking the active preset.
 RUN_MODE = "full"
-RUN_OUTPUT_LABEL = None
+RUN_OUTPUT_LABEL = "auto"
 PATCH_MODULE = []
 PATCH_ECONOMIES = None
 PATCH_RUN_WORKFLOW = True
@@ -988,6 +1024,7 @@ def _run_results_update_readiness_check() -> None:
 
 def run_with_config() -> dict[str, object]:
     """Run the notebook-configured workflow while optionally preventing PC sleep."""
+    _refresh_output_paths_for_current_pass_mode()
     with _log_to_file(_workflow_log_path()) as log_path:
         print(f"[LOG] Writing output to: {log_path}")
         with _keep_windows_pc_awake(enabled=bool(KEEP_PC_AWAKE_WHILE_RUNNING)):

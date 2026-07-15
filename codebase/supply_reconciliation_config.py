@@ -160,9 +160,10 @@ MAPPING_STATUS_PATH = RESULTS_DIR / "mapping_status.xlsx"  # demand mapping inpu
 # fallback here before output paths are derived; the workflow refreshes paths
 # after its active preset selects the pass mode.
 CAPACITY_UNMET_PASS_MODE = "results_update"
-# Optional label for an isolated run-output tree.  Give every concurrent full
-# run a distinct label, e.g. "usa_seed" or "jpn_update".  Leave None to keep
-# the established pass-mode output directory for legacy single-run use.
+# Optional label for an isolated run-output tree.  The workflow's default
+# ``"auto"`` value derives a concise label from pass mode, economies, and
+# scenarios; a literal value overrides it.  ``None`` keeps the legacy output
+# directory for callers that deliberately need it.
 RUN_OUTPUT_LABEL: str | None = None
 _PASS_MODE_SUBDIR = {
     "baseline_seed": "baseline_seed",
