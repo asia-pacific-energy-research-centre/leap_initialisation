@@ -1747,6 +1747,7 @@ def reset_supply_and_transformation_import_export_to_zero(
     sector_titles: Iterable[str] | None = None,
     esto_products: Iterable[str] | None = None,
     years: Iterable[int] | None = None,
+    template_path: Path | str | None = None,
 ) -> tuple[pd.DataFrame, list[dict] | None]:
     """
     Zero supply/transformation import-export values for selected scopes.
@@ -1765,9 +1766,53 @@ def reset_supply_and_transformation_import_export_to_zero(
         _configured_reset_module_names,
         _configured_reset_fuel_labels,
     )
+    from codebase.utilities.leap_export_template_resolver import resolve_leap_export_template
 
     if not isinstance(reconciliation_table, pd.DataFrame):
         raise TypeError("reconciliation_table must be a pandas DataFrame")
+
+    # One reconciliation table may span several LEAP areas. Resolve the reset
+    # scope per economy so a USA-only branch cannot leak into the NZ reset.
+    if template_path is None:
+        if economies:
+            economy_values = [str(item).strip() for item in economies if str(item or "").strip()]
+        elif "economy" in reconciliation_table.columns:
+            economy_values = [
+                str(item).strip() for item in reconciliation_table["economy"].dropna().astype(str)
+                if str(item).strip()
+            ]
+        else:
+            economy_values = []
+        unique_economies = list(dict.fromkeys(economy_values))
+        if len(unique_economies) > 1:
+            updated_reconciliation = reconciliation_table.copy()
+            updated_records = copy.deepcopy(transformation_process_records)
+            for economy in unique_economies:
+                economy_key = economy.lower()
+                reconciliation_indices = (
+                    updated_reconciliation.index[
+                        updated_reconciliation["economy"].astype(str).str.strip().str.lower().eq(economy_key)
+                    ]
+                    if "economy" in updated_reconciliation.columns else updated_reconciliation.index
+                )
+                record_indices = [
+                    index for index, record in enumerate(updated_records or [])
+                    if str(record.get("economy") or "").strip().lower() == economy_key
+                ]
+                reset_table, reset_records = reset_supply_and_transformation_import_export_to_zero(
+                    updated_reconciliation.loc[reconciliation_indices],
+                    [updated_records[index] for index in record_indices] if updated_records is not None else None,
+                    economies=[economy], scenarios=scenarios, sector_titles=sector_titles,
+                    esto_products=esto_products, years=years,
+                    template_path=resolve_leap_export_template(economy),
+                )
+                updated_reconciliation.loc[reconciliation_indices, reset_table.columns] = reset_table
+                if updated_records is not None and reset_records is not None:
+                    for index, record in zip(record_indices, reset_records):
+                        updated_records[index] = record
+            return updated_reconciliation, updated_records
+        if len(unique_economies) == 1:
+            template_path = resolve_leap_export_template(unique_economies[0])
 
     def _norm_set(values: Iterable[str] | None) -> set[str]:
         if not values:
@@ -1804,8 +1849,8 @@ def reset_supply_and_transformation_import_export_to_zero(
 
     economy_set = _norm_set(economies)
     scenario_set = _norm_set(scenarios)
-    configured_modules = sorted(_configured_reset_module_names())
-    configured_fuels = _configured_reset_fuel_labels()
+    configured_modules = sorted(_configured_reset_module_names(template_path))
+    configured_fuels = _configured_reset_fuel_labels(template_path)
     sector_set = _norm_set(sector_titles or configured_modules)
     product_set = _resolve_product_filter_set(esto_products or configured_fuels)
     year_set = {

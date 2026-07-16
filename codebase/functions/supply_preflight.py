@@ -164,7 +164,7 @@ PREFLIGHT_COMPRESSED_INCLUDE_CURRENT_ACCOUNTS = True
 # declares `global _RESET_SCOPE_FROM_EXPORT_CACHE` and reads it on entry before
 # any assignment runs, so the name must exist at import time or the first call
 # raises NameError.
-_RESET_SCOPE_FROM_EXPORT_CACHE = None
+_RESET_SCOPE_FROM_EXPORT_CACHE: dict[str, dict[str, object]] = {}
 
 
 @contextmanager
@@ -567,18 +567,25 @@ def _flatten_reset_scope_values(values_by_group: dict[str, list[str]] | None) ->
     return ordered
 
 
-def _load_reset_scope_from_full_model_export() -> tuple[list[str], list[str]]:
+def _load_reset_scope_from_full_model_export(
+    template_path: Path | str | None = None,
+) -> tuple[list[str], list[str]]:
     """Return transformation module/fuel reset scope derived from full-model export."""
     from codebase.functions.supply_results_saver import _extract_catalog_rows_from_full_model_export  # late import — avoids circular
     global _RESET_SCOPE_FROM_EXPORT_CACHE
-    if isinstance(_RESET_SCOPE_FROM_EXPORT_CACHE, dict):
+    source_path = _resolve(template_path or RESULTS_VERIFICATION_EXPORT_PATH).resolve()
+    source_key = str(source_path)
+    if not isinstance(_RESET_SCOPE_FROM_EXPORT_CACHE, dict):
+        _RESET_SCOPE_FROM_EXPORT_CACHE = {}
+    cached = _RESET_SCOPE_FROM_EXPORT_CACHE.get(source_key)
+    if isinstance(cached, dict):
         return (
-            list(_RESET_SCOPE_FROM_EXPORT_CACHE.get("modules") or []),
-            list(_RESET_SCOPE_FROM_EXPORT_CACHE.get("fuels") or []),
+            list(cached.get("modules") or []),
+            list(cached.get("fuels") or []),
         )
 
     if not RESET_SCOPE_USE_FULL_MODEL_EXPORT:
-        _RESET_SCOPE_FROM_EXPORT_CACHE = {
+        _RESET_SCOPE_FROM_EXPORT_CACHE[source_key] = {
             "modules": [],
             "fuels": [],
             "module_output_fuels": {},
@@ -587,7 +594,7 @@ def _load_reset_scope_from_full_model_export() -> tuple[list[str], list[str]]:
 
     try:
         rows = _extract_catalog_rows_from_full_model_export(
-            source_path=RESULTS_VERIFICATION_EXPORT_PATH,
+            source_path=source_path,
             sheet_name=RESULTS_VERIFICATION_EXPORT_SHEET,
         )
     except Exception as exc:
@@ -638,15 +645,15 @@ def _load_reset_scope_from_full_model_export() -> tuple[list[str], list[str]]:
             "[INFO] Derived reset scope from full model export: "
             f"modules={len(modules)}, fuels={len(fuels)}, "
             f"module_output_scopes={module_scoped_count} "
-            f"(source={_resolve(RESULTS_VERIFICATION_EXPORT_PATH)})"
+            f"(source={source_path})"
         )
     else:
         print(
             "[WARN] No transformation reset scope derived from full model export "
-            f"(source={_resolve(RESULTS_VERIFICATION_EXPORT_PATH)})."
+            f"(source={source_path})."
         )
 
-    _RESET_SCOPE_FROM_EXPORT_CACHE = {
+    _RESET_SCOPE_FROM_EXPORT_CACHE[source_key] = {
         "modules": modules,
         "fuels": fuels,
         "module_output_fuels": module_output_fuels,
@@ -654,18 +661,20 @@ def _load_reset_scope_from_full_model_export() -> tuple[list[str], list[str]]:
     return modules, fuels
 
 
-def _configured_reset_module_names() -> set[str]:
+def _configured_reset_module_names(
+    template_path: Path | str | None = None,
+) -> set[str]:
     """Return normalized module names configured for reset operations."""
     legacy_modules = _flatten_reset_scope_values(TRANSFORMATION_RESET_MODULES)
     manual_modules = _flatten_reset_scope_values(TRANSFORMATION_RESET_MODULES_MANUAL_OVERRIDES)
-    derived_modules, _ = _load_reset_scope_from_full_model_export()
+    derived_modules, _ = _load_reset_scope_from_full_model_export(template_path)
 
     if RESET_SCOPE_USE_FULL_MODEL_EXPORT and derived_modules:
         base_modules = derived_modules
     elif RESET_SCOPE_USE_FULL_MODEL_EXPORT and RESET_SCOPE_REQUIRE_FULL_MODEL_EXPORT:
         raise ValueError(
             "Reset scope requires full model export derivation, but no module scope "
-            f"was derived from {RESULTS_VERIFICATION_EXPORT_PATH} "
+            f"was derived from {template_path or RESULTS_VERIFICATION_EXPORT_PATH} "
             f"(sheet={RESULTS_VERIFICATION_EXPORT_SHEET})."
         )
     else:
@@ -679,18 +688,20 @@ def _configured_reset_module_names() -> set[str]:
     return {token.lower() for token in tokens}
 
 
-def _configured_reset_fuel_labels() -> list[str]:
+def _configured_reset_fuel_labels(
+    template_path: Path | str | None = None,
+) -> list[str]:
     """Return unique configured reset fuel labels (preserve first-seen order)."""
     legacy_fuels = _flatten_reset_scope_values(TRANSFORMATION_RESET_FUELS)
     manual_fuels = _flatten_reset_scope_values(TRANSFORMATION_RESET_FUELS_MANUAL_OVERRIDES)
-    _, derived_fuels = _load_reset_scope_from_full_model_export()
+    _, derived_fuels = _load_reset_scope_from_full_model_export(template_path)
 
     if RESET_SCOPE_USE_FULL_MODEL_EXPORT and derived_fuels:
         base_fuels = derived_fuels
     elif RESET_SCOPE_USE_FULL_MODEL_EXPORT and RESET_SCOPE_REQUIRE_FULL_MODEL_EXPORT:
         raise ValueError(
             "Reset scope requires full model export derivation, but no fuel scope "
-            f"was derived from {RESULTS_VERIFICATION_EXPORT_PATH} "
+            f"was derived from {template_path or RESULTS_VERIFICATION_EXPORT_PATH} "
             f"(sheet={RESULTS_VERIFICATION_EXPORT_SHEET})."
         )
     else:
@@ -712,6 +723,7 @@ def _configured_reset_fuel_labels() -> list[str]:
 
 def _configured_reset_output_fuel_labels_by_module(
     module_names: Iterable[str] | None = None,
+    template_path: Path | str | None = None,
 ) -> dict[str, list[str]]:
     """
     Return module-specific Output Fuels reset labels.
@@ -741,8 +753,9 @@ def _configured_reset_output_fuel_labels_by_module(
         module_seen.add(canonical_key)
         mapping.setdefault(module_token, []).append(canonical)
 
-    _load_reset_scope_from_full_model_export()
-    cached = _RESET_SCOPE_FROM_EXPORT_CACHE if isinstance(_RESET_SCOPE_FROM_EXPORT_CACHE, dict) else {}
+    _load_reset_scope_from_full_model_export(template_path)
+    source_path = _resolve(template_path or RESULTS_VERIFICATION_EXPORT_PATH).resolve()
+    cached = _RESET_SCOPE_FROM_EXPORT_CACHE.get(str(source_path), {})
     raw_module_map = cached.get("module_output_fuels") if isinstance(cached, dict) else {}
     if isinstance(raw_module_map, dict):
         for module_key, labels in raw_module_map.items():
@@ -767,7 +780,7 @@ def _configured_reset_output_fuel_labels_by_module(
                 if requested_modules
                 else (
                     set(mapping.keys())
-                    or set(_configured_reset_module_names())
+                    or set(_configured_reset_module_names(template_path))
                 )
             )
         else:

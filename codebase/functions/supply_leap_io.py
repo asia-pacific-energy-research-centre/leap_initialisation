@@ -471,10 +471,7 @@ def apply_transformation_target_overrides_for_scenario(
             _configured_reset_output_fuel_labels_by_module,
         )
 
-        reset_modules = _configured_reset_module_names()
-        reset_output_fuels_by_module = _configured_reset_output_fuel_labels_by_module(
-            reset_modules
-        )
+        reset_scope_by_economy: dict[str, tuple[set[str], dict[str, list[str]]]] = {}
         scenario_key_for_capacity = _state_token(
             _resolve_reconciliation_scenario_key(reconciliation_table, scenario)
         )
@@ -482,6 +479,17 @@ def apply_transformation_target_overrides_for_scenario(
         missing_output_scope_modules: set[str] = set()
         for record in records:
             economy_name = str(record.get("economy") or "").strip()
+            economy_key = _state_token(economy_name)
+            if economy_key not in reset_scope_by_economy:
+                template_path = _leap_export_template_for_economy(economy_name)
+                reset_modules = _configured_reset_module_names(template_path)
+                reset_scope_by_economy[economy_key] = (
+                    reset_modules,
+                    _configured_reset_output_fuel_labels_by_module(
+                        reset_modules, template_path
+                    ),
+                )
+            reset_modules, reset_output_fuels_by_module = reset_scope_by_economy[economy_key]
             module_name = str(record.get("sector_title") or "").strip() or "__unknown_module__"
             process_name = str(record.get("process_name") or "").strip() or "__unknown_process__"
             counter_key = (
