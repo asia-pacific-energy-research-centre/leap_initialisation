@@ -67,7 +67,7 @@ families already have a (better-fitting) mechanism:
 | F2 | rule-level exceptions (narrow, must name `rule_id` + an exact field) + global warnings flag | `validation_exceptions`; `BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS` (`supply_leap_io.py:997`) | **exists** — don't add a per-producer waiver on top; LEAP-validity invariants must not be waivable wholesale |
 | F3 | per-call tolerance | `raise_on_missing_branch=False` (`supply_leap_io.py:2282`) | **exists** |
 | F4 | always block (warn-and-proceed defeats preflight) | — | **n/a by design** |
-| F5 | per-producer block / warn / off | `CONSERVATION_SEVERITY` (see F5) | **missing — the real gap** |
+| F5 | warn by default, one switch to escalate to errors | `CONSERVATION_FAILURES_ARE_ERRORS` + `build_with_conservation_policy` (`functions/conservation_policy.py`) | **exists** (added 2026-07-16 — was the gap) |
 
 **Config placement rule (2026-07-16):** these policies must live in a *centrally
 accessible* surface — `supply_reconciliation_config.py` (with a
@@ -209,40 +209,49 @@ Numerical (not structural) checks. Documented separately in
 |---|---|---|---|
 | proxy activity/target consistency | `other_loss_own_use_proxy_workflow.py:935` (`validate_proxy_activity_target_consistency`) | proxy activity matches target energy | — |
 | balance/demand conservation | `functions/balance_demand_conservation.py` (`build_raw_demand_conservation_reference:86`, `build_balance_demand_conservation_breakdown:242`, `..._lineage:358`, `..._diagnostics:516`) | raw vs resolved demand totals reconcile per sector/product/year | reporting/diagnostic |
-| projection strict conservation | `core.build_esto_projection_table(strict_conservation=...)` | ESTO projection conserves against the 9th base | ✅ `PROJECTION_STRICT_CONSERVATION` (transformation), `strict_conservation=True` (aggregated_demand:878), `False` (transfers:605) |
+| projection strict conservation | `functions/conservation_policy.py` (`build_with_conservation_policy`), wrapping `build_esto_projection_table` / `allocate_ninth_projection_to_esto` | ESTO projection conserves against the 9th base | ✅ `CONSERVATION_FAILURES_ARE_ERRORS` (warn by default) |
 | supply conservation | see `supply_conservation_checks.md` | supply == demand + transformation | — |
 
-**⚠ The projection strict-conservation check is self-bypassing.**
-`transformation_workflow.py:198-223` calls `build_esto_projection_table` with
-`strict_conservation=core.PROJECTION_STRICT_CONSERVATION`, and on `ValueError`
-prints `[WARN] Projection strict-conservation check failed … retrying non-strict`
-then **re-runs with `strict_conservation=False` and merges that result**. So
-setting `PROJECTION_STRICT_CONSERVATION=True` guarantees only a *warning* on
-failure — the unchecked projection still reaches the output.
+### Projection conservation severity — UNIFIED 2026-07-16
 
-**Decision (2026-07-16): warn-and-proceed here is deliberate.** F5 conservation
-checks may legitimately warn rather than block, unlike the seed writer's
-"never let invalid rows through" philosophy for F2 — the two families
-intentionally differ. What is *not* deliberate is the per-producer asymmetry
-(aggregated_demand hardcodes `True`, transfers hardcodes `False`, transformation
-reads config then silently falls back to `False`); that is drift.
+**Was:** five call sites disagreeing, with no single place to state the policy —
+transformation asset-prep **blocked**; transformation's scenario projection
+**warned** (it caught its own `ValueError` and silently re-ran non-strict — a
+self-bypassing check); supply **blocked**; aggregated_demand **blocked**
+(hardcoded `True`); transfers **never checked** (hardcoded `False`). And
+`PROJECTION_STRICT_CONSERVATION = True` was defined **twice**
+(`transformation_analysis_utils`, `supply_assets`), kept in manual sync by a
+comment.
 
-**Proposed (not yet built): an explicit per-producer severity dict**, so each
-producer states its policy rather than encoding it in a buried literal:
+**Decision:** a conservation failure is a **WARNING by default** — long runs must
+not halt on it — and every producer behaves identically. F5 may legitimately warn
+where F2 must not (the seed writer's "never let invalid rows through"); the two
+families deliberately differ.
+
+**Now:** `functions/conservation_policy.py` owns it.
 
 ```python
-# supply_reconciliation_config.py  (PRESET-CONTROLLED DEFAULT)
-# Severity for the projection strict-conservation check, per producer.
-#   "block" = raise; "warn" = log and proceed with the non-strict result;
-#   "off"   = do not run the check.
-CONSERVATION_SEVERITY = {
-    "transformation": "warn",       # deliberate: long runs must not halt
-    "aggregated_demand": "block",
-    "transfers": "off",
-}
+# functions/conservation_policy.py   (PRESET-CONTROLLED DEFAULT)
+CONSERVATION_FAILURES_ARE_ERRORS = False   # True -> raise instead of warn
+
+build_with_conservation_policy(producer, build)   # build(strict_conservation=...)
 ```
 
-F5 is the **only family without a severity mechanism** — see rule C below.
+The check is **always attempted with conservation on**; only failure handling
+differs, so call sites can no longer choose their own severity. The module
+imports stdlib only (no import cycles) and reads the flag at call time so presets
+can override it. Guarded by `tests/test_conservation_policy.py`.
+
+Migrated: `transformation_workflow` (its hand-rolled try/except removed),
+`supply_assets` (duplicate flag deleted), `aggregated_demand_workflow`,
+`transfers_workflow` (**now runs the check for the first time** — if transfers
+cannot conserve by construction, exempt it rather than reverting the policy).
+
+**Remaining:** the transformation asset-prep site
+(`transformation_analysis_utils.py:1820`) and the last
+`PROJECTION_STRICT_CONSERVATION` definition (`:137`) are not migrated — that file
+had uncommitted work in progress. It still **blocks**, i.e. errs on the stricter
+side. Finish the migration when the file is free.
 
 ---
 
@@ -325,13 +334,15 @@ F5 is the **only family without a severity mechanism** — see rule C below.
    a finished seed manufactures false differences. (This directly explains the
    transformation-patch gate's premise — see the patch-baseline-seeds work.)
 
-5. **Self-bypassing conservation check (F5).** The projection strict-conservation
-   check downgrades its own failure to a warning and re-runs non-strict
-   (`transformation_workflow.py:198-223`), so the unchecked projection reaches the
-   output. Its `strict_conservation` setting is also inconsistent across producers
-   (aggregated_demand `True`, transfers `False`, transformation config-then-`False`).
-   This contradicts the seed-writer's "never let invalid rows through" philosophy —
-   pick one and make it explicit. See F5.
+5. **Self-bypassing conservation check (F5) — RESOLVED 2026-07-16.** The
+   projection conservation check used to downgrade its own failure to a warning
+   and silently re-run non-strict in one producer while three others blocked and a
+   fifth never checked, with the strictness flag defined twice. Severity is now
+   owned by `functions/conservation_policy.py` (warn by default;
+   `CONSERVATION_FAILURES_ARE_ERRORS=True` to raise) and the behaviour is
+   identical across producers. See F5 for what remains: the transformation
+   asset-prep site (`transformation_analysis_utils.py:1820`) is not yet migrated
+   and still blocks.
 
 ## Related documents
 
