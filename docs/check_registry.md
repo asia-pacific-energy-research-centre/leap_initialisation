@@ -140,6 +140,12 @@ Guarded by `tests/test_leap_sheet_header_detection.py`. Zero-fill *mechanism*
 consolidation is still tracked by
 [export_zero_fill_consolidation_execution_prompt.md](prompts/export_zero_fill_consolidation_execution_prompt.md).
 
+**Zero-fill mechanism consolidation.** `export_zero_fill.zero_fill_unset_rows`
+now owns the shared universe filtering, de-duplication, anti-join, metadata, and
+zero-expression mechanics for own-use gap-fill and demand-zeroing reset rows.
+The callers retain their distinct scopes and zero styles; transformation
+zero-fill remains intentionally separate pending its stage-3 assessment.
+
 **Proposed fill-policy surface** (design, not yet built): a per-measure
 `FILL_MISSING_DEFAULTS` dict threaded as a function parameter into the gap-fill
 functions, so optional fills can be switched to "let LEAP inherit" without

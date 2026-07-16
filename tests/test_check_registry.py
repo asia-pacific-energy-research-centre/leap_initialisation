@@ -29,6 +29,7 @@ REGISTERED_CHECKS: dict[str, str] = {
     "build_aux_fuel_zero_rows": "codebase/functions/transformation_record_builder.py",
     "add_zero_rows_for_unset_values": "codebase/functions/other_loss_own_use_proxy_utils.py",
     "load_export_key_table": "codebase/functions/other_loss_own_use_proxy_utils.py",
+    "zero_fill_unset_rows": "codebase/functions/export_zero_fill.py",
     "build_demand_zeroing_rows": "codebase/aggregated_demand_workflow.py",
     "save_demand_zeroing_workbook": "codebase/aggregated_demand_workflow.py",
     "reset_supply_and_transformation_import_export_to_zero": (
@@ -110,9 +111,7 @@ def test_registered_check_is_documented(symbol: str, registry_text: str):
 
 # Modules the registry names as *planned* rather than existing. Remove an entry
 # once the module lands (the test then starts enforcing that it exists).
-PLANNED_MODULES = {
-    "export_zero_fill.py",  # F1 consolidation, see prompts/export_zero_fill_consolidation_execution_prompt.md
-}
+PLANNED_MODULES = set()
 
 
 def test_registry_cites_only_real_files(registry_text: str):

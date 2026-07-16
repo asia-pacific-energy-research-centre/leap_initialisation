@@ -17,6 +17,7 @@ from codebase.functions.leap_core import sanitize_leap_name
 from codebase.functions.leap_labels import clean_fuel_label_for_leap
 from codebase.functions.leap_expressions import build_data_expression_from_row
 from codebase.functions.leap_excel_io import read_export_sheet
+from codebase.functions.export_zero_fill import zero_data_expression, zero_fill_unset_rows
 from codebase.utilities.workflow_utils import (
     _normalize_economy,
     _normalize_year_columns,
@@ -2214,13 +2215,7 @@ def _zero_data_expression_for_scenario(
     base_year: int,
     final_year: int,
 ) -> str:
-    scenario_text = str(scenario or "").strip().lower()
-    if scenario_text in {"current accounts", "current account"}:
-        return f"Data({int(base_year)},0.0)"
-    parts: list[str] = []
-    for year in range(int(base_year), int(final_year) + 1):
-        parts.extend([str(year), "0.0"])
-    return f"Data({', '.join(parts)})"
+    return zero_data_expression(scenario, base_year=base_year, final_year=final_year)
 
 
 def add_zero_rows_for_unset_values(
@@ -2248,32 +2243,23 @@ def add_zero_rows_for_unset_values(
     key_table = export_key_table.copy()
     for col in join_cols:
         key_table[col] = key_table[col].fillna("").astype(str).str.strip()
-    managed = key_table[
-        key_table["Branch Path"].astype(str).str.startswith(root_path)
-        & key_table["Variable"].isin(list(variables))
-        & key_table["Scenario"].isin(scenarios)
-    ][join_cols].drop_duplicates()
-    already_set = out[join_cols].drop_duplicates()
-    missing = managed.merge(already_set, on=join_cols, how="left", indicator=True)
-    missing = missing[missing["_merge"].eq("left_only")].drop(columns=["_merge"])
+    missing = zero_fill_unset_rows(
+        out, key_table, include_prefixes=(root_path,), variables=variables,
+        scenarios=scenarios, key_columns=join_cols, only_unset=True,
+        region=output_region,
+        expression=lambda scenario: zero_data_expression(
+            scenario, base_year=base_year, final_year=final_year,
+        ),
+    )
     if missing.empty:
         return out
     template_cols = [col for col in out.columns if col not in key_cols]
     zero_rows = []
-    for row in missing.itertuples(index=False):
-        item = {
-            "Branch Path": row[0],
-            "Variable": row[1],
-            "Scenario": row[2],
-            "Region": output_region,
-        }
+    for _, missing_row in missing.iterrows():
+        item = missing_row.to_dict()
         for col in template_cols:
             item[col] = pd.NA
-        item["Expression"] = _zero_data_expression_for_scenario(
-            item["Scenario"],
-            base_year=base_year,
-            final_year=final_year,
-        )
+        item["Expression"] = missing_row["Expression"]
         zero_rows.append(item)
     combined = pd.concat([out, pd.DataFrame(zero_rows)], ignore_index=True, sort=False)
     level_cols = [col for col in combined.columns if str(col).startswith("Level ")]

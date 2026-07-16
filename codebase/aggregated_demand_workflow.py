@@ -37,6 +37,7 @@ except Exception as exc:
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions.conservation_policy import build_with_conservation_policy
 from codebase.functions.leap_excel_io import find_leap_header_row
+from codebase.functions.export_zero_fill import zero_fill_unset_rows
 from codebase.functions.unified_name_lookup import load_active_mapping_sheet
 from codebase.functions.leap_excel_io import (
     add_leap_preamble,
@@ -1517,32 +1518,16 @@ def build_demand_zeroing_rows(
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
 
-    mask = (
-        df["Branch Path"].str.startswith("Demand\\")
-        & ~df["Branch Path"].str.startswith(DEMAND_AGGREGATED_BRANCH_PREFIX)
-        & ~df["Variable"].isin(DEMAND_SHARE_VARIABLES)
+    result = zero_fill_unset_rows(
+        None, df, include_prefixes=("Demand\\",),
+        exclude_prefixes=(DEMAND_AGGREGATED_BRANCH_PREFIX, *(exclude_branch_prefixes or [])),
+        exclude_variables=DEMAND_SHARE_VARIABLES, scenarios=scenarios,
+        only_unset=False, region=region, expression="0",
+        metadata_columns=("Scale", "Units", "Per..."),
     )
-    if exclude_branch_prefixes:
-        for prefix in exclude_branch_prefixes:
-            mask = mask & ~df["Branch Path"].str.startswith(prefix)
-    df = df[mask].copy()
-
-    if scenarios:
-        df = df[df["Scenario"].isin(scenarios)].copy()
-
-    if df.empty:
+    if result.empty:
         print("[INFO] No demand zeroing rows found after filtering.")
         return empty
-
-    df = df.drop_duplicates(subset=["Branch Path", "Variable", "Scenario"], keep="first")
-
-    result = df[["Branch Path", "Variable", "Scenario"]].copy()
-    result["Region"] = region
-    result["Scale"] = df["Scale"].fillna("") if "Scale" in df.columns else ""
-    result["Units"] = df["Units"].fillna("") if "Units" in df.columns else ""
-    result["Per..."] = df["Per..."].fillna("") if "Per..." in df.columns else ""
-    result["Expression"] = "0"
-
     return result[_LEAP_EXPORT_COLS].reset_index(drop=True)
 
 
