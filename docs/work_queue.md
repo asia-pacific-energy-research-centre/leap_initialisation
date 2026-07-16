@@ -74,6 +74,12 @@ efficiency, output shares and aux-fuel ratios all move by **one exact ratio** �
 USA coke ovens ×1.16676 (efficiency 60.97 → 71.14), NZ blast furnaces ×1.04001.
 Every `20260715` seed predates it.
 
+**Confirmed correct by the modeller (2026-07-16): the coke ovens change is right**
+— coke oven gas is genuinely an output of coke ovens, so the new behaviour is the
+correct one and the `20260715` seeds are simply out of date for that sector. This
+is a domain confirmation, not a code check; it does not cover the other
+newly-multi-output sectors.
+
 **Evidence already gathered here (feeds that prompt's validation steps 2-4):**
 the 2026-07-16 NZ+USA run corroborates the intended signature — efficiency and
 aux ratios shifted exactly as the added output implies (their step 3), and share
@@ -81,6 +87,8 @@ sums still reach 100% (NZ: 96.152607 + 3.847393). Their step 4 assumes "USA
 blast furnaces unaffected" — true here (only coke ovens moved) — but **NZ blast
 furnaces gained `Other recovered gases` (+4%)**, i.e. a newly-multi-output sector
 in another economy, which is exactly the gap that prompt says it did not cover.
+NZ blast furnaces is therefore the next case worth a modeller's eye: is `Other
+recovered gases` a genuine blast-furnace co-product, as coke oven gas was?
 
 ---
 
