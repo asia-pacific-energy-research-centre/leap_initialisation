@@ -111,11 +111,33 @@ on); others are **optional** placeholders a researcher may prefer LEAP to inheri
 | `_backfill_base_year_activity_from_projection` | `other_loss_own_use_proxy_utils.py:1187` | gap-fill | base-year Activity from projection | optional | ❌ none | pre-base-year consistency notice (diagnostic) |
 | `_zero_data_expression_for_scenario` | `other_loss_own_use_proxy_utils.py:2210` | helper | build zero `Data()` series | n/a | n/a | — |
 
-**Header-parsing drift** (same full-model export, three readers — consolidate
-into one loader): `load_export_key_table`
-(`other_loss_own_use_proxy_utils.py:2100`, hardcodes `header=2`),
-`build_demand_zeroing_rows` (header scan), `_read_leap_data` in
-`supply_leap_io.py` (`write_per_economy_combined_workbooks`). Tracked by
+**Header-parsing drift.** LEAP-style sheets carry a preamble above the real
+column header, so every reader must locate that header row first. That scan was
+independently reimplemented **~8 times** (not three, as the consolidation prompt
+originally assumed), with **three different detection criteria** and
+**inconsistent scan depths** — so a sheet whose header moved was found by some
+readers and silently mis-parsed by others:
+
+| Impl | Detects on | Scan depth | Status |
+|---|---|---|---|
+| `leap_excel_io.find_leap_header_row` | `Branch Path`+`Variable` | unlimited | **shared — use this** |
+| `analysis_input_write_dispatcher._find_header_row` | ″ | unlimited | ✅ routed 2026-07-16 |
+| `aggregated_demand_workflow.build_demand_zeroing_rows` | ″ | unlimited | ✅ routed 2026-07-16 |
+| `patch_baseline_seeds._find_header_row:259` | ″ | **first 8** | pending; also drops blank spacer columns |
+| `supply_leap_io._read_workbook_sheet_with_header_detection:820` | ″ | unlimited | pending (export-template work area) |
+| `supply_leap_io._read_leap_data:1603` | ″ | **first 6** | pending (export-template work area) |
+| `supply_results_saver._find_header_row:460` | ″ | unlimited | pending |
+| `leap_excel_io.read_export_sheet:30` | **`BranchID`** | n/a (row match) | pending — different criterion |
+| `other_loss_own_use_proxy_utils.load_export_key_table` | — | **hardcodes `header=2`** | pending — the format-drift risk |
+
+Note the readers do **not** all parse the full model export: only
+`build_demand_zeroing_rows` and `load_export_key_table` do; `_read_leap_data`
+reads per-economy producer workbooks. So the shared concern is *"read a
+LEAP-style sheet by detecting its header"*, not *"load the export universe"* —
+hence `read_leap_sheet` / `find_leap_header_row` live in `leap_excel_io`
+(which already owns LEAP sheet I/O) rather than in a new `export_zero_fill.py`.
+Guarded by `tests/test_leap_sheet_header_detection.py`. Zero-fill *mechanism*
+consolidation is still tracked by
 [export_zero_fill_consolidation_execution_prompt.md](prompts/export_zero_fill_consolidation_execution_prompt.md).
 
 **Proposed fill-policy surface** (design, not yet built): a per-measure

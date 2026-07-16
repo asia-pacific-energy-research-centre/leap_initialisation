@@ -51,6 +51,9 @@ REGISTERED_CHECKS: dict[str, str] = {
     # F5 - conservation / numeric
     "build_with_conservation_policy": "codebase/functions/conservation_policy.py",
     "validate_proxy_activity_target_consistency": "codebase/other_loss_own_use_proxy_workflow.py",
+    # Shared readers underpinning F1/F2 (header-parsing drift)
+    "find_leap_header_row": "codebase/functions/leap_excel_io.py",
+    "read_leap_sheet": "codebase/functions/leap_excel_io.py",
 }
 
 

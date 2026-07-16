@@ -1,10 +1,105 @@
 ﻿#%%
+from dataclasses import dataclass
+
 import pandas as pd
 from pathlib import Path
 
 from codebase.configuration.config import region_id_name_dict, scenario_dict
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions.leap_expressions import expression_to_series, parse_expression
+
+
+# ── LEAP sheet header detection ───────────────────────────────────────────────
+# LEAP-style sheets carry a preamble above the real column header, so every
+# reader must locate that header row first. That scan was independently
+# reimplemented ~8 times across the codebase, with three different detection
+# criteria ("Branch Path"+"Variable", "BranchID", or "assume row 2") and scan
+# depths of 6 rows, 8 rows, and unlimited. A sheet whose header moved was
+# therefore found by some readers and silently mis-parsed by others.
+#
+# Use these helpers rather than writing another scan. See docs/check_registry.md
+# (family F1, "Header-parsing drift").
+
+LEAP_HEADER_TOKENS: tuple[str, ...] = ("branch path", "variable")
+
+
+def find_leap_header_row(raw: pd.DataFrame, *, tokens: tuple[str, ...] = LEAP_HEADER_TOKENS) -> int | None:
+    """Return the 0-based index of the LEAP column-header row, or None.
+
+    Every row is scanned. That is a superset of the old 6-row and 8-row caps, so
+    no caller detects fewer headers than it did before; a header further down is
+    now found rather than reported missing.
+    """
+    wanted = {str(token).strip().lower() for token in tokens}
+    for idx in range(len(raw.index)):
+        values = {str(value).strip().lower() for value in raw.iloc[idx].tolist()}
+        if wanted.issubset(values):
+            return int(idx)
+    return None
+
+
+@dataclass(frozen=True)
+class LeapSheet:
+    """A parsed LEAP-style sheet."""
+
+    raw: pd.DataFrame  # the sheet exactly as read (header=None)
+    header_row: int  # 0-based index of the column-header row
+    columns: list  # header values, as found
+    preamble: pd.DataFrame  # rows above the header row
+    data: pd.DataFrame  # rows below the header row, with columns applied
+
+
+def read_leap_sheet(
+    path: Path | str,
+    sheet_name: str = "LEAP",
+    *,
+    drop_blank_columns: bool = False,
+    drop_empty_rows: bool = True,
+) -> LeapSheet:
+    """Read a LEAP-style sheet, detecting its header row.
+
+    Parameters
+    ----------
+    drop_blank_columns:
+        Drop columns whose header label is blank/NaN. Off by default so a
+        caller's column set is unchanged. Seed sheets carry blank spacer columns
+        whose duplicate NaN labels break per-row lookups during validation, so
+        that reader turns this on deliberately.
+    drop_empty_rows:
+        Drop all-NaN rows below the header. On by default (the majority
+        behaviour). Turn it off when row positions must still line up with the
+        original sheet, e.g. a read/modify/write-back path.
+    """
+    resolved = Path(path)
+    raw = pd.read_excel(resolved, sheet_name=sheet_name, header=None)
+    header_row = find_leap_header_row(raw)
+    if header_row is None:
+        raise ValueError(
+            f"Could not locate LEAP header row (needs {', '.join(LEAP_HEADER_TOKENS)}) "
+            f"in {resolved.name}::{sheet_name}"
+        )
+    columns = raw.iloc[header_row].tolist()
+    preamble = raw.iloc[:header_row].copy()
+    data = raw.iloc[header_row + 1 :].copy()
+    data.columns = columns
+    if drop_blank_columns:
+        named = [
+            col
+            for col in data.columns
+            if not pd.isna(col) and str(col).strip() not in ("", "nan")
+        ]
+        data = data[named]
+        columns = named
+    if drop_empty_rows:
+        data = data.dropna(how="all")
+    data = data.reset_index(drop=True)
+    return LeapSheet(
+        raw=raw,
+        header_row=header_row,
+        columns=columns,
+        preamble=preamble,
+        data=data,
+    )
 
 # def get_leap_metadata(measure):
 #     """Fetch LEAP_units, LEAP_Scale, LEAP_Per from LEAP_MEASURE_CONFIG if available."""

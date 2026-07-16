@@ -36,6 +36,7 @@ except Exception as exc:
 
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions.conservation_policy import build_with_conservation_policy
+from codebase.functions.leap_excel_io import find_leap_header_row
 from codebase.functions.unified_name_lookup import load_active_mapping_sheet
 from codebase.functions.leap_excel_io import (
     add_leap_preamble,
@@ -1503,16 +1504,7 @@ def build_demand_zeroing_rows(
         print(f"[WARN] Failed reading {path} for demand zeroing: {exc}")
         return empty
 
-    header_row = None
-    for idx in range(len(raw.index)):
-        row_vals = {
-            str(v).strip().lower()
-            for v in raw.iloc[idx].tolist()
-            if str(v or "").strip()
-        }
-        if "branch path" in row_vals and "variable" in row_vals:
-            header_row = idx
-            break
+    header_row = find_leap_header_row(raw)
     if header_row is None:
         print(f"[WARN] Could not find LEAP header row in {path}")
         return empty

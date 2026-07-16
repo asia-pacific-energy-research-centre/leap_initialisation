@@ -9,6 +9,7 @@ import pandas as pd
 
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions.leap_api_guard import ensure_leap_api_allowed
+from codebase.functions.leap_excel_io import find_leap_header_row
 from codebase.utilities.master_config import config_table_exists, read_config_table
 
 DEFAULT_ANALYSIS_INPUT_WRITE_MODE = "api"
@@ -116,11 +117,13 @@ def ensure_analysis_view_api_access_allowed(context_label: str, *, access_kind: 
 
 
 def _find_header_row(raw: pd.DataFrame) -> int:
-    for idx in range(len(raw.index)):
-        tokens = {_clean_text(value).lower() for value in raw.iloc[idx].tolist()}
-        if "branch path" in tokens and "variable" in tokens:
-            return int(idx)
-    raise ValueError("Could not locate workbook header row containing 'Branch Path' and 'Variable'.")
+    """Locate the LEAP header row via the shared detector in leap_excel_io."""
+    header_row = find_leap_header_row(raw)
+    if header_row is None:
+        raise ValueError(
+            "Could not locate workbook header row containing 'Branch Path' and 'Variable'."
+        )
+    return header_row
 
 
 def _read_workbook_sheet(path: Path, sheet_name: str) -> tuple[pd.DataFrame, int, list[str], pd.DataFrame]:
