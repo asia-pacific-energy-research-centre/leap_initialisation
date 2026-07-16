@@ -35,6 +35,7 @@ from codebase.utilities import leap_export_template_resolver
 from codebase.functions.leap_expressions import build_data_expression_from_row
 from codebase.functions.leap_excel_io import (
     add_leap_preamble,
+    read_leap_sheet,
     prepare_for_leap_sheet_df,
     prepare_for_viewing_sheet_df,
     _write_unlimited_production_expressions,
@@ -823,21 +824,8 @@ def _read_workbook_sheet_with_header_detection(
 ) -> tuple[pd.DataFrame, pd.DataFrame, list]:
     """Return (preamble_rows, data_rows, header_values) for a LEAP-style sheet."""
     path = _resolve(workbook_path)
-    raw = pd.read_excel(path, sheet_name=sheet_name, header=None)
-    header_row = None
-    for idx in range(len(raw.index)):
-        values = {_normalize_template_header_value(item).lower() for item in raw.iloc[idx].tolist()}
-        if "branch path" in values and "variable" in values:
-            header_row = int(idx)
-            break
-    if header_row is None:
-        raise ValueError(f"Could not locate LEAP sheet header in {path.name}::{sheet_name}")
-    header_values = raw.iloc[header_row].tolist()
-    preamble = raw.iloc[:header_row].copy()
-    data = raw.iloc[header_row + 1 :].copy()
-    data.columns = header_values
-    data = data.dropna(how="all").reset_index(drop=True)
-    return preamble, data, header_values
+    sheet = read_leap_sheet(path, sheet_name=sheet_name)
+    return sheet.preamble, sheet.data, sheet.columns
 
 
 def _merge_workbook_sheets(
@@ -1613,16 +1601,8 @@ def write_per_economy_combined_workbooks(
         return {}, {}, {}
 
     def _read_leap_data(path: Path) -> tuple[pd.DataFrame, list]:
-        raw = pd.read_excel(path, sheet_name="LEAP", header=None)
-        for idx in range(min(6, len(raw))):
-            vals = [str(v).strip().lower() for v in raw.iloc[idx].tolist() if str(v) not in ("nan", "")]
-            if "branch path" in vals and "variable" in vals:
-                header = raw.iloc[idx].tolist()
-                data = raw.iloc[idx + 1:].copy()
-                data.columns = header
-                data = data.dropna(how="all").reset_index(drop=True)
-                return data, header
-        raise ValueError(f"Could not find LEAP header in {path.name}")
+        sheet = read_leap_sheet(path, sheet_name="LEAP")
+        return sheet.data, sheet.columns
 
     economy_list = workflow_common.normalize_economies(economies)
     run_stamp = datetime.now().strftime("%Y%m%d")

@@ -123,12 +123,12 @@ readers and silently mis-parsed by others:
 | `leap_excel_io.find_leap_header_row` | `Branch Path`+`Variable` | unlimited | **shared — use this** |
 | `analysis_input_write_dispatcher._find_header_row` | ″ | unlimited | ✅ routed 2026-07-16 |
 | `aggregated_demand_workflow.build_demand_zeroing_rows` | ″ | unlimited | ✅ routed 2026-07-16 |
-| `patch_baseline_seeds._find_header_row:259` | ″ | **first 8** | pending; also drops blank spacer columns |
-| `supply_leap_io._read_workbook_sheet_with_header_detection:820` | ″ | unlimited | pending (export-template work area) |
-| `supply_leap_io._read_leap_data:1603` | ″ | **first 6** | pending (export-template work area) |
-| `supply_results_saver._find_header_row:460` | ″ | unlimited | pending |
-| `leap_excel_io.read_export_sheet:30` | **`BranchID`** | n/a (row match) | pending — different criterion |
-| `other_loss_own_use_proxy_utils.load_export_key_table` | — | **hardcodes `header=2`** | pending — the format-drift risk |
+| `patch_baseline_seeds._find_header_row` | ″ | unlimited | ✅ routed 2026-07-16; retains blank-spacer-column removal |
+| `supply_leap_io._read_workbook_sheet_with_header_detection` | ″ | unlimited | ✅ routed 2026-07-16 |
+| `supply_leap_io._read_leap_data` | ″ | unlimited | ✅ routed 2026-07-16 |
+| `supply_results_saver._find_header_row` | ″ | unlimited | ✅ routed 2026-07-16 |
+| `leap_excel_io.read_export_sheet` | **`BranchID`** | unlimited | ✅ routed 2026-07-16; intentionally retains the export-specific criterion |
+| `other_loss_own_use_proxy_utils.load_export_key_table` | **`BranchID`** (via `read_export_sheet`) | unlimited | ✅ routed 2026-07-16 |
 
 Note the readers do **not** all parse the full model export: only
 `build_demand_zeroing_rows` and `load_export_key_table` do; `_read_leap_data`

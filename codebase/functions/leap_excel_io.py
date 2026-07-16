@@ -123,12 +123,17 @@ def _normalize_export_column_name(value) -> str:
 
 
 def read_export_sheet(path, sheet_name="Export"):
-    """Read a LEAP export sheet while preserving the header rows."""
+    """Read a LEAP export sheet while preserving the header rows.
+
+    Export sheets intentionally identify their header with ``BranchID`` rather
+    than the standard ``Branch Path`` + ``Variable`` pair: ID columns are the
+    export-format contract used by downstream remapping readers. The scan is
+    nevertheless shared so preamble-depth handling cannot drift.
+    """
     raw = pd.read_excel(path, sheet_name=sheet_name, header=None)
-    header_row_candidates = raw.index[raw.eq("BranchID").any(axis=1)]
-    if header_row_candidates.empty:
+    header_row = find_leap_header_row(raw, tokens=("BranchID",))
+    if header_row is None:
         raise ValueError(f"[ERROR] Could not find header row with 'BranchID' in {path} ({sheet_name}).")
-    header_row = int(header_row_candidates[0])
     columns = [_normalize_export_column_name(col) for col in raw.iloc[header_row].tolist()]
     header_rows = raw.iloc[:header_row].copy()
     header_rows.columns = columns

@@ -125,19 +125,13 @@ every other producer warns. Migrate it to
 `docs/check_registry.md` § F5. It errs on the stricter side meanwhile, so this is
 not urgent.
 
-## [3] Finish the header-detector routing
+## [3] Finish the header-detector routing ✅ Completed 2026-07-16
 
-**Ready.** `supply_leap_io` / `supply_results_saver` sit in the
-export-template work area, which is now clean and committed.
-
-`leap_excel_io.find_leap_header_row` / `read_leap_sheet` exist and two callers are
-routed. Remaining callers, their quirks, and their scan depths are tabulated in
-`docs/check_registry.md` § F1 ("Header-parsing drift"):
-`patch_baseline_seeds._find_header_row` (needs `drop_blank_columns=True`),
-`supply_leap_io._read_leap_data` + `_read_workbook_sheet_with_header_detection`,
-`supply_results_saver._find_header_row`, `leap_excel_io.read_export_sheet`
-(different `BranchID` criterion — decide whether to unify), and
-`load_export_key_table` (drop its hardcoded `header=2` — the format-drift risk).
+All F1 callers listed in the registry now use `leap_excel_io` detection. `patch_baseline_seeds` retains
+its blank-spacer-column removal. `read_export_sheet` and, through it,
+`load_export_key_table` deliberately retain the export-specific `BranchID`
+header criterion; it is the ID-bearing export-format contract, not a standard
+LEAP import-sheet header.
 
 ## [4] Process Efficiency backing invariant
 

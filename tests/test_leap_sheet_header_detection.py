@@ -16,6 +16,7 @@ import pytest
 from codebase.functions.leap_excel_io import (
     LEAP_HEADER_TOKENS,
     find_leap_header_row,
+    read_export_sheet,
     read_leap_sheet,
 )
 
@@ -124,9 +125,79 @@ def test_missing_header_raises_with_a_useful_message(tmp_path: Path):
 
 
 def test_routed_callers_use_the_shared_detector():
-    """Regression guard: these two had their own copies of the scan."""
+    """Regression guard: routed standard-sheet callers import the detector."""
     from codebase import aggregated_demand_workflow
     from codebase.functions import analysis_input_write_dispatcher
+    from codebase.functions import patch_baseline_seeds, supply_leap_io, supply_results_saver
 
     assert hasattr(aggregated_demand_workflow, "find_leap_header_row")
     assert hasattr(analysis_input_write_dispatcher, "find_leap_header_row")
+    assert hasattr(patch_baseline_seeds, "find_leap_header_row")
+    assert hasattr(supply_leap_io, "read_leap_sheet")
+    assert hasattr(supply_results_saver, "find_leap_header_row")
+
+
+def test_patcher_keeps_blank_spacer_removal_and_uses_unlimited_scan():
+    from codebase.functions.patch_baseline_seeds import _find_header_row
+
+    columns, data = _find_header_row(_sheet(9, blank_col=True))
+
+    assert columns == ["Branch Path", "Variable", "Scenario", "Region", "Expression"]
+    assert data["Branch Path"].tolist() == ["Demand\\A", "Demand\\B"]
+
+
+def test_supply_workbook_reader_uses_shared_unlimited_scan(tmp_path: Path):
+    from codebase.functions.supply_leap_io import _read_workbook_sheet_with_header_detection
+
+    path = _write(tmp_path, _sheet(9, blank_col=True))
+    preamble, data, columns = _read_workbook_sheet_with_header_detection(path, "LEAP")
+
+    assert len(preamble) == 9
+    assert len(columns) == 6, "supply readers intentionally retain spacer columns"
+    assert data["Branch Path"].tolist() == ["Demand\\A", "Demand\\B"]
+
+
+def _export_sheet(preamble_rows: int) -> pd.DataFrame:
+    header = [
+        "BranchID", "VariableID", "ScenarioID", "RegionID", "Branch Path",
+        "Variable", "Scenario", "Region",
+    ]
+    row = [1, 2, 3, 4, "Demand\\Other loss and own use\\A", "Activity Level", "Reference", "United States"]
+    return pd.DataFrame(
+        [["Export preamble", *([None] * (len(header) - 1))] for _ in range(preamble_rows)]
+        + [header, row]
+    )
+
+
+def test_export_reader_keeps_branchid_criterion_with_unlimited_scan(tmp_path: Path):
+    path = _write(tmp_path, _export_sheet(9), sheet_name="Export")
+
+    preamble, data, columns = read_export_sheet(path, "Export")
+
+    assert len(preamble) == 9
+    assert columns[0] == "BranchID"
+    assert data["Branch Path"].tolist() == ["Demand\\Other loss and own use\\A"]
+
+
+def test_export_key_loader_detects_moved_export_header(tmp_path: Path):
+    from codebase.functions.other_loss_own_use_proxy_utils import load_export_key_table
+
+    path = _write(tmp_path, _export_sheet(7), sheet_name="Export")
+    keys = load_export_key_table(path)
+
+    assert keys[["BranchID", "VariableID", "ScenarioID", "RegionID"]].iloc[0].tolist() == [1, 2, 3, 4]
+
+
+def test_results_saver_filter_detects_header_below_long_preamble(tmp_path: Path):
+    from codebase.functions.supply_results_saver import _filter_transformation_workbook_to_trade_targets
+
+    raw = _sheet(9)
+    raw.iloc[10, 1] = "Import Target"
+    raw.iloc[12, 1] = "Activity Level"
+    path = _write(tmp_path, raw)
+
+    _filter_transformation_workbook_to_trade_targets(path)
+    filtered = read_leap_sheet(path)
+
+    assert filtered.header_row == 9
+    assert filtered.data["Variable"].tolist() == ["Import Target"]

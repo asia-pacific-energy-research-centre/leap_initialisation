@@ -280,6 +280,7 @@ from codebase.functions.supply_leap_io import (
     run_other_demand_zeroing_leap_import,
     run_results_linked_leap_import,
 )
+from codebase.functions.leap_excel_io import find_leap_header_row
 
 def _resolve_existing_results_supply_export_paths(
     *,
@@ -458,11 +459,7 @@ def _filter_transformation_workbook_to_trade_targets(
     output_sheets: dict[str, pd.DataFrame] = {}
 
     def _find_header_row(raw: pd.DataFrame) -> int | None:
-        for idx in range(len(raw.index)):
-            values = {_normalize_template_header_value(item).lower() for item in raw.iloc[idx].tolist()}
-            if "branch path" in values and "variable" in values:
-                return int(idx)
-        return None
+        return find_leap_header_row(raw)
 
     for sheet_name in xl.sheet_names:
         raw = pd.read_excel(path, sheet_name=sheet_name, header=None)

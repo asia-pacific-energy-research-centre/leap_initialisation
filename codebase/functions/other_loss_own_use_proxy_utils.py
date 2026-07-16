@@ -16,6 +16,7 @@ import pandas as pd
 from codebase.functions.leap_core import sanitize_leap_name
 from codebase.functions.leap_labels import clean_fuel_label_for_leap
 from codebase.functions.leap_expressions import build_data_expression_from_row
+from codebase.functions.leap_excel_io import read_export_sheet
 from codebase.utilities.workflow_utils import (
     _normalize_economy,
     _normalize_year_columns,
@@ -2106,7 +2107,7 @@ def load_export_key_table(
     resolved = _resolve(path)
     if not resolved.exists():
         raise FileNotFoundError(f"Missing export key workbook: {resolved}")
-    df = pd.read_excel(resolved, sheet_name=sheet_name, header=2)
+    _, df, _ = read_export_sheet(resolved, sheet_name=sheet_name)
     df = df.rename(columns={col: str(col).strip() for col in df.columns})
     required_cols = [
         "BranchID",

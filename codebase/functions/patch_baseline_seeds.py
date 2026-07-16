@@ -73,6 +73,7 @@ from codebase.functions.baseline_seed_validation import (
 )
 from codebase.functions.leap_excel_io import (
     add_leap_preamble,
+    find_leap_header_row,
     prepare_for_leap_sheet_df,
     prepare_for_viewing_sheet_df,
 )
@@ -258,20 +259,18 @@ MODULE_REGISTRY: dict[str, ModuleConfig] = {
 # LEAP file I/O helpers
 # ---------------------------------------------------------------------------
 def _find_header_row(raw: pd.DataFrame) -> tuple[list, pd.DataFrame]:
-    for idx in range(min(8, len(raw))):
-        vals = [str(v).strip().lower() for v in raw.iloc[idx].tolist()
-                if str(v) not in ("nan", "")]
-        if "branch path" in vals and "variable" in vals:
-            header = raw.iloc[idx].tolist()
-            data = raw.iloc[idx + 1:].copy()
-            data.columns = header
-            # Drop blank spacer columns: their NaN labels duplicate each other,
-            # and duplicate labels break per-row lookups during validation.
-            named = [c for c in data.columns
-                     if not pd.isna(c) and str(c).strip() not in ("", "nan")]
-            data = data[named]
-            return named, data.dropna(how="all").reset_index(drop=True)
-    raise ValueError("LEAP header row (Branch Path + Variable) not found")
+    """Parse a raw seed sheet, retaining its blank-spacer-column quirk."""
+    header_row = find_leap_header_row(raw)
+    if header_row is None:
+        raise ValueError("LEAP header row (Branch Path + Variable) not found")
+    header = raw.iloc[header_row].tolist()
+    data = raw.iloc[header_row + 1:].copy()
+    data.columns = header
+    # Drop blank spacer columns: their NaN labels duplicate each other,
+    # and duplicate labels break per-row lookups during validation.
+    named = [c for c in data.columns if not pd.isna(c) and str(c).strip() not in ("", "nan")]
+    data = data[named]
+    return named, data.dropna(how="all").reset_index(drop=True)
 
 
 def _wide_to_expression(data: pd.DataFrame) -> pd.DataFrame:
