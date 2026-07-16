@@ -57,11 +57,30 @@ equivalence check returned large diffs that were **entirely** explained by this
 uncommitted code, not by the thing under test. Until it lands, no transformation
 verification means anything.
 
-Its blast radius is worth reviewing on its own merits before it lands: it
-reclassifies fuels (Coke oven gas moves feedstock → output), which cascades into
-capacity, historical production, efficiency, output shares and aux-fuel ratios
-simultaneously — USA coke ovens **+17%** efficiency (60.97 → 71.14), NZ blast
-furnaces **+4%**. Every `20260715` seed predates it.
+**What it is (corrected — it is an intentional fix, not a suspicious change).**
+The `multi_output` default flipped `False` → `True`. With `False`,
+`summarize_transformation_flows` kept only the **single largest-value output fuel
+per flow**; genuine co-products (coke oven gas, coal tar, benzole) were silently
+dropped from the process record and back-filled with `Output Share = 0` — "rows
+that look like legitimate zeros but are not". Only `oil_refineries` set
+`multi_output: True` explicitly; nine other sectors fell through to the default.
+Motivating bug: 01_AUS coke ovens `Coal tar` Output Share was 0 despite nonzero
+source data. Full detail and the verification plan:
+`docs/prompts/transformation_multi_output_default_verification_prompt.md`.
+
+**Blast radius** (why it confounds any transformation diff): a recovered
+co-product raises the output total, so capacity, historical production,
+efficiency, output shares and aux-fuel ratios all move by **one exact ratio** —
+USA coke ovens ×1.16676 (efficiency 60.97 → 71.14), NZ blast furnaces ×1.04001.
+Every `20260715` seed predates it.
+
+**Evidence already gathered here (feeds that prompt's validation steps 2-4):**
+the 2026-07-16 NZ+USA run corroborates the intended signature — efficiency and
+aux ratios shifted exactly as the added output implies (their step 3), and share
+sums still reach 100% (NZ: 96.152607 + 3.847393). Their step 4 assumes "USA
+blast furnaces unaffected" — true here (only coke ovens moved) — but **NZ blast
+furnaces gained `Other recovered gases` (+4%)**, i.e. a newly-multi-output sector
+in another economy, which is exactly the gap that prompt says it did not cover.
 
 ---
 
