@@ -1344,7 +1344,7 @@ def build_aggregated_demand_workbooks_for_results_supply(
             esto_data_path=ESTO_BASE_DATA_PATH,
             fuel_mappings_path=FUEL_MAPPINGS_PATH,
             exclude_own_use_td_losses=bool(AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES),
-            id_lookup_path=AGGREGATED_DEMAND_ID_LOOKUP_PATH,
+            id_lookup_path=_leap_export_template_for_economy(economy),
             excluded_sectors=excluded_sectors,
             use_sector_branches=use_sector_branches,
         )
@@ -1389,6 +1389,21 @@ def _branch_leaf_tokens(label: object) -> set[str]:
         return set()
     ignored = {"and", "of", "which", "the", "nonspecified", "non", "specified"}
     return {t for t in re.findall(r"[a-z0-9]+", text) if t and t not in ignored}
+
+
+def _leap_export_template_for_economy(economy: object) -> Path:
+    """Return the LEAP export template whose IDs apply to this economy.
+
+    Falls back to the legacy single export for aggregate sentinels, which span
+    areas, and when an economy has no template yet.
+    """
+    if leap_export_template_resolver.is_aggregate_economy(economy):
+        return _resolve(RESULTS_VERIFICATION_EXPORT_PATH)
+    try:
+        return leap_export_template_resolver.resolve_leap_export_template(economy)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"[WARN] {exc}")
+        return _resolve(RESULTS_VERIFICATION_EXPORT_PATH)
 
 
 def _load_reference_export_data(source_path: Path | str | None = None) -> pd.DataFrame:
@@ -1588,10 +1603,7 @@ def write_per_economy_combined_workbooks(
         """Return the LEAP export template whose IDs apply to this economy."""
         if explicit_id_lookup is not None:
             return explicit_id_lookup
-        if leap_export_template_resolver.is_aggregate_economy(economy):
-            # An aggregate spans areas and has no template of its own.
-            return _resolve(RESULTS_VERIFICATION_EXPORT_PATH)
-        return leap_export_template_resolver.resolve_leap_export_template(economy)
+        return _leap_export_template_for_economy(economy)
 
     def _id_lookups_for_template(template_path: Path):
         """Return (branch, variable, scenario) label->ID maps for one template."""

@@ -3700,7 +3700,9 @@ def run_results_linked_transformation_supply_workflow(
         supply_workbook_dir=EXPORT_OUTPUT_DIR,
         aggregated_demand_dir=EXPORT_OUTPUT_DIR,
         output_dir=OUTPUT_DIR,
-        id_lookup_path=AGGREGATED_DEMAND_ID_LOOKUP_PATH,
+        # id_lookup_path is left unset so each economy resolves its own LEAP
+        # export template; passing one path here applied a single area's
+        # BranchIDs to every economy.
         excluded_sectors=_effective_agg_demand_excluded,
         use_sector_branches=bool(AGGREGATED_DEMAND_USE_SECTOR_BRANCHES),
         source_workbooks_by_workflow=baseline_seed_sources,

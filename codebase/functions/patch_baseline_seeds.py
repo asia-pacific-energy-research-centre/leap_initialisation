@@ -60,6 +60,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from codebase.utilities import leap_export_template_resolver
 from codebase.functions.baseline_seed_validation import (
     SOURCE_WORKFLOW_COLUMN,
     TemplateIdLookup,
@@ -355,7 +356,21 @@ def split_documented_exclusions(
     return df[~exclusion_mask].copy(), df[exclusion_mask].copy()
 
 
-_TEMPLATE_ID_LOOKUP_CACHE: dict | None = None
+# Keyed by template path: run_patch loops over economies, and each economy is a
+# separate LEAP area, so one shared lookup would apply the first economy's IDs
+# to every later one.
+_TEMPLATE_ID_LOOKUP_CACHE: dict[str, dict] = {}
+
+
+def _template_for_economy(economy: object | None) -> Path:
+    """Return the LEAP export template whose IDs apply to this economy."""
+    if economy is None or leap_export_template_resolver.is_aggregate_economy(economy):
+        return FULL_MODEL_EXPORT_PATH
+    try:
+        return leap_export_template_resolver.resolve_leap_export_template(economy)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"[WARN] {exc}")
+        return FULL_MODEL_EXPORT_PATH
 
 
 def _build_id_lookup(
@@ -367,9 +382,9 @@ def _build_id_lookup(
     Each value is a dict mapping the string key to its integer ID.
     Only non-(-1) IDs are stored; missing entries should fall back to -1.
     """
-    global _TEMPLATE_ID_LOOKUP_CACHE
-    if _TEMPLATE_ID_LOOKUP_CACHE is not None:
-        return _TEMPLATE_ID_LOOKUP_CACHE
+    cache_key = str(path).lower()
+    if cache_key in _TEMPLATE_ID_LOOKUP_CACHE:
+        return _TEMPLATE_ID_LOOKUP_CACHE[cache_key]
 
     raw = pd.read_excel(path, sheet_name="Export", header=None)
     _, data = _find_header_row(raw)
@@ -414,14 +429,14 @@ def _build_id_lookup(
             if v is not None:
                 region[reg] = v
 
-    _TEMPLATE_ID_LOOKUP_CACHE = {
+    _TEMPLATE_ID_LOOKUP_CACHE[cache_key] = {
         "branch": branch,
         "branch_lower": branch_lower,
         "variable": variable,
         "scenario": scenario,
         "region": region,
     }
-    return _TEMPLATE_ID_LOOKUP_CACHE
+    return _TEMPLATE_ID_LOOKUP_CACHE[cache_key]
 
 
 def _fill_ids_from_template(df: pd.DataFrame, lookup: dict[str, dict]) -> None:
@@ -450,9 +465,21 @@ def _canonical_template_lookup(path: Path) -> TemplateIdLookup:
     return lookup
 
 
+SEED_FILENAME_PATTERN = re.compile(
+    r"^leap_import_baseline_seed_(?P<economy>.+?)_(?P<stamp>\d{8})\.xlsx$",
+    re.IGNORECASE,
+)
+
+
+def _economy_from_seed_filename(seed_path: Path) -> str | None:
+    """Return the economy a baseline-seed workbook belongs to, if its name says."""
+    match = SEED_FILENAME_PATTERN.match(Path(seed_path).name)
+    return match.group("economy") if match else None
+
+
 def validate_seed_files(
     seed_dir: Path = BASELINE_SEED_DIR,
-    template_path: Path = FULL_MODEL_EXPORT_PATH,
+    template_path: Path | None = None,
     ignore_prefixes: frozenset[str] = VALIDATION_IGNORE_PREFIXES,
     ignore_fuel_names: frozenset[str] = VALIDATION_IGNORE_FUEL_NAMES,
 ) -> int:
@@ -462,19 +489,27 @@ def validate_seed_files(
     validator uses (``build_template_id_lookup``), so this printed report and
     the enforcing validator cannot drift apart. Branch paths are matched
     case-insensitively via the lookup's normalized canonical-path keys.
+
+    Each seed file belongs to one economy and is checked against that economy's
+    LEAP export template, since branch paths and IDs differ between areas. Pass
+    ``template_path`` to check every seed against one template instead.
     """
-    if not template_path.exists():
-        print(f"[WARN] Template not found, skipping validation: {template_path}")
-        return 0
-
-    lookup = _canonical_template_lookup(template_path)
-
     seed_files = sorted(seed_dir.glob("leap_import_baseline_seed_*.xlsx"))
     if not seed_files:
         return 0
 
     total_bad = 0
     for seed_path in seed_files:
+        if template_path is not None:
+            seed_template = template_path
+        else:
+            seed_template = _template_for_economy(_economy_from_seed_filename(seed_path))
+        if not seed_template.exists():
+            print(f"[WARN] Template not found, skipping validation: {seed_template}")
+            continue
+
+        lookup = _canonical_template_lookup(seed_template)
+
         try:
             raw = pd.read_excel(seed_path, sheet_name="LEAP", header=None)
             _, data = _find_header_row(raw)
@@ -632,7 +667,6 @@ def _collect_auto_regen(cfg: ModuleConfig,
         print("[WARN] No process records returned.")
         return {}
 
-    catalog_df = _load_catalog()
     scenarios = list(core.SCENARIOS_TO_EXPORT)
     base_year, final_year = core.EXPORT_BASE_YEAR, core.EXPORT_FINAL_YEAR
     in_scope_titles = {
@@ -655,6 +689,9 @@ def _collect_auto_regen(cfg: ModuleConfig,
             continue
         econ_records = [r for r in records if str(r.get("economy") or "").strip() == economy]
         region = get_region_for_economy(economy)
+        # The catalog describes this economy's LEAP area, so it is loaded per
+        # economy rather than once for whichever area happened to come first.
+        catalog_df = _load_catalog(_template_for_economy(economy))
 
         log_rows: list[dict] = []
         for scenario in scenarios:
@@ -682,9 +719,12 @@ def _collect_auto_regen(cfg: ModuleConfig,
     return result
 
 
-def _load_catalog() -> pd.DataFrame:
+def _load_catalog(source_path: Path | None = None) -> pd.DataFrame:
+    """Return the transformation catalog for one economy's LEAP area."""
     from codebase.supply_reconciliation_workflow import _extract_catalog_rows_from_full_model_export
-    rows = _extract_catalog_rows_from_full_model_export(source_path=FULL_MODEL_EXPORT_PATH)
+    rows = _extract_catalog_rows_from_full_model_export(
+        source_path=source_path if source_path is not None else FULL_MODEL_EXPORT_PATH
+    )
     return pd.DataFrame(rows) if rows else pd.DataFrame()
 
 
@@ -870,7 +910,9 @@ def _patch_one(
     new_df: pd.DataFrame,
     prefixes: list[str],
     source_workflow: str = "patch_baseline_seeds",
+    economy: str | None = None,
 ) -> None:
+    template_path = _template_for_economy(economy)
     raw = pd.read_excel(seed_path, sheet_name="LEAP", header=None)
     _, data = _find_header_row(raw)
 
@@ -891,8 +933,8 @@ def _patch_one(
     for col in cleaned.columns:
         if col not in new_df.columns:
             new_df[col] = pd.NA
-    if FULL_MODEL_EXPORT_PATH.exists():
-        _fill_ids_from_template(new_df, _build_id_lookup())
+    if template_path.exists():
+        _fill_ids_from_template(new_df, _build_id_lookup(template_path))
     else:
         for id_col, default in [("BranchID", -1), ("VariableID", -1),
                                  ("ScenarioID", -1), ("RegionID", 1)]:
@@ -939,13 +981,13 @@ def _patch_one(
 
     validation = prepare_seed_rows_for_write(
         combined,
-        template_path=FULL_MODEL_EXPORT_PATH,
+        template_path=template_path,
         diagnostics_dir=diagnostics_dir,
         diagnostic_stem=diagnostic_stem,
         required_years_by_scenario=required_years_by_scenario,
     )
     combined = validation.resolved_rows
-    _assert_atomic_canonical_share_groups(combined, FULL_MODEL_EXPORT_PATH)
+    _assert_atomic_canonical_share_groups(combined, template_path)
     combined = combined.drop(columns=[SOURCE_WORKFLOW_COLUMN], errors="ignore")
 
     leap_data = prepare_for_leap_sheet_df(combined)
@@ -1018,8 +1060,7 @@ def run_patch(
             f"Unknown module '{module}'. Available: {sorted(MODULE_REGISTRY)}"
         )
 
-    global _TEMPLATE_ID_LOOKUP_CACHE
-    _TEMPLATE_ID_LOOKUP_CACHE = None  # rebuild from template on each run_patch call
+    _TEMPLATE_ID_LOOKUP_CACHE.clear()  # rebuild from templates on each run_patch call
 
     cfg = MODULE_REGISTRY[module]
     if cfg.auto_sector_keys:
@@ -1092,7 +1133,13 @@ def _run_patch_locked(
                 # Source workbooks carry the global placeholder region; the seed
                 # combiner rewrites Region per economy, so the patch must too.
                 new_df["Region"] = get_region_for_economy(tok)
-            _patch_one(seed_path, new_df, strip_prefixes, source_workflow=module)
+            _patch_one(
+                seed_path,
+                new_df,
+                strip_prefixes,
+                source_workflow=module,
+                economy=tok,
+            )
         except PermissionError:
             msg = "file is locked (close it in Excel and re-run for this economy)"
             print(f"  [{tok}] FAILED — {msg}")
