@@ -38,6 +38,7 @@ REGISTERED_CHECKS: dict[str, str] = {
     "prepare_seed_rows_for_write": "codebase/functions/baseline_seed_validation.py",
     "complete_canonical_share_groups": "codebase/functions/baseline_seed_validation.py",
     "_zero_capacity_is_explicit": "codebase/functions/baseline_seed_validation.py",
+    "_validate_process_efficiency_for_capacity": "codebase/functions/baseline_seed_validation.py",
     "resolve_logical_duplicates": "codebase/functions/baseline_seed_validation.py",
     "check_producer_coverage": "codebase/functions/baseline_seed_validation.py",
     "validate_seed_files": "codebase/functions/patch_baseline_seeds.py",

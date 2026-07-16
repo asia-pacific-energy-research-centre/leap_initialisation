@@ -122,6 +122,62 @@ def test_explicitly_nonzero_capacity_blocks_fallback(tmp_path: Path) -> None:
     assert diagnostics["message"].str.contains("fallback is blocked").any()
 
 
+@pytest.mark.parametrize("efficiency_expression", [None, "", "not parseable"])
+def test_nonzero_capacity_requires_usable_process_efficiency(
+    efficiency_expression: str | None,
+) -> None:
+    process = "Transformation\\Plant\\Processes\\A"
+    capacity = _row(process, "Exogenous Capacity", "Data(2023,1)")
+    rows = [capacity]
+    if efficiency_expression is not None:
+        rows.append(_row(process, "Process Efficiency", efficiency_expression))
+
+    validation = validate_seed_rows(pd.DataFrame(rows))
+    findings = validation.findings[validation.findings["rule_id"].eq("SEED-013")]
+
+    assert len(findings) == 1
+    assert findings.iloc[0]["blocking"]
+    assert "no usable Process Efficiency" in findings.iloc[0]["message"]
+
+
+def test_nonzero_capacity_accepts_explicit_process_efficiency() -> None:
+    process = "Transformation\\Plant\\Processes\\A"
+    rows = [
+        _row(process, "Exogenous Capacity", "Data(2023,1)"),
+        _row(process, "Process Efficiency", "Data(2023,0)"),
+    ]
+
+    validation = validate_seed_rows(pd.DataFrame(rows))
+    findings = validation.findings[validation.findings["rule_id"].eq("SEED-013")]
+
+    assert len(findings) == 1
+    assert findings.iloc[0]["status"] == "pass"
+
+
+def test_process_efficiency_must_match_capacity_scenario_and_region() -> None:
+    process = "Transformation\\Plant\\Processes\\A"
+    capacity = _row(process, "Exogenous Capacity", "Data(2023,1)", scenario="Target")
+    efficiency = _row(process, "Process Efficiency", "Data(2023,100)")
+    efficiency["Region"] = "Canada"
+
+    validation = validate_seed_rows(pd.DataFrame([capacity, efficiency]))
+    findings = validation.findings[validation.findings["rule_id"].eq("SEED-013")]
+
+    assert len(findings) == 1
+    assert findings.iloc[0]["blocking"]
+
+
+def test_zero_or_nonprocess_capacity_does_not_require_efficiency() -> None:
+    rows = [
+        _row("Transformation\\Plant\\Processes\\A", "Exogenous Capacity", "Data(2023,0)"),
+        _row("Resources\\Gas", "Exogenous Capacity", "Data(2023,1)"),
+    ]
+
+    validation = validate_seed_rows(pd.DataFrame(rows))
+
+    assert validation.findings.empty or not validation.findings["rule_id"].eq("SEED-013").any()
+
+
 @pytest.mark.parametrize("capacity_expression", ["", "not parseable"])
 def test_unavailable_capacity_still_gets_deterministic_fallback(
     tmp_path: Path,

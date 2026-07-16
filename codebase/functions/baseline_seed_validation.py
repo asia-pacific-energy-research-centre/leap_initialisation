@@ -128,6 +128,12 @@ RULE_SPECS = {
         "docs/baseline_seed_rule_inventory.md#coverage-validation",
         branch_grouping=(SOURCE_WORKFLOW_COLUMN, "economy"),
     ),
+    "SEED-013": RuleSpec(
+        "SEED-013", "A capacitied transformation process has Process Efficiency set.",
+        "nonzero Exogenous Capacity rows on transformation processes", "error", True,
+        "docs/baseline_seed_rule_inventory.md#process-efficiency-capacity-guard",
+        applicable_variables=("Exogenous Capacity", "Process Efficiency"),
+    ),
 }
 
 
@@ -1179,6 +1185,80 @@ def _validate_shares(data: pd.DataFrame, *, tolerance: float) -> list[dict[str, 
     return findings
 
 
+def _is_transformation_process_path(branch_path: object) -> bool:
+    """Return whether a path identifies a process under Transformation."""
+    path = _normalized(branch_path).lower()
+    return path.startswith("transformation\\") and "\\processes\\" in path
+
+
+def _has_usable_process_efficiency(rows: pd.DataFrame) -> bool:
+    """A present, parseable expression is an explicitly set efficiency.
+
+    This intentionally does not impose a value constraint. The producer guard
+    it backs checks that an efficiency was supplied, while any future
+    efficiency-plausibility rule can make its own modelling decision.
+    """
+    for expression in rows.get("Expression", pd.Series(dtype=object)):
+        mode, payload = parse_expression(expression)
+        if mode == "const" and payload is not None:
+            return True
+        if mode == "series" and isinstance(payload, dict) and payload:
+            return True
+    return False
+
+
+def _validate_process_efficiency_for_capacity(
+    data: pd.DataFrame,
+    *,
+    zero_tolerance: float,
+) -> list[dict[str, object]]:
+    """Require explicit efficiency for each nonzero-capacity process/scenario."""
+    required_columns = {"Branch Path", "Variable", "Scenario", "Region", "Expression"}
+    if not required_columns.issubset(data.columns):
+        return []
+
+    variable_text = data["Variable"].map(_text)
+    capacity_rows = data[variable_text.eq("Exogenous Capacity")]
+    efficiency_rows = data[variable_text.eq("Process Efficiency")]
+    findings: list[dict[str, object]] = []
+    for _, capacity_row in capacity_rows.iterrows():
+        branch_path = _text(capacity_row["Branch Path"])
+        if not _is_transformation_process_path(branch_path):
+            continue
+        capacity_is_zero = _expression_is_zero(
+            capacity_row["Expression"], zero_tolerance
+        )
+        if capacity_is_zero is not False:
+            continue
+
+        matching_efficiency = efficiency_rows[
+            efficiency_rows["Branch Path"].map(_normalized).eq(_normalized(branch_path))
+            & efficiency_rows["Scenario"].map(_normalized).eq(
+                _normalized(capacity_row["Scenario"])
+            )
+            & efficiency_rows["Region"].map(_normalized).eq(
+                _normalized(capacity_row["Region"])
+            )
+        ]
+        context = _row_context(capacity_row)
+        context["Variable"] = "Process Efficiency"
+        if _has_usable_process_efficiency(matching_efficiency):
+            findings.append(_finding(
+                "SEED-013", "pass",
+                "Nonzero-capacity process has Process Efficiency set.",
+                evidence=f"capacity={_text(capacity_row['Expression'])}",
+                **context,
+            ))
+        else:
+            findings.append(_finding(
+                "SEED-013", "fail",
+                "Nonzero-capacity process has no usable Process Efficiency expression.",
+                evidence=f"capacity={_text(capacity_row['Expression'])}",
+                **context,
+            ))
+    return findings
+
+
 def _validate_canonical_share_completeness(
     data: pd.DataFrame,
     template: pd.DataFrame,
@@ -1570,6 +1650,12 @@ def validate_seed_rows(
                 ))
 
     findings.extend(_validate_shares(resolved, tolerance=share_tolerance))
+    findings.extend(
+        _validate_process_efficiency_for_capacity(
+            resolved,
+            zero_tolerance=zero_tolerance,
+        )
+    )
 
     configured_years = sorted({int(year) for year in required_years or []})
     scenario_years = {
@@ -1787,6 +1873,7 @@ __all__ = [
     "RuleSpec",
     "ValidationResult",
     "BaselineSeedValidationError",
+    "_validate_process_efficiency_for_capacity",
     "filter_actionable_findings",
     "build_missing_branch_issue_groups",
     "build_producer_coverage_issue_groups",

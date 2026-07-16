@@ -133,18 +133,12 @@ its blank-spacer-column removal. `read_export_sheet` and, through it,
 header criterion; it is the ID-bearing export-format contract, not a standard
 LEAP import-sheet header.
 
-## [4] Process Efficiency backing invariant
+## [4] Process Efficiency backing invariant ✅ Completed 2026-07-16
 
-**Ready.** The current zero-fill safety net and capacity guard landed in
-`8c32504`; this is the complementary validator work.
-
-`baseline_seed_validation.py` contains **zero** references to "Efficiency".
-Nothing catches "nonzero Exogenous Capacity, no Process Efficiency", so per the
-registry's rule B the efficiency gap-fill is **not safe to gate**: the fill is
-currently the only safety net. If it is made optional
-(`FILL_MISSING_DEFAULTS`), pair it with a capacitied-process-must-have-efficiency
-invariant mirroring the share capacity-guard. Worth adding regardless. See
-`docs/check_registry.md` hotspot 2.
+`SEED-013` now blocks a final seed when a transformation process has nonzero
+Exogenous Capacity but no usable Process Efficiency expression for the same
+scenario and region. It deliberately validates presence and parseability only;
+efficiency-value plausibility remains a separate modelling rule.
 
 ## [5] Zero-fill mechanism consolidation (stages 2–3)
 

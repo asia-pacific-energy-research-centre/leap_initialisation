@@ -102,7 +102,7 @@ on); others are **optional** placeholders a researcher may prefer LEAP to inheri
 | Mechanism | Location | Kind | Measures | structural / optional | gated-by | BACKING-CHECK |
 |---|---|---|---|---|---|---|
 | `build_aux_fuel_zero_rows` | `transformation_record_builder.py:2180` | gap-fill | Output/Feedstock/Process Share | **structural** | always-on | F2 capacity-guard (SEED-C009/C011/C013) |
-| ″ | ″ | gap-fill | Aux Fuel Use, Import/Export Target, Historical Production, Exogenous Capacity, **Process Efficiency** | optional | ❌ none | **⚠ NONE for Process Efficiency** (see hotspots); others unverified |
+| ″ | ″ | gap-fill | Aux Fuel Use, Import/Export Target, Historical Production, Exogenous Capacity, **Process Efficiency** | optional | ❌ none | **✅ Process Efficiency: SEED-013 / SEED-C030**; others unverified |
 | `add_zero_rows_for_unset_values` | `other_loss_own_use_proxy_utils.py:2225` | gap-fill | Activity Level, Final Energy Intensity | optional | ❌ none | none |
 | `build_demand_zeroing_rows` / `save_demand_zeroing_workbook` | `aggregated_demand_workflow.py:1463` / `:1553` | **reset** | blanket-zero non-share `Demand\` | optional | ✅ `ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT` + `..._INCLUDE_IN_LEAP_IMPORT` | excludes agg-demand + own-use prefixes (SEED-C023) |
 | `reset_supply_and_transformation_import_export_to_zero` | `supply_reconciliation_tables.py:1741` | **reset** | supply/transformation Import/Export Target | optional | ✅ `RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT` | — |
@@ -167,6 +167,7 @@ paths cross the boundary**:
 | `_zero_capacity_is_explicit` (capacity-guard) | `baseline_seed_validation.py:745` | SEED-C009/C011/C013 | ″ |
 | `_validate_shares` | `baseline_seed_validation.py:1112` | SEED-C008/C010/C012 | ″ |
 | `_validate_canonical_share_completeness` | `baseline_seed_validation.py:1173` | SEED-C014 | ″ |
+| `_validate_process_efficiency_for_capacity` | `baseline_seed_validation.py` | SEED-C030 | every nonzero-capacity transformation process has a usable Process Efficiency expression |
 | `check_producer_coverage` | `baseline_seed_validation.py:383` | SEED-C018 (SEED-012) | ″ |
 | `validate_exception_records` | `baseline_seed_validation.py:1473` | SEED-C007/C022 | ″ |
 | `validate_seed_files` | `patch_baseline_seeds.py:453` | post-write file check | patcher |
@@ -284,14 +285,11 @@ side. Finish the migration when the file is free.
    have no preserve-originals switch, unlike the two resets. Proposed fix:
    per-measure `FILL_MISSING_DEFAULTS` (see F1).
 
-2. **⚠ Process Efficiency fill has no backing invariant.**
-   `baseline_seed_validation.py` contains **zero** references to "Efficiency".
-   The share fills are backed by the capacity-guard, but nothing catches
-   "nonzero Exogenous Capacity, no Process Efficiency". Per rule B this fill is
-   **not safe to gate** as-is — if it is ever made optional, pair it with a new
-   capacitied-process-must-have-efficiency invariant (mirroring the share
-   capacity-guard). Arguably worth adding regardless, since the fill is currently
-   the only safety net.
+2. **Process Efficiency backing invariant — RESOLVED 2026-07-16.**
+   `SEED-013` / `SEED-C030` now block a final seed when a transformation process
+   has nonzero Exogenous Capacity but no usable Process Efficiency expression for
+   the same scenario and region. This mirrors the producer's capacity guard while
+   deliberately not imposing an efficiency-value plausibility policy.
 
 3. **F2 has a second, divergent implementation in `leap_core`** (checked
    2026-07-16). `_normalize_share_columns_wide` (`leap_core.py:2304`) runs at
