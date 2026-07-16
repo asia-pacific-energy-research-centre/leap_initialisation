@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 import pandas as pd
+from codebase.configuration import workflow_config as workflow_cfg
 from codebase.mappings.canonical_mapping import ConfigTableRef, split_config_table_ref
 from codebase.utilities.leap_balance_export_resolver import resolve_balance_export_workbook
 from codebase.utilities.master_config import (
@@ -67,7 +68,7 @@ DEFAULT_BACKUP_MAPPINGS_PATH = REPO_ROOT / "config/backup_leap_mappings.xlsx"
 DEFAULT_EXPLICIT_MAPPINGS_PATH = REPO_ROOT / "config/leap_results_explicit_mappings.csv"
 DEFAULT_EXPLICIT_REASSIGNMENTS_PATH = REPO_ROOT / "config/leap_results_explicit_reassignments.csv"
 DEFAULT_SYNTHETIC_REFERENCE_ROWS_PATH = REPO_ROOT / "config/synthetic_reference_rows.csv"
-DEFAULT_BASE_TABLE_PATH = REPO_ROOT / "data/00APEC_2025_low_with_subtotals.csv"
+DEFAULT_BASE_TABLE_PATH = workflow_cfg.get_energy_source_config().esto_base_table_path
 DEFAULT_PROJECTION_TABLE_PATH = REPO_ROOT / "data/merged_file_energy_ALL_20251106.csv"
 
 

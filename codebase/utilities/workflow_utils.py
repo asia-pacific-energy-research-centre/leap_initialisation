@@ -18,11 +18,13 @@ from pathlib import Path
 
 import pandas as pd
 
+from codebase.configuration import workflow_config as workflow_cfg
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Default data file paths (used when callers pass no explicit path).
 _DEFAULT_NINTH_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
-_DEFAULT_ESTO_PATH = REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv"
+_DEFAULT_ESTO_PATH = workflow_cfg.get_energy_source_config().esto_base_table_path
 
 # Module-level cache: absolute Path → loaded DataFrame.
 _csv_cache: dict[Path, pd.DataFrame] = {}
@@ -89,8 +91,8 @@ def load_esto_csv(path: Path | str | None = None) -> pd.DataFrame:
     Parameters
     ----------
     path:
-        Explicit path to the CSV file. Defaults to
-        ``data/00APEC_2025_low_with_subtotals.csv`` under REPO_ROOT.
+        Explicit path to the CSV file. Defaults to the configured
+        ``esto_base_table_path`` (see ``workflow_config.get_energy_source_config``).
 
     Returns
     -------

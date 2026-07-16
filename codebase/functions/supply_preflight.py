@@ -30,6 +30,10 @@ from codebase.supply_reconciliation_config import (
     _use_capacity_like_mode,
 )
 from codebase.utilities.workflow_utils import _resolve
+from codebase.utilities.apec_aggregate_sources import (
+    ensure_apec_esto_aggregate,
+    resolve_apec_ninth_aggregate,
+)
 from codebase.utilities import workflow_common
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP_EXPORTS_ROOT
 from codebase.configuration import workflow_config as workflow_cfg
@@ -950,15 +954,29 @@ def _create_preflight_compressed_source_files(
     ninth_out = out_dir / f"{file_prefix}_ninth_projection_compressed_{compressed_year}.csv"
     abs_diag_out = out_dir / f"{file_prefix}_ninth_projection_compressed_abs_sum_{compressed_year}.csv"
 
-    shutil.copy2(source_cfg.esto_base_table_path, esto_out)
-
     economy_filter_set = {
         str(item).strip()
         for item in (economy_filter or [])
         if str(item or "").strip()
     }
 
-    header = pd.read_csv(source_cfg.ninth_projection_table_path, nrows=0)
+    # Only the synthetic APEC preflight needs aggregate source tables. Keep
+    # ordinary per-economy callers on their supplied sources (including small
+    # fixture files without a dated production filename).
+    use_apec_aggregate_sources = "00_APEC" in economy_filter_set
+    esto_source_path = (
+        ensure_apec_esto_aggregate(source_cfg.esto_base_table_path)
+        if use_apec_aggregate_sources
+        else source_cfg.esto_base_table_path
+    )
+    ninth_source_path = (
+        resolve_apec_ninth_aggregate(source_cfg.ninth_projection_table_path)
+        if use_apec_aggregate_sources
+        else source_cfg.ninth_projection_table_path
+    )
+    shutil.copy2(esto_source_path, esto_out)
+
+    header = pd.read_csv(ninth_source_path, nrows=0)
     ninth_columns = list(header.columns)
     if "scenarios" not in ninth_columns:
         raise KeyError("Configured ninth projection table is missing required 'scenarios' column.")
@@ -973,7 +991,7 @@ def _create_preflight_compressed_source_files(
     if not year_cols:
         raise ValueError(
             "Preflight compressed projection could not find any ninth projection "
-            f"year columns after base_year={base_year} in {source_cfg.ninth_projection_table_path}."
+            f"year columns after base_year={base_year} in {ninth_source_path}."
         )
     non_year_cols = [col for col in ninth_columns if col not in year_cols]
     if preserve_source_scenarios:
@@ -987,7 +1005,7 @@ def _create_preflight_compressed_source_files(
     value_cols = [str(compressed_year), f"{compressed_year}_abs_sum"]
     grouped_parts: list[pd.DataFrame] = []
     for chunk in pd.read_csv(
-        source_cfg.ninth_projection_table_path,
+        ninth_source_path,
         usecols=usecols,
         low_memory=False,
         chunksize=200_000,
