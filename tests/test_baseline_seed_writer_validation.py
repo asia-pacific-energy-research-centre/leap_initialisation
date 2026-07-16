@@ -121,7 +121,7 @@ def test_final_writer_collapses_exact_duplicates_and_populates_ids(
     _write_template(template)
     monkeypatch.setattr(
         "codebase.functions.supply_leap_io._load_reference_export_data",
-        lambda: pd.DataFrame(),
+        lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
     written = write_per_economy_combined_workbooks(
@@ -149,7 +149,7 @@ def test_final_writer_writes_diagnostics_before_conflict_blocks(
     output_dir = tmp_path / "output"
     monkeypatch.setattr(
         "codebase.functions.supply_leap_io._load_reference_export_data",
-        lambda: pd.DataFrame(),
+        lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
     with pytest.raises(BaselineSeedValidationError):
@@ -179,7 +179,7 @@ def test_writer_accumulates_economy_failures_and_writes_no_final_workbook(
     output_dir = tmp_path / "output"
     monkeypatch.setattr(
         "codebase.functions.supply_leap_io._load_reference_export_data",
-        lambda: pd.DataFrame(),
+        lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
     # The consolidated summary reports aggregated rule counts (e.g. "SEED-001=1"),
@@ -228,7 +228,7 @@ def test_final_writer_writes_grouped_missing_branch_issue_summary(
     output_dir = tmp_path / "output"
     monkeypatch.setattr(
         "codebase.functions.supply_leap_io._load_reference_export_data",
-        lambda: pd.DataFrame(),
+        lambda *_args, **_kwargs: pd.DataFrame(),
     )
     monkeypatch.setattr("codebase.utilities.workflow_common.THROW_ERROR_AFTER_RUN", True)
 
@@ -301,7 +301,7 @@ def test_final_writer_exposes_key_scoped_zero_reset_exception(
     _write_template(template, variable_id=-1)
     monkeypatch.setattr(
         "codebase.functions.supply_leap_io._load_reference_export_data",
-        lambda: pd.DataFrame(),
+        lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
     written = write_per_economy_combined_workbooks(
@@ -359,7 +359,7 @@ def test_final_writer_preserves_non_branch_ids_for_warning_only_aggregated_deman
     }])
     monkeypatch.setattr(
         "codebase.functions.supply_leap_io._load_reference_export_data",
-        lambda: pd.DataFrame(),
+        lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
     written = write_per_economy_combined_workbooks(
@@ -403,7 +403,7 @@ def test_default_reference_validation_window_requires_2023_through_2060(
     output_dir = tmp_path / "output"
     monkeypatch.setattr(
         "codebase.functions.supply_leap_io._load_reference_export_data",
-        lambda: pd.DataFrame(),
+        lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
     with pytest.raises(BaselineSeedValidationError, match="SEED-009"):
@@ -429,7 +429,7 @@ def test_missing_configured_producer_for_economy_blocks_final_write(
     output_dir = tmp_path / "output"
     monkeypatch.setattr(
         "codebase.functions.supply_leap_io._load_reference_export_data",
-        lambda: pd.DataFrame(),
+        lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
     with pytest.raises(BaselineSeedValidationError, match="SEED-012"):
@@ -468,7 +468,7 @@ def test_missing_producer_finding_names_nonexistent_workbook_path(
     output_dir = tmp_path / "output"
     monkeypatch.setattr(
         "codebase.functions.supply_leap_io._load_reference_export_data",
-        lambda: pd.DataFrame(),
+        lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
     with pytest.raises(BaselineSeedValidationError, match="SEED-012"):
@@ -503,7 +503,7 @@ def test_final_writer_can_skip_validation_for_side_combines(
     _write_leap_workbook(source, [_row("Data(2023,1)")])
     monkeypatch.setattr(
         "codebase.functions.supply_leap_io._load_reference_export_data",
-        lambda: pd.DataFrame(),
+        lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
     written = write_per_economy_combined_workbooks(

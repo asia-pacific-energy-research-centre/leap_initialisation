@@ -31,6 +31,7 @@ from codebase.supply_reconciliation_config import (
 )
 from codebase.utilities.workflow_utils import _resolve
 from codebase.utilities import workflow_common
+from codebase.utilities import leap_export_template_resolver
 from codebase.functions.leap_expressions import build_data_expression_from_row
 from codebase.functions.leap_excel_io import (
     add_leap_preamble,
@@ -1390,11 +1391,15 @@ def _branch_leaf_tokens(label: object) -> set[str]:
     return {t for t in re.findall(r"[a-z0-9]+", text) if t and t not in ignored}
 
 
-def _load_reference_export_data() -> pd.DataFrame:
-    """Load the full-model reference export used for branch path remapping and metadata backfill."""
+def _load_reference_export_data(source_path: Path | str | None = None) -> pd.DataFrame:
+    """Load the reference export used for branch path remapping and metadata backfill.
+
+    The reference is economy-specific: branch paths and IDs belong to one LEAP
+    area, so callers inside a per-economy loop must pass that economy's template.
+    """
     if not USE_RESULTS_VERIFICATION_EXPORT_SOURCE:
         return pd.DataFrame()
-    ref_path = _resolve(RESULTS_VERIFICATION_EXPORT_PATH)
+    ref_path = _resolve(source_path if source_path is not None else RESULTS_VERIFICATION_EXPORT_PATH)
     if not ref_path.exists():
         print(f"[WARN] Reference export not found, skipping remap/backfill: {ref_path}")
         return pd.DataFrame()
@@ -1574,16 +1579,26 @@ def write_per_economy_combined_workbooks(
         getattr(workflow_cfg, "BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS", False)
     )
 
-    id_lookup_resolved = Path(id_lookup_path) if id_lookup_path is not None else None
-    if id_lookup_resolved is None:
-        id_lookup_resolved = _resolve(RESULTS_VERIFICATION_EXPORT_PATH)
-    branch_to_id: dict[str, int] = {}
-    variable_to_id: dict[str, int] = {}
-    scenario_to_id: dict[str, int] = {}
-    if id_lookup_resolved is not None and id_lookup_resolved.exists():
-        branch_to_id, variable_to_id, scenario_to_id = _build_id_lookups(id_lookup_resolved)
-    elif id_lookup_resolved is not None:
-        print(f"[WARN] ID lookup path not found, IDs will be -1: {id_lookup_resolved}")
+    # Each economy is its own LEAP area, so its template, ID lookups, and
+    # reference rows are resolved per economy inside the loop below. An explicit
+    # id_lookup_path overrides that for every economy.
+    explicit_id_lookup = Path(id_lookup_path) if id_lookup_path is not None else None
+
+    def _template_for_economy(economy: str) -> Path:
+        """Return the LEAP export template whose IDs apply to this economy."""
+        if explicit_id_lookup is not None:
+            return explicit_id_lookup
+        if leap_export_template_resolver.is_aggregate_economy(economy):
+            # An aggregate spans areas and has no template of its own.
+            return _resolve(RESULTS_VERIFICATION_EXPORT_PATH)
+        return leap_export_template_resolver.resolve_leap_export_template(economy)
+
+    def _id_lookups_for_template(template_path: Path):
+        """Return (branch, variable, scenario) label->ID maps for one template."""
+        if template_path is not None and template_path.exists():
+            return _build_id_lookups(template_path)
+        print(f"[WARN] ID lookup path not found, IDs will be -1: {template_path}")
+        return {}, {}, {}
 
     def _read_leap_data(path: Path) -> tuple[pd.DataFrame, list]:
         raw = pd.read_excel(path, sheet_name="LEAP", header=None)
@@ -1597,29 +1612,12 @@ def write_per_economy_combined_workbooks(
                 return data, header
         raise ValueError(f"Could not find LEAP header in {path.name}")
 
-    def _ensure_ids(data: pd.DataFrame, region: str) -> pd.DataFrame:
-        data = data.copy()
-        if "Region" in data.columns:
-            data["Region"] = region
-        if "BranchID" not in data.columns:
-            data.insert(0, "BranchID", data["Branch Path"].map(
-                lambda x: branch_to_id.get(str(x).strip(), -1)))
-            data.insert(1, "VariableID", data["Variable"].map(
-                lambda x: variable_to_id.get(str(x).strip(), -1)))
-            data.insert(2, "ScenarioID", data["Scenario"].map(
-                lambda x: scenario_to_id.get(str(x).strip(), -1)))
-            data.insert(3, "RegionID", 1)
-        else:
-            data["RegionID"] = 1
-        return data
-
     economy_list = workflow_common.normalize_economies(economies)
     run_stamp = datetime.now().strftime("%Y%m%d")
     written: list[Path] = []
     prepared_workbooks: list[tuple[str, pd.DataFrame, Path]] = []
     validation_results: list[tuple[str, object]] = []
     producer_coverage_findings: list[dict[str, object]] = []
-    reference_df = _load_reference_export_data()
 
     def _producer_for_row(configured_source: str, branch_path: object) -> str:
         path = str(branch_path or "").strip().lower()
@@ -1688,6 +1686,11 @@ def write_per_economy_combined_workbooks(
     for economy in economy_list:
         econ_token = workflow_common.format_filename_segment(economy) or economy
         region = get_region_for_economy(economy)
+        # Resolve this economy's LEAP area before anything reads IDs or
+        # reference rows; BranchIDs differ between areas for the same path.
+        id_lookup_resolved = _template_for_economy(economy)
+        branch_to_id, variable_to_id, scenario_to_id = _id_lookups_for_template(id_lookup_resolved)
+        reference_df = _load_reference_export_data(id_lookup_resolved)
         frames, found_sources, source_probe = _current_source_frames(econ_token)
 
         producer_coverage_findings.extend(

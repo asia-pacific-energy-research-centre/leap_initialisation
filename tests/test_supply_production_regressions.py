@@ -98,7 +98,11 @@ def test_usa_msw_maximum_production_survives_baseline_seed_writer(
         "_supply_branch_exists_in_export_source",
         lambda branch_path: True,
     )
-    monkeypatch.setattr(supply_leap_io, "_load_reference_export_data", lambda: pd.DataFrame())
+    monkeypatch.setattr(
+        supply_leap_io,
+        "_load_reference_export_data",
+        lambda *_args, **_kwargs: pd.DataFrame(),
+    )
 
     source_paths = supply_export_builder.generate_supply_exports(
         {"esto": (esto_data, [2022])},
