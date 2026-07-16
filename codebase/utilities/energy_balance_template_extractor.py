@@ -15,6 +15,10 @@ from codebase.utilities.master_config import (
     read_config_table,
 )
 from codebase.mappings.canonical_loaders import load_leap_display_names
+from codebase.utilities.leap_balance_export_resolver import (
+    LEAP_BALANCE_LOSS_AND_OWN_USE_ROW_KEYS,
+    normalize_balance_label,
+)
 from codebase.utilities.workflow_outputs import build_workflow_output_layout, write_output_manifest
 
 
@@ -1491,6 +1495,8 @@ class TemplateBalanceExtractor:
                 value = None
                 if row_idx is not None and col_idx is not None:
                     value = _to_float(ws.cell(row_idx, col_idx).value)
+                    if value is not None and normalize_balance_label(flow_text) in LEAP_BALANCE_LOSS_AND_OWN_USE_ROW_KEYS:
+                        value = -value
                 effective_sector = str(flow_info.get("effective_sector_name", flow_text)) if flow_info is not None else flow_text
                 records.append(
                     {

@@ -616,9 +616,9 @@ def _refresh_output_paths_for_current_pass_mode() -> None:
 # "15_PHL", "16_RUS", "17_SGP", "18_CT", "19_THA", "20_USA", "21_VN"---------------------------------------------------------------------------
 ECONOMIES_RUN_ORDER = [
     "21_VN", "20_USA", "19_THA", "05_PRC", "13_PNG", "15_PHL", "12_NZ",
-    "11_MEX", "10_MAS", "02_BD", "01_AUS",#the rest dont contain actual leap araeas yet
+    "11_MEX", "10_MAS", "02_BD",#the rest dont contain actual leap araeas yet
     "03_CDA", "04_CHL", "06_HKC", "07_INA", "08_JPN", "09_ROK",
-    "14_PE", "16_RUS", "17_SGP", "18_CT",
+    "14_PE", "16_RUS", "17_SGP", "18_CT", "01_AUS",
 ]
 ECONOMIES = ECONOMIES_RUN_ORDER
 # [, "20_USA"
@@ -763,27 +763,37 @@ _PRESET_BASELINE_SEED = {
 # 7 expression diffs). Refresh these modules through the baseline/full supply
 # reconciliation workflow instead of module patching until exact equivalence is
 # proven.
-# _PRESET_PATCH_BASELINE_SEEDS = {
-#     # --- Pass mode ---
-#     # When RUN_MODE == "patch_baseline_seeds", run_with_config() skips the full
-#     # supply/transformation workflow entirely and just patches existing
-#     # leap_import_baseline_seed_* files via patch_baseline_seeds.run_patch().
-#     "RUN_MODE": "patch_baseline_seeds",
-#     # Module name(s) from patch_baseline_seeds.MODULE_REGISTRY.  Accepts a single
-#     # string or a list to patch multiple modules in sequence, e.g.:
-#     #   "oil_refineries" | ["aggregated_demand", "power_interim"]
-#     # Available: "oil_refineries", "lng", "hydrogen", "transformation" (all),
-#     #            "supply", "transfers", "power_interim", "aggregated_demand",
-#     #            "losses_own_use".
-#     "PATCH_MODULE": ["losses_own_use"],
-#     # None = all economies found in the baseline seed directory, or a list of
-#     # economy tokens to limit scope, e.g. ["20_USA", "01_AUS"].
-#     "PATCH_ECONOMIES": None,
-#     # Re-run the upstream source workflow before patching so workbook-based
-#     # modules (power_interim, transfers, etc.) always patch from fresh data.
-#     # Set False to patch from whatever workbooks are already on disk.
-#     "PATCH_RUN_WORKFLOW": True,
-# }
+#
+# Audited 2026-07-15. "losses_own_use" is PATCHABLE through the wired
+# other-loss/own-use proxy source workflow. run_patch() strips
+# "Demand\Other loss and own use\" and regenerates from fresh
+# other_loss_own_use_proxy_{econ} workbooks. The auto stage resolves the
+# activity source from the pass config; report that resolved mode per run.
+# Verified end-to-end including the Brunei retry. Proxy coverage gaps and
+# pre-base-year consistency notices are diagnostics to report, not patch
+# failures.
+_PRESET_PATCH_BASELINE_SEEDS = {
+    # --- Pass mode ---
+    # When RUN_MODE == "patch_baseline_seeds", run_with_config() skips the full
+    # supply/transformation workflow entirely and just patches existing
+    # leap_import_baseline_seed_* files via patch_baseline_seeds.run_patch().
+    "RUN_MODE": "patch_baseline_seeds",
+    # Module name(s) from patch_baseline_seeds.MODULE_REGISTRY.  Accepts a single
+    # string or a list to patch multiple modules in sequence, e.g.:
+    #   "oil_refineries" | ["aggregated_demand", "power_interim"]
+    # Patchable: "supply", "transfers", "power_interim", "aggregated_demand",
+    #            "losses_own_use". The transformation auto-regen sectors
+    #            ("oil_refineries", "lng", "hydrogen", "transformation", ...) are
+    #            gated: run_patch() raises NotImplementedError for them.
+    "PATCH_MODULE": ["losses_own_use"],
+    # None = all economies found in the baseline seed directory, or a list of
+    # economy tokens to limit scope, e.g. ["20_USA", "01_AUS"].
+    "PATCH_ECONOMIES": None,
+    # Re-run the upstream source workflow before patching so workbook-based
+    # modules (power_interim, transfers, etc.) always patch from fresh data.
+    # Set False to patch from whatever workbooks are already on disk.
+    "PATCH_RUN_WORKFLOW": True,
+}
 
 _PRESET_RESULTS_UPDATE = {
     # Set True to run only preflight_compressed_projection for this preset.
@@ -836,9 +846,11 @@ _PRESET_RESULTS_UPDATE = {
     "SKIP_ECONOMIES_WITH_EXISTING_EXPORTS": False,
 }
 
-# ← change this to switch presets. _PRESET_PATCH_BASELINE_SEEDS is currently
-# commented out above — audited and verified for "transfers" (2026-07-08); other
-# modules remain unverified. Uncomment deliberately per run; see the note above it.
+# ← change this to switch presets. _PRESET_PATCH_BASELINE_SEEDS is defined above
+# but intentionally not the default: it is verified for "transfers",
+# "power_interim", "aggregated_demand", "supply", and "losses_own_use", while the
+# transformation auto-regen sectors are gated and refresh via the full workflow
+# only. Point ACTIVE_PRESET at it deliberately per patch run; see the notes above it.
 ACTIVE_PRESET = _PRESET_BASELINE_SEED
 
 # Default run mode; presets other than _PRESET_PATCH_BASELINE_SEEDS don't set

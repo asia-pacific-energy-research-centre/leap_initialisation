@@ -217,6 +217,25 @@ OUTPUT_FUEL_VALIDATION_SCOPE = "economy"
 # DEFAULT_MEASURE_UNITS, LEAP_BALANCE_FUEL_SETS, LEAP_BALANCE_ACTIVITY_FALLBACKS
 # imported from other_loss_own_use_proxy_utils
 
+# Keep electricity inside transmission/distribution losses for now.
+# Flip this to False if the branch should go back to excluding electricity.
+INCLUDE_ELECTRICITY_IN_TD_LOSSES = True
+TD_LOSSES_EXCLUDED_ELECTRICITY_PRODUCTS = [] if INCLUDE_ELECTRICITY_IN_TD_LOSSES else ["17 Electricity"]
+TD_LOSSES_EXCLUDED_ELECTRICITY_FUELS = [] if INCLUDE_ELECTRICITY_IN_TD_LOSSES else ["17_electricity"]
+TD_LOSSES_LEAP_BALANCE_FUEL_SET = (
+    "production_with_electricity" if INCLUDE_ELECTRICITY_IN_TD_LOSSES else "production_ex_electricity"
+)
+TD_LOSSES_ACTIVITY_LABEL = (
+    "Total production including electricity"
+    if INCLUDE_ELECTRICITY_IN_TD_LOSSES
+    else "Total production excluding electricity"
+)
+TD_LOSSES_NOTES = (
+    "Starter proxy: total positive production including electricity, so LEAP-balance activity can track the new electricity branch."
+    if INCLUDE_ELECTRICITY_IN_TD_LOSSES
+    else "Starter proxy: total positive production excluding electricity, so LEAP-balance activity is not driven by produced electricity."
+)
+
 def make_proxy_config(
     *,
     process_key: str,
@@ -613,39 +632,77 @@ PROXY_CONFIG = [
         notes="Starter proxy: biogas production. There is no direct ESTO 09 gasification activity row, so this uses primary biogas production.",
     ),
     make_proxy_config(
-        enabled=False,#can be handled by auxiliary branch in leap so keeping disabled for now
+        enabled=True,#no longer handled by the transformation branch: 10.01.17 own-use has no causal link to 09.12 activity (e.g. 12NZ/09_ROK have real own-use every year with no 09.12 output ever), so it's proxied here off total transformation-sector throughput instead
         process_key="nonspecified_own_uses",
         process_label="Non-specified own uses",
-        activity_label="Non-specified transformation positive output",
-        esto_activity_flows=["09.12 Non-specified transformation"],
-        ninth_activity_sectors=["09_12_nonspecified_transformation"],
-        leap_balance_rows=["Non specified transformation"],
-        leap_balance_fuel_set="nonspecified_transformation_output",
-        activity_value_mode="positive_only",
+        activity_label="Total transformation sector throughput (absolute inputs plus outputs)",
+        esto_activity_flows=[
+            "09.01.01 Electricity plants", "09.01.02 CHP plants", "09.01.03 Heat plants",
+            "09.02.01 Electricity plants", "09.02.02 CHP plants", "09.02.03 Heat plants",
+            "09.03 Heat pumps", "09.04 Electric boilers",
+            "09.05 Chemical heat for electricity production",
+            "09.06.01 Gas works plants", "09.06.02 Liquefaction/regasification plants",
+            "09.06.03 Natural gas blending plants", "09.06.04 Gas-to-liquids plants",
+            "09.07 Oil refineries",
+            "09.08.01 Coke ovens", "09.08.02 Blast furnaces", "09.08.03 Patent fuel plants",
+            "09.08.04 BKB/PB plants", "09.08.05 Liquefaction (coal to oil)",
+            "09.09 Petrochemical industry", "09.10 Biofuels processing",
+            "09.11 Charcoal processing", "09.12 Non-specified transformation",
+            "09.13.01 Electrolysers", "09.13.02 SMR wo CCS", "09.13.03 SMR w CCS",
+        ],  # every leaf (non-subtotal) 09.xx flow in the ESTO source; the 09.06.02.01/.02
+        # liquefaction/regasification split is deliberately excluded since it double-counts
+        # its own parent 09.06.02 row (both are populated for some economies)
+        esto_activity_exact_products=[
+            "01 Coal", "02 Coal products", "03 Peat", "04 Peat products",
+            "05 Oil shale and oil sands", "06 Crude oil & NGL", "07 Petroleum products",
+            "08 Gas", "09 Nuclear", "10 Hydro", "11 Geothermal", "12 Solar",
+            "13 Tide, wave, ocean", "14 Wind", "15 Solid biomass", "16 Others",
+            "17 Electricity", "18 Heat",
+        ],
+        ninth_activity_sectors=["09_total_transformation_sector"],
+        ninth_activity_fuels=[
+            "01_coal", "02_coal_products", "03_peat", "04_peat_products",
+            "05_oil_shale_and_oil_sands", "06_crude_oil_and_ngl", "07_petroleum_products",
+            "08_gas", "09_nuclear", "10_hydro", "11_geothermal", "12_solar",
+            "13_tide_wave_ocean", "14_wind", "15_solid_biomass", "16_others",
+            "17_electricity", "18_heat",
+        ],
+        leap_balance_rows=["Total transformation sector"],
+        leap_balance_fuel_set="production_with_electricity",
+        activity_value_mode="absolute",
         esto_target_flows=["10.01.17 Non-specified own uses"],
         ninth_target_sectors=["10_01_17_nonspecified_own_uses"],
-        notes="Starter proxy: positive output from non-specified transformation. Fuel set is based on nonzero ESTO/9th activity fuels across all economies.",
+        notes=(
+            "Proxy activity is the absolute sum of every top-level fuel's input plus "
+            "output under the whole transformation sector (09 Total transformation "
+            "sector / 09_total_transformation_sector), not the 09.12 non-specified "
+            "sub-flow: non-specified own-use is not caused by non-specified "
+            "transformation activity specifically (economies can have one without "
+            "the other), so a whole-sector throughput proxy avoids zero-activity "
+            "false failures. Fuel set for the target energy is based on nonzero "
+            "ESTO/9th activity fuels across all economies."
+        ),
     ),
     make_proxy_config(
         enabled=True,#besides electricity own-use/losses, transmission and distribution losses for other fuels cannot be easily isolated in LEAP balances or auxiliary branches, so keeping enabled for now
         process_key="transmission_and_distribution_losses",
         process_label="Transmission and distribution losses",
         leap_process_label="Transmission and distribution loss",
-        activity_label="Total production excluding electricity",
+        activity_label=TD_LOSSES_ACTIVITY_LABEL,
         esto_activity_flows=["01 Production"],
-        esto_activity_exclude_products=["17 Electricity"],
+        esto_activity_exclude_products=TD_LOSSES_EXCLUDED_ELECTRICITY_PRODUCTS,
         ninth_activity_sectors=["01_production"],
-        ninth_activity_exclude_fuels=["17_electricity"],
-        ninth_activity_exclude_subfuels=["17_electricity"],
+        ninth_activity_exclude_fuels=TD_LOSSES_EXCLUDED_ELECTRICITY_FUELS,
+        ninth_activity_exclude_subfuels=TD_LOSSES_EXCLUDED_ELECTRICITY_FUELS,
         leap_balance_rows=["Production"],
-        leap_balance_fuel_set="production_ex_electricity",
+        leap_balance_fuel_set=TD_LOSSES_LEAP_BALANCE_FUEL_SET,
         activity_value_mode="positive_only",
         esto_target_flows=["10.02 Transmission and distribution losses"],
-        esto_target_exclude_products=["17 Electricity"],
+        esto_target_exclude_products=TD_LOSSES_EXCLUDED_ELECTRICITY_PRODUCTS,
         ninth_target_sectors=["10_02_transmission_and_distribution_losses"],
-        ninth_target_exclude_fuels=["17_electricity"],
-        ninth_target_exclude_subfuels=["17_electricity"],
-        notes="Starter proxy: total positive production excluding electricity, so LEAP-balance activity is not driven by produced electricity.",
+        ninth_target_exclude_fuels=TD_LOSSES_EXCLUDED_ELECTRICITY_FUELS,
+        ninth_target_exclude_subfuels=TD_LOSSES_EXCLUDED_ELECTRICITY_FUELS,
+        notes=TD_LOSSES_NOTES,
     ),
     make_proxy_config(
         enabled=False,#CCS own-use/losses are not clearly isolated in either ESTO or 9th, so keeping disabled for now
@@ -1532,6 +1589,17 @@ def assemble_proxy_workbook(
     if export_df is None or export_df.empty:
         raise ValueError("Export dataframe is empty.")
     expression_df = build_expression_export_df(export_df, base_year=EXPORT_BASE_YEAR)
+    # Zero-fill unset Demand\Other loss and own use rows from the full model
+    # export onto the LEAP sheet itself (not only LEAP_WITH_IDS), so downstream
+    # consumers that read the LEAP sheet — the per-economy combined workbook,
+    # manual imports, and baseline-seed validation — also receive the zeros.
+    export_key_table = load_export_key_table(export_key_workbook_path, sheet_name=export_key_sheet)
+    expression_df = add_zero_rows_for_unset_values(
+        expression_df,
+        export_key_table=export_key_table,
+        base_year=EXPORT_BASE_YEAR,
+        final_year=EXPORT_FINAL_YEAR,
+    )
     output_path = Path(_resolve_export_filename(_normalize_economy(economy), scenario_list, export_filename))
     if output_root is not None:
         output_path = output_dir / output_path.name
@@ -1550,10 +1618,10 @@ def assemble_proxy_workbook(
         export_key_sheet=export_key_sheet,
         output_sheet_name="LEAP_WITH_IDS",
         model_name=EXPORT_MODEL_NAME,
-        include_zero_rows_for_unset_values=True,
-        base_year=EXPORT_BASE_YEAR,
-        final_year=EXPORT_FINAL_YEAR,
-
+        # Zero rows are already merged into expression_df above; skip the
+        # second pass so the key workbook is not re-scanned for gaps.
+        include_zero_rows_for_unset_values=False,
+        export_key_table=export_key_table,
     )
 
     if include_leap_import:

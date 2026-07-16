@@ -9,8 +9,15 @@ from typing import Iterable, Sequence
 
 import pandas as pd
 
+from codebase.configuration import workflow_config as workflow_cfg
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BALANCE_EXPORTS_ROOT = REPO_ROOT / "data" / "leap balances exports"
+
+BALANCE_EXPORT_FILENAME_PATTERN = re.compile(
+    r"^full model output all years (?P<date_id>\d{5,8}) (?P<scenario>[A-Za-z]+)(?:\s[^.]*)?\.xlsx$",
+    re.IGNORECASE,
+)
 
 
 SCENARIO_CODE_ALIASES = {
@@ -41,6 +48,47 @@ def normalize_balance_scenario_code(scenario: str) -> str:
 def normalize_balance_label(value: object) -> str:
     """Return a compact lowercase key for LEAP balance row/fuel matching."""
     return " ".join(str(value or "").strip().lower().split())
+
+
+# LEAP's own-use/loss balance rows are exported as positive quantities, but they
+# represent energy consumed out of the demand side of the balance (not supply),
+# so ESTO/NINTH and the balance tables represent the same category as negative.
+#
+# This module's own-use/loss handling is intentionally narrow:
+#   - `load_leap_balance_activity_table` below negates these rows via
+#     `is_leap_balance_own_use_or_loss_row` because its only consumer (the
+#     own-use/loss proxy workflow's activity-driver path) needs a value that's
+#     directly comparable to ESTO/NINTH's signed convention.
+#   - LEAP-native arithmetic elsewhere in this repo (`supply_conservation.py`,
+#     `supply_reconciliation_tables.py`) intentionally treats own-use/loss
+#     `demand_value` as a *positive* consumption quantity, and must keep doing
+#     so — those modules sum it unconditionally (no `abs()`), so sign-flipping
+#     it at the parse source would throw off `closure_residual`/
+#     `adjusted_balance` and produce false conservation-violation errors. Do
+#     not extend the negation below to that path.
+#   - The dashboard's ESTO/NINTH-comparable pipeline is a fully separate
+#     codebase (`leap_mappings`) that reads the same raw balance export files
+#     independently; its own sign handling lives in
+#     `leap_mappings/codebase/mapping_tools/convert_leap_results_to_esto.py`
+#     and has no dependency on this module.
+LEAP_BALANCE_LOSS_AND_OWN_USE_ROWS = (
+    "Other loss and own use",
+    "Coal mines",
+    "Electricity CHP and heat plants",
+    "Liquefaction and regasification plants",
+    "Oil and gas extraction",
+    "Oil refineries",
+    "Pump storage plants",
+    "Transmission and distribution loss",
+)
+LEAP_BALANCE_LOSS_AND_OWN_USE_ROW_KEYS = frozenset(
+    normalize_balance_label(row) for row in LEAP_BALANCE_LOSS_AND_OWN_USE_ROWS
+)
+
+
+def is_leap_balance_own_use_or_loss_row(row_label: object) -> bool:
+    """Return True when a LEAP balance row is one of the own-use/loss rows above."""
+    return normalize_balance_label(row_label) in LEAP_BALANCE_LOSS_AND_OWN_USE_ROW_KEYS
 
 
 def _resolve_path(path: Path | str) -> Path:
@@ -97,16 +145,12 @@ def _iter_balance_export_workbooks(
     economy: str,
     scenario_code: str,
 ) -> Iterable[BalanceExportWorkbook]:
-    pattern = re.compile(
-        r"^full model output all years (?P<date_id>\d{5,8}) (?P<scenario>[A-Za-z]+)(?:\s[^.]*)?\.xlsx$",
-        re.IGNORECASE,
-    )
     if not export_dir.exists():
         return
     for path in export_dir.glob("*.xlsx"):
         if path.name.startswith("~$"):
             continue
-        match = pattern.match(path.name)
+        match = BALANCE_EXPORT_FILENAME_PATTERN.match(path.name)
         if not match:
             continue
         if normalize_balance_scenario_code(match.group("scenario")) != scenario_code:
@@ -221,6 +265,37 @@ def _leap_balance_sheet_unit_to_pj_multiplier(raw: pd.DataFrame) -> float:
     return 1.0
 
 
+SCENARIO_LABEL_ALIASES = {
+    "reference": "REF",
+    "ref": "REF",
+    "target": "TGT",
+    "tgt": "TGT",
+}
+
+
+def _leap_balance_sheet_scenario_label(raw: pd.DataFrame) -> str:
+    """Return the normalized REF/TGT scenario code from a sheet's "Scenario:" subtitle, or "" if absent/unrecognized."""
+    for row_idx in range(min(4, len(raw))):
+        for value in raw.iloc[row_idx].tolist():
+            text = str(value or "").strip()
+            match = re.search(r"scenario:\s*([^,]+)", text, flags=re.IGNORECASE)
+            if match:
+                label = match.group(1).strip().lower()
+                return SCENARIO_LABEL_ALIASES.get(label, "")
+    return ""
+
+
+def _scenario_code_from_balance_export_filename(workbook: Path) -> str:
+    """Return the REF/TGT scenario code implied by a balance-export filename, or "" if unrecognized."""
+    match = BALANCE_EXPORT_FILENAME_PATTERN.match(workbook.name)
+    if not match:
+        return ""
+    try:
+        return normalize_balance_scenario_code(match.group("scenario"))
+    except ValueError:
+        return ""
+
+
 def load_leap_balance_activity_table(
     workbook_path: Path | str,
     *,
@@ -290,6 +365,8 @@ def load_leap_balance_activity_table(
                 if pd.isna(value):
                     value = 0.0
                 value = float(value) * unit_multiplier
+                if is_leap_balance_own_use_or_loss_row(row_label):
+                    value = -value
                 rows.append(
                     {
                         "source_dataset": "leap_balance",

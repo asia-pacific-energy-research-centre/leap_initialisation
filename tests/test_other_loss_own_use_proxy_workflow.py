@@ -117,7 +117,7 @@ def test_proxy_config_scaffolds_all_own_use_children() -> None:
     assert disabled == {
         "gas_works_plants", "gas_to_liquids_plants", "coke_ovens", "blast_furnaces",
         "patent_fuel_plants", "bkb_pb_plants", "liquefaction_plants_coal_to_oil",
-        "oil_refineries", "charcoal_production_plants", "nonspecified_own_uses", "ccs",
+        "oil_refineries", "charcoal_production_plants", "ccs",
     }
 
 
@@ -1707,43 +1707,40 @@ def test_leap_balance_liquefaction_fallback_chain() -> None:
     assert series == {2023: 9.0}
 
 
-def test_nonspecified_own_use_has_dedicated_fuel_set() -> None:
+def test_nonspecified_own_use_uses_total_transformation_throughput() -> None:
     cfg = next(item for item in workflow.PROXY_CONFIG if item["process_key"] == "nonspecified_own_uses")
     fuel_set = cfg["activity_sources"]["leap_balance"]["fuel_set"]
 
-    assert fuel_set == "nonspecified_transformation_output"
-    assert set(workflow.LEAP_BALANCE_FUEL_SETS[fuel_set]) == {
-        "Natural gas liquids",
-        "Other hydrocarbons",
-        "LPG",
-        "Ethane",
-    }
+    assert cfg["enabled"] is True
+    assert cfg["activity_sources"]["leap_balance"]["balance_rows"] == ["Total transformation sector"]
+    assert fuel_set == "production_with_electricity"
+    assert "Electricity" in workflow.LEAP_BALANCE_FUEL_SETS[fuel_set]
 
 
-def test_transmission_distribution_losses_uses_production_ex_electricity() -> None:
+def test_transmission_distribution_losses_uses_production_including_electricity() -> None:
     cfg = next(item for item in workflow.PROXY_CONFIG if item["process_key"] == "transmission_and_distribution_losses")
     fuel_set = cfg["activity_sources"]["leap_balance"]["fuel_set"]
 
     assert cfg["enabled"] is True
     assert cfg["leap_process_label"] == "Transmission and distribution loss"
     assert cfg["target_sources"]["esto"]["flows"] == ["10.02 Transmission and distribution losses"]
-    assert cfg["target_sources"]["esto"]["exclude_products"] == ["17 Electricity"]
+    assert cfg["target_sources"]["esto"]["exclude_products"] == []
     assert cfg["target_sources"]["ninth"]["sector_codes"] == ["10_02_transmission_and_distribution_losses"]
-    assert cfg["target_sources"]["ninth"]["exclude_fuels"] == ["17_electricity"]
-    assert cfg["target_sources"]["ninth"]["exclude_subfuels"] == ["17_electricity"]
+    assert cfg["target_sources"]["ninth"]["exclude_fuels"] == []
+    assert cfg["target_sources"]["ninth"]["exclude_subfuels"] == []
     assert cfg["activity_sources"]["esto"]["flows"] == ["01 Production"]
-    assert cfg["activity_sources"]["esto"]["exclude_products"] == ["17 Electricity"]
+    assert cfg["activity_sources"]["esto"]["exclude_products"] == []
     assert cfg["activity_sources"]["ninth"]["sector_codes"] == ["01_production"]
-    assert cfg["activity_sources"]["ninth"]["exclude_fuels"] == ["17_electricity"]
-    assert cfg["activity_sources"]["ninth"]["exclude_subfuels"] == ["17_electricity"]
+    assert cfg["activity_sources"]["ninth"]["exclude_fuels"] == []
+    assert cfg["activity_sources"]["ninth"]["exclude_subfuels"] == []
     assert cfg["activity_sources"]["leap_balance"]["balance_rows"] == ["Production"]
-    assert fuel_set == "production_ex_electricity"
-    assert "Electricity" not in workflow.LEAP_BALANCE_FUEL_SETS[fuel_set]
+    assert fuel_set == "production_with_electricity"
+    assert "Electricity" in workflow.LEAP_BALANCE_FUEL_SETS[fuel_set]
     assert "Peat" in workflow.LEAP_BALANCE_FUEL_SETS[fuel_set]
     assert "Tide wave ocean" in workflow.LEAP_BALANCE_FUEL_SETS[fuel_set]
 
 
-def test_transmission_distribution_target_excludes_electricity_but_keeps_heat() -> None:
+def test_transmission_distribution_target_includes_electricity_and_heat() -> None:
     cfg = next(item for item in workflow.PROXY_CONFIG if item["process_key"] == "transmission_and_distribution_losses")
     esto = pd.DataFrame(
         [
@@ -1800,7 +1797,7 @@ def test_transmission_distribution_target_excludes_electricity_but_keeps_heat() 
         fuel_mapping_lookup={"esto": {}, "ninth": {}},
     )
 
-    assert set(target["fuel_branch_label"]) == {"Heat"}
+    assert set(target["fuel_branch_label"]) == {"Electricity", "Heat"}
     assert set(target["source_dataset"]) == {"esto", "ninth"}
     assert set(target["leap_process_label"]) == {"Transmission and distribution loss"}
 

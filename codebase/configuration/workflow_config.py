@@ -94,6 +94,15 @@ BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True
 # Production, using the existing unit conversion metadata in refining_workflow.
 REFINING_USE_HISTORICAL_PRODUCTION_CAPACITY_HEURISTIC = True
 
+# LEAP sometimes exports a "full model output all years ... REF.xlsx" workbook
+# whose internal "Scenario: X, Year: Y, Units: Z" sheet subtitles say "Target"
+# (a LEAP-side export mistake, not a data error). When True, the filename's
+# REF/TGT token is trusted and the workbook is used for that scenario anyway;
+# when False, a mismatch between the filename and the internal Scenario label
+# raises instead. Disable this if mislabeled exports start masking real
+# Reference/Target mix-ups.
+BALANCE_EXPORT_TRUST_FILENAME_SCENARIO = True
+
 
 def get_baseline_seed_validation_years(
     scenarios,

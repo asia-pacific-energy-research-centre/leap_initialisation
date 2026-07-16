@@ -17,6 +17,10 @@ This guide is based on the documented workflow logic. It should be checked again
 - [2. What the workflow does conceptually](#2-what-the-workflow-does-conceptually)
 - [3. The main error signal](#3-the-main-error-signal)
 - [4. Active mode: `capacity_unmet_iterative_balanced`](#4-active-mode-capacity_unmet_iterative_balanced)
+- [4a. The three run modes: `baseline_seed`, `results_update`, `patch_baseline_seeds`](#4a-the-three-run-modes-baseline_seed-results_update-patch_baseline_seeds)
+- [4c. Other settings with real operational impact](#4c-other-settings-with-real-operational-impact)
+- [4d. Major sub-workflows this file drives](#4d-major-sub-workflows-this-file-drives)
+- [4e. Checks and validation (link to the check registry)](#4e-checks-and-validation-link-to-the-check-registry)
 - [6. Why production and transformation are linked](#6-why-production-and-transformation-are-linked)
 
 ### Reference
@@ -214,6 +218,29 @@ This means the workflow is mainly trying to answer:
 
 One important nuance: the workflow does not assume imports are always an error in the real-world sense. It uses the difference between expected and observed imports as a reconciliation signal. If your detailed interim or placeholder sectors change demand, fuel inputs, or transformation output, the next `results_update` pass should respond to those new values, but only by adjusting the supply-side levers that the workflow controls.
 
+## 4a. The three run modes: `baseline_seed`, `results_update`, `patch_baseline_seeds`
+
+`supply_reconciliation_workflow.py` runs in one of three modes. The first two are full runs of the supply/transformation/transfers pipeline, distinguished by `CAPACITY_UNMET_PASS_MODE`; the third bypasses that pipeline entirely and edits existing seed files in place.
+
+| | `baseline_seed` | `results_update` | `patch_baseline_seeds` |
+|---|---|---|---|
+| Selected by | `CAPACITY_UNMET_PASS_MODE = "baseline_seed"` (`_PRESET_BASELINE_SEED`, ~line 670) | `CAPACITY_UNMET_PASS_MODE = "results_update"` (`_PRESET_RESULTS_UPDATE`, ~line 798) | `RUN_MODE = "patch_baseline_seeds"` (`_PRESET_PATCH_BASELINE_SEEDS`, ~line 775) |
+| When to use it | First pass for an economy/scenario, before any LEAP run exists | Every pass after LEAP has been recalculated and re-exported | Fixing/refreshing one already-verified sub-module of an existing seed without re-running the whole pipeline |
+| What it reads | ESTO/9th Outlook baseline only — no LEAP results yet | Real LEAP Energy Balance export (REF/TGT balance workbooks) | Existing `leap_import_baseline_seed_*.xlsx` files, plus (if `PATCH_RUN_WORKFLOW=True`) a fresh regen of the target module's source workbook |
+| Imports | Zeroed on write, so LEAP's own recalculation reveals the true import gap (`RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT = True`) | Computed as the gap between observed LEAP imports/exports and the 9th/ESTO baseline | Untouched except within the patched module's own rows |
+| Demand source | `USE_AGGREGATED_DEMAND_AS_DUMMY = True` — ESTO/9th aggregated demand stands in for LEAP demand results (single-economy runs only) | Same aggregated-demand toggles remain on in the current preset (still initialisation, not yet handed to per-sector demand models) | Not applicable — no demand recompute |
+| Own-use/losses proxy | `OTHER_LOSS_OWN_USE_PROXY_STAGE = "first"` (ESTO/9th activity) | `OTHER_LOSS_OWN_USE_PROXY_STAGE = "second"` (LEAP-balance activity) | Only touched if `PATCH_MODULE` includes `"losses_own_use"`, in which case the patcher resolves the stage from the active pass config itself |
+| Electricity/heat interim | `RUN_ELECTRICITY_HEAT_INTERIM = True` — generates the three placeholder power modules | `RUN_ELECTRICITY_HEAT_INTERIM = False` — assumes the real power model is in place | Only touched if `PATCH_MODULE` includes `"power_interim"` |
+| Key settings unique to this mode | Demand-source and interim-power toggles above | Results-update readiness preflight (~line 991) must pass before running | `PATCH_MODULE`, `PATCH_ECONOMIES`, `PATCH_RUN_WORKFLOW` |
+| Output | Full new baseline seed workbook set | Updated seed reflecting the latest gap-closing pass | The same seed files, with only the patched module's rows replaced |
+
+**`patch_baseline_seeds` in detail.** When `RUN_MODE == "patch_baseline_seeds"`, `_run_with_config_inner()` skips `run_results_linked_transformation_supply_workflow` entirely and instead calls `codebase/functions/patch_baseline_seeds.py::run_patch()` once per module in `PATCH_MODULE`:
+
+- **`PATCH_MODULE`** — a module name (or list of names) from `patch_baseline_seeds.MODULE_REGISTRY`. Patchable today: `"supply"`, `"transfers"`, `"power_interim"`, `"aggregated_demand"`, `"losses_own_use"` — all spot-verified against a full-run seed with zero row/expression diffs (see the "Audited 2026-07-XX" comment blocks above `_PRESET_PATCH_BASELINE_SEEDS`, ~lines 727-774, for the verification history). The transformation auto-regen sectors (`"oil_refineries"`, `"lng"`, `"hydrogen"`, `"gas_processing"`, `"coal_transformation"`, `"petrochemical"`, `"charcoal"`, `"biofuels"`, `"nonspecified_transformation"`, `"transformation"` — anything with `auto_sector_keys` set in `MODULE_REGISTRY`) are gated: `run_patch()` raises `NotImplementedError` for them, because the simplified auto-regen path was found to change process-efficiency and auxiliary-fuel expressions relative to a genuine full run (`patch_baseline_seeds.py:1024-1032`). Refresh those sectors via a full `baseline_seed`/`results_update` run instead.
+- **`PATCH_ECONOMIES`** — `None` patches every economy found in the baseline-seed directory; otherwise a list of economy tokens (e.g. `["20_USA", "01_AUS"]`) limits scope.
+- **`PATCH_RUN_WORKFLOW`** — `True` (default) re-runs the module's upstream source workflow fresh before patching, so workbook-based modules (`power_interim`, `transfers`, `aggregated_demand`, `supply`, `losses_own_use`) always patch from current data rather than whatever happens to be on disk. Set `False` only when you deliberately want to patch from already-generated workbooks.
+- The patcher still crosses the same F2 emit-boundary validator (`prepare_seed_rows_for_write`) as a full run — see [4e](#4e-checks-and-validation-link-to-the-check-registry).
+
 ## 4b. Module and production growth caps (upper limits)
 
 When the allocator adds output to close a positive import gap, two configuration
@@ -280,6 +307,74 @@ are locked and the policy for applying the lock across all economies.
 Note: LEAP uses no hyphens in module names. Config keys must match exactly —
 `"Non specified transformation"` (no hyphen) is the correct key; a hyphenated
 variant will never match and silently acts as dead code.
+
+**Verified 2026-07-16:** `codebase/supply_reconciliation_config.py` contains
+**only** the no-hyphen key `"Non specified transformation"` — a `grep` for both
+the hyphenated and non-hyphenated strings across the file finds zero matches
+for `"Non-specified transformation"`. It always appears in the locked
+(`KEEP_EXOGENOUS_CAP_SAME_AS_BASE_YEAR_ENERGY_OUTPUT`) group, both for
+`reference` and `target` (`supply_reconciliation_config.py:641`, `:669`), and
+also in the legacy fallback reset list (`:857`). There is **no** hyphenated
+duplicate entry anywhere in the file, so this is not a stray-typo/duplicate-key
+bug — it is a single, consistently-spelled, consistently-locked key. Any
+paraphrase suggesting the hyphenated and non-hyphenated forms are two distinct,
+differently-capped keys is incorrect as of this file; treat the warning above
+(hyphenated variants are dead code if ever introduced) as the operative risk,
+not an existing bug.
+
+## 4c. Other settings with real operational impact
+
+These settings are not part of the mode presets above, but each has a real, easy-to-get-wrong effect on results. The terse code-reference bullets in [18](#18-code-reference) restate what each setting does; this section explains what breaks if it is set wrong.
+
+- **`CAPACITY_UNMET_UNRESOLVED_POSITIVE_POLICY`** (`"imports_fallback"` default | `"fail"` | `"track_only"`). This is what happens once neither production headroom nor transformation capacity can close a positive import gap. `"imports_fallback"` is the normal setting — the residual quietly becomes an import, which is exactly the diagnostic signal the next pass is meant to react to. `"fail"` raises immediately instead, which is useful when you are debugging why a gap won't close and want the run to stop the moment it hits the wall, rather than silently absorbing it into imports and moving on. `"track_only"` records the residual in the CSV/JSON diagnostics but takes no allocation action at all — leaving the underlying LEAP branch untouched. Leaving `"track_only"` set during a normal production run is the failure mode to watch for: gaps will look "resolved" in the reconciliation table's bookkeeping sense while the actual LEAP branch never received a value, so nothing in LEAP changes and the same gap reappears next pass with no visible explanation unless you specifically check for `track_only` residuals.
+
+- **`CAPACITY_UNMET_PIN_EXPORTS_TO_9TH_PROJECTIONS`** (`True` by default). When `True`, a negative import gap (LEAP importing less than expected) is never converted into extra exports — exports stay pinned at the 9th Outlook projection regardless of how large the negative gap is. If this is left `True` when it shouldn't be, negative gaps that should legitimately become exports (e.g. genuine surplus production) instead sit unresolved or get absorbed elsewhere, understating exports relative to what the model is actually producing. If it is set to `False` without meaning to, negative gaps will start silently inflating exports pass over pass, which can look like a plausible trend but is actually an artefact of this switch rather than a genuine trade signal — always check this setting first when an export series looks like it's drifting upward for no obvious reason.
+
+- **`CAPACITY_UNMET_PRODUCTION_ONLY_PRODUCTS`** (currently `{"08.01 Natural gas"}`). This is a product-level switch, not a module-level one: for a listed product, the allocator skips the transformation lever entirely and goes straight from production headroom to the unresolved-positive policy. This exists so that, for a primary fuel like natural gas, a gap is never closed by growing a downstream transformation module (e.g. LNG regasification) when physically the gap should be closed by the well (production) or left as an explicit import/unresolved signal. Getting this wrong in either direction is a real bug: omitting a fuel that should be here lets transformation capacity silently substitute for production growth (masking a production-side problem behind an implausible transformation build-out); adding a fuel that shouldn't be here removes a legitimate transformation-side lever and can push otherwise-closeable gaps straight to the unresolved policy.
+
+- **Module/production growth caps** (`CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS` / `..._PRODUCTION_UPPER_LIMITS`, see [4b](#4b-module-and-production-growth-caps-upper-limits)). The `KEEP_EXOGENOUS_CAP_SAME_AS_BASE_YEAR_ENERGY_OUTPUT` sentinel is doing real work for legacy/fixed-technology modules: it is the mechanism that prevents the gap-filler from "solving" a shortfall by inventing implausible growth in a module that should not be expanding (e.g. blast furnaces, coke ovens). If a module is wrongly left `UNLIMITED` when it should be locked, gaps will close on paper by expanding a technology that has no real capacity to grow, and that inflated capacity then persists across passes via the cumulative state file. If a module is wrongly locked when it should be `UNLIMITED`, legitimate growth is blocked and the residual spills to the imports-fallback lever instead, showing up as an import gap that looks like a production/transformation shortfall but is actually just a cap that needs relaxing.
+
+- **Aggregated-demand toggles** (`USE_AGGREGATED_DEMAND_AS_DUMMY`, `AGGREGATED_DEMAND_EXCLUDED_SECTORS`, `AGGREGATED_DEMAND_USE_SECTOR_BRANCHES` — all set together in the `baseline_seed`/`results_update` presets, ~lines 681-713 and ~809-831). `USE_AGGREGATED_DEMAND_AS_DUMMY=True` substitutes ESTO/9th aggregated demand totals for LEAP balance-export demand, and is documented as **single-economy runs only** — leaving it `True` for a multi-economy run risks mixing an aggregated proxy that wasn't built per-economy into a run that expects per-economy demand, producing wrong or misleading totals rather than an outright crash. `AGGREGATED_DEMAND_EXCLUDED_SECTORS` must be kept in sync with whichever sectors already have a live, direct demand model — forgetting to add a sector here once its own model goes live double-counts that sector's demand (once via the aggregated dummy, once via the real model); conversely excluding a sector that has no live model yet leaves a demand hole. `AGGREGATED_DEMAND_USE_SECTOR_BRANCHES=True` writes per-sector branches (`Demand\All demand aggregated\{SectorLabel}\{fuel}`) instead of the flat branch — turning this on when LEAP doesn't actually have those per-sector sub-branches yet will write rows LEAP cannot resolve, so this should only be flipped once the LEAP area has those branches prepared.
+
+- **`RUN_ELECTRICITY_HEAT_INTERIM`**. When `True`, three placeholder power modules (Electricity interim, CHP interim, Heat plant interim) are generated via `electricity_heat_interim_workflow.py` so the reconciliation loop has *something* representing power before the real power model exists. Leaving this `True` after the real power model is in place double-writes power-sector branches that the real model now owns, creating a conflict between placeholder and real values; leaving it `False` too early (before the real power model exists) leaves the power branches with no representation at all during supply reconciliation, which can distort the transformation-fuel balance the reconciliation loop is solving against, since power transformation consumes and produces fuels other sectors depend on.
+
+## 4d. Major sub-workflows this file drives
+
+`supply_reconciliation_workflow.py` is an orchestrator — most of the actual computation happens in sub-workflows it calls, configures, and sequences. This section summarizes what each is responsible for and anything non-obvious about how this file drives it.
+
+- **`other_loss_own_use_proxy_workflow.py`** — produces the `Demand\Other losses and own use` branches: own-use and losses associated with supply/transformation processes that cannot be attributed to a specific module's auxiliary fuel use. `supply_reconciliation_workflow.py` selects its activity source via `OTHER_LOSS_OWN_USE_PROXY_STAGE`: `"first"` (ESTO/9th activity) in `baseline_seed`, `"second"` (LEAP-balance activity, read back from the real export) in `results_update`. Both stages are still "initialisation" in the sense that target energy is matched rather than anchored-intensity modelled. In `patch_baseline_seeds` mode this workflow is only invoked if `PATCH_MODULE` includes `"losses_own_use"`, in which case the patcher resolves the stage from the active pass config and reports which mode was actually used.
+
+- **`electricity_heat_interim_workflow.py`** — builds the three interim power placeholder modules (Electricity interim, CHP interim, Heat plant interim) from signed `09_*` transformation rows only (positive = output, negative = feedstock; `18_*`/`19_*` accounting-sector rows are prohibited as inputs). Driven by `RUN_ELECTRICITY_HEAT_INTERIM`, on in `baseline_seed` and off in `results_update` once the real power model exists. In `patch_baseline_seeds` mode it's only touched if `PATCH_MODULE` includes `"power_interim"`.
+
+- **`transformation_workflow.py`** — produces the "other transformation" sector data (LNG regasification, gas liquefaction, coal transformation modules, coke ovens, blast furnaces, patent fuel plants, non-specified transformation, etc.), including exogenous capacity and process efficiency, from ESTO historical relationships and 9th Outlook projections. It also owns the self-bypassing projection strict-conservation check (F5 — see [4e](#4e-checks-and-validation-link-to-the-check-registry)): a `ValueError` from `build_esto_projection_table(strict_conservation=True)` is caught, logged as a warning, and silently retried non-strict, so the unchecked projection still reaches the output regardless of `PROJECTION_STRICT_CONSERVATION`. This is the module gated out of `patch_baseline_seeds` for its auto-regen sectors (see [4a](#4a-the-three-run-modes-baseline_seed-results_update-patch_baseline_seeds)) — its output has not been reproduced row-for-row through the simplified patch path.
+
+- **`transfers_workflow.py`** — produces transfers data for the upstream liquids, refinery and blending, and transfers-unallocated modules. Unlike the other transformation sectors, this module's patch path has been verified end-to-end (see [4a](#4a-the-three-run-modes-baseline_seed-results_update-patch_baseline_seeds)): a patched seed reproduces the full workflow's transfer rows exactly, so `"transfers"` is one of the safely patchable `PATCH_MODULE` values.
+
+- **`supply_data_pipeline`** — assembles the supply/resources side (domestic production, imports, exports) that `supply_reconciliation_workflow.py` reconciles against, and is the source of `EXPORT_FINAL_YEAR`/related settings the workflow clamps against `LEAP_IMPORT_MAX_YEAR` at run start. It underlies the `"supply"` patch module (verified end-to-end for 20_USA via `supply_workflow.assemble_supply_workbooks`).
+
+- **`patch_baseline_seeds.py`** — not a computation workflow in its own right but the alternate orchestration path selected by `RUN_MODE = "patch_baseline_seeds"`. It re-runs (optionally) a single named module's own source workflow, strips that module's existing rows from the current baseline seed, and splices in freshly generated rows — going through the same `prepare_seed_rows_for_write` emit boundary as a full run. See [4a](#4a-the-three-run-modes-baseline_seed-results_update-patch_baseline_seeds) for the gating rules (which modules are safely patchable vs. gated).
+
+## 4e. Checks and validation (link to the check registry)
+
+`docs/check_registry.md` is the canonical directory of every readiness/validation/fill mechanism across the initialisation codebase, organized into five families. It intentionally does not want its tables duplicated elsewhere, so this section only summarizes the five families and calls out which of them `supply_reconciliation_workflow.py` itself triggers or crosses — see that document for full detail.
+
+| Family | One-line summary |
+|---|---|
+| **F1** Enumeration: gap-fill / reset | Invents missing rows (gap-fill, e.g. zeroed aux-fuel rows) or overwrites existing rows (reset, e.g. zeroing supply/transformation import-export before a fresh baseline-seed pass) |
+| **F2** Artifact invariants | Structural rules the emitted rows must satisfy — shares, IDs, coverage, capacity gate — enforced once, at the `prepare_seed_rows_for_write` emit boundary |
+| **F3** LEAP-import readiness | The workbook will actually import into LEAP cleanly (region present, scenarios present, sheet shape correct) |
+| **F4** Preflight | Inputs are present and current enough to compute at all, before spending the time to compute |
+| **F5** Conservation / numeric | Energy balances and activity/target totals actually reconcile, as a numeric (not structural) property |
+
+Checks specifically exercised from within this file:
+
+- **F4 — results-update readiness check** (`supply_reconciliation_workflow.py`, `_run_results_update_readiness_check`, ~lines 991-1032). Runs only when `CAPACITY_UNMET_PASS_MODE == "results_update"`; for every economy it confirms the REF/TGT LEAP balance export workbooks exist and, if `REQUIRE_LEVEL2_BALANCE_EXPORT_DETAIL` is set, that they were exported at least at Level 2 detail (see [9b](#9b-how-to-export-leap-energy-balance-results)). This is the check registry's "results-update readiness" F4 row and the "level-2 export readiness" F4 row.
+- **F4 — the two compressed preflights** (`run_preflight_compressed_projection`, `run_preflight_compressed_results_update`), run from `_run_with_config_locked()` per the `RUN_PREFLIGHT_COMPRESSED_*` toggles — see [9c](#9c-fast-preflight-checks).
+- **F2 — the emit boundary**, `prepare_seed_rows_for_write`, is crossed both by a full-run seed assembly and by the patcher (`patch_baseline_seeds.py:940`-ish, per the check registry's F2 table) — meaning both `baseline_seed`/`results_update` runs and `patch_baseline_seeds` runs get the same share/ID/coverage validation, which is why the patcher is trusted to reproduce full-run rows exactly for its verified modules.
+- **F5 — the self-bypassing projection strict-conservation check** lives inside `transformation_workflow.py` (called from this file's transformation step) — see [4d](#4d-major-sub-workflows-this-file-drives) above. Its silent-retry-non-strict behaviour is a known gap flagged in the check registry's "Known hotspots" section, not something this workflow currently guards against.
+- **F1 — the reset toggle this file owns directly**: `RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT`, `True` in the `baseline_seed` preset and `False` in `results_update`, which is the `reset_supply_and_transformation_import_export_to_zero` row in the registry's F1 table.
+
+For rule-level detail on any SEED-C0xx finding these checks can produce, use `docs/baseline_seed_rule_inventory.md` and section [17](#17-how-to-use-the-rule-findings-files) above, not this section.
 
 ## 5. Main LEAP variables affected
 
