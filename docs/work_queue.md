@@ -18,20 +18,34 @@ detail rather than duplicating it.
 
 ## The blocker structure
 
-Almost everything outstanding funnels through one thing:
+Two independent tracks. The transformation track funnels through one blocker;
+the export-template track is blocked by nothing and paced by an external event.
 
 ```
 [0] land/park the in-flight transformation work
       ├── unblocks [1] transformation ungate
       ├── unblocks [2] last conservation site
       └── unblocks [3] remaining header routes (partly)
+
+[7] finish the per-economy export-template rollout   <- not blocked
+      deadline: the first real (non-COMP_GEN) economy export
+      ├── [8]  supply_branch_classification threading
+      ├── [9]  reset-scope chain
+      └── [10] GLOBAL_REGION decision
 ```
 
 ---
 
 ## [0] BLOCKER — land or park the in-flight transformation work
 
-**Status:** blocking. **Owner:** the multi-output / process-efficiency workstream.
+**Status:** blocking. **Owner: unidentified — not either agent.** Verified
+2026-07-16: none of the eight commits from the export-template or
+zero-fill/registry workstreams (`10cb432`, `073c489`, `cdb813d`, `6bda122`,
+`af0662c`, `1fd4a19`, `60b6600`, `5c6b34a`) touch any `transformation_*` file.
+Both agents' work is committed. **Neither can land or park this** — whoever
+authored the multi-output / process-efficiency change must. Do not ask an agent
+to commit it: nobody has read it, and committing unreviewed work across a
+four-workstream dirty tree is how the regression below got in unnoticed.
 
 Dirty: `transformation_analysis_utils.py`, `transformation_record_builder.py`,
 `transformation_sector_analysis.py`, plus untracked
@@ -128,6 +142,104 @@ no capacity guard. It cannot execute today (`LEAP_API_BLOCKED`), so it is
 dormant. **If the API is ever re-enabled, converge this first** — see
 `docs/check_registry.md` hotspot 3, which records the concrete test.
 
+## [7] Finish the per-economy export-template rollout
+
+**Not blocked.** Paced by an external event, not by other work — see the deadline.
+
+Landed: the resolver, the combined-workbook writer, and the seed patcher resolve
+per economy. **Nothing else does.** Roughly 15 module-level constants still pin
+`data/full model export.xlsx` (i.e. `20_USA`'s area):
+
+`transformation_workflow:47`, `transfers_workflow:92`,
+`electricity_heat_interim_workflow:79,161`, `aggregated_demand_workflow:226`,
+`other_loss_own_use_proxy_workflow:168`, `baseline_seed_comparison_workflow:615`,
+`fuel_catalog_preflight:29`, `workflow_config:185,313`,
+`supply_reconciliation_config:310,312`, `supply_branch_classification:20`,
+`patch_baseline_seeds:86` (deliberate fallback).
+
+Mostly mitigated today because the per-workflow producers ship the ID columns
+**empty on purpose** for the combine step to fill — which is why fixing the
+writer fixed the IDs. They are still live for standalone runs.
+
+**Why this is currently safe, and exactly when it stops being safe:** 19 of 21
+templates are `_COMP_GEN` — generated from the USA area and carrying its
+BranchIDs **verbatim** (0 of 714 differ; only the `Region` column is relabelled).
+So every un-routed path and every routed path agree today, because they all
+resolve to USA's IDs either way.
+
+> **Deadline.** The first time a real (non-`COMP_GEN`) export lands for any
+> economy, the routed paths use that economy's area while the un-routed paths
+> still use USA's — and they silently disagree about which area they are in.
+> A half-routed system is worse than either end state. `12_NZ` is already real;
+> it is only safe because its remaining gaps happen to be inert (see [8]).
+
+**Verification recipe that worked** (reuse it): compare `_build_id_lookups`
+across every template — 20 economies must come back *identical* to the legacy
+export, `12_NZ` must differ (646 vs 714 branch paths, 134 of 634 shared paths
+with a different BranchID). Any other economy differing means a real export
+landed and the deadline above has arrived.
+
+**Watch for the bypass.** `073c489` routed the writer and was a **no-op in
+production** for a day, because both real callers passed
+`id_lookup_path=AGGREGATED_DEMAND_ID_LOOKUP_PATH` explicitly and took the
+override branch. Fixed in `cdb813d`. When routing anything here, check the
+*callers*, not just the function — and note the tests passed throughout, because
+they pin the template explicitly too, exercising the very branch that masked it.
+
+## [8] `supply_branch_classification` threading
+
+**Not blocked.** Depends on [7]'s direction.
+
+The three lookups are cached per source workbook (`10cb432`), and the loaders
+take a `source_path` — but **nothing passes it**. `supply_export_builder:256,264`
+still call `_resolve_supply_branch_label_from_export` /
+`_supply_branch_exists_in_export_source` bare, so Resources `Primary`/`Secondary`
+classification and branch-existence use USA's export for every economy.
+
+**Inert today, by luck not design:** `12_NZ` and `20_USA` classify all **70**
+Resources fuels identically — 0 differences, none missing either side. So the
+gap cannot bite until an economy's Resources tree diverges. Re-run the
+comparison when any real export lands; do not assume it still holds.
+
+Note `_SUPPLY_ROOT_LOOKUP_MISS_WARNED` / `_SUPPLY_BRANCH_PATH_MISS_WARNED` remain
+unkeyed (warn-once dedupe only, not data). `supply_export_builder` imports the
+latter and mutates it as a set, so reshaping it touches two modules.
+Consequence is minor: one economy's missing-fuel warning suppresses another's.
+
+## [9] Reset-scope chain
+
+**Blocked by [0]** (`supply_preflight.py` is dirty).
+
+`supply_preflight._load_reset_scope_from_full_model_export` derives the
+transformation reset/zeroing scope from the single export, behind another
+unkeyed module cache (`_RESET_SCOPE_FROM_EXPORT_CACHE`), via zero-argument
+helpers `_configured_reset_module_names` / `_configured_reset_fuel_labels`
+called from **five** modules (`supply_reconciliation_workflow`, `supply_leap_io`,
+`supply_results_saver`, `supply_reconciliation_tables`, `supply_preflight`).
+
+This is the sharpest edge of [7]'s deadline: reset scope built from USA's 714
+branches applied to an economy with 646 resets branches that economy lacks.
+
+## [10] `GLOBAL_REGION` — open decision, not a task
+
+`workflow_config:70` hardcodes `GLOBAL_REGION = "United States"`, then
+`transformation_record_builder.resolve_export_region_from_process_economies`
+maps `01_AUS` → `Australia` over the top of it, and `attach_export_ids` tolerates
+region-only mismatches (`tests/test_transformation_export_region_guard.py:37`).
+
+That accommodation exists *because* one template served every economy. Each
+template now carries its own `Region` column, so the global plus its post-hoc
+patching is redundant — but removing it is a behaviour change with its own blast
+radius. Every template uses `RegionID=1`, so region **IDs** need no work.
+Decide deliberately; do not fold it into a threading commit.
+
+## [11] `fuel_catalog_preflight` — open question, not a task
+
+`DEFAULT_FULL_MODEL_EXPORT_PATH` pins the single export. **Whether the fuel
+catalog is even economy-specific is unresolved** — fuel *names* may legitimately
+be shared across areas, in which case pinning is correct and should be documented
+as deliberate rather than "fixed". Answer the question before touching it.
+
 ---
 
 ## Known pre-existing failures — not regressions, do not chase
@@ -136,10 +248,11 @@ dormant. **If the API is ever re-enabled, converge this first** — see
   — **stale test**. It monkeypatches `apply_matt_subtotal_mapping`, which now
   only exists under `archive/` and `scrapbook/`. Verified failing at HEAD
   independently of any current work. Either update or delete the test.
-- `tests/test_module_attribute_contracts.py::test_no_bare_name_misattribution[codebase.functions.supply_leap_io]`
-  — was failing on in-flight `leap_export_template_resolver` usage
-  (`reference_df`, `id_lookup_resolved`, `branch_to_id`, … referenced but not
-  imported). Should clear once that work settles; re-check rather than assume.
+- ~~`tests/test_module_attribute_contracts.py::test_no_bare_name_misattribution[codebase.functions.supply_leap_io]`~~
+  — **cleared.** Was failing mid-flight while the export-template work was
+  uncommitted; passes at `6bda122` (39/39). Left here only to stop it being
+  re-reported. This is what a verification run against a dirty tree looks like
+  from the outside.
 
 ## Traps that already cost time — recorded so they are not rediscovered
 
@@ -155,9 +268,15 @@ dormant. **If the API is ever re-enabled, converge this first** — see
   distortion, so both sides of the diff agree and the check reports **EQUIVALENT
   for the wrong reason**.
 - **Areas legitimately lack branches.** With a correct per-economy template,
-  `12_NZ` surfaces ~33 `Auxiliary Fuels` rows as *only-in-seed*. That is a real
-  area gap, not a patch defect. Only-in-seed normally reads as a hard failure —
-  classify by area first.
+  `12_NZ` surfaces 33 `Non specified transformation\...\Auxiliary Fuels\*` rows
+  (Biogasoline, Electricity, …) as *only-in-seed* / `BranchID=-1`. That is a real
+  area gap, not a patch defect — `12_NZ` has 646 branch paths to `20_USA`'s 714.
+  Only-in-seed normally reads as a hard failure; classify by area first.
+  **Confirmed harmless 2026-07-16:** all 33 are zero-valued, so they are genuine
+  no-ops (per `data/README.md`, a *nonzero* `-1` row would be actionable — an
+  intended value silently skipped). Signed off: leave them. If a *nonzero* `-1`
+  ever appears for NZ, that is new and real — which is why the writer's
+  `[WARN] … unresolved BranchID=-1` should stay.
 - **Multi-output WIP signature.** If capacity, historical production, efficiency,
   output shares and aux-fuel ratios all move by **one exact ratio**, that is the
   output *set* changing (a fuel counted as output rather than feedstock), not a
