@@ -1343,7 +1343,7 @@ def summarize_transformation_flows(
     loss_year_cols,
     sector_key,
     process_records=None,
-    multi_output=False,
+    multi_output=True,
 ):
     """Summarize transformation flows with primary input/output fuels."""
     try:

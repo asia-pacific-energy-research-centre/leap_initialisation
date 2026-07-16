@@ -356,7 +356,12 @@ MAJOR_SECTOR_CONFIG = {
         # full-model export catalog when this sector has zero activity.
         "title": "Non specified transformation",
         "transformation_flow_codes": ["09.12 Non-specified transformation"],
-        "loss_flow_codes": ["10.01.17 Non-specified own uses"],
+        # 10.01.17 own-use is not gated here: it has no causal link to whether
+        # 09.12 has balanced input/output activity (e.g. 12NZ, 09_ROK have
+        # real 10.01.17 own-use every year but no 09.12 output ever), so it is
+        # sourced instead by the "nonspecified_own_uses" proxy in
+        # other_loss_own_use_proxy_workflow.py.
+        "loss_flow_codes": [],
     },
     "oil_refineries": {
         "dataset_key": "esto",
@@ -1637,7 +1642,7 @@ def run_flow_sector_analysis(
         loss_year_cols,
         sector_config.get("sector_key", ""),
         process_records,
-        multi_output=bool(sector_config.get("multi_output", False)),
+        multi_output=bool(sector_config.get("multi_output", True)),
     )
 
 

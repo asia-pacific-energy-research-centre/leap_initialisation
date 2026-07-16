@@ -566,13 +566,16 @@ def normalize_feedstock_shares_for_export(feedstock_shares, base_year, final_yea
 
         normalized = {}
         for label, raw_share in feedstock_shares.items():
+            # feedstock_shares is already percent-scale (converted by the sole
+            # caller, prepare_feedstock_shares_for_export); re-applying the
+            # 0-1-to-percent heuristic here would wrongly re-scale any fuel
+            # whose genuine share happens to be below 1%.
             value_by_year = coerce_value_by_year(raw_share, base_year, final_year)
             value_by_year = clip_value_by_year_range(
                 value_by_year,
                 base_year,
                 final_year,
             )
-            value_by_year = normalize_feedstock_share_to_percent(value_by_year)
             normalized[label] = {
                 int(year): max(float(value), 0.0)
                 for year, value in value_by_year.items()
@@ -2628,6 +2631,94 @@ def build_aux_fuel_zero_rows(
                             "Per...": "",
                             "Date": year,
                             "Value": 0.0,
+                        }
+                    )
+
+    # Process-level fill: Process Efficiency.
+    #
+    # Every transformation process branch this workflow is responsible for should
+    # carry an explicit Process Efficiency (in Percent) so LEAP does not inherit a
+    # stale value from a prior import.  Scope matches the share zero-fill above:
+    # processes we wrote any row for this run (tier-1), plus every process under an
+    # in-scope sector (tier-2).  A process whose efficiency we explicitly set this
+    # run is left untouched; otherwise it defaults to 100.0.
+    #
+    # Guard: if a process has Exogenous Capacity > 0 (written this run) but no
+    # Process Efficiency, we refuse to fill in a placeholder — a process with
+    # capacity has a real efficiency that a human should set, not a default.
+    # That is a data error, raised (or deferred via THROW_ERROR_AFTER_RUN) rather
+    # than papered over with a placeholder row.
+    efficiency_measure = "Process Efficiency"
+    efficiency_process_prefixes: set[str] = set()
+    for pfx_set in allowed_prefixes_by_measure.values():
+        efficiency_process_prefixes |= pfx_set
+    in_scope_titles = in_scope_sector_titles or set()
+    if in_scope_titles:
+        for _, catalog_row in full_branch_catalog_df.iterrows():
+            bp = str(catalog_row.get("branch_path", "")).strip()
+            prefix = _extract_process_prefix(bp)
+            if not prefix or prefix in efficiency_process_prefixes:
+                continue
+            if any(
+                bp.startswith("Transformation\\" + title + "\\")
+                for title in in_scope_titles
+            ):
+                efficiency_process_prefixes.add(prefix)
+
+    if efficiency_process_prefixes:
+        # (scenario, process branch) -> largest-magnitude Exogenous Capacity written
+        # this run.  Exogenous Capacity is a process-level measure, so its branch path
+        # is the process prefix itself.
+        capacity_by_scenario_process: dict[tuple[str, str], float] = {}
+        for row in existing_rows:
+            if str(row.get("Measure", "")).strip() != "Exogenous Capacity":
+                continue
+            cap_bp = str(row.get("Branch_Path", "")).strip()
+            if not cap_bp:
+                continue
+            try:
+                cap_val = abs(float(row.get("Value", 0.0) or 0.0))
+            except (TypeError, ValueError):
+                cap_val = 0.0
+            cap_key = (str(row.get("Scenario", "")), cap_bp)
+            if cap_val > capacity_by_scenario_process.get(cap_key, 0.0):
+                capacity_by_scenario_process[cap_key] = cap_val
+
+        from codebase.utilities import workflow_common
+
+        for process_prefix in sorted(efficiency_process_prefixes):
+            for scenario in scenarios:
+                if (efficiency_measure, scenario, process_prefix) in existing:
+                    # Efficiency explicitly set this run — leave it alone.
+                    continue
+                capacity = capacity_by_scenario_process.get(
+                    (scenario, process_prefix), 0.0
+                )
+                if capacity > 0.0:
+                    workflow_common.defer_or_raise(
+                        ValueError(
+                            f"Process Efficiency is unset for '{process_prefix}' "
+                            f"(scenario '{scenario}') but its Exogenous Capacity is "
+                            f"{capacity:g} > 0. A process with capacity must have a "
+                            "non-zero Process Efficiency; refusing to zero-fill it."
+                        ),
+                        context="process_efficiency_zero_fill",
+                    )
+                    # THROW_ERROR_AFTER_RUN deferred the raise; do not emit a
+                    # placeholder efficiency row for a process that has capacity.
+                    continue
+                years = _years_for_scenario(scenario)
+                for year in years:
+                    zero_rows.append(
+                        {
+                            "Branch_Path": process_prefix,
+                            "Scenario": scenario,
+                            "Measure": efficiency_measure,
+                            "Units": DEFAULT_EFFICIENCY_UNITS,
+                            "Scale": "",
+                            "Per...": "",
+                            "Date": year,
+                            "Value": 100.0,
                         }
                     )
 
