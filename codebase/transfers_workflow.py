@@ -37,6 +37,7 @@ except Exception as exc:
     print(f"Failed to add repo root to sys.path: {exc}")
 
 from codebase.functions import transformation_analysis_utils as core
+from codebase.functions.conservation_policy import build_with_conservation_policy
 from codebase.functions.ninth_projection_mapping import normalize_economy_key
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions import leap_api, leap_exports
@@ -594,15 +595,23 @@ def build_transfer_data_for_scenario(scenario: str) -> tuple[pd.DataFrame, list[
     ninth_transfer_data = core.ninth_data_raw[
         core.ninth_data_raw["sectors"].astype(str).str.strip().eq("08_transfers")
     ].copy()
-    projection_df, _ = core.build_esto_projection_table(
-        ninth_data=ninth_transfer_data,
-        esto_data=historical,
-        mapping_path=core.NINTH_TO_ESTO_MAPPING_PATH,
-        base_year=core.BASE_YEAR,
-        projection_years=core.PROJECTION_YEAR_RANGE,
-        scenario=scenario,
-        sign_stable_flows="all",
-        strict_conservation=False,
+    # Transfers previously passed strict_conservation=False, i.e. it never ran the
+    # conservation check at all. Unified 2026-07-16 onto the repo-wide policy
+    # (warn by default). If transfers legitimately cannot conserve by
+    # construction, this will warn on every projection -- say so and exempt it
+    # rather than reverting the whole policy.
+    projection_df, _ = build_with_conservation_policy(
+        f"transfers projection (scenario={scenario!r})",
+        lambda strict_conservation: core.build_esto_projection_table(
+            ninth_data=ninth_transfer_data,
+            esto_data=historical,
+            mapping_path=core.NINTH_TO_ESTO_MAPPING_PATH,
+            base_year=core.BASE_YEAR,
+            projection_years=core.PROJECTION_YEAR_RANGE,
+            scenario=scenario,
+            sign_stable_flows="all",
+            strict_conservation=strict_conservation,
+        ),
     )
     projection_df = _route_transfer_projection_to_historical_flow(
         projection_df,

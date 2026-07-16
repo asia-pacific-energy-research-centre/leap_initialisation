@@ -28,6 +28,7 @@ except Exception as exc:
 from codebase.functions import transformation_analysis_utils as core
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions import leap_api, leap_exports
+from codebase.functions.conservation_policy import build_with_conservation_policy
 from codebase.functions.analysis_input_write_dispatcher import (
     get_analysis_input_write_mode,
 )
@@ -47,7 +48,9 @@ EXPORT_ID_LOOKUP_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 # Projection allocation behavior is configured in
 # `codebase/transformation_analysis_utils.py`:
 # - `PROJECTION_SIGN_STABLE_MODE`: "all" | "selected" | "off"
-# - `PROJECTION_STRICT_CONSERVATION`: raises if allocation no longer conserves totals.
+# - `PROJECTION_STRICT_CONSERVATION`: legacy flag; the projection conservation
+#   severity is now owned by `functions/conservation_policy.py` (warn by default,
+#   set CONSERVATION_FAILURES_ARE_ERRORS=True to raise).
 # This workflow consumes `core.esto_data`, so those settings directly affect
 # transformation exports (and transfers via shared core data).
 
@@ -195,8 +198,9 @@ def collect_transformation_rows(
             core.PROJECTION_SIGN_STABLE_MODE,
             core.SIGN_STABLE_PROJECTION_FLOWS,
         )
-        try:
-            projection_df, _ = core.build_esto_projection_table(
+        projection_df, _ = build_with_conservation_policy(
+            f"transformation projection (projection_scenario={projection_scenario!r})",
+            lambda strict_conservation: core.build_esto_projection_table(
                 ninth_data=scenario_ninth,
                 esto_data=scenario_esto,
                 mapping_path=core.NINTH_TO_ESTO_MAPPING_PATH,
@@ -204,23 +208,9 @@ def collect_transformation_rows(
                 projection_years=core.PROJECTION_YEAR_RANGE,
                 scenario=normalized_projection_scenario,
                 sign_stable_flows=projection_sign_stable_flows,
-                strict_conservation=core.PROJECTION_STRICT_CONSERVATION,
-            )
-        except ValueError as exc:
-            print(
-                "[WARN] Projection strict-conservation check failed for "
-                f"projection_scenario={projection_scenario!r}; retrying non-strict: {exc}"
-            )
-            projection_df, _ = core.build_esto_projection_table(
-                ninth_data=scenario_ninth,
-                esto_data=scenario_esto,
-                mapping_path=core.NINTH_TO_ESTO_MAPPING_PATH,
-                base_year=core.BASE_YEAR,
-                projection_years=core.PROJECTION_YEAR_RANGE,
-                scenario=normalized_projection_scenario,
-                sign_stable_flows=projection_sign_stable_flows,
-                strict_conservation=False,
-            )
+                strict_conservation=strict_conservation,
+            ),
+        )
         scenario_esto = core.merge_projection_into_esto(
             scenario_esto,
             projection_df,

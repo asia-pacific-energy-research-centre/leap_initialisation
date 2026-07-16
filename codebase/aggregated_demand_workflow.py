@@ -35,6 +35,7 @@ except Exception as exc:
     print(f"Failed to add repo root to sys.path: {exc}")
 
 from codebase.configuration import workflow_config as workflow_cfg
+from codebase.functions.conservation_policy import build_with_conservation_policy
 from codebase.functions.unified_name_lookup import load_active_mapping_sheet
 from codebase.functions.leap_excel_io import (
     add_leap_preamble,
@@ -870,13 +871,16 @@ def _extract_contextual_projection_years(
         ].copy()
     base_values = build_esto_base_year_values(esto_filtered, base_year)
 
-    allocation_result = allocate_ninth_projection_to_esto(
-        mapping_df=mapping,
-        ninth_series=ninth_series,
-        base_values=base_values,
-        projection_years=projection_years,
-        strict_conservation=True,
-        return_allocation_provenance=return_allocation_provenance,
+    allocation_result = build_with_conservation_policy(
+        "aggregated demand projection",
+        lambda strict_conservation: allocate_ninth_projection_to_esto(
+            mapping_df=mapping,
+            ninth_series=ninth_series,
+            base_values=base_values,
+            projection_years=projection_years,
+            strict_conservation=strict_conservation,
+            return_allocation_provenance=return_allocation_provenance,
+        ),
     )
     projection_wide, diagnostics = allocation_result[:2]
     provenance = allocation_result[2] if return_allocation_provenance else pd.DataFrame()

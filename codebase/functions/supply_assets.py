@@ -14,6 +14,7 @@ except Exception as exc:
 
 from codebase.utilities import workflow_common
 from codebase.configuration import workflow_config as workflow_cfg
+from codebase.functions.conservation_policy import build_with_conservation_policy
 from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
 from codebase.functions.esto_data_utils import (
     add_all_economy_total,
@@ -62,10 +63,13 @@ SAVE_PROJECTION_DIAGNOSTICS = False
 PROJECTION_DIAGNOSTICS_PATH = REPO_ROOT / "outputs" / "ninth_supply_projection_fallbacks.csv"
 SUPPLY_PROJECTION_LOOKUP = None
 # Keep supply projection splitting identical to transformation: preserve target
-# signs wherever a same-sign base-year pool exists and fail on any loss of source
-# energy during allocation.
+# signs wherever a same-sign base-year pool exists.
+# Conservation severity is no longer a local flag: it is owned repo-wide by
+# functions/conservation_policy.py (warn by default; set
+# CONSERVATION_FAILURES_ARE_ERRORS=True to raise). This used to be a second copy
+# of PROJECTION_STRICT_CONSERVATION kept in manual sync with
+# transformation_analysis_utils.
 PROJECTION_SIGN_STABLE_MODE = "all"
-PROJECTION_STRICT_CONSERVATION = True
 
 
 #%%
@@ -131,14 +135,17 @@ def prepare_supply_assets(
             esto_data, esto_year_cols, aggregate_label
         )
 
-    projection_df, projection_diagnostics = build_esto_projection_table(
-        ninth_data=ninth_data,
-        esto_data=esto_data,
-        mapping_path=NINTH_TO_ESTO_MAPPING_PATH,
-        base_year=BASE_YEAR,
-        projection_years=PROJECTION_YEAR_RANGE,
-        sign_stable_flows=PROJECTION_SIGN_STABLE_MODE,
-        strict_conservation=PROJECTION_STRICT_CONSERVATION,
+    projection_df, projection_diagnostics = build_with_conservation_policy(
+        "supply projection",
+        lambda strict_conservation: build_esto_projection_table(
+            ninth_data=ninth_data,
+            esto_data=esto_data,
+            mapping_path=NINTH_TO_ESTO_MAPPING_PATH,
+            base_year=BASE_YEAR,
+            projection_years=PROJECTION_YEAR_RANGE,
+            sign_stable_flows=PROJECTION_SIGN_STABLE_MODE,
+            strict_conservation=strict_conservation,
+        ),
     )
     projection_lookup = build_projection_lookup(projection_df)
     global SUPPLY_PROJECTION_LOOKUP
