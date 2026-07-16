@@ -86,17 +86,19 @@ def test_usa_msw_maximum_production_survives_baseline_seed_writer(
     monkeypatch.setattr(
         supply_export_builder,
         "_get_supply_branch_roots_for_entry",
-        lambda fuel_key, entry: [["Resources", "Secondary"]],
+        lambda fuel_key, entry, **_kwargs: [["Resources", "Secondary"]],
     )
     monkeypatch.setattr(
         supply_export_builder,
         "_resolve_supply_branch_label_from_export",
-        lambda branch_type, display_name, fuel_label_esto, fuel_key: "Municipal solid waste non renewable",
+        lambda branch_type, display_name, fuel_label_esto, fuel_key, **_kwargs: (
+            "Municipal solid waste non renewable"
+        ),
     )
     monkeypatch.setattr(
         supply_export_builder,
         "_supply_branch_exists_in_export_source",
-        lambda branch_path: True,
+        lambda branch_path, **_kwargs: True,
     )
     monkeypatch.setattr(
         supply_leap_io,
@@ -169,17 +171,17 @@ def test_wind_maximum_production_is_written_to_standalone_supply_workbook(
     monkeypatch.setattr(
         supply_export_builder,
         "_get_supply_branch_roots_for_entry",
-        lambda fuel_key, entry: [["Resources", "Primary"]],
+        lambda fuel_key, entry, **_kwargs: [["Resources", "Primary"]],
     )
     monkeypatch.setattr(
         supply_export_builder,
         "_resolve_supply_branch_label_from_export",
-        lambda branch_type, display_name, fuel_label_esto, fuel_key: "Wind",
+        lambda branch_type, display_name, fuel_label_esto, fuel_key, **_kwargs: "Wind",
     )
     monkeypatch.setattr(
         supply_export_builder,
         "_supply_branch_exists_in_export_source",
-        lambda branch_path: True,
+        lambda branch_path, **_kwargs: True,
     )
 
     paths = supply_export_builder.generate_supply_exports(

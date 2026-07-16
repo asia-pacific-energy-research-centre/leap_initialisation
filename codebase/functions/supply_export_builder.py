@@ -14,6 +14,7 @@ from codebase.functions.supply_branch_classification import (
     _get_supply_branch_roots_for_entry,
     _resolve_supply_branch_label_from_export,
     _supply_branch_exists_in_export_source,
+    resolve_classification_source_for_economy,
 )
 from codebase.functions.supply_export_rows import (
     _resolve_supply_override,
@@ -180,6 +181,10 @@ def build_supply_log_rows(
         if not fuel_config:
             print("Warning: no supply fuels available for export.")
             return []
+        # This economy's LEAP area decides its Resources tree: which fuels sit
+        # under Primary vs Secondary, their exact labels, and which branches
+        # exist at all. Resolved once here rather than per fuel/scenario/root.
+        classification_source = resolve_classification_source_for_economy(economy)
         measures = supply_measures if isinstance(supply_measures, list) and supply_measures else SUPPLY_MEASURES
         rows = []
         for fuel_key in sorted(fuel_config):
@@ -221,7 +226,9 @@ def build_supply_log_rows(
                             ),
                             context=f"supply_fuel_match:{economy}:{display_name}",
                         )
-            branch_roots = _get_supply_branch_roots_for_entry(fuel_key, entry)
+            branch_roots = _get_supply_branch_roots_for_entry(
+                fuel_key, entry, source_path=classification_source
+            )
             required_flow_keys = {
                 str(measure.get("flow_key") or "").strip()
                 for measure in measures
@@ -258,10 +265,13 @@ def build_supply_log_rows(
                         display_name,
                         entry.get("fuel_label_esto"),
                         fuel_key,
+                        source_path=classification_source,
                     )
                     safe_name = sanitize_leap_label(template_label or display_name)
                     branch_path = build_branch_path(branch_root + [safe_name])
-                    if not _supply_branch_exists_in_export_source(branch_path):
+                    if not _supply_branch_exists_in_export_source(
+                        branch_path, source_path=classification_source
+                    ):
                         miss_key = f"{economy}|{scenario}|{branch_path}"
                         if miss_key not in _SUPPLY_BRANCH_PATH_MISS_WARNED:
                             _SUPPLY_BRANCH_PATH_MISS_WARNED.add(miss_key)

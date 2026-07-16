@@ -9,6 +9,7 @@ import pandas as pd
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.configuration.all_products_and_flows import ESTO_PRODUCT_LIST
 from codebase.functions.leap_core import sanitize_leap_name
+from codebase.utilities import leap_export_template_resolver
 from codebase.utilities.master_config import read_config_table
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -41,7 +42,8 @@ SUPPLY_ROOT_CLASSIFICATION_STRICT = bool(
 # same process.
 _SUPPLY_ROOT_LOOKUP_CACHE: dict[str, dict[str, str]] = {}
 _SUPPLY_ROOT_LOOKUP_SOURCE_INFO: dict[str, dict[str, object]] = {}
-_SUPPLY_ROOT_LOOKUP_MISS_WARNED: set[str] = set()
+# Keyed by (source cache key, fuel label) — see _get_supply_branch_roots_for_entry.
+_SUPPLY_ROOT_LOOKUP_MISS_WARNED: set[tuple[str, str]] = set()
 _SUPPLY_BRANCH_PATH_LOOKUP_CACHE: dict[str, set[str]] = {}
 _SUPPLY_BRANCH_PATH_LOOKUP_SOURCE_INFO: dict[str, dict[str, object]] = {}
 _SUPPLY_BRANCH_PATH_MISS_WARNED: set[str] = set()
@@ -55,6 +57,21 @@ def _resolve_classification_source_path(source_path=None) -> Path:
     if not path.is_absolute():
         path = REPO_ROOT / path
     return path
+
+
+def resolve_classification_source_for_economy(economy) -> Path:
+    """Return the export template whose Resources tree applies to this economy.
+
+    Falls back to the configured single export for aggregate sentinels, which
+    span areas, and for economies with no template yet.
+    """
+    if economy is None or leap_export_template_resolver.is_aggregate_economy(economy):
+        return _resolve_classification_source_path()
+    try:
+        return leap_export_template_resolver.resolve_leap_export_template(economy)
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"[WARN] {exc}")
+        return _resolve_classification_source_path()
 
 
 def _classification_cache_key(path: Path) -> str:
@@ -407,34 +424,41 @@ def _classify_supply_root_for_product(product_label):
     return "secondary" if _is_secondary_esto_product(label) else "primary"
 
 
-def _get_supply_branch_roots_for_entry(fuel_key, fuel_entry):
+def _get_supply_branch_roots_for_entry(fuel_key, fuel_entry, source_path=None):
     """Resolve the LEAP supply branch root(s) for one export fuel entry."""
     entry = fuel_entry or {}
     fuel_name = str(entry.get("fuel_name") or "").strip()
     esto_label = str(entry.get("fuel_label_esto") or "").strip()
     key_label = str(fuel_key or "").strip()
+    resolved_source = _resolve_classification_source_path(source_path)
 
     root_from_export = _resolve_supply_root_from_export_lookup(
         fuel_name,
         esto_label,
         key_label,
+        source_path=resolved_source,
     )
     if root_from_export in {"Primary", "Secondary"}:
         return [["Resources", root_from_export]]
 
-    missing_key = _normalize_supply_lookup_fuel_name(fuel_name or esto_label or key_label)
-    if missing_key and missing_key not in _SUPPLY_ROOT_LOOKUP_MISS_WARNED:
+    fuel_label = _normalize_supply_lookup_fuel_name(fuel_name or esto_label or key_label)
+    # Warn once per (source, fuel): a fuel missing from one economy's area says
+    # nothing about another's, so keying on the fuel alone would let the first
+    # economy's warning silence every later one.
+    missing_key = (_classification_cache_key(resolved_source), fuel_label)
+    if fuel_label and missing_key not in _SUPPLY_ROOT_LOOKUP_MISS_WARNED:
         _SUPPLY_ROOT_LOOKUP_MISS_WARNED.add(missing_key)
         if SUPPLY_ROOT_CLASSIFICATION_STRICT:
             raise ValueError(
                 "Supply root classification missing from LEAP export source for fuel "
                 f"'{fuel_name or esto_label or key_label}'. "
-                f"Source={SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH} "
+                f"Source={resolved_source} "
                 f"(sheet={SUPPLY_ROOT_CLASSIFICATION_SOURCE_SHEET})."
             )
         print(
             "[WARN] Supply root classification not found in LEAP export source for fuel "
-            f"'{fuel_name or esto_label or key_label}'. "
+            f"'{fuel_name or esto_label or key_label}' "
+            f"(source={resolved_source.name}). "
             "Falling back to legacy ESTO-based classification."
         )
 

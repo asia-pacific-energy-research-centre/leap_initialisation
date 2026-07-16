@@ -182,9 +182,47 @@ def test_shared_area_ignores_provisional_but_flags_copied_final_templates(tmp_pa
     }
 
 
-def test_real_templates_only_nz_and_usa_are_final():
-    assert provisional_template_economies() == [
+def test_every_configured_economy_has_a_template():
+    """Every economy the workflows run must resolve, or its export routes to another area."""
+    from codebase.configuration.workflow_config import GLOBAL_ECONOMIES
+
+    available = set(available_template_economies())
+    missing = [economy for economy in GLOBAL_ECONOMIES if economy not in available]
+
+    assert not missing, f"No LEAP export template for: {missing}"
+
+
+def test_no_two_final_templates_claim_the_same_leap_area():
+    """A final template sharing another's area name was copied, not exported.
+
+    Provisional (COMP_GEN) templates are exempt by construction — sharing the
+    source area is what being provisional means.
+    """
+    shared = find_shared_template_areas()
+
+    assert not shared, (
+        "Final templates share a LEAP area, so one was copied rather than exported "
+        f"from its own area: {shared}"
+    )
+
+
+def test_finalized_economies_resolve_to_a_non_provisional_template():
+    """Guards the rollout deadline.
+
+    Economies whose real export has landed must not silently fall back to a
+    provisional copy of another area. This list only grows; when an economy is
+    finalized, add it here. The moment any economy is finalized, the un-routed
+    code paths in docs/work_queue.md [7] start disagreeing with the routed ones
+    about which LEAP area they are in.
+    """
+    finalized = {"12_NZ", "20_USA", "01_AUS"}
+
+    still_provisional = sorted(
         economy
-        for economy in available_template_economies()
-        if economy not in {"12_NZ", "20_USA"}
-    ]
+        for economy in finalized
+        if find_leap_export_template(economy).is_provisional
+    )
+
+    assert not still_provisional, (
+        f"Expected a real export for {still_provisional}, but resolved a COMP_GEN copy."
+    )
