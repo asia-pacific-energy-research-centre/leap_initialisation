@@ -368,6 +368,7 @@ side. Finish the migration when the file is free.
 
 ## Related documents
 
+- [work_queue.md](work_queue.md) — what is left, in what order, what blocks what; plus recorded traps and pre-existing failures.
 - [baseline_seed_rule_inventory.md](baseline_seed_rule_inventory.md) — full SEED-C rule detail (F2).
 - [special_rules_and_design_decisions.md](special_rules_and_design_decisions.md).
 - [supply_conservation_checks.md](supply_conservation_checks.md), [balance_demand_conservation_check.md](balance_demand_conservation_check.md) — F5.
