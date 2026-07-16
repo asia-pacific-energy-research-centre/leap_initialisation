@@ -140,13 +140,16 @@ Exogenous Capacity but no usable Process Efficiency expression for the same
 scenario and region. It deliberately validates presence and parseability only;
 efficiency-value plausibility remains a separate modelling rule.
 
-## [5] Zero-fill mechanism consolidation (stages 2–3) — Stage 2 completed 2026-07-16
+## [5] Zero-fill mechanism consolidation (stages 2–3) ✅ Completed 2026-07-16
 
 Not blocked. See `docs/prompts/export_zero_fill_consolidation_execution_prompt.md`
   (premise corrected 2026-07-16; stage 1 is the header detector, complete).
   `export_zero_fill.zero_fill_unset_rows` now handles stage 2 (own-use and
   demand-zeroing) while preserving their separate scope and expression styles.
-  Stage 3 = transformation (most entangled — skip if it contorts). Also proposed there:
+  Stage 3 was assessed and deliberately not migrated: transformation zero-fill
+  combines measure-specific process ownership, scenario windows, 100% share
+  anchors, tiered sector scope, and capacity/efficiency safeguards. Forcing it
+  through the stage-2 helper would obscure those policies and risk drift. Also proposed there:
 per-measure `FILL_MISSING_DEFAULTS`, since the two **reset** mechanisms are gated
 but the **gap-fills** are not.
 

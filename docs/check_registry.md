@@ -144,7 +144,9 @@ consolidation is still tracked by
 now owns the shared universe filtering, de-duplication, anti-join, metadata, and
 zero-expression mechanics for own-use gap-fill and demand-zeroing reset rows.
 The callers retain their distinct scopes and zero styles; transformation
-zero-fill remains intentionally separate pending its stage-3 assessment.
+zero-fill remains intentionally separate following its stage-3 assessment:
+its measure-specific process ownership, scenario windows, share anchors, and
+capacity/efficiency safeguards are not safely parameterized by the generic helper.
 
 **Proposed fill-policy surface** (design, not yet built): a per-measure
 `FILL_MISSING_DEFAULTS` dict threaded as a function parameter into the gap-fill
