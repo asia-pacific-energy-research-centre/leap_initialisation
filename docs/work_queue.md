@@ -29,7 +29,7 @@ the export-template track is blocked by nothing and paced by an external event.
 
 [7] finish the per-economy export-template rollout   <- not blocked
       deadline: the first real (non-COMP_GEN) economy export
-      ├── [8]  supply_branch_classification threading
+      ├── [8]  supply_branch_classification threading (completed 2026-07-16)
       ├── [9]  reset-scope chain
       └── [10] GLOBAL_REGION decision
 ```
@@ -49,8 +49,7 @@ four-workstream dirty tree is how the regression below got in unnoticed.
 
 Dirty: `transformation_analysis_utils.py`, `transformation_record_builder.py`,
 `transformation_sector_analysis.py`, plus untracked
-`tests/test_process_efficiency_zero_fill.py` and
-`docs/prompts/transformation_multi_output_default_verification_prompt.md`.
+`tests/test_process_efficiency_zero_fill.py`.
 
 **Why it blocks everything:** on 2026-07-16 a 12_NZ + 20_USA transformation
 equivalence check returned large diffs that were **entirely** explained by this
@@ -224,25 +223,17 @@ override branch. Fixed in `cdb813d`. When routing anything here, check the
 *callers*, not just the function — and note the tests passed throughout, because
 they pin the template explicitly too, exercising the very branch that masked it.
 
-## [8] `supply_branch_classification` threading
+## [8] `supply_branch_classification` threading — completed 2026-07-16
 
-**Not blocked.** Depends on [7]'s direction.
+Landed in `3756ccb`. `supply_export_builder` now passes the current economy's
+resolved template through both Resources branch-label/existence lookups, and
+the lookup caches are keyed by source workbook. The implementation is covered
+by the resolver and supply-production regression tests.
 
-The three lookups are cached per source workbook (`10cb432`), and the loaders
-take a `source_path` — but **nothing passes it**. `supply_export_builder:256,264`
-still call `_resolve_supply_branch_label_from_export` /
-`_supply_branch_exists_in_export_source` bare, so Resources `Primary`/`Secondary`
-classification and branch-existence use USA's export for every economy.
-
-**Inert today, by luck not design:** `12_NZ` and `20_USA` classify all **70**
-Resources fuels identically — 0 differences, none missing either side. So the
-gap cannot bite until an economy's Resources tree diverges. Re-run the
-comparison when any real export lands; do not assume it still holds.
-
-Note `_SUPPLY_ROOT_LOOKUP_MISS_WARNED` / `_SUPPLY_BRANCH_PATH_MISS_WARNED` remain
-unkeyed (warn-once dedupe only, not data). `supply_export_builder` imports the
-latter and mutates it as a set, so reshaping it touches two modules.
-Consequence is minor: one economy's missing-fuel warning suppresses another's.
+The warning-deduplication sets remain global rather than source-keyed. This is
+only a logging limitation (one economy's missing-branch warning can suppress
+another's) and is not a data-routing concern; leave it until warning reporting
+is revisited deliberately.
 
 ## [9] Reset-scope chain
 
@@ -346,3 +337,5 @@ as deliberate rather than "fixed". Answer the question before touching it.
 - [baseline_seed_rule_inventory.md](baseline_seed_rule_inventory.md) — SEED-C rule detail.
 - [prompts/patch_baseline_seeds_module_verification_prompt.md](prompts/patch_baseline_seeds_module_verification_prompt.md) — patch verification recipe + transformation reassessment.
 - [prompts/export_zero_fill_consolidation_execution_prompt.md](prompts/export_zero_fill_consolidation_execution_prompt.md) — F1 consolidation.
+- [prompts/transformation_multi_output_default_verification_prompt.md](prompts/transformation_multi_output_default_verification_prompt.md) — deferred full-run verification of the confirmed multi-output fix.
+- [prompts/baseline_seed_aus_things_to_check.md](prompts/baseline_seed_aus_things_to_check.md) — focused checks for the next Australia seed refresh.
