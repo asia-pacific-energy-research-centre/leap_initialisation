@@ -30,6 +30,7 @@ SHARE_VARIABLE_RULE_IDS = {
     "Process Share": "SEED-007",
     "Feedstock Fuel Share": "SEED-008",
 }
+ACTIONABLE_FINDING_STATUSES = frozenset({"fail", "warn"})
 SHARE_ROOT_CAUSE_RULE_IDS = set(SHARE_VARIABLE_RULE_IDS.values())
 MISSING_BRANCH_ROOT_CAUSE_RULE_IDS = {"SEED-003", "SEED-004", "SEED-005", "SEED-011"}
 PRODUCER_COVERAGE_ROOT_CAUSE_RULE_IDS = {"SEED-012"}
@@ -683,6 +684,14 @@ def _finding(
         "documentation_reference": spec.documentation_reference,
         **context,
     }
+
+
+def filter_actionable_findings(findings: pd.DataFrame) -> pd.DataFrame:
+    """Keep only findings that require review in persisted rule reports."""
+    if findings.empty or "status" not in findings.columns:
+        return findings.copy()
+    statuses = findings["status"].astype(str).str.strip().str.lower()
+    return findings.loc[statuses.isin(ACTIONABLE_FINDING_STATUSES)].copy()
 
 
 def _row_context(row: pd.Series) -> dict[str, object]:
@@ -1576,6 +1585,8 @@ def validate_seed_rows(
                 continue
             mode, payload = parse_expression(row["Expression"])
             context = _row_context(row)
+            if _text(row["Expression"]).strip().lower() == "unlimited":
+                continue
             if mode == "series" and isinstance(payload, dict):
                 missing_years = [year for year in row_required_years if year not in payload]
                 if missing_years:
@@ -1755,9 +1766,9 @@ def prepare_seed_rows_for_write(
     findings_path = output_dir / f"{diagnostic_stem}_rule_findings.csv"
     duplicates_path = output_dir / f"{diagnostic_stem}_duplicate_groups.csv"
     issue_groups_path = output_dir / f"{diagnostic_stem}_issue_groups.csv"
-    result.findings.to_csv(findings_path, index=False)
+    filter_actionable_findings(result.findings).to_csv(findings_path, index=False)
     result.duplicate_groups.to_csv(duplicates_path, index=False)
-    build_validation_issue_groups(result.findings).to_csv(issue_groups_path, index=False)
+    build_validation_issue_groups(filter_actionable_findings(result.findings)).to_csv(issue_groups_path, index=False)
 
     if raise_on_blocking and not result.blocking_findings.empty:
         rule_counts = result.blocking_findings["rule_id"].value_counts().sort_index()
@@ -1776,6 +1787,7 @@ __all__ = [
     "RuleSpec",
     "ValidationResult",
     "BaselineSeedValidationError",
+    "filter_actionable_findings",
     "build_missing_branch_issue_groups",
     "build_producer_coverage_issue_groups",
     "build_share_issue_groups",

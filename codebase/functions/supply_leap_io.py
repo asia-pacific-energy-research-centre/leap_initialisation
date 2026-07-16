@@ -61,6 +61,7 @@ from codebase.functions.baseline_seed_validation import (
     build_validation_issue_groups,
     check_producer_coverage,
     complete_canonical_share_groups,
+    filter_actionable_findings,
     prepare_seed_rows_for_write,
 )
 from codebase.functions.analysis_input_write_dispatcher import get_analysis_input_write_mode
@@ -1959,7 +1960,7 @@ def write_per_economy_combined_workbooks(
         for econ_token, validation in validation_results:
             if validation.findings.empty:
                 continue
-            frame = validation.findings.copy()
+            frame = filter_actionable_findings(validation.findings)
             frame.insert(0, "economy", econ_token)
             consolidated_frames.append(frame)
         consolidated = (

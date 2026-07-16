@@ -9,6 +9,8 @@ import pytest
 from codebase.functions.baseline_seed_validation import (
     BaselineSeedValidationError,
     build_validation_issue_groups,
+    filter_actionable_findings,
+    validate_seed_rows,
 )
 from codebase.functions.supply_leap_io import (
     save_combined_supply_transformation_export,
@@ -51,6 +53,36 @@ def _write_leap_workbook(path: Path, rows: list[dict[str, object]]) -> None:
     )
     with pd.ExcelWriter(path, engine="openpyxl") as writer:
         full.to_excel(writer, sheet_name="LEAP", index=False, header=False)
+
+
+def test_persisted_findings_keep_only_actionable_statuses() -> None:
+    findings = pd.DataFrame([
+        {"rule_id": "SEED-006", "status": "info", "severity": "error", "blocking": False},
+        {"rule_id": "SEED-006", "status": "pass", "severity": "error", "blocking": False},
+        {"rule_id": "SEED-009", "status": "warn", "severity": "warning", "blocking": False},
+        {"rule_id": "SEED-003", "status": "fail", "severity": "error", "blocking": True},
+    ])
+
+    actionable = filter_actionable_findings(findings)
+
+    assert actionable["rule_id"].tolist() == ["SEED-009", "SEED-003"]
+
+
+def test_unlimited_expression_is_not_a_year_coverage_failure() -> None:
+    data = pd.DataFrame([{
+        "Branch Path": "Resources\\Primary\\Geothermal",
+        "Variable": "Maximum Production",
+        "Scenario": "Reference",
+        "Region": "Australia",
+        "Expression": "Unlimited",
+    }])
+
+    result = validate_seed_rows(
+        data,
+        required_years_by_scenario={"Reference": list(range(2023, 2061))},
+    )
+
+    assert not result.findings["rule_id"].eq("SEED-009").any()
 
 
 def _write_template(path: Path, *, variable_id: int = 420) -> None:
