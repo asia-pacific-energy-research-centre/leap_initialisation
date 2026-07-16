@@ -139,3 +139,57 @@ def test_supply_branch_classification_normalizes_lookup_names_and_fallback_roots
         )
         == "resources\\secondary\\electricity"
     )
+
+
+def _write_classification_source(path, branch_paths) -> None:
+    """Write a minimal LEAP-shaped export workbook with a two-row preamble."""
+    rows = [
+        ["Area:", "test area", None],
+        [None, None, None],
+        ["Branch Path", "Variable", "Scenario"],
+    ]
+    rows.extend([[branch_path, "Production", "Current Accounts"] for branch_path in branch_paths])
+    with pd.ExcelWriter(path) as writer:
+        pd.DataFrame(rows).to_excel(writer, sheet_name="Export", header=False, index=False)
+
+
+def test_supply_classification_caches_are_keyed_per_source_workbook(tmp_path) -> None:
+    """Each economy is its own LEAP area, so a second source must not read the first's cache."""
+    branch_classification.reset_supply_classification_caches()
+
+    usa = tmp_path / "leap_export_template 20_USA.xlsx"
+    aus = tmp_path / "leap_export_template 01_AUS.xlsx"
+    _write_classification_source(usa, ["Resources\\Primary\\Coal"])
+    _write_classification_source(aus, ["Resources\\Secondary\\Coal"])
+
+    usa_root = branch_classification._resolve_supply_root_from_export_lookup(
+        "Coal", source_path=usa
+    )
+    aus_root = branch_classification._resolve_supply_root_from_export_lookup(
+        "Coal", source_path=aus
+    )
+
+    assert usa_root == "Primary"
+    assert aus_root == "Secondary"
+
+    # Re-reading the first source must still return its own classification.
+    assert (
+        branch_classification._resolve_supply_root_from_export_lookup("Coal", source_path=usa)
+        == "Primary"
+    )
+
+
+def test_supply_branch_existence_is_keyed_per_source_workbook(tmp_path) -> None:
+    branch_classification.reset_supply_classification_caches()
+
+    usa = tmp_path / "leap_export_template 20_USA.xlsx"
+    aus = tmp_path / "leap_export_template 01_AUS.xlsx"
+    _write_classification_source(usa, ["Resources\\Primary\\Coal"])
+    _write_classification_source(aus, ["Resources\\Primary\\Natural gas"])
+
+    assert branch_classification._supply_branch_exists_in_export_source(
+        "Resources\\Primary\\Coal", source_path=usa
+    )
+    assert not branch_classification._supply_branch_exists_in_export_source(
+        "Resources\\Primary\\Coal", source_path=aus
+    )

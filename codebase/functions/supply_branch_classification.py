@@ -35,13 +35,40 @@ SUPPLY_ROOT_CLASSIFICATION_STRICT = bool(
     )
 )
 
-_SUPPLY_ROOT_LOOKUP_CACHE: dict[str, str] | None = None
-_SUPPLY_ROOT_LOOKUP_SOURCE_INFO: dict[str, object] | None = None
+# Each economy is a separate LEAP area with its own branch IDs and Resources
+# tree, so every lookup below is cached per source workbook. An unkeyed cache
+# would serve the first economy's classification to every later economy in the
+# same process.
+_SUPPLY_ROOT_LOOKUP_CACHE: dict[str, dict[str, str]] = {}
+_SUPPLY_ROOT_LOOKUP_SOURCE_INFO: dict[str, dict[str, object]] = {}
 _SUPPLY_ROOT_LOOKUP_MISS_WARNED: set[str] = set()
-_SUPPLY_BRANCH_PATH_LOOKUP_CACHE: set[str] | None = None
-_SUPPLY_BRANCH_PATH_LOOKUP_SOURCE_INFO: dict[str, object] | None = None
+_SUPPLY_BRANCH_PATH_LOOKUP_CACHE: dict[str, set[str]] = {}
+_SUPPLY_BRANCH_PATH_LOOKUP_SOURCE_INFO: dict[str, dict[str, object]] = {}
 _SUPPLY_BRANCH_PATH_MISS_WARNED: set[str] = set()
-_SUPPLY_BRANCH_LABEL_LOOKUP_CACHE: dict[tuple[str, str], str] | None = None
+_SUPPLY_BRANCH_LABEL_LOOKUP_CACHE: dict[str, dict[tuple[str, str], str]] = {}
+
+
+def _resolve_classification_source_path(source_path=None) -> Path:
+    """Return the resolved classification source workbook path."""
+    raw = source_path if source_path is not None else SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH
+    path = Path(str(raw).replace("\\", "/"))
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    return path
+
+
+def _classification_cache_key(path: Path) -> str:
+    """Return the per-source cache key for a resolved workbook path."""
+    return str(path).lower()
+
+
+def reset_supply_classification_caches() -> None:
+    """Drop every cached per-source classification lookup."""
+    _SUPPLY_ROOT_LOOKUP_CACHE.clear()
+    _SUPPLY_ROOT_LOOKUP_SOURCE_INFO.clear()
+    _SUPPLY_BRANCH_PATH_LOOKUP_CACHE.clear()
+    _SUPPLY_BRANCH_PATH_LOOKUP_SOURCE_INFO.clear()
+    _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE.clear()
 
 SECONDARY_ESTO_PRODUCT_MAJOR_CODES = {"02", "04", "07"}
 SECONDARY_ESTO_PRODUCT_EXACT = {
@@ -131,16 +158,13 @@ def _read_branch_variable_rows_from_workbook(
     return data
 
 
-def _load_supply_root_lookup_from_export():
+def _load_supply_root_lookup_from_export(source_path=None):
     """Load and cache supply root (Primary/Secondary) lookup from the canonical LEAP export."""
-    global _SUPPLY_ROOT_LOOKUP_CACHE
-    global _SUPPLY_ROOT_LOOKUP_SOURCE_INFO
-    if _SUPPLY_ROOT_LOOKUP_CACHE is not None:
-        return _SUPPLY_ROOT_LOOKUP_CACHE
+    path = _resolve_classification_source_path(source_path)
+    cache_key = _classification_cache_key(path)
+    if cache_key in _SUPPLY_ROOT_LOOKUP_CACHE:
+        return _SUPPLY_ROOT_LOOKUP_CACHE[cache_key]
 
-    path = Path(str(SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH).replace("\\", "/"))
-    if not path.is_absolute():
-        path = REPO_ROOT / path
     sheet = str(SUPPLY_ROOT_CLASSIFICATION_SOURCE_SHEET).strip() or "Export"
 
     if not path.exists():
@@ -148,14 +172,14 @@ def _load_supply_root_lookup_from_export():
             "[WARN] Supply root classification source workbook not found: "
             f"{path}. Falling back to legacy ESTO-based classification."
         )
-        _SUPPLY_ROOT_LOOKUP_SOURCE_INFO = {
+        _SUPPLY_ROOT_LOOKUP_SOURCE_INFO[cache_key] = {
             "path": str(path),
             "sheet": sheet,
             "status": "missing",
             "lookup_size": 0,
         }
-        _SUPPLY_ROOT_LOOKUP_CACHE = {}
-        return _SUPPLY_ROOT_LOOKUP_CACHE
+        _SUPPLY_ROOT_LOOKUP_CACHE[cache_key] = {}
+        return _SUPPLY_ROOT_LOOKUP_CACHE[cache_key]
 
     try:
         rows = _read_branch_variable_rows_from_workbook(path, sheet_name=sheet)
@@ -164,14 +188,14 @@ def _load_supply_root_lookup_from_export():
             "[WARN] Failed reading supply root classification source workbook "
             f"{path} (sheet={sheet}): {exc}. Falling back to legacy ESTO-based classification."
         )
-        _SUPPLY_ROOT_LOOKUP_SOURCE_INFO = {
+        _SUPPLY_ROOT_LOOKUP_SOURCE_INFO[cache_key] = {
             "path": str(path),
             "sheet": sheet,
             "status": "read_failed",
             "lookup_size": 0,
         }
-        _SUPPLY_ROOT_LOOKUP_CACHE = {}
-        return _SUPPLY_ROOT_LOOKUP_CACHE
+        _SUPPLY_ROOT_LOOKUP_CACHE[cache_key] = {}
+        return _SUPPLY_ROOT_LOOKUP_CACHE[cache_key]
 
     root_counts_by_fuel: dict[str, dict[str, int]] = {}
     for branch_path in rows.get("Branch Path", pd.Series(dtype=str)).astype(str):
@@ -217,20 +241,20 @@ def _load_supply_root_lookup_from_export():
         "[INFO] Loaded supply root classification lookup from LEAP export source: "
         f"{path} (sheet={sheet}, fuels={len(lookup)})."
     )
-    _SUPPLY_ROOT_LOOKUP_SOURCE_INFO = {
+    _SUPPLY_ROOT_LOOKUP_SOURCE_INFO[cache_key] = {
         "path": str(path),
         "sheet": sheet,
         "status": "loaded",
         "lookup_size": int(len(lookup)),
         "conflicts": int(len(conflicts)),
     }
-    _SUPPLY_ROOT_LOOKUP_CACHE = lookup
-    return _SUPPLY_ROOT_LOOKUP_CACHE
+    _SUPPLY_ROOT_LOOKUP_CACHE[cache_key] = lookup
+    return lookup
 
 
-def _resolve_supply_root_from_export_lookup(*candidates):
+def _resolve_supply_root_from_export_lookup(*candidates, source_path=None):
     """Resolve Primary/Secondary from workbook lookup using candidate labels."""
-    lookup = _load_supply_root_lookup_from_export()
+    lookup = _load_supply_root_lookup_from_export(source_path)
     if not lookup:
         return None
     for candidate in candidates:
@@ -259,26 +283,23 @@ def _normalize_supply_branch_path_for_lookup(branch_path):
     return f"resources\\{root}\\{fuel}"
 
 
-def _load_supply_branch_path_lookup_from_export():
+def _load_supply_branch_path_lookup_from_export(source_path=None):
     """Load existing Resources branch paths from canonical LEAP export source."""
-    global _SUPPLY_BRANCH_PATH_LOOKUP_CACHE
-    global _SUPPLY_BRANCH_PATH_LOOKUP_SOURCE_INFO
-    if _SUPPLY_BRANCH_PATH_LOOKUP_CACHE is not None:
-        return _SUPPLY_BRANCH_PATH_LOOKUP_CACHE
+    path = _resolve_classification_source_path(source_path)
+    cache_key = _classification_cache_key(path)
+    if cache_key in _SUPPLY_BRANCH_PATH_LOOKUP_CACHE:
+        return _SUPPLY_BRANCH_PATH_LOOKUP_CACHE[cache_key]
 
-    path = Path(str(SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH).replace("\\", "/"))
-    if not path.is_absolute():
-        path = REPO_ROOT / path
     sheet = str(SUPPLY_ROOT_CLASSIFICATION_SOURCE_SHEET).strip() or "Export"
     if not path.exists():
-        _SUPPLY_BRANCH_PATH_LOOKUP_SOURCE_INFO = {
+        _SUPPLY_BRANCH_PATH_LOOKUP_SOURCE_INFO[cache_key] = {
             "path": str(path),
             "sheet": sheet,
             "status": "missing",
             "lookup_size": 0,
         }
-        _SUPPLY_BRANCH_PATH_LOOKUP_CACHE = set()
-        return _SUPPLY_BRANCH_PATH_LOOKUP_CACHE
+        _SUPPLY_BRANCH_PATH_LOOKUP_CACHE[cache_key] = set()
+        return _SUPPLY_BRANCH_PATH_LOOKUP_CACHE[cache_key]
     try:
         rows = _read_branch_variable_rows_from_workbook(path, sheet_name=sheet)
     except Exception as exc:
@@ -286,42 +307,40 @@ def _load_supply_branch_path_lookup_from_export():
             "[WARN] Failed reading supply branch-path lookup from LEAP export source "
             f"{path} (sheet={sheet}): {exc}. Branch existence checks disabled."
         )
-        _SUPPLY_BRANCH_PATH_LOOKUP_SOURCE_INFO = {
+        _SUPPLY_BRANCH_PATH_LOOKUP_SOURCE_INFO[cache_key] = {
             "path": str(path),
             "sheet": sheet,
             "status": "read_failed",
             "lookup_size": 0,
         }
-        _SUPPLY_BRANCH_PATH_LOOKUP_CACHE = set()
-        return _SUPPLY_BRANCH_PATH_LOOKUP_CACHE
+        _SUPPLY_BRANCH_PATH_LOOKUP_CACHE[cache_key] = set()
+        return _SUPPLY_BRANCH_PATH_LOOKUP_CACHE[cache_key]
     lookup: set[str] = set()
     for branch_path in rows.get("Branch Path", pd.Series(dtype=str)).astype(str):
         token = _normalize_supply_branch_path_for_lookup(branch_path)
         if token:
             lookup.add(token)
-    _SUPPLY_BRANCH_PATH_LOOKUP_SOURCE_INFO = {
+    _SUPPLY_BRANCH_PATH_LOOKUP_SOURCE_INFO[cache_key] = {
         "path": str(path),
         "sheet": sheet,
         "status": "loaded",
         "lookup_size": int(len(lookup)),
     }
-    _SUPPLY_BRANCH_PATH_LOOKUP_CACHE = lookup
-    return _SUPPLY_BRANCH_PATH_LOOKUP_CACHE
+    _SUPPLY_BRANCH_PATH_LOOKUP_CACHE[cache_key] = lookup
+    return lookup
 
 
-def _load_supply_branch_label_lookup_from_export():
+def _load_supply_branch_label_lookup_from_export(source_path=None):
     """Load normalized resource fuel labels and their exact template spelling."""
-    global _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE
-    if _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE is not None:
-        return _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE
+    path = _resolve_classification_source_path(source_path)
+    cache_key = _classification_cache_key(path)
+    if cache_key in _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE:
+        return _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE[cache_key]
 
-    path = Path(str(SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH).replace("\\", "/"))
-    if not path.is_absolute():
-        path = REPO_ROOT / path
     sheet = str(SUPPLY_ROOT_CLASSIFICATION_SOURCE_SHEET).strip() or "Export"
     lookup: dict[tuple[str, str], str] = {}
     if not path.exists():
-        _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE = lookup
+        _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE[cache_key] = lookup
         return lookup
 
     try:
@@ -342,13 +361,13 @@ def _load_supply_branch_label_lookup_from_export():
             "[WARN] Failed reading exact supply branch labels from export source "
             f"{path} (sheet={sheet}): {exc}"
         )
-    _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE = lookup
+    _SUPPLY_BRANCH_LABEL_LOOKUP_CACHE[cache_key] = lookup
     return lookup
 
 
-def _resolve_supply_branch_label_from_export(root, *candidates):
+def _resolve_supply_branch_label_from_export(root, *candidates, source_path=None):
     """Return the exact template fuel label for a resolved resource root."""
-    lookup = _load_supply_branch_label_lookup_from_export()
+    lookup = _load_supply_branch_label_lookup_from_export(source_path)
     root_key = str(root or "").strip().lower()
     if root_key not in {"primary", "secondary"}:
         return None
@@ -362,10 +381,11 @@ def _resolve_supply_branch_label_from_export(root, *candidates):
     return None
 
 
-def _supply_branch_exists_in_export_source(branch_path):
+def _supply_branch_exists_in_export_source(branch_path, source_path=None):
     """Return True when branch path exists in canonical export source (or source unavailable)."""
-    lookup = _load_supply_branch_path_lookup_from_export()
-    info = _SUPPLY_BRANCH_PATH_LOOKUP_SOURCE_INFO or {}
+    lookup = _load_supply_branch_path_lookup_from_export(source_path)
+    resolved = _resolve_classification_source_path(source_path)
+    info = _SUPPLY_BRANCH_PATH_LOOKUP_SOURCE_INFO.get(_classification_cache_key(resolved)) or {}
     if str(info.get("status") or "").lower() != "loaded":
         # Do not block exports when source is unavailable.
         return True
