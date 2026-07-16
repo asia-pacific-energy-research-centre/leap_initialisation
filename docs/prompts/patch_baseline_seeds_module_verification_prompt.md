@@ -32,6 +32,12 @@ Known verified/fixed areas:
     target, historical production, and exogenous capacity rows.
   - Atomic canonical share-group guards are expected to pass for freshly
     regenerated power-interim workbooks.
+- `aggregated_demand` and `supply` have been spot-verified against the full-run
+  seeds (see Module Notes for the row counts and dates).
+- The transformation auto-regen sectors are GATED: `run_patch()` raises
+  `NotImplementedError` for them. Refresh those through the full workflow only.
+- `losses_own_use` is patchable and verified end-to-end (including the Brunei
+  retry); see Module Notes.
 
 Important operational lesson:
 
@@ -229,25 +235,56 @@ nonspecified_transformation
 transformation
 ```
 
-These remain suspect until verified. Check whether the patch path reproduces the
-full workflow layers:
+Status: GATED for now. `run_patch()` raises `NotImplementedError` for any module
+with `auto_sector_keys` (i.e. every module above). Leave the gate in place until
+the definitive test below passes — but note the gate's original rationale is now
+in doubt.
 
-- Exogenous Capacity / Historical Production seeding
-- output-fuel Import Target / Export Target resets
-- full catalog zero-fill from the same catalog source used by the full run
+Reassessment (2026-07-16): the gate's evidence ("20_USA: 7 process-efficiency /
+auxiliary-fuel expression diffs") was almost certainly measured on the RAW output
+of `save_transformation_exports_with_split_targets`, which skips
+`prepare_seed_rows_for_write` — the seed writer the real patcher applies
+(`patch_baseline_seeds.py:928-946`). Read-only diffs through the real write path
+show:
 
-If equivalence fails, prefer routing regeneration through the same full-workflow
-export helper rather than reimplementing its behavior in the patcher.
+- 01_AUS reproduces the seed with zero real value conflicts (only benign
+  float-format / scenario-year-window differences).
+- 20_USA's one apparent conflict (Hydrogen transformation Output Share, Target =
+  all zeros in raw output) is the Reference→Target output-share fallback for a
+  process with no Target source data. `complete_canonical_share_groups` inside
+  `prepare_seed_rows_for_write` applies it; pushing the raw fresh rows through
+  that step reproduces the seed's Target hydrogen shares byte-for-byte.
+- Process-efficiency and auxiliary-fuel expressions now MATCH.
+
+Definitive test before ungating (deferred — run when no full workflow is
+active): run the REAL patcher on temp-copied 01_AUS + 20_USA seeds (bypass the
+gate via `patch_baseline_seeds._run_patch_locked`), diff ALL transformation-owned
+rows POST-write (never raw export vs finished seed — that manufactures false
+diffs), and restore the backups in a `finally`. Pass criteria are the standard
+Verification Recipe ones (zero rows-only-before/after, zero non-benign value
+diffs). If both economies pass, remove the `auto_sector_keys` gate and update the
+verdict comment. See `docs/check_registry.md` hotspot 4 and the
+`transformation-patch-gate-reassessment` memory.
+
+If revisiting the raw layers, the patch path must reproduce (before the seed
+writer): Exogenous Capacity / Historical Production seeding, output-fuel Import /
+Export Target resets, and full catalog zero-fill from the same catalog source as
+the full run.
 
 ### aggregated_demand
 
-Check that run configuration options are threaded through:
+Status: fixed and spot-verified (2026-07-10). Temp-copy patch checks against
+current full-run baseline seeds reproduced aggregated-demand rows exactly for
+01_AUS and 20_USA (420/420 rows, zero row/expression diffs for both).
+
+What makes it correct — run configuration options are threaded through into fresh
+workbook generation:
 
 - `AGGREGATED_DEMAND_EXCLUDED_SECTORS`
 - `AGGREGATED_DEMAND_USE_SECTOR_BRANCHES`
 - `exclude_own_use_td_losses`
 
-Confirm the patcher's strip scope stays limited to:
+The patcher's strip scope stays limited to:
 
 ```text
 Demand\All demand aggregated\
@@ -266,9 +303,13 @@ so stale old rows are removed even when absent from the fresh source workbook.
 
 ### supply
 
-Operationally patchable through `supply_workflow.assemble_supply_workbooks`.
+Status: patchable and spot-verified (2026-07-14). Wired through
+`supply_workflow.assemble_supply_workbooks(export_output_dir=WORKBOOKS_DIR)` and
+verified end-to-end for 20_USA in the patcher (seed restored after the check, so
+this is a workflow-wiring verdict rather than a persisted seed change).
+
 The shared 9th-bucket allocation and signed supply-quantity normalization must
-be active before refreshing seeds.
+stay active before refreshing seeds.
 
 ## Deliverables For A Finalisation Task
 

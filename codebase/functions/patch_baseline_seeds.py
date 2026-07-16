@@ -1005,8 +1005,9 @@ def run_patch(
     ValueError
         If `module` is not in MODULE_REGISTRY.
     NotImplementedError
-        If run_workflow=True but no source workflow is wired for the module
-        ("supply", "losses_own_use").
+        If the module is a transformation auto-regen sector (any module with
+        `auto_sector_keys`, e.g. "oil_refineries", "transformation"). These are
+        not safely patchable and must be refreshed via the full workflow.
     RuntimeError
         If no source rows were collected, or if patching failed for one or
         more economies (raised after all economies were attempted, with a
