@@ -141,6 +141,22 @@ run_patch("MODULE_NAME", economies=["ECONOMY"], run_workflow=True)
 
 Practical notes:
 
+- **Resolve the template per economy: `_template_for_economy(econ)`, never a
+  pinned `FULL_MODEL_EXPORT_PATH`.** Each economy is a separate LEAP area with
+  its own `data/leap_export_templates/leap_export_template {econ}*.xlsx`, and the
+  real patcher already resolves it per economy (`_patch_one`, `patch_baseline_seeds.py:915`).
+  Pinning the single full-model export validates e.g. `12_NZ` against `20_USA`'s
+  tree. This fails *silently and in the dangerous direction*: the seed you are
+  diffing against may have been built with the same pinned template, so both
+  sides carry the same distortion and the check reports **EQUIVALENT for the
+  wrong reason**. Any verification harness that hardcodes the template is not
+  reproducing the patcher.
+- **Expect genuine area gaps, and do not chase them as regressions.** With a
+  correct per-economy template, areas whose LEAP tree simply lacks certain
+  branches will show rows as *only-in-seed* — e.g. `12_NZ` surfaces ~33
+  `Auxiliary Fuels` rows this way. That is the area legitimately not having those
+  branches, **not** a patch-path defect. Classify by area before treating any
+  only-in-seed row as a defect.
 - Fresh Python processes spend several minutes loading reference tables. Batch
   checks into one script when possible.
 - Run patcher code directly from PowerShell/Python. Avoid the full workflow log
