@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from codebase.functions import supply_preflight, supply_reconciliation_tables
+from codebase.functions import supply_leap_io
 
 
 def test_reset_scope_cache_is_keyed_by_template_source(monkeypatch, tmp_path):
@@ -77,3 +78,21 @@ def test_multi_economy_reset_uses_each_economys_template_scope(monkeypatch, tmp_
     assert updated_table["adjusted_imports"].tolist() == [0.0, 0.0]
     assert updated_records[0]["output_import_targets"]["USA fuel"][2022] == 0.0
     assert updated_records[1]["output_import_targets"]["NZ fuel"][2022] == 0.0
+
+
+def test_demand_zeroing_resolves_template_per_economy(monkeypatch, tmp_path):
+    templates = {"20_USA": tmp_path / "usa.xlsx", "12_NZ": tmp_path / "nz.xlsx"}
+    calls: list[tuple[Path, Path]] = []
+
+    monkeypatch.setattr(supply_leap_io, "_leap_export_template_for_economy", lambda economy: templates[economy])
+    monkeypatch.setattr(
+        "codebase.aggregated_demand_workflow.save_demand_zeroing_workbook",
+        lambda *, output_path, source_path, **kwargs: calls.append((Path(output_path), Path(source_path))) or Path(output_path),
+    )
+
+    paths = supply_leap_io.build_other_demand_zeroing_workbooks(
+        scenarios=["Reference"], economies=["20_USA", "12_NZ"], output_dir=tmp_path,
+    )
+
+    assert [source for _, source in calls] == [templates["20_USA"], templates["12_NZ"]]
+    assert [path.name for path in paths] == ["demand_zeroing_20_USA.xlsx", "demand_zeroing_12_NZ.xlsx"]

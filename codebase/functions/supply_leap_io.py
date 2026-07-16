@@ -2093,6 +2093,7 @@ def run_aggregated_demand_leap_import(
 def build_other_demand_zeroing_workbooks(
     *,
     scenarios: Iterable[str],
+    economies: Iterable[str] | None = None,
     output_dir: Path | str = EXPORT_OUTPUT_DIR,
     region: str = LEAP_IMPORT_REGION,
     source_path: Path | str | None = None,
@@ -2109,14 +2110,11 @@ def build_other_demand_zeroing_workbooks(
     from codebase.aggregated_demand_workflow import save_demand_zeroing_workbook
 
     scenario_list = workflow_common.normalize_workflow_scenarios(scenarios, SCENARIOS)
-    resolved_source = Path(source_path) if source_path else _resolve(RESULTS_VERIFICATION_EXPORT_PATH)
+    economy_list = workflow_common.normalize_economies(
+        economies if economies is not None else ECONOMIES
+    )
     out_dir = _resolve(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    econ_token = workflow_common.format_filename_segment(
-        ECONOMIES[0] if ECONOMIES else "economy"
-    ) or "economy"
-    out_path = out_dir / f"demand_zeroing_{econ_token}.xlsx"
 
     from codebase.aggregated_demand_workflow import DEMAND_OTHER_LOSS_OWN_USE_BRANCH_PREFIX
 
@@ -2124,15 +2122,29 @@ def build_other_demand_zeroing_workbooks(
     if ZERO_OTHER_DEMAND_EXCLUDE_OWN_USE_PROXY_BRANCHES:
         exclude_prefixes.append(DEMAND_OTHER_LOSS_OWN_USE_BRANCH_PREFIX)
 
-    result = save_demand_zeroing_workbook(
-        output_path=out_path,
-        source_path=resolved_source,
-        sheet_name=source_sheet,
-        scenarios=scenario_list,
-        region=region,
-        exclude_branch_prefixes=exclude_prefixes if exclude_prefixes else None,
-    )
-    return [result] if result is not None else []
+    paths: list[Path] = []
+    for economy in economy_list:
+        # A zeroing workbook enumerates branches from its source template, so
+        # use the current economy's LEAP area unless a standalone caller has
+        # deliberately supplied a source workbook.
+        resolved_source = (
+            Path(source_path)
+            if source_path is not None
+            else _leap_export_template_for_economy(economy)
+        )
+        econ_token = workflow_common.format_filename_segment(economy) or "economy"
+        out_path = out_dir / f"demand_zeroing_{econ_token}.xlsx"
+        result = save_demand_zeroing_workbook(
+            output_path=out_path,
+            source_path=resolved_source,
+            sheet_name=source_sheet,
+            scenarios=scenario_list,
+            region=region,
+            exclude_branch_prefixes=exclude_prefixes if exclude_prefixes else None,
+        )
+        if result is not None:
+            paths.append(result)
+    return paths
 
 
 def run_other_demand_zeroing_leap_import(
