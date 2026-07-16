@@ -26,7 +26,8 @@ them by 100, then the per-process renormalization to 100% let that inflated valu
 crowd out the real dominant fuels.
 
 **Fix applied:** removed the redundant second call at
-`codebase/functions/transformation_record_builder.py:575` (uncommitted as of 2026-07-16).
+`codebase/functions/transformation_record_builder.py:575` (landed in `8c32504`
+on 2026-07-16).
 
 **Check on next run:** for every process's Feedstock Fuel Share export, confirm
 shares sum to 100% per process/year as before, but that no single fuel with a

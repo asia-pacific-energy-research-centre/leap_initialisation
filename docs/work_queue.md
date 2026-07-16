@@ -18,14 +18,17 @@ detail rather than duplicating it.
 
 ## The blocker structure
 
-Two independent tracks. The transformation track funnels through one blocker;
-the export-template track is blocked by nothing and paced by an external event.
+The transformation prerequisite has landed. The export-template track is paced
+by an external event; the remaining checks/refactors below are ready for a
+single agent to take one at a time.
 
 ```
-[0] land/park the in-flight transformation work
-      ├── unblocks [1] transformation ungate
-      ├── unblocks [2] last conservation site
-      └── unblocks [3] remaining header routes (partly)
+[0] transformation output/efficiency corrections (completed 2026-07-16)
+      ├── [1] transformation ungate
+      ├── [2] last conservation site
+      ├── [3] remaining header routes
+      ├── [4] Process Efficiency backing invariant
+      └── [9] reset-scope chain
 
 [7] finish the per-economy export-template rollout   <- not blocked
       deadline: the first real (non-COMP_GEN) economy export
@@ -36,25 +39,12 @@ the export-template track is blocked by nothing and paced by an external event.
 
 ---
 
-## [0] BLOCKER — land or park the in-flight transformation work
+## [0] Transformation output/efficiency corrections — completed 2026-07-16
 
-**Status:** blocking. **Owner: unidentified — not either agent.** Verified
-2026-07-16: none of the eight commits from the export-template or
-zero-fill/registry workstreams (`10cb432`, `073c489`, `cdb813d`, `6bda122`,
-`af0662c`, `1fd4a19`, `60b6600`, `5c6b34a`) touch any `transformation_*` file.
-Both agents' work is committed. **Neither can land or park this** — whoever
-authored the multi-output / process-efficiency change must. Do not ask an agent
-to commit it: nobody has read it, and committing unreviewed work across a
-four-workstream dirty tree is how the regression below got in unnoticed.
-
-Dirty: `transformation_analysis_utils.py`, `transformation_record_builder.py`,
-`transformation_sector_analysis.py`, plus untracked
-`tests/test_process_efficiency_zero_fill.py`.
-
-**Why it blocks everything:** on 2026-07-16 a 12_NZ + 20_USA transformation
-equivalence check returned large diffs that were **entirely** explained by this
-uncommitted code, not by the thing under test. Until it lands, no transformation
-verification means anything.
+Landed in `8c32504` with 26 targeted transformation/efficiency tests passing.
+The working tree was subsequently consolidated and is clean. The earlier
+12_NZ + 20_USA equivalence check was confounded only while this work was
+uncommitted; it no longer blocks the following items.
 
 **What it is (corrected — it is an intentional fix, not a suspicious change).**
 The `multi_output` default flipped `False` → `True`. With `False`,
@@ -86,7 +76,7 @@ something to chase. Confirmed:
 Consequence: where fresh and a `20260715` seed disagree on these sectors, **the
 seed is out of date — fresh is right.** Do not read those diffs as regressions.
 
-**What that does NOT discharge** — the mechanical sweep in
+**Still deferred** — the mechanical sweep in
 `docs/prompts/transformation_multi_output_default_verification_prompt.md`, which
 its author deliberately deferred to the next full baseline-seed run: share sums
 ≈ 100% across all economies, efficiency/aux ratios staying plausible (not >1 or
@@ -104,7 +94,7 @@ unaffected" holds here (only coke ovens moved).
 
 ## [1] Transformation ungate
 
-**Blocked by [0].** See `docs/prompts/patch_baseline_seeds_module_verification_prompt.md`
+**Ready.** See `docs/prompts/patch_baseline_seeds_module_verification_prompt.md`
 (§ transformation auto-regen sectors) for the full reassessment and the definitive test.
 
 The gate (`run_patch` raises `NotImplementedError` for any module with
@@ -126,7 +116,7 @@ dropping the gate.
 
 ## [2] Last conservation site
 
-**Blocked by [0]** (lives in `transformation_analysis_utils.py`).
+**Ready** (lives in `transformation_analysis_utils.py`).
 
 `transformation_analysis_utils.py:1820` still chooses its own strictness via the
 last surviving `PROJECTION_STRICT_CONSERVATION` (`:137`), so it **blocks** while
@@ -137,8 +127,8 @@ not urgent.
 
 ## [3] Finish the header-detector routing
 
-Partly blocked: `supply_leap_io` / `supply_results_saver` sit in the
-export-template work area.
+**Ready.** `supply_leap_io` / `supply_results_saver` sit in the
+export-template work area, which is now clean and committed.
 
 `leap_excel_io.find_leap_header_row` / `read_leap_sheet` exist and two callers are
 routed. Remaining callers, their quirks, and their scan depths are tabulated in
@@ -151,7 +141,8 @@ routed. Remaining callers, their quirks, and their scan depths are tabulated in
 
 ## [4] Process Efficiency backing invariant
 
-**Coupled to [0]** (same workstream/files).
+**Ready.** The current zero-fill safety net and capacity guard landed in
+`8c32504`; this is the complementary validator work.
 
 `baseline_seed_validation.py` contains **zero** references to "Efficiency".
 Nothing catches "nonzero Exogenous Capacity, no Process Efficiency", so per the
@@ -237,7 +228,8 @@ is revisited deliberately.
 
 ## [9] Reset-scope chain
 
-**Blocked by [0]** (`supply_preflight.py` is dirty).
+**Ready.** `supply_preflight.py` is clean and its aggregate-source preflight
+support landed in `560353d`.
 
 `supply_preflight._load_reset_scope_from_full_model_export` derives the
 transformation reset/zeroing scope from the single export, behind another
@@ -330,6 +322,13 @@ as deliberate rather than "fixed". Answer the question before touching it.
   `leap_excel_io`; two callers routed. See [3].
 - **`leap_core` breakpoints** — 26 raw `breakpoint()` calls now route through the
   repo's guarded `esto_data_utils.try_debug_breakpoint()`.
+- **Transformation output/efficiency corrections** — multi-output is now the
+  default for flow sectors, sub-percent feedstock shares are not double-scaled,
+  and missing Process Efficiency has a capacity guard. See [0].
+- **Own-use proxy and APEC preflight corrections** — non-specific own use is
+  proxied from total transformation throughput, balance activity signs are
+  aligned with ESTO/9th, and synthetic APEC preflight sources are generated
+  only for the APEC path.
 
 ## Related documents
 
