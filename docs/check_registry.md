@@ -14,10 +14,9 @@ same workflow run **standalone** vs **within**
 [§ Known hotspots](#known-hotspots--gaps) (the transformation-patch hydrogen
 episode).
 
-> Line references are navigation aids verified 2026-07-16; some are carried from
-> a related session and marked *(reported)*. Re-verify with `rg <name>` before
-> editing. 12 core `codebase/*.py` files carry a UTF-8 BOM — read as
-> `utf-8-sig` when scripting over sources.
+> Line references are navigation aids verified 2026-07-16. Re-verify with
+> `rg <name>` before editing. Some core `codebase/*.py` files carry a UTF-8 BOM —
+> read as `utf-8-sig` when scripting over sources (`leap_core.py` does **not**).
 
 ## How to use / maintain
 
@@ -28,7 +27,7 @@ episode).
 - The registry does not duplicate the SEED rule detail — for family F2 it points
   at `baseline_seed_rule_inventory.md`.
 
-## The two decision rules this registry encodes
+## The decision rules this registry encodes
 
 **A. Boundary vs workflow-local** — where should a check live? Ask five
 questions; the more that lean "boundary," the stronger the case:
@@ -57,6 +56,27 @@ they'd need to know how it was computed → local.*
 
 This is why the `BACKING-CHECK` column exists below: gateable ⇔ backing-check is
 non-empty.
+
+**C. Severity policy — every check declares one, but the *shape* differs by
+family.** Do not impose a single blunt per-producer severity dict everywhere; most
+families already have a (better-fitting) mechanism:
+
+| Family | Policy shape | Mechanism | Status |
+|---|---|---|---|
+| F1 | *impose a default or not* (not block/warn — a fill doesn't "fail") | `FILL_MISSING_DEFAULTS` per measure | **proposed** |
+| F2 | rule-level exceptions (narrow, must name `rule_id` + an exact field) + global warnings flag | `validation_exceptions`; `BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS` (`supply_leap_io.py:997`) | **exists** — don't add a per-producer waiver on top; LEAP-validity invariants must not be waivable wholesale |
+| F3 | per-call tolerance | `raise_on_missing_branch=False` (`supply_leap_io.py:2282`) | **exists** |
+| F4 | always block (warn-and-proceed defeats preflight) | — | **n/a by design** |
+| F5 | per-producer block / warn / off | `CONSERVATION_SEVERITY` (see F5) | **missing — the real gap** |
+
+**Config placement rule (2026-07-16):** these policies must live in a *centrally
+accessible* surface — `supply_reconciliation_config.py` (with a
+`# PRESET-CONTROLLED DEFAULT` comment) and overridable per-run from the presets in
+`supply_reconciliation_workflow.py` — **not** as literals buried in the producer
+module that happens to use them. The repo is not consistent about this yet; new
+policy config should follow this rule, and buried literals (e.g. the hardcoded
+`strict_conservation=True/False` at `aggregated_demand_workflow.py:878` and
+`transfers_workflow.py:605`) should migrate as they are touched.
 
 ## The five families
 
@@ -118,7 +138,7 @@ paths cross the boundary**:
 
 | Check / function | Location | Rule(s) | Crossed by |
 |---|---|---|---|
-| `prepare_seed_rows_for_write` | `baseline_seed_validation.py:1683` | orchestrates below | full-run seed assembly; **patcher** (`patch_baseline_seeds.py:940`) |
+| `prepare_seed_rows_for_write` | `baseline_seed_validation.py:1694` | orchestrates below | **verified 2026-07-16 — three callers:** full-run seed combiner (`supply_leap_io.py:1784`), results verification (`supply_leap_io.py:1000`), patcher (`patch_baseline_seeds.py:940`) |
 | `resolve_logical_duplicates` | `baseline_seed_validation.py` | SEED-C001–C004 | ″ |
 | `enrich_seed_ids_from_template` | `baseline_seed_validation.py` | SEED-C005–C006, C020 | ″ |
 | `complete_canonical_share_groups` | `baseline_seed_validation.py:817` | SEED-C008–C014 | ″ |
@@ -198,16 +218,31 @@ Numerical (not structural) checks. Documented separately in
 prints `[WARN] Projection strict-conservation check failed … retrying non-strict`
 then **re-runs with `strict_conservation=False` and merges that result**. So
 setting `PROJECTION_STRICT_CONSERVATION=True` guarantees only a *warning* on
-failure — the unchecked projection still reaches the output. Note this
-contradicts the seed-writer philosophy documented in
-`baseline_seed_rule_inventory.md` ("Deferring an exception never permits invalid
-rows to reach a final LEAP import workbook"). Decide which philosophy applies and
-make it explicit.
+failure — the unchecked projection still reaches the output.
 
-The `strict_conservation` setting is also inconsistent across producers:
-aggregated_demand hardcodes `True`, transfers hardcodes `False`, transformation
-reads config then falls back to `False`. That asymmetry looks unintentional —
-confirm before consolidating.
+**Decision (2026-07-16): warn-and-proceed here is deliberate.** F5 conservation
+checks may legitimately warn rather than block, unlike the seed writer's
+"never let invalid rows through" philosophy for F2 — the two families
+intentionally differ. What is *not* deliberate is the per-producer asymmetry
+(aggregated_demand hardcodes `True`, transfers hardcodes `False`, transformation
+reads config then silently falls back to `False`); that is drift.
+
+**Proposed (not yet built): an explicit per-producer severity dict**, so each
+producer states its policy rather than encoding it in a buried literal:
+
+```python
+# supply_reconciliation_config.py  (PRESET-CONTROLLED DEFAULT)
+# Severity for the projection strict-conservation check, per producer.
+#   "block" = raise; "warn" = log and proceed with the non-strict result;
+#   "off"   = do not run the check.
+CONSERVATION_SEVERITY = {
+    "transformation": "warn",       # deliberate: long runs must not halt
+    "aggregated_demand": "block",
+    "transfers": "off",
+}
+```
+
+F5 is the **only family without a severity mechanism** — see rule C below.
 
 ---
 
@@ -236,15 +271,50 @@ confirm before consolidating.
    siblings from the template; and it has no capacity-conflict guard. Impact is
    bounded — it only acts when a group's total ≠ target (tol 1e-3), so it is a
    no-op for anything already through the seed writer (which sums to 100). The
-   divergence bites only on **direct standalone→LEAP imports** (the per-workflow
+   divergence bites on **direct API imports** (the per-workflow
    `import_*_workbook_to_leap` paths) that bypass the seed writer: there shares
    get equal-split instead of the canonical borrow/anchor, and missing siblings
-   are not completed. Converge or document; add a test if that import path feeds
-   production.
-   - **Bonus bug:** `_fill_from_df` has two live `breakpoint()` calls
-     (`leap_core.py:2452`, `:2457`) in the empty-scenario/region error path — pdb
-     left in production; a non-interactive import with an empty filter would drop
-     into pdb (hang/fail) instead of raising cleanly.
+   are not completed.
+   - **DORMANT, not live** (corrected 2026-07-16 — an earlier note in this file
+     wrongly escalated this to "live by default"). There are two routes into LEAP:
+     **Route A (seed)** — producers → assembled → `prepare_seed_rows_for_write`
+     (`supply_leap_io.py:1784`) → `leap_import_baseline_seed_*.xlsx`. Post-boundary.
+     This is the **only working route**.
+     **Route B (direct API)** — raw per-workflow workbooks →
+     `import_*_workbook_to_leap` (`supply_leap_io.py:1265/2274/2314`) → `leap_core`.
+     Pre-boundary. **The LEAP API is decommissioned**: `leap_api_guard.py`
+     sets `LEAP_API_BLOCKED = True`, and `leap_core.py:202`
+     (`ensure_leap_api_allowed` inside `connect_to_leap`) raises `RuntimeError` on
+     any API use, while `:168` makes the availability check return `False`. So
+     Route B **cannot execute** and the equal-split divergence never reaches LEAP.
+   - **RESOLVED 2026-07-16 — Route B is now structurally dead.** Three fixes:
+     (a) `LEAP_IMPORT_SUPPLY_TO_LEAP` / `..._TRANSFORMATION_TO_LEAP` /
+     `..._TRANSFERS_TO_LEAP` now default **`False`**
+     (`supply_reconciliation_config.py`), with the decommission rationale in-file;
+     (b) **the real leak**: all five API-import guards in `supply_leap_io.py`
+     (`run_other_loss_own_use_proxy_leap_import`,
+     `RUN_ELECTRICITY_HEAT_INTERIM_leap_import`, `run_aggregated_demand_leap_import`,
+     `run_other_demand_zeroing_leap_import`, `run_results_linked_leap_import`) read
+     `get_analysis_input_write_mode() == "api" and not leap_api.is_available()` —
+     which is **False in workbook mode**, so workbook runs *fell through and
+     attempted every API import anyway*, hitting the guard and swallowing it as a
+     WARN. All five now short-circuit on `not leap_api.is_available()` alone,
+     decoupled from write mode; (c) `tests/test_leap_api_decommissioned.py` locks
+     this in (guard blocked, `is_available()` False, `connect_to_leap()` raises,
+     toggles default False, guards not write-mode-coupled, entry points return
+     empty). The skeleton stays for a future LEAP fix — clearing
+     `LEAP_API_BLOCKED` will fail that test module on purpose, which is the
+     deliberate gate to revisit.
+   - **If the API is ever re-enabled**, this divergence becomes live again and must
+     be converged first. Recorded consequence to test at that point: the raw USA
+     transformation export has an all-zero hydrogen Target share group (measured),
+     which Route B would equal-split to ~33.3/33.3/33.3 across Ammonia/Efuel/
+     Hydrogen instead of Route A's correct Reference-borrowed profile
+     (Hydrogen 100→43/26/36, Efuel 0→57/74/64).
+   - **Breakpoints: RESOLVED 2026-07-16.** `leap_core.py` had 26 raw `breakpoint()`
+     calls (plus 6 commented notes) while the rest of the repo used the guarded
+     `esto_data_utils.try_debug_breakpoint()` (`ENABLE_DEBUG_BREAKPOINTS = False`).
+     All 26 now route through that shared helper; commented notes left as-is.
 
 4. **Emit-boundary path divergence.** `complete_canonical_share_groups` runs only
    when a path crosses `prepare_seed_rows_for_write` (full run, patcher) — **not**

@@ -212,14 +212,25 @@ INCLUDE_TOP_LEVEL_DEMAND_CATEGORY_ROWS = True
 DROP_DISAGGREGATED_DEMAND_SECTORS = True
 
 # LEAP import controls.
+#
+# The LEAP COM API is DECOMMISSIONED: functions/leap_api_guard.py sets
+# LEAP_API_BLOCKED = True because of a known LEAP API bug, so every API call
+# raises RuntimeError from leap_core.connect_to_leap(). The *_TO_LEAP toggles
+# below therefore default to False: leaving them True made every run attempt an
+# API import, hit the guard, and log a swallowed "[WARN] ... LEAP import failed".
+# The code path is kept as a skeleton in case a future LEAP release fixes the
+# bug. Do not set these True unless LEAP_API_BLOCKED is also cleared -- the
+# import functions short-circuit on leap_api.is_available() regardless, and
+# tests/test_leap_api_decommissioned.py enforces this.
+# Use the workbook/manual LEAP import route instead (ANALYSIS_INPUT_WRITE_MODE).
 LEAP_IMPORT_SCENARIOS: list[str] | None = None
 LEAP_IMPORT_REGION = supply_data_pipeline.EXPORT_REGION
 LEAP_IMPORT_CREATE_BRANCHES = True
 LEAP_IMPORT_FILL_BRANCHES = True
 LEAP_IMPORT_INCLUDE_CURRENT_ACCOUNTS = False
-LEAP_IMPORT_SUPPLY_TO_LEAP = True
-LEAP_IMPORT_TRANSFORMATION_TO_LEAP = True
-LEAP_IMPORT_TRANSFERS_TO_LEAP = True
+LEAP_IMPORT_SUPPLY_TO_LEAP = False
+LEAP_IMPORT_TRANSFORMATION_TO_LEAP = False
+LEAP_IMPORT_TRANSFERS_TO_LEAP = False
 LEAP_IMPORT_LOG_LEVEL = "summary"  # detailed|summary|quiet
 LEAP_IMPORT_WARNING_PRINT_LIMIT = 20
 # PRESET-CONTROLLED DEFAULT: both active presets replace this value.

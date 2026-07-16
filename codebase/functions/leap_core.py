@@ -23,6 +23,7 @@ from codebase.functions.leap_api_guard import (
     ensure_leap_api_allowed,
     is_leap_api_allowed,
 )
+from codebase.functions.esto_data_utils import try_debug_breakpoint
 from codebase.functions.leap_session import (
     get_live_pinned_leap_app,
     pin_leap_app,
@@ -305,7 +306,7 @@ def safe_branch_call(leap_obj, branch_path, AUTO_SET_MISSING_BRANCHES=False, THR
         try:
             exists = branches.Exists(candidate_path)
         except Exception as e:
-            breakpoint()
+            try_debug_breakpoint()
             raise Exception(f"Branches.Exists failed for '{candidate_path}': {e}")
 
         if exists:
@@ -315,7 +316,7 @@ def safe_branch_call(leap_obj, branch_path, AUTO_SET_MISSING_BRANCHES=False, THR
     if AUTO_SET_MISSING_BRANCHES:
         print(f"[INFO] AUTO_SET_MISSING_BRANCHES is set to true. The branch will be auto-created: {requested_path}")
     elif THROW_ERROR_ON_MISSING:
-        breakpoint()
+        try_debug_breakpoint()
         raise Exception(
             f"Branches.Exists returned false for '{requested_path}'. "
             "AUTO_SET_MISSING_BRANCHES is False and THROW_ERROR_ON_MISSING is true so throwing an error."
@@ -336,7 +337,7 @@ def build_expr(points, expression_type="Interp"):
         return None
     df = pd.DataFrame(points, columns=["year", "value"]).dropna(subset=["year", "value"])
     if df["year"].duplicated().any():
-        breakpoint()
+        try_debug_breakpoint()
     df = df.sort_values("year")
     pts = list(zip(df["year"].astype(int), df["value"].astype(float)))
     if len(pts) == 1:
@@ -775,7 +776,7 @@ def ensure_branch_exists(
             # Create the new branch with LEAPApplication methods
             new_branch = _create_child_branch(L, parent_branch, part, branch_type)
         else:
-            breakpoint()#not sure how this will behave
+            try_debug_breakpoint()#not sure how this will behave
             new_branch = None
         parent_branch = new_branch
 
@@ -792,7 +793,7 @@ def _create_child_branch(L, parent_branch, name, branch_type):
     """
     
     if parent_branch is None:
-        breakpoint()
+        try_debug_breakpoint()
         raise RuntimeError(
             f"Cannot create top-level branch '{name}' without an existing parent. "
             "In practice, roots like 'Demand' must already exist."
@@ -822,7 +823,7 @@ def _create_child_branch(L, parent_branch, name, branch_type):
     # These are normally created when you define a technology with an
     # associated fuel, not directly via API.
     if branch_type == BRANCH_DEMAND_FUEL:
-        breakpoint()
+        try_debug_breakpoint()
         raise RuntimeError(
             f"Cannot auto-create demand fuel branch '{name}': LEAP API "
             "does not expose an AddDemandFuel method. Create the associated "
@@ -918,7 +919,7 @@ def create_transformation_module(
         )
     except Exception as exc:
         print(f"[ERROR] Failed to create transformation module '{module_name}': {exc}")
-        breakpoint()
+        try_debug_breakpoint()
         raise
 
 
@@ -1003,7 +1004,7 @@ def create_transformation_process(
         raise RuntimeError("; ".join(errors) if errors else "Unknown AddProcess failure")
     except Exception as exc:
         print(f"[ERROR] Failed to create transformation process '{process_name}': {exc}")
-        breakpoint()
+        try_debug_breakpoint()
         raise
 
 
@@ -1031,7 +1032,7 @@ def create_transformation_output(
         )
     except Exception as exc:
         print(f"[ERROR] Failed to add transformation output '{fuel_name}': {exc}")
-        breakpoint()
+        try_debug_breakpoint()
         raise
 
 
@@ -1160,7 +1161,7 @@ def create_transformation_feedstock(L, parent_branch, fuel_name):
             if existing is not None:
                 return existing
         print(f"[ERROR] Failed to add transformation feedstock '{fuel_name}': {exc}")
-        breakpoint()
+        try_debug_breakpoint()
         raise
 
 
@@ -1179,7 +1180,7 @@ def create_simple_transformation_process(
         )
     except Exception as exc:
         print(f"[ERROR] Failed to create simple process '{process_name}': {exc}")
-        breakpoint()
+        try_debug_breakpoint()
         raise
 
 
@@ -1196,7 +1197,7 @@ def get_resource_branch_for_fuel(L, fuel_name):
         return branch
     except Exception as exc:
         print(f"[ERROR] Failed to retrieve resource branch for '{fuel_name}': {exc}")
-        breakpoint()
+        try_debug_breakpoint()
         raise
 
 
@@ -1215,7 +1216,7 @@ def ensure_fuel_exists(L, fuel_name, copy_from=None, fuel_state=2):
         return fuels.Add(sanitized_fuel, sanitized_copy_from or "", int(fuel_state))
     except Exception as exc:
         print(f"[ERROR] Could not create fuel '{fuel_name}': {exc}")
-        breakpoint()
+        try_debug_breakpoint()
         raise
 
 
@@ -1228,7 +1229,7 @@ def ensure_unit_exists(L, unit_name):
         raise ValueError(f"Unit not found in LEAP: {unit_name}")
     except Exception as exc:
         print(f"[ERROR] Could not load unit '{unit_name}': {exc}")
-        breakpoint()
+        try_debug_breakpoint()
         raise
 
 
@@ -1272,7 +1273,7 @@ def _add_auxiliary_branch(
         print(
             f"[ERROR] Failed to add auxiliary fuel '{fuel_name}': {exc}"
         )
-        breakpoint()
+        try_debug_breakpoint()
         raise
 
 
@@ -1641,7 +1642,7 @@ def _ensure_path_exists_create_if_not(
                 current_path=current_path,
             )
         elif branch_type == BRANCH_DEMAND_FUEL:
-            breakpoint()
+            try_debug_breakpoint()
             raise RuntimeError(
                 f"Cannot auto-create demand fuel branch '{current_path}': LEAP API "
                 "does not expose an AddDemandFuel method. Create the associated "
@@ -1651,7 +1652,7 @@ def _ensure_path_exists_create_if_not(
             print(f"[WARN] Unsupported branch_type {branch_type} for '{current_path}'. Skipping creation.")
             return None
         if parent_branch is None:
-            breakpoint()
+            try_debug_breakpoint()
             print(f"[WARN] Failed to create branch at '{parent_branch}'.")
     return parent_branch
 
@@ -1784,12 +1785,12 @@ def create_branches_from_export_file(
     if scenario is not None and "Scenario" in df.columns:
         df = df[df["Scenario"] == scenario]
         if len(df) == 0:
-            breakpoint()
+            try_debug_breakpoint()
             raise ValueError(f"No rows found for scenario '{scenario}' in {leap_export_filename} (sheet '{sheet_name}').")
     if region is not None and "Region" in df.columns:
         df = df[df["Region"] == region]
         if len(df) == 0:
-            breakpoint()
+            try_debug_breakpoint()
             raise ValueError(f"No rows found for region '{region}' in {leap_export_filename} (sheet '{sheet_name}').")
 
     auxiliary_units_by_path = _build_auxiliary_units_by_path(df, branch_path_col)
@@ -1864,7 +1865,7 @@ def create_branches_from_export_file(
             skipped.append(bp)
             continue
         if RAISE_ERROR_ON_FAILED_BRANCH_CREATION:
-            breakpoint()
+            try_debug_breakpoint()
             raise RuntimeError(f"Failed to create branch at '{bp}'.")
         failed.append(bp)
         print(f"[WARN] Failed to create branch at '{bp}'.")
@@ -2449,12 +2450,12 @@ def fill_branches_from_export_file(
         if scenario is not None and "Scenario" in df_in.columns:
             df_in = df_in[df_in["Scenario"] == scenario]
             if len(df_in) == 0:
-                breakpoint()
+                try_debug_breakpoint()
                 raise ValueError(f"No rows found for scenario '{scenario}' in {leap_export_filename} (sheet '{sheet_name}').")
         if region is not None and "Region" in df_in.columns:
             df_in = df_in[df_in["Region"] == region]
             if len(df_in) == 0:
-                breakpoint()
+                try_debug_breakpoint()
                 raise ValueError(f"No rows found for region '{region}' in {leap_export_filename} (sheet '{sheet_name}').")
         
         df_in = df_in.copy()
@@ -2480,7 +2481,7 @@ def fill_branches_from_export_file(
             year_cols = [col for col in df_in.columns if len(str(col)) == 4 and str(col).isdigit()]
         
         if not year_cols:
-            breakpoint()
+            try_debug_breakpoint()
             raise ValueError(f"No year columns found in {leap_export_filename}")
 
         if year_cols == ["Expression"] and (NORMALIZE_SHARE_COLUMNS or PROMPT_ON_SHARE_MISMATCH):
@@ -2629,7 +2630,7 @@ def fill_branches_from_export_file(
                     f"skipping variable '{var}'"
                 )
                 if RAISE_ERROR_ON_FAILED_SET:
-                    breakpoint()
+                    try_debug_breakpoint()
                     raise RuntimeError(msg)
                 else:
                     _warn_limited("missing_branch", f"[WARN] {msg}")
@@ -2671,7 +2672,7 @@ def fill_branches_from_export_file(
             
             if expr is None:
                 if RAISE_ERROR_ON_FAILED_SET:
-                    breakpoint()
+                    try_debug_breakpoint()
                     raise RuntimeError(
                         f"Failed to build expression for {branch_path_used}\\{var}"
                     )
@@ -2707,7 +2708,7 @@ def fill_branches_from_export_file(
             else:
                 # breakpoint()
                 if RAISE_ERROR_ON_FAILED_SET:
-                    breakpoint()
+                    try_debug_breakpoint()
                     raise RuntimeError(
                         f"Failed to set variable '{var}' on branch '{branch_path_used}'"
                     )

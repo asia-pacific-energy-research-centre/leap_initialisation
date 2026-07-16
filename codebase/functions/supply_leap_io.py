@@ -64,7 +64,6 @@ from codebase.functions.baseline_seed_validation import (
     filter_actionable_findings,
     prepare_seed_rows_for_write,
 )
-from codebase.functions.analysis_input_write_dispatcher import get_analysis_input_write_mode
 from codebase import (
     electricity_heat_interim_workflow,
     other_loss_own_use_proxy_workflow,
@@ -1158,7 +1157,7 @@ def run_other_loss_own_use_proxy_leap_import(
             "still generated for manual LEAP import."
         )
         return []
-    if get_analysis_input_write_mode() == "api" and not leap_api.is_available():
+    if not leap_api.is_available():
         print("[INFO] LEAP API unavailable; skipping other loss/own-use LEAP import.")
         return []
     if not bool(fill_branches):
@@ -1237,7 +1236,7 @@ def RUN_ELECTRICITY_HEAT_INTERIM_leap_import(
     paths = [Path(item) for item in workbook_paths if item and Path(item).exists()]
     if not paths:
         return []
-    if get_analysis_input_write_mode() == "api" and not leap_api.is_available():
+    if not leap_api.is_available():
         print("[INFO] LEAP API unavailable; skipping electricity+heat interim LEAP import.")
         return []
     if not bool(fill_branches):
@@ -2048,7 +2047,7 @@ def run_aggregated_demand_leap_import(
             "for manual LEAP import."
         )
         return []
-    if get_analysis_input_write_mode() == "api" and not leap_api.is_available():
+    if not leap_api.is_available():
         print("[INFO] LEAP API unavailable; skipping aggregated-demand LEAP import.")
         return []
     if not bool(fill_branches):
@@ -2152,7 +2151,7 @@ def run_other_demand_zeroing_leap_import(
             "for manual LEAP import."
         )
         return []
-    if get_analysis_input_write_mode() == "api" and not leap_api.is_available():
+    if not leap_api.is_available():
         print("[INFO] LEAP API unavailable; skipping demand-zeroing LEAP import.")
         return []
     if not bool(fill_branches):
@@ -2220,7 +2219,7 @@ def run_results_linked_leap_import(
         f"transfers={import_transfers_to_leap}, "
         f"include_current_accounts={include_current_accounts}"
     )
-    if get_analysis_input_write_mode() == "api" and not leap_api.is_available():
+    if not leap_api.is_available():
         print("[INFO] LEAP API unavailable in this environment; skipping LEAP import.")
         return {"supply_imported": [], "transformation_imported": [], "transfer_imported": []}
 
