@@ -48,8 +48,18 @@ Key dependency: `leap_mappings` (`C:\Users\Work\github\leap_mappings`) is the ca
 
 Active documentation being developed:
 
+- **`docs/work_queue.md` — START HERE for outstanding work.** What is left, in what
+  order, and what blocks what; plus recorded traps that have already cost time,
+  and known pre-existing test failures that are *not* regressions. Read this
+  before picking up any supply-reconciliation / baseline-seed task.
+- `docs/check_registry.md` — directory of every "getting ready before sending
+  out" check across five families (gap-fill/reset, artifact invariants,
+  LEAP-import readiness, preflight, conservation), with the boundary-vs-local and
+  gateability rules. Enforced by `tests/test_check_registry.py`: if you add, move
+  or rename a check, update this file or that test fails.
 - `docs/supply_reconciliation_workflow_guide.md` — guide to the supply reconciliation workflow and the broader initialisation context.
 - `docs/special_rules_and_design_decisions.md` — human-selected rules, provisional assumptions, and unresolved semantic decisions found during end-to-end runs.
+- `docs/baseline_seed_rule_inventory.md` — the SEED-C rule detail behind the baseline-seed validator.
 
 ## When editing draw.io diagrams
 
