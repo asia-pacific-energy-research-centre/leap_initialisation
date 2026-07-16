@@ -2,6 +2,50 @@
 
 Type: staged implementation and equivalence verification. No full supply-reconciliation run unless the user explicitly asks.
 
+## Status — deferred (2026-07-17)
+
+Do not start this implementation as the next cleanup task. The design is a
+valid longer-term direction, but it is not a fast, output-preserving refactor:
+it introduces a new ownership abstraction at the final seed emit boundary,
+where all producers converge. The current boundary already owns the structural
+rules that must be central (`prepare_seed_rows_for_write`, canonical-share
+completion, ID enrichment, and validation), while the remaining fill/reset
+mechanisms have materially different semantics.
+
+In particular, own-use and demand zero-fill already share the generic mechanics
+in `export_zero_fill.py`. Transformation zero-fill intentionally remains local:
+it combines process ownership, scenario windows, canonical-share anchors, and
+capacity/efficiency safeguards. Moving these mechanisms merely because they
+look repetitive would hide policy differences and risks changing missing-row
+behaviour.
+
+The initial planner stages would produce inventory and diagnostics, not faster
+seed results or immediate code removal. Every migrated domain would still need
+post-boundary equivalence evidence. Therefore, prioritise the per-economy
+export-template/reset-scope work and other concrete correctness items first.
+
+### Conditions to resume
+
+Pick this up only when all of the following are true:
+
+- there is a concrete need beyond general code tidiness (for example, two or
+  more additional low-risk zero/default domains would otherwise duplicate the
+  same template-aware completion mechanics);
+- Stage 0 identifies at least one candidate whose owner, template-key scope,
+  scenarios/years, zero semantics, and backing invariant are unambiguous;
+- the candidate has an existing stable post-boundary output that can be used as
+  an equivalence baseline, with the current economy's resolved template;
+- the migration can be tested without a full reconciliation run and without
+  inventing share, capacity, efficiency, or scenario-year policy; and
+- per-economy template routing and reset-scope work is sufficiently settled
+  that a template-aware comparison cannot be confounded by a pinned USA
+  template or an economy-inappropriate reset scope.
+
+Messy-looking producer code alone is not a sufficient reason to resume. If a
+candidate fails any condition, leave its producer-local mechanism in place and
+record the reason in the ownership inventory rather than adding a broad
+fallback.
+
 ## Short version
 
 Move toward a single final, template-aware completion step for baseline seeds:
