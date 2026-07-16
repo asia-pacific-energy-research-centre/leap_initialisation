@@ -62,17 +62,56 @@ These are workbook-shaped inputs that mirror LEAP Analysis-view import/export
 structure. They are used as templates or reference schemas when building manual
 LEAP import workbooks.
 
-- `full model export.xlsx`
-  - Main full-model Analysis-view reference workbook.
-  - Used to align branch paths, variables, scenarios, regions, workbook IDs,
-    and field mappings for combined/full-model exports.
-  - `supply_reconciliation_workflow.py` also uses it for verification and for
-    supply root classification.
+### `leap_export_templates/`
 
-#### Maintaining `full model export.xlsx`
+Per-economy Analysis-view export workbooks. **These are the canonical LEAP
+structure and ID reference.** Each economy is a separate LEAP area, so its
+`BranchID`/`VariableID`/`ScenarioID`/`RegionID` values are its own and must not
+be borrowed from another economy: 134 of the 634 branch paths that `12_NZ` and
+`20_USA` share carry a different `BranchID` (21%), in Resources and Demand
+alike. A borrowed ID resolves and imports — into the wrong branch.
 
-This workbook is the canonical snapshot of the LEAP model structure used by
-initialisation. It is a routing and schema reference, not the source of the
+```text
+leap_export_templates/leap_export_template 20_USA.xlsx
+leap_export_templates/leap_export_template 12_NZ.xlsx
+leap_export_templates/leap_export_template 01_AUS_COMP_GEN.xlsx
+```
+
+Resolved by `codebase/utilities/leap_export_template_resolver.py`; never build
+the path by hand.
+
+#### The `_COMP_GEN` suffix
+
+A `_COMP_GEN` suffix marks a **provisional** template: computer-generated from
+another economy's area rather than exported from its own. It carries that other
+area's IDs — the current set are `20_USA`'s rows with the `Region` column
+relabelled — so anything derived from one may route into the wrong branch.
+
+They resolve and work (they reproduce the behaviour of the single shared export
+they replaced), but every use prints a `[WARN]` naming the economy. To finalize
+one, export that economy's Analysis view from its own LEAP area and save it
+without the suffix. **A final template automatically supersedes the provisional
+file**, so you can drop real exports in one at a time and delete the
+`_COMP_GEN` copy whenever convenient.
+
+`find_shared_template_areas()` reports two *final* templates claiming the same
+LEAP area name, which means one was copied rather than exported. Provisional
+templates are exempt — sharing the source area is what being provisional means.
+
+Aggregate sentinels (`00_APEC`, `ALL_ECONOMIES`) span areas and have no
+template; code paths fall back to `full model export.xlsx` for them.
+
+### `full model export.xlsx` (legacy single export)
+
+The former canonical workbook, equivalent to `20_USA`'s template. Still the
+fallback for aggregate runs and for economies without a template, and still
+read by workflows that have not been routed to the resolver yet (see
+`docs/check_registry.md`). **Prefer `leap_export_templates/` for new code.**
+
+#### Maintaining the export templates
+
+These workbooks are the canonical snapshot of LEAP model structure used by
+initialisation. They are a routing and schema reference, not the source of the
 initialisation values. Generated expressions are written by the workflows;
 the export tells those workflows which LEAP branch and variable each value can
 be written to.
@@ -89,13 +128,18 @@ The workflow uses the workbook to:
 - derive the transformation reset and zeroing scope; and
 - validate completed baseline-seed workbooks before import.
 
-Refresh the workbook from the canonical LEAP area whenever model structure or
-internal IDs may have changed. This includes adding, deleting, renaming,
-moving, or deleting and recreating a branch; changing a transformation module,
-process, or fuel leaf; moving a Resources fuel between `Primary` and
-`Secondary`; changing an available variable; changing scenarios; or switching
-to a different LEAP area/template. Deleting and recreating a visibly identical
-branch still requires a refresh because its internal `BranchID` may change.
+Refresh an economy's template from **that economy's own LEAP area** whenever its
+model structure or internal IDs may have changed. This includes adding,
+deleting, renaming, moving, or deleting and recreating a branch; changing a
+transformation module, process, or fuel leaf; moving a Resources fuel between
+`Primary` and `Secondary`; changing an available variable; changing scenarios;
+or switching to a different LEAP area. Deleting and recreating a visibly
+identical branch still requires a refresh because its internal `BranchID` may
+change.
+
+Refreshing one economy's template does not affect the others. Never copy a
+refreshed template across economies: that is what `_COMP_GEN` records, and its
+IDs belong to the area it came from.
 
 A refresh is not normally required for numerical changes only, such as new
 ESTO/9th values, recalculated LEAP results, changed projection expressions, or
@@ -103,7 +147,9 @@ a mapping edit that does not change the LEAP branch structure.
 
 The refreshed Analysis-view export must retain:
 
-- filename `data/full model export.xlsx`;
+- filename `data/leap_export_templates/leap_export_template {economy}.xlsx`,
+  e.g. `leap_export_template 12_NZ.xlsx` (no `_COMP_GEN` suffix — that marks a
+  provisional file);
 - sheet name `Export`;
 - the two LEAP preamble rows and the header on Excel row 3;
 - all branches and variables used by initialisation;
@@ -114,8 +160,14 @@ The refreshed Analysis-view export must retain:
 Archive the previous workbook before replacement. After replacing it, rerun
 ID/path validation, duplicate-key checks, metadata checks, reset-scope checks,
 share-total checks, and the baseline-seed comparison against the previous
-accepted output. The exact LEAP menu sequence and export selections still need
-to be captured as part of the modeller-facing LEAP export guide.
+accepted output for **that economy**. The exact LEAP menu sequence and export
+selections still need to be captured as part of the modeller-facing LEAP export
+guide.
+
+An economy's own template is also the reference its seed is validated against:
+`patch_baseline_seeds.validate_seed_files()` resolves the template per seed file
+from the economy in its filename. Checking a seed against another economy's
+template hides real errors — the wrong IDs match that template by construction.
 
 #### ID integrity and `-1` values
 

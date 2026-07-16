@@ -66,7 +66,8 @@ The main workflows expect the following files to already be present (they are no
 | ---- | ---------- |
 | `data/00APEC_2025_low_with_subtotals.csv` | ESTO historical reference |
 | `data/merged_file_energy_ALL_20251106.csv` | 9th Outlook projection data |
-| `data/full model export.xlsx` | Branch path reference template |
+| `data/leap_export_templates/leap_export_template <economy>.xlsx` | Per-economy LEAP branch/ID reference (a `_COMP_GEN` suffix marks a provisional copy of another economy's area) |
+| `data/full model export.xlsx` | Legacy single branch-path reference; fallback for aggregate runs and not-yet-routed workflows |
 | `data/leap balances exports/<economy>/` | Canonical raw LEAP balance exports (manual export from LEAP) |
 
 See `data/README.md` for full descriptions and `data/leap balances exports/README.md` for the expected filename format of LEAP exports.
