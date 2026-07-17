@@ -73,10 +73,15 @@ families already have a (better-fitting) mechanism:
 accessible* surface — `supply_reconciliation_config.py` (with a
 `# PRESET-CONTROLLED DEFAULT` comment) and overridable per-run from the presets in
 `supply_reconciliation_workflow.py` — **not** as literals buried in the producer
-module that happens to use them. The repo is not consistent about this yet; new
-policy config should follow this rule, and buried literals (e.g. the hardcoded
-`strict_conservation=True/False` at `aggregated_demand_workflow.py:878` and
-`transfers_workflow.py:605`) should migrate as they are touched.
+module that happens to use them. New policy config should follow this rule.
+
+> **F5 is now fully migrated (2026-07-17)** — the buried `strict_conservation`
+> literals this rule used to cite are gone. All **five** producers route through
+> `build_with_conservation_policy`: `aggregated_demand_workflow:911`,
+> `supply_assets:138`, `transfers_workflow:610`, `transformation_workflow:209`,
+> and `transformation_analysis_utils:1829` (the last one, migrated in [2]). No
+> producer chooses its own severity, and no duplicate
+> `PROJECTION_STRICT_CONSERVATION` flag exists to drift.
 
 ## The five families
 
