@@ -79,11 +79,37 @@ def test_non_valueerror_is_never_swallowed():
         build_with_conservation_policy("p", build)
 
 
-def test_supply_no_longer_defines_a_duplicate_strictness_flag():
-    """PROJECTION_STRICT_CONSERVATION was defined twice and manually kept in sync."""
-    from codebase.functions import supply_assets
+@pytest.mark.parametrize(
+    "module_name",
+    ["codebase.functions.supply_assets", "codebase.functions.transformation_analysis_utils"],
+)
+def test_no_producer_defines_a_duplicate_strictness_flag(module_name):
+    """PROJECTION_STRICT_CONSERVATION was defined twice and manually kept in sync
+    by a comment. Both copies are gone; a producer must not choose its own
+    severity, because that is how the two drifted apart in the first place."""
+    import importlib
 
-    assert not hasattr(supply_assets, "PROJECTION_STRICT_CONSERVATION")
+    module = importlib.import_module(module_name)
+    assert not hasattr(module, "PROJECTION_STRICT_CONSERVATION")
+
+
+def test_transformation_assets_does_not_hardcode_strict_conservation():
+    """The last blocking site: prepare_transformation_assets passed
+    strict_conservation=PROJECTION_STRICT_CONSERVATION (always True) directly to
+    build_esto_projection_table, so it raised while every other producer warned.
+    It must now hand the severity decision to the shared policy."""
+    import inspect
+
+    from codebase.functions import transformation_analysis_utils as core
+
+    source = inspect.getsource(core.prepare_transformation_assets)
+    assert "build_with_conservation_policy" in source, (
+        "prepare_transformation_assets must route through the shared policy"
+    )
+    assert "strict_conservation=PROJECTION_STRICT_CONSERVATION" not in source
+    assert "strict_conservation=True" not in source, (
+        "the site must not pin severity; conservation_policy decides"
+    )
 
 
 @pytest.mark.parametrize(
@@ -93,6 +119,7 @@ def test_supply_no_longer_defines_a_duplicate_strictness_flag():
         "codebase.transfers_workflow",
         "codebase.transformation_workflow",
         "codebase.functions.supply_assets",
+        "codebase.functions.transformation_analysis_utils",
     ],
 )
 def test_producers_route_through_the_shared_policy(module_name):

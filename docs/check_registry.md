@@ -278,11 +278,23 @@ Migrated: `transformation_workflow` (its hand-rolled try/except removed),
 `transfers_workflow` (**now runs the check for the first time** — if transfers
 cannot conserve by construction, exempt it rather than reverting the policy).
 
-**Remaining:** the transformation asset-prep site
-(`transformation_analysis_utils.py:1820`) and the last
-`PROJECTION_STRICT_CONSERVATION` definition (`:137`) are not migrated — that file
-had uncommitted work in progress. It still **blocks**, i.e. errs on the stricter
-side. Finish the migration when the file is free.
+**✅ Complete 2026-07-17.** The transformation asset-prep site
+(`prepare_transformation_assets`) now routes through
+`build_with_conservation_policy`, and the last `PROJECTION_STRICT_CONSERVATION`
+definition is deleted. **No producer chooses its own conservation severity any
+more**, and no duplicate flag exists to drift.
+
+**Behaviour change to be aware of:** that site previously *blocked*. It now warns
+by default, so a run that used to halt on a transformation projection
+conservation failure will complete and print
+`[WARN] transformation projection: strict conservation check failed; proceeding
+with the non-strict allocation: …`. A passing run is therefore no longer evidence
+that conservation held — read the log. Set `CONSERVATION_FAILURES_ARE_ERRORS=True`
+to restore blocking everywhere at once.
+
+Guarded by `tests/test_conservation_policy.py`: every producer imports the shared
+helper, neither module redefines the flag, and `prepare_transformation_assets`
+pins no severity of its own.
 
 ---
 

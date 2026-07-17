@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from codebase.functions.conservation_policy import build_with_conservation_policy
 from codebase.mappings.canonical_loaders import filter_used_in_leap_initialisation
 from codebase.utilities.master_config import (
     config_table_exists,
@@ -124,7 +125,11 @@ REFERENCE_CACHE_DIR = REPO_ROOT / "data" / ".cache" / "transformation_reference_
 #   - "all": apply sign-stable routing to every mapped ESTO flow.
 #   - "selected": apply only to SIGN_STABLE_PROJECTION_FLOWS.
 #   - "off": disable sign-stable routing (legacy abs-share behavior).
-# - PROJECTION_STRICT_CONSERVATION raises on any source-vs-allocated mismatch.
+# Projection conservation severity is NOT configured here: it is owned repo-wide
+# by `functions/conservation_policy.py` (warn by default; set
+# CONSERVATION_FAILURES_ARE_ERRORS=True to raise). The check itself always runs.
+# A local PROJECTION_STRICT_CONSERVATION used to live here and was the last
+# producer choosing its own severity; do not reintroduce one.
 PROJECTION_SIGN_STABLE_MODE = "all"
 SIGN_STABLE_PROJECTION_FLOWS = [
     "09.08.01 Coke ovens",
@@ -134,7 +139,6 @@ SIGN_STABLE_PROJECTION_FLOWS = [
     "09.08.05 Liquefaction (coal to oil)",
     "09.08.06 Coal mines",
 ]
-PROJECTION_STRICT_CONSERVATION = True
 
 
 def resolve_projection_sign_stable_flows(mode, selected_flows):
@@ -1817,14 +1821,22 @@ def prepare_transformation_assets() -> None:
         PROJECTION_SIGN_STABLE_MODE,
         SIGN_STABLE_PROJECTION_FLOWS,
     )
-    projection_df, projection_diagnostics = build_esto_projection_table(
-        ninth_data=ninth_data,
-        esto_data=esto_data,
-        mapping_path=NINTH_TO_ESTO_MAPPING_PATH,
-        base_year=BASE_YEAR,
-        projection_years=PROJECTION_YEAR_RANGE,
-        sign_stable_flows=projection_sign_stable_flows,
-        strict_conservation=PROJECTION_STRICT_CONSERVATION,
+    # Conservation is always attempted; only the severity of a failure is
+    # policy, and that is owned repo-wide by conservation_policy (warn by
+    # default; CONSERVATION_FAILURES_ARE_ERRORS=True to raise). This site used
+    # to choose for itself via a local PROJECTION_STRICT_CONSERVATION=True and
+    # was the last producer that blocked while every other one warned.
+    projection_df, projection_diagnostics = build_with_conservation_policy(
+        "transformation projection",
+        lambda strict_conservation: build_esto_projection_table(
+            ninth_data=ninth_data,
+            esto_data=esto_data,
+            mapping_path=NINTH_TO_ESTO_MAPPING_PATH,
+            base_year=BASE_YEAR,
+            projection_years=PROJECTION_YEAR_RANGE,
+            sign_stable_flows=projection_sign_stable_flows,
+            strict_conservation=strict_conservation,
+        ),
     )
     esto_data = merge_projection_into_esto(
         esto_data, projection_df, PROJECTION_YEAR_RANGE

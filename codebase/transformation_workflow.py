@@ -55,9 +55,10 @@ EXPORT_ID_LOOKUP_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 # Projection allocation behavior is configured in
 # `codebase/transformation_analysis_utils.py`:
 # - `PROJECTION_SIGN_STABLE_MODE`: "all" | "selected" | "off"
-# - `PROJECTION_STRICT_CONSERVATION`: legacy flag; the projection conservation
-#   severity is now owned by `functions/conservation_policy.py` (warn by default,
-#   set CONSERVATION_FAILURES_ARE_ERRORS=True to raise).
+# Projection conservation severity is NOT set there: it is owned repo-wide by
+# `functions/conservation_policy.py` (warn by default; set
+# CONSERVATION_FAILURES_ARE_ERRORS=True to raise). The local
+# PROJECTION_STRICT_CONSERVATION flag was removed 2026-07-17.
 # This workflow consumes `core.esto_data`, so those settings directly affect
 # transformation exports (and transfers via shared core data).
 

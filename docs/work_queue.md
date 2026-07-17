@@ -193,16 +193,25 @@ uses `_collect_auto_regen` (the simplified path), **not**
 transformation to be workbook-based via that helper (the `transfers` model), then
 dropping the gate.
 
-## [2] Last conservation site
+## [2] Last conservation site ✅ Completed 2026-07-17
 
-**Ready** (lives in `transformation_analysis_utils.py`).
+`prepare_transformation_assets` (`transformation_analysis_utils.py`) now routes
+through `conservation_policy.build_with_conservation_policy`, and the last
+`PROJECTION_STRICT_CONSERVATION` definition is deleted. **No producer chooses its
+own conservation severity any more, and no duplicate flag exists to drift.** See
+`docs/check_registry.md` § F5.
 
-`transformation_analysis_utils.py:1820` still chooses its own strictness via the
-last surviving `PROJECTION_STRICT_CONSERVATION` (`:137`), so it **blocks** while
-every other producer warns. Migrate it to
-`conservation_policy.build_with_conservation_policy` and delete the flag. See
-`docs/check_registry.md` § F5. It errs on the stricter side meanwhile, so this is
-not urgent.
+**Behaviour change — it used to block, it now warns.** A run that previously
+halted on a transformation projection conservation failure will complete and
+print `[WARN] transformation projection: strict conservation check failed;
+proceeding with the non-strict allocation: …`. **A green run is no longer
+evidence that conservation held — read the log**, especially on the first full
+run after this. `CONSERVATION_FAILURES_ARE_ERRORS=True` restores blocking
+everywhere at once.
+
+Guarded by `tests/test_conservation_policy.py` (14 passing): every producer
+imports the shared helper, neither module redefines the flag, and the site pins
+no severity of its own.
 
 ## [3] Finish the header-detector routing ✅ Completed 2026-07-16
 
