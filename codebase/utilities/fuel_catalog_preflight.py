@@ -1354,9 +1354,14 @@ def run_fuel_catalog_preflight(
             missing: set[tuple[str, str]] = set()
             extra: set[tuple[str, str]] = set()
         else:
-            missing = expected - actual
-            extra = actual - expected
-            status = "ok" if not missing else "missing_expected"
+            # The catalog is a shared union, not an economy-specific checklist:
+            # a valid economy export is not expected to contain every branch in
+            # every other economy's template. Only generated rows absent from
+            # the union are missing catalog coverage; catalog-only rows are
+            # informational and must not fail an economy preflight.
+            missing = actual - expected
+            extra = expected - actual
+            status = "ok" if not missing else "missing_from_catalog"
         missing_total += len(missing)
         extra_total += len(extra)
         report_rows.append(

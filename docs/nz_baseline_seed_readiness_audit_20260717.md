@@ -2,11 +2,12 @@
 
 ## Recommendation
 
-**Hold import-readiness sign-off pending catalog materialisation and review of
-zero-valued unresolved rows.** No nonzero unresolved-ID rows were found in the
-current seed, and the current seed is structurally/value-identical to the
-immediately preceding NZ seed. The findings below are therefore warnings to
-resolve or accept explicitly, not evidence for adding USA branches to NZ.
+**Conditional readiness: the shared catalog preflight passes; review the
+zero-valued unresolved rows before import sign-off.** No nonzero unresolved-ID
+rows were found in the current seed, and the current seed is
+structurally/value-identical to the immediately preceding NZ seed. The findings
+below are therefore warnings to resolve or accept explicitly, not evidence for
+adding USA branches to NZ.
 
 The gated full reconciliation run was not started as part of this audit.
 
@@ -17,7 +18,7 @@ The gated full reconciliation run was not started as part of this audit.
 | NZ template | `data/leap_export_templates/leap_export_template 12_NZ.xlsx` | Present; 8,318 export rows and 646 branch paths; Region is New Zealand |
 | Current seed | `outputs/leap_exports/supply_reconciliation/baseline_seed/runs/SEED_12_NZ_TGT_REF_CA/leap_import_baseline_seed_12_NZ_20260717.xlsx` | 3,534 LEAP rows; 618 branch paths |
 | Prior NZ seed | `outputs/leap_exports/supply_reconciliation/baseline_seed/runs/SEED_12_NZ_TGT_REF_CA/archive/leap_import_baseline_seed_12_NZ_20260717.xlsx` | Used as the comparison baseline |
-| Shared fuel catalog | `outputs/leap_exports/supply_reconciliation/supporting_files/checks/leap_fuel_branch_catalog.csv` | Not present; catalog preflight cannot provide durable catalog coverage until materialised |
+| Shared fuel catalog | `outputs/leap_exports/supply_reconciliation/supporting_files/checks/leap_fuel_branch_catalog.csv` | Materialised from the template union; 6,191 catalog rows |
 
 ## Comparison result
 
@@ -50,9 +51,14 @@ than routing regressions.
 Focused readiness/template/catalog/reset suites passed: **93 passed, 5
 skipped**. The skipped checks are existing opt-in/environment-dependent cases.
 
+The NZ catalog preflight was then run against the materialised shared union:
+
+- 26 scopes checked;
+- 0 generated rows missing from the shared catalog;
+- 868 catalog-only rows, which are expected because the catalog is a union and
+  not an NZ-specific checklist.
+
 ## Next action
 
-Materialise the shared-union fuel catalog, rerun the catalog preflight against
-the NZ artifacts, and review the zero-valued Oil refineries and non-specified
-transformation findings. Only then make the explicit go/no-go decision for an
-authorized full run.
+Review the zero-valued Oil refineries and non-specified transformation
+findings, then make the explicit go/no-go decision for an authorized full run.
