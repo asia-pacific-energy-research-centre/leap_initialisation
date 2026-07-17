@@ -75,8 +75,11 @@ Migrate only the first class, in focused commits. Check callers as well as
 function defaults: an explicit pinned `id_lookup_path` can bypass a correctly
 routed helper.
 
-Do not touch the `GLOBAL_REGION` decision or `fuel_catalog_preflight` question
-without separate evidence; both are explicitly outside this prompt.
+The `GLOBAL_REGION` decision is already resolved and remains outside this prompt.
+The fuel-catalog question is also resolved: `fuel_catalog_preflight` uses a
+shared union of exact fuel branch structures across LEAP templates, with NZ as
+the primary real-template validation case. Do not redesign that policy here;
+use the catalog preflight and report any template label or branch-path gaps.
 
 ## Stage 3: 12_NZ readiness audit
 

@@ -218,7 +218,7 @@ Not all ~15 constants are equal. Audited by call site (not by definition):
 | `supply_reconciliation_config:310` `RESULTS_VERIFICATION_EXPORT_PATH` | Mostly a deliberate fallback: `_leap_export_template_for_economy` returns it for aggregate sentinels and unresolvable economies, and `supply_preflight` uses it only via `template_path or ...` where no caller relies on the default. |
 | `workflow_config:313` `SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH` | Routed in `3756ccb` ([8]); used only as `source_path if source_path is not None else ...`. |
 | `patch_baseline_seeds:87` | Deliberate fallback; per-economy writing/validation already call `_template_for_economy`. |
-| `fuel_catalog_preflight:29` | See [11] — unresolved whether it *should* be per economy. Do not touch. |
+| `fuel_catalog_preflight:29` | Shared-union catalog by design; template changes trigger incremental rebuilds. Do not make it economy-specific. See [11]. |
 | `baseline_seed_comparison_workflow:615` | Standalone comparison default; pass the resolved template when template-backed validation is enabled. |
 
 **Next concrete step:** route the standalone `EXPORT_ID_LOOKUP_PATH` entry points

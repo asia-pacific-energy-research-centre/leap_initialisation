@@ -353,7 +353,13 @@ Method:
 - For positive import gaps, primary production headroom is tried first for primary products where allowed; remaining gaps can be allocated to transformation capacity in priority-module order; anything still unresolved is handled by the configured unresolved-positive policy, usually import fallback.
 - Negative import gaps or export differences are interpreted as possible over-production, surplus transformation output, or trade-path differences. In the current setup, exports can be pinned to 9th projections unless that option is changed.
 - Reset and zero-fill logic is part of the methodology. It explicitly clears stale supply import/export targets, transformation import/export targets, auxiliary fuel use, and feedstock shares for owned branches so old LEAP values do not survive unnoticed across passes.
-- The zero-fill branch catalog is built from the full model export first, then optional live LEAP probe outputs, then prior generated workbooks. Branches missing from all catalog sources may not receive zero-fill rows.
+- The shared LEAP fuel-branch catalog is built incrementally from the union of
+  all LEAP export templates, with the full model export retained as a source and
+  optional live LEAP probe rows added when available. Only templates whose file
+  metadata changed are reparsed. The catalog preserves exact fuel labels and
+  branch paths, and writes a separate `fuel_registry.csv`; generated
+  transformation/supply workbooks remain additive sources for the current run.
+  Branches missing from every catalog source may not receive zero-fill rows.
 - LEAP balance exports are preferred over older Results-view workbooks for observed trade and demand signals where the current workflow supports them.
 
 Sector coverage:
