@@ -162,6 +162,7 @@ def build_incremental_template_catalog(
     full_model_sheet: str = DEFAULT_FULL_MODEL_EXPORT_SHEET,
     cache_directory: Path | str = DEFAULT_FUEL_CATALOG_SOURCE_CACHE_DIRECTORY,
     manifest_path: Path | str = DEFAULT_FUEL_CATALOG_MANIFEST_PATH,
+    catalog_path: Path | str = DEFAULT_FUEL_CATALOG_PATH,
     registry_path: Path | str = DEFAULT_FUEL_REGISTRY_PATH,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build the shared catalog union, reparsing only changed source workbooks."""
@@ -171,6 +172,7 @@ def build_incremental_template_catalog(
     )
     cache_dir = _resolve(cache_directory)
     manifest_file = _resolve(manifest_path)
+    catalog_file = _resolve(catalog_path)
     registry_file = _resolve(registry_path)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -225,6 +227,8 @@ def build_incremental_template_catalog(
         catalog_df = catalog_df.drop_duplicates(subset=dedupe_columns).reset_index(drop=True)
 
     registry_df = _build_fuel_registry(catalog_df)
+    catalog_file.parent.mkdir(parents=True, exist_ok=True)
+    catalog_df.to_csv(catalog_file, index=False)
     registry_file.parent.mkdir(parents=True, exist_ok=True)
     registry_df.to_csv(registry_file, index=False)
     manifest_file.parent.mkdir(parents=True, exist_ok=True)
@@ -598,6 +602,7 @@ def refresh_fuel_catalog_from_sources(
         full_model_sheet=full_model_sheet,
         cache_directory=source_cache_directory,
         manifest_path=source_manifest_path,
+        catalog_path=catalog_path,
         registry_path=fuel_registry_path,
     )
     if full_df.empty:

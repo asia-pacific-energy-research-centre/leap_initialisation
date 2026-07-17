@@ -45,6 +45,7 @@ def test_incremental_catalog_reuses_unchanged_sources_and_preserves_exact_labels
         "full_model_export_path": tmp_path / "does-not-exist.xlsx",
         "cache_directory": tmp_path / "cache",
         "manifest_path": tmp_path / "manifest.json",
+        "catalog_path": tmp_path / "catalog.csv",
         "registry_path": tmp_path / "fuel_registry.csv",
     }
 
