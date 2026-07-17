@@ -11,6 +11,38 @@ def _coal_config() -> dict[str, object]:
     return workflow.PROXY_CONFIG[0]
 
 
+def test_export_key_workbook_resolves_for_economy_when_not_overridden(monkeypatch, tmp_path) -> None:
+    resolved = tmp_path / "12_NZ.xlsx"
+    calls: list[tuple[object, object]] = []
+
+    def fake_resolve(economy, *, fallback):
+        calls.append((economy, fallback))
+        return resolved
+
+    monkeypatch.setattr(
+        workflow.leap_export_template_resolver,
+        "resolve_leap_export_template_or_fallback",
+        fake_resolve,
+    )
+
+    assert workflow._resolve_export_key_workbook_path("12_NZ", None) == resolved
+    assert calls == [("12_NZ", workflow.EXPORT_KEY_WORKBOOK_PATH)]
+
+
+def test_export_key_workbook_explicit_override_skips_economy_resolution(monkeypatch, tmp_path) -> None:
+    def fail_resolve(*args, **kwargs):
+        raise AssertionError("explicit export-key paths must not be resolved")
+
+    monkeypatch.setattr(
+        workflow.leap_export_template_resolver,
+        "resolve_leap_export_template_or_fallback",
+        fail_resolve,
+    )
+    explicit = tmp_path / "fixture.xlsx"
+
+    assert workflow._resolve_export_key_workbook_path("12_NZ", explicit) == explicit
+
+
 def test_proxy_source_coverage_gaps_are_filtered_to_requested_economy() -> None:
     esto = pd.DataFrame([
         {

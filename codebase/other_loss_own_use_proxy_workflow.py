@@ -53,6 +53,7 @@ from codebase.functions.leap_labels import clean_fuel_label_for_leap
 from codebase.functions.leap_expressions import build_data_expression_from_row
 from codebase.scrapbook.utilities import filter_matt_subtotals
 from codebase.utilities import fuel_catalog_preflight, workflow_common
+from codebase.utilities import leap_export_template_resolver
 from codebase.utilities.workflow_utils import (
     _normalize_economy,
     _normalize_year_columns,
@@ -1328,6 +1329,24 @@ def _resolve_export_filename(economy: str, scenarios: Sequence[str], export_file
     )
 
 
+def _resolve_export_key_workbook_path(
+    economy: str,
+    export_key_workbook_path: Path | str | None,
+) -> Path:
+    """Resolve the ID/zero-fill workbook for the economy being exported.
+
+    An explicit path remains available for tests and deliberate custom
+    templates.  Production calls use the economy's LEAP template and fall
+    back to the legacy USA export only when no applicable template exists.
+    """
+    if export_key_workbook_path is not None:
+        return Path(export_key_workbook_path)
+    return leap_export_template_resolver.resolve_leap_export_template_or_fallback(
+        economy,
+        fallback=EXPORT_KEY_WORKBOOK_PATH,
+    )
+
+
 def assemble_proxy_workbook(
     *,
     economy: str = "20_USA",
@@ -1346,11 +1365,15 @@ def assemble_proxy_workbook(
     leap_balance_date_id: str | None = LEAP_BALANCE_DATE_ID,
     output_fuel_scope: str = OUTPUT_FUEL_VALIDATION_SCOPE,
     output_root: Path | str | None = None,
-    export_key_workbook_path: Path | str = EXPORT_KEY_WORKBOOK_PATH,
+    export_key_workbook_path: Path | str | None = None,
     export_key_sheet: str = EXPORT_KEY_WORKBOOK_SHEET,
     measure_units: Mapping[str, Mapping[str, object]] | None = None,
 ) -> Path:
     scenario_list = _normalize_scenarios(scenarios)
+    export_key_workbook_path = _resolve_export_key_workbook_path(
+        economy,
+        export_key_workbook_path,
+    )
     output_scope = _normalize_output_fuel_scope(output_fuel_scope)
     region = region or _resolve_export_region(economy)
     esto_data = load_esto_data()
