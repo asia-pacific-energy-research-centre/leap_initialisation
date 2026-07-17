@@ -33,6 +33,7 @@ from codebase.supply_reconciliation_config import (
 )
 from codebase.utilities.workflow_utils import _resolve
 from codebase.utilities import workflow_common
+from codebase.utilities.fuel_catalog_preflight import build_incremental_template_catalog
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP_EXPORTS_ROOT
 from codebase.utilities.master_config import config_table_exists, read_config_table
 from codebase.configuration import workflow_config as workflow_cfg
@@ -817,19 +818,24 @@ def _build_transformation_supply_fuel_catalog_df(
     supply_export_paths: Iterable[Path],
     include_print_summary: bool = True,
 ) -> pd.DataFrame:
-    """Build a transformation/supply fuel catalog dataframe."""
+    """Build the shared LEAP fuel-branch catalog dataframe.
+
+    The public/private function name is retained for compatibility with the
+    baseline and transfer callers. The canonical template union is now supplied
+    by ``fuel_catalog_preflight``; generated transformation/supply exports and
+    the live probe are additive sources for the current run.
+    """
     rows: list[dict[str, object]] = []
 
     if USE_FULL_MODEL_EXPORT_CATALOG_SOURCE:
-        full_model_rows = _extract_catalog_rows_from_full_model_export(
-            source_path=FULL_MODEL_EXPORT_CATALOG_PATH,
-            sheet_name=FULL_MODEL_EXPORT_CATALOG_SHEET,
+        template_catalog_df, _ = build_incremental_template_catalog(
+            full_model_export_path=FULL_MODEL_EXPORT_CATALOG_PATH,
+            full_model_sheet=FULL_MODEL_EXPORT_CATALOG_SHEET,
         )
-        if full_model_rows:
-            rows.extend(full_model_rows)
+        if not template_catalog_df.empty:
+            rows.extend(template_catalog_df.to_dict("records"))
             print(
-                f"[INFO] Added {len(full_model_rows)} row(s) from full model export catalog source: "
-                f"{_resolve(FULL_MODEL_EXPORT_CATALOG_PATH)}"
+                f"[INFO] Added {len(template_catalog_df)} row(s) from shared LEAP template catalog union."
             )
 
     probe_path = _resolve(LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH)
