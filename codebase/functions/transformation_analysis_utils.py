@@ -231,17 +231,14 @@ HYDROGEN_PROCESS_CONFIG = [
 # Hydrogen-specific display names for codes that predate (or are absent from)
 # the shared code-to-name mapping file. Without these, resolve_label_name's
 # generic fallback strips the numeric prefix and title-cases the remainder
-# (e.g. "17_x_green_electricity" -> "X green electricity"), which does not
-# match the canonical "Green electricity" branch in the full-model export and
-# makes the generated Feedstock Fuel Share row invalid. Merged into
-# code_to_name_mapping in prepare_transformation_assets() so both the main
-# transformation workflow and the standalone hydrogen workflow resolve these
-# codes identically.
+# (e.g. "16_x_hydrogen" -> "X hydrogen"), which does not match the canonical
+# branch names in the full-model export. Merged into code_to_name_mapping in
+# prepare_transformation_assets() so both the main transformation workflow and
+# the standalone hydrogen workflow resolve these codes identically.
 HYDROGEN_DISPLAY_NAME_OVERRIDES = {
     "16_x_hydrogen": "Hydrogen",
     "16_x_ammonia": "Ammonia",
     "16_x_efuel": "Efuel",
-    "17_x_green_electricity": "Green electricity",
     "electrolysers_non_green": "Electrolysers (non-green electricity)",
 }
 
@@ -1349,10 +1346,6 @@ def _build_mapping_from_leap_display_names(mapping_df: "pd.DataFrame") -> dict:
         name = str(name).strip()
         if name:
             mapping[code] = name
-    # Canonical override: the workbook currently carries an auto-derived
-    # "Electricity" label for electrolyser feedstock, but the canonical LEAP
-    # branch path uses "Green electricity" under Hydrogen transformation.
-    mapping["17_x_green_electricity"] = "Green electricity"
     return mapping
 
 

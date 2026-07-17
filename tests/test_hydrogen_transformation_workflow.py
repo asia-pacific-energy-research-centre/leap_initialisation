@@ -79,19 +79,3 @@ class TestHydrogenTransformationWorkflow(unittest.TestCase):
         economies = sorted({str(record.get("economy")) for record in rows})
         self.assertEqual(economies, ["ALL_ECONOMIES"])
 
-    def test_electrolysers_feedstock_branch_uses_green_electricity(self) -> None:
-        mapping = core.load_code_to_name_mapping(core.CODE_TO_NAME_PATHS)
-        self.assertEqual(mapping.get("17_x_green_electricity"), "Green electricity")
-        self.assertEqual(
-            core.build_branch_path(
-                [
-                    "Transformation",
-                    "Hydrogen transformation",
-                    "Processes",
-                    "Electrolysers",
-                    "Feedstock Fuels",
-                    core.map_code_label("17_x_green_electricity", mapping),
-                ]
-            ),
-            "Transformation\\Hydrogen transformation\\Processes\\Electrolysers\\Feedstock Fuels\\Green electricity",
-        )
