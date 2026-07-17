@@ -206,6 +206,26 @@ IDs either way.
 > and disagree on IDs is precisely the configuration a pinned template silently
 > corrupts.
 
+### Liveness audit 2026-07-17 — what is actually live vs dormant
+
+Not all ~15 constants are equal. Audited by call site (not by definition):
+
+| Constant | Verdict |
+| --- | --- |
+| `supply_leap_io` combined-workbook template | **WAS LIVE — fixed `e799029`.** `save_combined_supply_transformation_export` pinned USA while taking `economy_label`; `combined_st_12_NZ` had 126/126 discriminating paths on USA IDs, `combined_st_01_AUS` 125/125. Seeds unaffected. |
+| `supply_reconciliation_config:312` `AGGREGATED_DEMAND_ID_LOOKUP_PATH` | **DEAD — zero references** anywhere including tests. Orphaned when `cdb813d` fixed the bypass. Delete it. |
+| `transformation_workflow:47`, `transfers_workflow:92`, `electricity_heat_interim_workflow:79`, `:161` `EXPORT_ID_LOOKUP_PATH` | **Standalone-only, still un-routed.** Defaults on `assemble_*_workbook` / `run_*_export_and_import` / `run_*_pipeline`. The baseline-seed path never passes `id_lookup_path`, so `save_transformation_export` skips `attach_export_ids` and the combine fills IDs. These pipelines already take `economies=`, so routing them is the same `None`-means-resolve pattern. **Live the moment anyone runs a standalone pipeline for a real-template economy — which now includes `01_AUS`.** |
+| `supply_reconciliation_config:310` `RESULTS_VERIFICATION_EXPORT_PATH` | Mostly a deliberate fallback: `_leap_export_template_for_economy` returns it for aggregate sentinels and unresolvable economies, and `supply_preflight` uses it only via `template_path or ...` where no caller relies on the default. |
+| `workflow_config:313` `SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH` | Routed in `3756ccb` ([8]); used only as `source_path if source_path is not None else ...`. |
+| `patch_baseline_seeds:87` | Deliberate fallback; per-economy writing/validation already call `_template_for_economy`. |
+| `fuel_catalog_preflight:29` | See [11] — unresolved whether it *should* be per economy. Do not touch. |
+| `baseline_seed_comparison_workflow:615` | Standalone comparison default; pass the resolved template when template-backed validation is enabled. |
+
+**Next concrete step:** route the standalone `EXPORT_ID_LOOKUP_PATH` entry points
+(transformation / transfers / electricity-heat). They take `economies=` already;
+default `id_lookup_path` to `None` and resolve per economy, keeping the constant
+only as a fallback. Delete `AGGREGATED_DEMAND_ID_LOOKUP_PATH` as its own commit.
+
 **Verification recipe that worked** (reuse it): compare `_build_id_lookups`
 across every template — 20 economies must come back *identical* to the legacy
 export, `12_NZ` must differ (646 vs 714 branch paths, 134 of 634 shared paths
