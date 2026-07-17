@@ -18,23 +18,25 @@ detail rather than duplicating it.
 
 ## The blocker structure
 
-The transformation prerequisite has landed. The export-template track is paced
-by an external event; the remaining checks/refactors below are ready for a
-single agent to take one at a time.
+The transformation prerequisite has landed. **The export-template track's
+external event has now happened** (2026-07-17: `01_AUS` became a real template),
+so [7] is live rather than paced. The remaining checks/refactors below are ready
+for a single agent to take one at a time.
 
-```
+```text
 [0] transformation output/efficiency corrections (completed 2026-07-16)
       ├── [1] transformation ungate
       ├── [2] last conservation site
       ├── [3] remaining header routes
       ├── [4] Process Efficiency backing invariant
-      └── [9] reset-scope chain
+      └── [9] reset-scope chain (completed 23aac52, verified 2026-07-17)
 
-[7] finish the per-economy export-template rollout   <- not blocked
-      deadline: the first real (non-COMP_GEN) economy export
+[7] finish the per-economy export-template rollout   <- DEADLINE ARRIVED 2026-07-17
+      01_AUS is now a real template; the system is half-routed for it
       ├── [8]  supply_branch_classification threading (completed 2026-07-16)
-      ├── [9]  reset-scope chain
-      └── [10] GLOBAL_REGION decision
+      ├── [9]  reset-scope chain (completed 23aac52, verified 2026-07-17)
+      └── [10] GLOBAL_REGION decision (resolved 39f82df; region now per economy)
+              └── attach_export_ids ID-borrowing removed (12e1482)
 ```
 
 ---
@@ -229,22 +231,64 @@ only a logging limitation (one economy's missing-branch warning can suppress
 another's) and is not a data-routing concern; leave it until warning reporting
 is revisited deliberately.
 
-## [9] Reset-scope chain
+## [9] Reset-scope chain ✅ Completed in `23aac52` — verified 2026-07-17
 
-**Ready.** `supply_preflight.py` is clean and its aggregate-source preflight
-support landed in `560353d`.
+**This item was already done when it was written down.** It described an unkeyed
+cache and zero-argument helpers; `23aac52` had already routed both. Re-verified
+against the tree 2026-07-17 before starting work — nothing to implement:
 
-`supply_preflight._load_reset_scope_from_full_model_export` derives the
-transformation reset/zeroing scope from the single export, behind another
-unkeyed module cache (`_RESET_SCOPE_FROM_EXPORT_CACHE`), via zero-argument
-helpers `_configured_reset_module_names` / `_configured_reset_fuel_labels`
-called from **five** modules (`supply_reconciliation_workflow`, `supply_leap_io`,
-`supply_results_saver`, `supply_reconciliation_tables`, `supply_preflight`).
+- `_RESET_SCOPE_FROM_EXPORT_CACHE` **is** keyed, by resolved source path
+  (`supply_preflight.py:580`), so entries cannot cross templates.
+- `_load_reset_scope_from_full_model_export`, `_configured_reset_module_names`,
+  `_configured_reset_fuel_labels` and
+  `_configured_reset_output_fuel_labels_by_module` all take `template_path`.
+- **No call site anywhere relies on the `None` default** (which would fall back
+  to `RESULTS_VERIFICATION_EXPORT_PATH`, i.e. USA). Verified by grep.
+- `reset_supply_and_transformation_import_export_to_zero`
+  (`supply_reconciliation_tables.py:1741`) **self-partitions**: >1 economy in the
+  reconciliation table → it recurses per economy with
+  `template_path=resolve_leap_export_template(economy)` (`:1807`); exactly 1 →
+  same resolver (`:1815`). Its `supply_results_saver:3159` caller therefore
+  correctly passes no template.
+- `supply_leap_io:485` resolves per economy inside an economy-keyed loop.
 
-This is the sharpest edge of [7]'s deadline: reset scope built from USA's 714
-branches applied to an economy with 646 resets branches that economy lacks.
+Focused suite passes: **72** (`test_reset_scope_template_routing`, template
+resolver, check registry) — the same count the NZ readiness doc recorded.
 
-## [10] `GLOBAL_REGION` — open decision, not a task
+**One residual edge, not worth chasing:** if a reconciliation table has no
+`economy` column at all, `unique_economies` is empty, neither partition branch
+fires, and `template_path` stays `None` → the USA fallback. Not reachable from
+the current callers, which always carry `economy`.
+
+## [10] `GLOBAL_REGION` — ✅ decided and implemented 2026-07-17 (`39f82df`, `12e1482`)
+
+**Decided:** region resolves per economy; the global survives only as a fallback
+for codes with no APEC region entry (so the `00_APEC` sentinel, and the preflight,
+are unchanged). `39f82df` routed the aggregated-demand, own-use-proxy and
+demand-zeroing writers via `get_region_for_economy`; `12e1482` removed
+`attach_export_ids`' ID-borrowing fallbacks.
+
+**It was not the cosmetic cleanup this section assumed.** The mismatch *deleted
+data*: the seed writer keeps only rows whose branch resolves, so a "United States"
+label made a non-USA lookup fail and the rows were dropped before reaching the
+seed — `12_NZ` was silently losing 9 rows including 465.5 PJ of own-use
+electricity.
+
+**Correction to the analysis below** (kept for the record, but it is wrong):
+`resolve_export_region_from_process_economies` is **not** redundant post-hoc
+patching. All four callers of `save_transformation_export` pass the global
+`core.EXPORT_REGION = "United States"`, so that resolver is the *only* thing
+giving transformation exports a correct per-economy region. Removing it would
+reintroduce the bug. Its multi-region raise is independently valuable.
+
+**Follow-up, own commit, not urgent:** transformation infers its economy from
+`process_records` while every other writer is *told* the economy — so its `region`
+parameter is a lie (passed, then discarded). Preferred end state: pass `economy`
+explicitly like the other writers, derive region from it, and keep the resolver
+as a cross-check that the records agree with the declared economy. Consistency
+plus the guard.
+
+### Original analysis (superseded, retained for context)
 
 `workflow_config:70` hardcodes `GLOBAL_REGION = "United States"`, then
 `transformation_record_builder.resolve_export_region_from_process_economies`
