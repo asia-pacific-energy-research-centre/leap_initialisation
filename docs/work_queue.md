@@ -318,6 +318,37 @@ economy. What remains under [7] is the wider *full-model dependency* sweep below
 lookups, and one where a shared or aggregate source is sometimes correct. Do not
 route those by analogy; classify each first.
 
+### Patcher verification 2026-07-17 — routing confirmed; two findings
+
+Ran `run_patch("aggregated_demand", ["12_NZ"])` to verify `6714db0` on its only
+live path (a normal seed run cannot: it passes `id_lookup_path` explicitly, so
+the fixed default is a no-op there).
+
+**1. The fix is verified.** The workbook the patcher built carries the NZ area:
+
+| `aggregated_demand_12_NZ` rows on paths where NZ and USA IDs differ | follows NZ | follows USA |
+| --- | --- | --- |
+| pre-fix (`20260715` seed, 24 rows) | 0 | 24 |
+| post-fix (patcher-built workbook, 24 rows) | **24** | **0** |
+
+Region is `New Zealand` on all 420 rows, confirming `39f82df` on the same path.
+
+**2. The `20260715` seeds cannot be patched — they must be regenerated.**
+`run_patch` raised: the seed itself fails validation against the NZ template
+(SEED-003=33, SEED-008=78, SEED-011=33) because it was built with USA IDs. The
+guard is correct; the seed is the problem. This corroborates [12]: do not try to
+patch the old seeds forward, and do not read this refusal as a patcher defect.
+
+**3. The patcher does NOT honour `BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS`,
+but the main writer does.** `supply_leap_io` reads the flag and passes
+`blocking_findings_are_warnings=` into `prepare_seed_rows_for_write`
+(`:1013-1027`); `patch_baseline_seeds` calls the same function without it, taking
+the default `False`. So the same findings are warnings in a full run and blocking
+in a patch. That divergence may well be intentional — a surgical patch arguably
+*should* be stricter than a full rebuild — but it is undocumented and was found
+by accident. **Decide and write it down**; it is directly relevant to the open
+INIT-005 review (see Known pre-existing failures).
+
 ### Remaining full-model dependency — separate follow-up
 
 The fuel catalog no longer treats `data/full model export.xlsx` as the complete
