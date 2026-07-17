@@ -4,7 +4,7 @@ Single source of truth for *what is left, in what order, and what blocks what*
 across the supply-reconciliation / baseline-seed work. Cross-references the
 detail rather than duplicating it.
 
-> Living document — last reconciled with the tree **2026-07-16**. Re-check
+> Living document — last reconciled with the tree **2026-07-17**. Re-check
 > `git status --short` before trusting the "blocked" markers.
 
 ## How to use this
@@ -181,17 +181,22 @@ Mostly mitigated today because the per-workflow producers ship the ID columns
 **empty on purpose** for the combine step to fill — which is why fixing the
 writer fixed the IDs. They are still live for standalone runs.
 
-**Why this is currently safe, and exactly when it stops being safe:** 19 of 21
-templates are `_COMP_GEN` — generated from the USA area and carrying its
-BranchIDs **verbatim** (0 of 714 differ; only the `Region` column is relabelled).
-So every un-routed path and every routed path agree today, because they all
-resolve to USA's IDs either way.
+**Why this *was* safe:** 18 of 21 templates are `_COMP_GEN` — generated from the
+USA area and carrying its BranchIDs **verbatim** (713 paths, 713 of 713
+identical to USA; only the `Region` column is relabelled). For those, every
+un-routed path and every routed path still agree, because they resolve to USA's
+IDs either way.
 
-> **Deadline.** The first time a real (non-`COMP_GEN`) export lands for any
-> economy, the routed paths use that economy's area while the un-routed paths
-> still use USA's — and they silently disagree about which area they are in.
-> A half-routed system is worse than either end state. `12_NZ` is already real;
-> it is only safe because its remaining gaps happen to be inert (see [8]).
+> **Deadline — ARRIVED (measured 2026-07-17).** `01_AUS` is now a **real**
+> template (`leap_export_template 01_AUS.xlsx`, no `_COMP_GEN` suffix): 664
+> branch paths, and **133 of 663** paths shared with USA carry a *different*
+> BranchID. Per the recipe below, "any other economy differing means a real
+> export landed" — it has. Real templates are now `01_AUS`, `12_NZ`, `20_USA`.
+> The system is now half-routed *in the dangerous direction* for `01_AUS`: the
+> routed paths use Australia's area while the ~15 un-routed constants below
+> still use USA's. `12_NZ` was tolerable only because its gaps are inert (see
+> [8]); **that argument does not transfer to `01_AUS`** — nobody has shown its
+> gaps are inert. Finish the rollout before trusting any `01_AUS` output.
 
 **Verification recipe that worked** (reuse it): compare `_build_id_lookups`
 across every template — 20 economies must come back *identical* to the legacy
@@ -252,6 +257,33 @@ Decide deliberately; do not fold it into a threading commit.
 catalog is even economy-specific is unresolved** — fuel *names* may legitimately
 be shared across areas, in which case pinning is correct and should be documented
 as deliberate rather than "fixed". Answer the question before touching it.
+
+## [12] Baseline-seed trustworthiness — audited 2026-07-17, regeneration is NOT the answer
+
+Audit of `SEED_21ECON_0E555F_TGT_REF_CA` against each economy's *resolved*
+template (script pattern: compare seed BranchID to template BranchID, restricted
+to paths where template and USA **disagree** — otherwise the comparison is not
+discriminating).
+
+| Fact | Measurement |
+| --- | --- |
+| Seeds in the "21ECON" run | **20** — there is no `01_AUS` seed. The label is wrong. |
+| `12_NZ` | **507 rows across 131 paths carry USA BranchIDs.** Proven contaminated. Regenerated correctly 2026-07-17 (`SEED_12_NZ_TGT_REF_CA`, 0 of 3,378 rows disagree). |
+| `20_USA` | Trivially correct (it *is* the pinned area). |
+| The other 18 | Template is `_COMP_GEN`, i.e. USA's BranchIDs verbatim → **0 discriminating paths**. The seed agrees with its template *for the wrong reason*. |
+
+**A full 21-economy regeneration would be close to a no-op and must not be
+treated as the next milestone.** For the 18 `_COMP_GEN` economies the resolver
+hands back a USA-derived template, so a regenerated seed lands on the *same* IDs
+it already has. Regeneration cannot fix them; only a **real per-area export**
+can. That makes [7]'s deadline — not regeneration — the gating milestone.
+
+What regeneration *does* buy today: `01_AUS` (real template, absent from the
+baseline) and the `Region` label fix ([10]).
+
+**Do not use this baseline as a correctness reference.** It is the exact failure
+mode recorded in the traps section: both sides of the diff agree because both
+carry the same distortion.
 
 ---
 
