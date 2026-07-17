@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+import codebase.aggregated_demand_workflow as aggregated_demand
 import codebase.electricity_heat_interim_workflow as elec_heat
 import codebase.transfers_workflow as transfers
 import codebase.transformation_workflow as transformation
@@ -58,6 +59,44 @@ def test_no_entry_point_defaults_to_the_pinned_export(name, module):
 def test_pinned_constant_is_only_a_fallback(name, module):
     """The constant must survive as the aggregate/no-template fallback."""
     assert module.EXPORT_ID_LOOKUP_PATH.name == "full model export.xlsx"
+
+
+@pytest.mark.parametrize(
+    "func",
+    [
+        aggregated_demand.save_aggregated_demand_as_leap_workbook,
+        aggregated_demand.main,
+    ],
+    ids=["save_aggregated_demand", "main"],
+)
+def test_aggregated_demand_id_lookup_defaults_to_auto_not_the_pinned_export(func):
+    """These take `economy`, so the default must resolve it -- not pin 20_USA.
+
+    patch_baseline_seeds calls save_aggregated_demand_as_leap_workbook WITHOUT
+    id_lookup_path, so a pinned default wrote USA BranchIDs into a non-USA
+    economy's baseline seed.
+    """
+    default = inspect.signature(func).parameters["id_lookup_path"].default
+    assert default == aggregated_demand.ID_LOOKUP_AUTO
+    assert default != aggregated_demand.FULL_MODEL_EXPORT_PATH
+
+
+def test_aggregated_demand_auto_resolves_the_economys_own_template():
+    for economy in ("12_NZ", "01_AUS", "20_USA"):
+        resolved = aggregated_demand._resolve_export_id_lookup(economy)
+        assert economy in resolved.name, f"{economy} resolved to {resolved.name}"
+
+
+def test_aggregated_demand_auto_falls_back_for_aggregate_sentinels():
+    resolved = aggregated_demand._resolve_export_id_lookup("00_APEC")
+    assert resolved == aggregated_demand.FULL_MODEL_EXPORT_PATH
+
+
+def test_aggregated_demand_none_still_means_skip_the_id_merge():
+    """None and "auto" are different instructions. Conflating them would turn a
+    deliberate skip into a lookup, or a lookup into a silent skip."""
+    assert aggregated_demand.ID_LOOKUP_AUTO is not None
+    assert aggregated_demand.ID_LOOKUP_AUTO != aggregated_demand.FULL_MODEL_EXPORT_PATH
 
 
 def test_electricity_heat_resolves_each_economy_in_a_multi_economy_call(monkeypatch, tmp_path):

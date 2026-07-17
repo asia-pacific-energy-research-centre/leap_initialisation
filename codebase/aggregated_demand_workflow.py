@@ -121,6 +121,28 @@ def _resolve_export_region(economy: str) -> str:
     resolved = str(get_region_for_economy(economy) or "").strip()
     return resolved or DEFAULT_EXPORT_REGION
 
+
+# Sentinel for id_lookup_path meaning "resolve this economy's own template".
+# It cannot be None: None already means "attach no IDs at all", a distinct and
+# documented behaviour, and overloading it would silently turn a skip into a
+# lookup (or the reverse) at every existing call site.
+ID_LOOKUP_AUTO = "auto"
+
+
+def _resolve_export_id_lookup(economy: str) -> Path:
+    """Return the LEAP export template whose IDs apply to ``economy``.
+
+    Imported lazily: `leap_export_template_resolver` is a leaf utility, but this
+    module is imported from inside supply_leap_io's functions, so keep the import
+    graph unchanged.
+    """
+    from codebase.utilities import leap_export_template_resolver
+
+    return leap_export_template_resolver.resolve_leap_export_template_or_fallback(
+        economy,
+        fallback=FULL_MODEL_EXPORT_PATH,
+    )
+
 # Economy codes that mean "aggregate all member economies rather than filtering"
 _AGGREGATE_ECONOMY_SENTINELS: frozenset[str] = frozenset({
     "00_apec", "00apec", "all_economies", "all",
@@ -1300,7 +1322,7 @@ def save_aggregated_demand_as_leap_workbook(
     fuel_mappings_path: Path = FUEL_MAPPINGS_PATH,
     model_name: str = "",
     exclude_own_use_td_losses: bool = False,
-    id_lookup_path: Path | str | None = FULL_MODEL_EXPORT_PATH,
+    id_lookup_path: Path | str | None = ID_LOOKUP_AUTO,
     excluded_sectors: list[str] | None = None,
     use_sector_branches: bool = False,
     demand: pd.DataFrame | None = None,
@@ -1317,8 +1339,15 @@ def save_aggregated_demand_as_leap_workbook(
     from the demand sum so the aggregated total does not double-count amounts that the
     other_loss_own_use proxy handles separately in Demand\\Other loss and own use.
 
-    When id_lookup_path is provided, BranchID/VariableID/ScenarioID columns are merged
-    from that file (a LEAP full export with header=2). RegionID is always set to 1.
+    id_lookup_path takes three kinds of value:
+      "auto" (ID_LOOKUP_AUTO, the default) — resolve this economy's own LEAP
+          export template. Each economy is a separate area with its own
+          BranchIDs, so a pinned path stamps one area's IDs onto every economy:
+          they resolve, they import, and they land in the wrong branches.
+      a path — use it as-is (aggregate/legacy callers that genuinely span areas).
+      None — attach no IDs at all. Distinct from "auto"; do not conflate.
+    BranchID/VariableID/ScenarioID are merged from the resolved file (a LEAP
+    export with header=2). RegionID is always set to 1.
 
     region defaults to the economy's own LEAP region so that the Region column
     always agrees with the economy whose IDs id_lookup_path resolves. Pass an
@@ -1407,6 +1436,8 @@ def save_aggregated_demand_as_leap_workbook(
 
     export_df = pd.DataFrame(rows)
 
+    if id_lookup_path == ID_LOOKUP_AUTO:
+        id_lookup_path = _resolve_export_id_lookup(economy)
     id_lookup_resolved = Path(id_lookup_path) if id_lookup_path is not None else None
     if id_lookup_resolved is not None and id_lookup_resolved.exists():
         branch_to_id, variable_to_id, scenario_to_id = _build_id_lookups(id_lookup_resolved)
@@ -1727,7 +1758,7 @@ def main(
     output_dir: Path | None = None,
     excluded_sectors: list[str] | None = None,
     use_sector_branches: bool = USE_SECTOR_BRANCHES,
-    id_lookup_path: Path | str | None = FULL_MODEL_EXPORT_PATH,
+    id_lookup_path: Path | str | None = ID_LOOKUP_AUTO,
     apply_first_projection_year_bridge: bool = APPLY_FIRST_PROJECTION_YEAR_BRIDGE_DEFAULT,
 ) -> None:
     """
