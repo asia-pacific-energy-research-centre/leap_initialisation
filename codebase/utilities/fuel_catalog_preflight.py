@@ -680,6 +680,46 @@ def refresh_fuel_catalog_from_sources(
     }
 
 
+def _template_sources_changed(
+    *,
+    template_directory: Path | str,
+    full_model_export_path: Path | str,
+    manifest_path: Path | str,
+    cache_directory: Path | str,
+) -> bool:
+    """Return whether a template changed since the last catalog build."""
+    manifest_file = _resolve(manifest_path)
+    try:
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return True
+
+    cache_dir = _resolve(cache_directory)
+    current_paths = _template_source_paths(
+        template_directory=template_directory,
+        full_model_export_path=full_model_export_path,
+    )
+    current_keys = {str(path.resolve()).lower() for path in current_paths}
+    if set(manifest) != current_keys:
+        return True
+
+    for path in current_paths:
+        key = str(path.resolve()).lower()
+        record = manifest.get(key, {})
+        if not isinstance(record, dict):
+            return True
+        signature = _source_file_signature(path)
+        cache_path = record.get("cache_path")
+        if (
+            record.get("size") != signature["size"]
+            or record.get("modified_ns") != signature["modified_ns"]
+            or not cache_path
+            or not _resolve(str(cache_path)).exists()
+        ):
+            return True
+    return not cache_dir.exists()
+
+
 def ensure_fuel_catalog_current(
     *,
     catalog_path: Path | str = DEFAULT_FUEL_CATALOG_PATH,
@@ -690,6 +730,10 @@ def ensure_fuel_catalog_current(
     fail_on_refresh_error: bool = True,
     full_model_export_path: Path | str = DEFAULT_FULL_MODEL_EXPORT_PATH,
     full_model_sheet: str = DEFAULT_FULL_MODEL_EXPORT_SHEET,
+    template_directory: Path | str = DEFAULT_TEMPLATE_DIRECTORY,
+    source_cache_directory: Path | str = DEFAULT_FUEL_CATALOG_SOURCE_CACHE_DIRECTORY,
+    source_manifest_path: Path | str = DEFAULT_FUEL_CATALOG_MANIFEST_PATH,
+    fuel_registry_path: Path | str = DEFAULT_FUEL_REGISTRY_PATH,
     probe_output_path: Path | str = DEFAULT_FUEL_PROBE_PATH,
 ) -> dict[str, object]:
     """
@@ -697,11 +741,18 @@ def ensure_fuel_catalog_current(
     """
     catalog_resolved = _resolve(catalog_path)
     stale, age_days = _is_path_stale(catalog_resolved, max_age_days=max_age_days)
-    if not stale:
+    source_changed = _template_sources_changed(
+        template_directory=template_directory,
+        full_model_export_path=full_model_export_path,
+        manifest_path=source_manifest_path,
+        cache_directory=source_cache_directory,
+    )
+    if not stale and not source_changed:
         return {
             "catalog_path": str(catalog_resolved),
             "stale": False,
             "age_days": age_days,
+            "source_changed": False,
             "refreshed": False,
         }
 
@@ -709,7 +760,8 @@ def ensure_fuel_catalog_current(
     print(
         "[WARN] Fuel catalog is stale or missing"
         f"{reason}: {catalog_resolved} "
-        f"(age={f'{age_days:.1f} days' if age_days is not None else 'missing'}, threshold={max_age_days} days)."
+        f"(age={f'{age_days:.1f} days' if age_days is not None else 'missing'}, "
+        f"source_changed={source_changed}, threshold={max_age_days} days)."
     )
 
     if not auto_refresh:
@@ -732,10 +784,15 @@ def ensure_fuel_catalog_current(
             probe_output_path=probe_output_path,
             full_model_export_path=full_model_export_path,
             full_model_sheet=full_model_sheet,
+            template_directory=template_directory,
+            source_cache_directory=source_cache_directory,
+            source_manifest_path=source_manifest_path,
+            fuel_registry_path=fuel_registry_path,
             leap_app=leap_app,
         )
         refreshed["stale"] = True
         refreshed["age_days"] = age_days
+        refreshed["source_changed"] = source_changed
         refreshed["refreshed"] = True
         return refreshed
     except Exception:
