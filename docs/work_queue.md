@@ -325,6 +325,14 @@ unmatched. This is both a real full-model-source dependency and part of the
 documented area-migration lag; do not design a permanent economy-specific
 exception for it.
 
+**First priority completed 2026-07-17:** `other_loss_own_use_proxy_workflow`
+now resolves its export-key workbook from the requested economy's template.
+The USA full-model export remains an explicit fallback for aggregate or
+unresolved-template cases and an explicit override for tests/custom callers.
+The remaining full-model uses still need separate classification, especially
+multi-economy verification artifacts that cannot use one economy's IDs for all
+rows.
+
 **Verification recipe that worked** (reuse it): compare `_build_id_lookups`
 across every template — 20 economies must come back *identical* to the legacy
 export, `12_NZ` must differ (646 vs 714 branch paths, 134 of 634 shared paths
