@@ -33,6 +33,7 @@ from codebase.utilities.workflow_utils import _resolve
 from codebase.utilities import workflow_common
 from codebase.utilities import leap_export_template_resolver
 from codebase.utilities import fuel_catalog_preflight
+from codebase.utilities.leap_export_readiness import run_export_readiness
 from codebase.functions.leap_expressions import build_data_expression_from_row
 from codebase.functions.leap_excel_io import (
     add_leap_preamble,
@@ -1636,6 +1637,49 @@ def write_per_economy_combined_workbooks(
         sheet = read_leap_sheet(path, sheet_name="LEAP")
         return sheet.data, sheet.columns
 
+    def _run_combined_readiness(
+        *,
+        economy: str,
+        output_path: Path,
+        region: str,
+    ) -> None:
+        readiness_dir = out_dir / "supporting_files" / "export_readiness" / economy
+        result = run_export_readiness(
+            output_path,
+            producer="per_economy_combined_workbook",
+            economy=economy,
+            expected_region=region,
+            catalog_path=fuel_catalog_preflight.DEFAULT_FUEL_CATALOG_PATH,
+            output_dir=readiness_dir,
+        )
+        print(
+            f"[INFO] Export readiness for {economy}: "
+            f"blocking_failures={result.blocking_failures}; findings={len(result.findings)}"
+        )
+        if result.findings.empty:
+            blocking_findings = pd.DataFrame(
+                {"_synthetic_blocking_finding": range(result.blocking_failures)}
+            )
+        else:
+            blocking_findings = result.findings[
+                result.findings["status"].eq("error")
+                & result.findings["severity"].eq("blocking")
+            ]
+        # Baseline-seed validation already owns the configured policy for
+        # unresolved IDs. Preserve its warning downgrade, while keeping the
+        # independent readiness checks (Region, duplicates, catalog coverage,
+        # and legacy transfer paths) blocking.
+        if blocking_findings_are_warnings and "check_name" in blocking_findings.columns:
+            blocking_findings = blocking_findings[
+                blocking_findings["check_name"].ne("leap_ids")
+            ]
+        if not blocking_findings.empty:
+            raise BaselineSeedValidationError(
+                f"Combined export readiness failed for {economy}: "
+                f"{len(blocking_findings)} blocking finding(s). "
+                f"Diagnostics: {readiness_dir}"
+            )
+
     economy_list = workflow_common.normalize_economies(economies)
     run_stamp = datetime.now().strftime("%Y%m%d")
     written: list[Path] = []
@@ -2021,6 +2065,7 @@ def write_per_economy_combined_workbooks(
             with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
                 leap_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
                 viewing_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
+            _run_combined_readiness(economy=econ_token, output_path=out_path, region=get_region_for_economy(econ_token))
             print(f"[INFO] Wrote baseline seed for economy={econ_token} -> {out_path.name} (stamp={run_stamp})")
             written.append(out_path)
 
@@ -2049,6 +2094,7 @@ def write_per_economy_combined_workbooks(
             with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
                 leap_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
                 viewing_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
+            _run_combined_readiness(economy=econ_token, output_path=out_path, region=get_region_for_economy(econ_token))
             print(f"[INFO] Wrote combined workbook for economy={econ_token} -> {out_path.name} (stamp={run_stamp})")
             written.append(out_path)
 

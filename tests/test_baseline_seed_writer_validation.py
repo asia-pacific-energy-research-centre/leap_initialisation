@@ -167,6 +167,72 @@ def test_final_writer_collapses_exact_duplicates_and_populates_ids(
     assert data[["BranchID", "VariableID", "ScenarioID", "RegionID"]].iloc[0].tolist() == [101, 420, 2, 1]
 
 
+def test_final_writer_runs_combined_export_readiness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
+    _write_leap_workbook(source, [_row("Data(2023,1)")])
+    template = tmp_path / "full model export.xlsx"
+    _write_template(template)
+    seen: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io._load_reference_export_data",
+        lambda *_args, **_kwargs: pd.DataFrame(),
+    )
+
+    def fake_readiness(*args, **kwargs):
+        kwargs["workbook_path"] = args[0]
+        seen.append(kwargs)
+        return type("Readiness", (), {"blocking_failures": 0, "findings": pd.DataFrame()})()
+
+    monkeypatch.setattr("codebase.functions.supply_leap_io.run_export_readiness", fake_readiness)
+
+    written = write_per_economy_combined_workbooks(
+        economies=["20_USA"],
+        output_dir=tmp_path / "output",
+        id_lookup_path=template,
+        source_workbooks_by_workflow={"supply_workflow": [source]},
+        required_years_by_scenario={"Reference": [2023]},
+    )
+
+    assert len(written) == 1
+    assert len(seen) == 1
+    assert seen[0]["economy"] == "20_USA"
+    assert seen[0]["producer"] == "per_economy_combined_workbook"
+    assert seen[0]["expected_region"] == "United States"
+
+
+def test_final_writer_blocks_on_combined_readiness_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
+    _write_leap_workbook(source, [_row("Data(2023,1)")])
+    template = tmp_path / "full model export.xlsx"
+    _write_template(template)
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io._load_reference_export_data",
+        lambda *_args, **_kwargs: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io.run_export_readiness",
+        lambda *args, **kwargs: type(
+            "Readiness", (), {"blocking_failures": 1, "findings": pd.DataFrame()}
+        )(),
+    )
+
+    with pytest.raises(BaselineSeedValidationError, match="Combined export readiness failed"):
+        write_per_economy_combined_workbooks(
+            economies=["20_USA"],
+            output_dir=tmp_path / "output",
+            id_lookup_path=template,
+            source_workbooks_by_workflow={"supply_workflow": [source]},
+            required_years_by_scenario={"Reference": [2023]},
+        )
+
+
 @_XFAIL_WHILE_BLOCKING_DOWNGRADED
 def test_final_writer_writes_diagnostics_before_conflict_blocks(
     tmp_path: Path,
@@ -262,6 +328,12 @@ def test_final_writer_writes_grouped_missing_branch_issue_summary(
         lambda *_args, **_kwargs: pd.DataFrame(),
     )
     monkeypatch.setattr("codebase.utilities.workflow_common.THROW_ERROR_AFTER_RUN", True)
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io.run_export_readiness",
+        lambda *args, **kwargs: type(
+            "Readiness", (), {"blocking_failures": 0, "findings": pd.DataFrame()}
+        )(),
+    )
 
     write_per_economy_combined_workbooks(
         economies=["20_USA"],
