@@ -68,6 +68,27 @@ from codebase.functions import patch_baseline_seeds as patcher
 MODULE = "transformation"
 DEFAULT_ECONOMIES = ["20_USA", "01_AUS"]
 
+# The Verification Recipe's precondition is an economy "whose config for M has
+# not changed since the last full run". For transformation that is a hard
+# requirement, not a nicety: 8c32504 (2026-07-16) flipped the multi_output
+# default, which moves capacity, historical production, efficiency, output shares
+# and aux-fuel ratios by one exact ratio (USA coke ovens x1.16676). A seed built
+# before it disagrees with today's code *by design* -- work_queue [0] records
+# "where fresh and a 20260715 seed disagree on these sectors, the seed is out of
+# date -- fresh is right."
+#
+# This harness reads "before" straight off the seed on disk. Against a stale seed
+# the patch regenerates with current code, so that intended correction surfaces as
+# differences and would be reported as a patcher DEFECT -- blaming the patcher for
+# a modelling change already signed off. That is the same class of error as the
+# gate's original evidence: comparing two things built under different rules.
+# Refuse rather than mislead.
+#
+# Bump this when transformation output rules change again.
+TRANSFORMATION_RULES_CHANGED = "20260716"  # 8c32504
+
+_SEED_DATE_RE = re.compile(r"_(\d{8})$")
+
 # Key on Branch Path/Variable/Scenario, NOT Region: the patcher may legitimately
 # rewrite Region (it resolves per economy), and keying on it would report every
 # corrected row as a defect.
@@ -142,12 +163,44 @@ def _seed_path_for(economy: str) -> Path | None:
     return matches[-1] if matches else None
 
 
+def seed_is_too_old_to_compare(seed_path: Path) -> str | None:
+    """Return why this seed cannot answer the question, or None if it can.
+
+    A seed predating the current transformation rules disagrees with today's code
+    by design, so the diff would measure that intended change and not the patcher.
+    """
+    match = _SEED_DATE_RE.search(seed_path.stem)
+    if match is None:
+        return (
+            f"cannot read a date from {seed_path.name}; refusing rather than "
+            "assuming it was built with current transformation rules"
+        )
+    stamp = match.group(1)
+    if stamp < TRANSFORMATION_RULES_CHANGED:
+        return (
+            f"seed is stamped {stamp}, but transformation output rules changed in "
+            f"{TRANSFORMATION_RULES_CHANGED} (8c32504, the multi_output default). "
+            "A seed built before that disagrees with current code BY DESIGN -- "
+            "capacity, historical production, efficiency, output shares and "
+            "aux-fuel ratios all move by one exact ratio. Diffing it would report "
+            "that intended correction as a patcher defect. Regenerate this "
+            "economy's seed with a full run first, then re-run this harness."
+        )
+    return None
+
+
 def run_for_economy(economy: str) -> str:
     """Return 'PASS' | 'DEFECT' | 'BLOCKED' | 'SKIPPED'."""
     seed_path = _seed_path_for(economy)
     if seed_path is None:
         print(f"[{economy}] SKIPPED — no seed in {patcher.BASELINE_SEED_DIR}")
         return "SKIPPED"
+
+    stale_reason = seed_is_too_old_to_compare(seed_path)
+    if stale_reason is not None:
+        print(f"[{economy}] STALE-SEED — refusing to run, this cannot answer the question:")
+        print(f"    {stale_reason}")
+        return "STALE-SEED"
 
     cfg = patcher.MODULE_REGISTRY[MODULE]
     prefixes = cfg.resolve_strip_prefixes()
@@ -242,11 +295,18 @@ def main(economies: list[str] | None = None) -> None:
             "workbook-based via save_transformation_exports_with_split_targets (the "
             "transfers model) first, then drop auto_sector_keys. See work_queue [1]."
         )
+    elif any(v == "STALE-SEED" for v in results.values()):
+        print(
+            "\nSTALE-SEED -> inconclusive, and NOT evidence either way. The seed on "
+            "disk predates the current transformation rules, so a diff would measure "
+            "that intended change rather than the patcher. Regenerate the economy's "
+            "seed with a full run, then re-run this harness."
+        )
     elif any(v == "BLOCKED" for v in results.values()):
         print(
-            "\nBLOCKED -> inconclusive, and NOT evidence for the gate. A stale seed "
-            "that fails its own template's validation blocks the write before any "
-            "patch comparison happens. Regenerate that economy's seed first."
+            "\nBLOCKED -> inconclusive, and NOT evidence for the gate. A seed that "
+            "fails its own template's validation blocks the write before any patch "
+            "comparison happens. Regenerate that economy's seed first."
         )
     else:
         print("\nDEFECT -> the gate's premise holds for at least one economy. Keep it.")

@@ -10,10 +10,45 @@ from __future__ import annotations
 
 import pytest
 
+from pathlib import Path
+
 from codebase.scrapbook.transformation_ungate_equivalence_harness import (
+    TRANSFORMATION_RULES_CHANGED,
     _classify,
     _parse_expression,
+    seed_is_too_old_to_compare,
 )
+
+
+def test_refuses_a_seed_older_than_the_current_transformation_rules():
+    """A 20260715 seed predates 8c32504's multi_output default, so it disagrees
+    with current code BY DESIGN. Diffing it would report that intended
+    correction as a patcher defect -- the same class of error as the gate's
+    original evidence. Refuse instead."""
+    reason = seed_is_too_old_to_compare(Path("leap_import_baseline_seed_20_USA_20260715.xlsx"))
+    assert reason is not None
+    assert "20260715" in reason
+    assert TRANSFORMATION_RULES_CHANGED in reason
+
+
+def test_accepts_a_seed_built_with_current_rules():
+    assert seed_is_too_old_to_compare(
+        Path("leap_import_baseline_seed_20_USA_20260717.xlsx")
+    ) is None
+
+
+def test_accepts_a_seed_stamped_exactly_on_the_rules_change():
+    assert seed_is_too_old_to_compare(
+        Path(f"leap_import_baseline_seed_20_USA_{TRANSFORMATION_RULES_CHANGED}.xlsx")
+    ) is None
+
+
+def test_refuses_rather_than_assumes_when_the_date_is_unreadable():
+    """An undated seed must not be assumed current -- that assumption is exactly
+    how a stale comparison would slip through."""
+    reason = seed_is_too_old_to_compare(Path("leap_import_baseline_seed_20_USA.xlsx"))
+    assert reason is not None
+    assert "cannot read a date" in reason
 
 
 def test_parses_series_numerically_not_textually():
