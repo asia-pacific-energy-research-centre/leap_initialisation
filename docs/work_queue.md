@@ -287,9 +287,21 @@ IDs either way.
 
 Not all ~15 constants are equal. Audited by call site (not by definition):
 
+> **Method warning, learned the hard way.** The first pass of this audit grepped
+> the *constant name* (`EXPORT_ID_LOOKUP_PATH`) and so missed
+> `aggregated_demand_workflow`, which pins the same path under a different name
+> (`FULL_MODEL_EXPORT_PATH`) — and that one was live, writing USA IDs into
+> non-USA seeds via `patch_baseline_seeds`. **Grep the path string
+> (`full model export.xlsx`), not the constant**, then classify each hit by what
+> it reads the export *for*: IDs and metadata must be per economy; branch
+> existence may legitimately be shared-union ([11]); aggregate/legacy fallbacks
+> are deliberate. A name-based sweep gives false confidence in exactly the
+> direction this work keeps failing.
+
 | Constant | Verdict |
 | --- | --- |
-| `supply_leap_io` combined-workbook template | **WAS LIVE — fixed `e799029`.** `save_combined_supply_transformation_export` pinned USA while taking `economy_label`; `combined_st_12_NZ` had 126/126 discriminating paths on USA IDs, `combined_st_01_AUS` 125/125. Seeds unaffected. |
+| `supply_leap_io` combined-workbook template | **WAS LIVE — fixed `e799029`.** `save_combined_supply_transformation_export` pinned USA while taking `economy_label`; `combined_st_12_NZ` had 126/126 discriminating paths on USA IDs, `combined_st_01_AUS` 125/125. Seeds unaffected. Verified end-to-end by a 12_NZ run: the same 126 paths flipped 0→126 following NZ. |
+| `aggregated_demand_workflow:262` `FULL_MODEL_EXPORT_PATH` | **WAS LIVE — fixed `6714db0`. This audit originally missed it**: the sweep grepped `EXPORT_ID_LOOKUP_PATH`, and this module names its constant differently. `patch_baseline_seeds` calls `save_aggregated_demand_as_leap_workbook(economy=…)` with no `id_lookup_path`, so `run_patch("aggregated_demand", ["12_NZ"])` wrote NZ rows with USA BranchIDs into a seed. Now defaults to `ID_LOOKUP_AUTO`. Note `None` here means "attach no IDs" — a third, distinct value; do not conflate it with auto. |
 | `supply_reconciliation_config:312` `AGGREGATED_DEMAND_ID_LOOKUP_PATH` | **DEAD — zero references** anywhere including tests. Orphaned when `cdb813d` fixed the bypass. Delete it. |
 | `transformation_workflow`, `transfers_workflow`, `electricity_heat_interim_workflow` `EXPORT_ID_LOOKUP_PATH` | **WAS LIVE for standalone runs — routed `ee4e5d1`.** Nine entry points defaulted `id_lookup_path` to `20_USA`'s area; a standalone run for any other economy stamped USA BranchIDs onto its rows. Now `None` = resolve the workbook's economy; the constant remains the aggregate/no-template fallback only. The baseline-seed path was never affected (it passes no `id_lookup_path`, so the combine fills IDs). |
 | `electricity_heat_interim_workflow:161` `POWER_INTERIM_REFERENCE_WORKBOOK_PATH` | **Not an ID lookup — different class, deliberately left.** It backs `validate_power_interim_fuel_coverage`, a fuel-branch *existence* check. Per [11] fuel branches are shared-union by design, so pinning is defensible here — and Workpath B's catalog work may supersede it. **Workpath B call, not routing.** Do not "fix" it by analogy with the ID lookups. |
