@@ -188,15 +188,21 @@ un-routed path and every routed path still agree, because they resolve to USA's
 IDs either way.
 
 > **Deadline — ARRIVED (measured 2026-07-17).** `01_AUS` is now a **real**
-> template (`leap_export_template 01_AUS.xlsx`, no `_COMP_GEN` suffix): 664
-> branch paths, and **133 of 663** paths shared with USA carry a *different*
-> BranchID. Per the recipe below, "any other economy differing means a real
-> export landed" — it has. Real templates are now `01_AUS`, `12_NZ`, `20_USA`.
+> template (`leap_export_template 01_AUS.xlsx`, no `_COMP_GEN` suffix), and was
+> migrated to match `12_NZ`'s structure the same day: 645 branch paths, **133 of
+> 632** paths shared with USA carry a *different* BranchID. Per the recipe below,
+> "any other economy differing means a real export landed" — it has. Real
+> templates are now `01_AUS`, `12_NZ`, `20_USA`.
 > The system is now half-routed *in the dangerous direction* for `01_AUS`: the
 > routed paths use Australia's area while the ~15 un-routed constants below
 > still use USA's. `12_NZ` was tolerable only because its gaps are inert (see
 > [8]); **that argument does not transfer to `01_AUS`** — nobody has shown its
 > gaps are inert. Finish the rollout before trusting any `01_AUS` output.
+>
+> `01_AUS` and `12_NZ` now share 644 paths and differ on **143** BranchIDs —
+> structurally identical, own numbering. Two real templates that agree on shape
+> and disagree on IDs is precisely the configuration a pinned template silently
+> corrupts.
 
 **Verification recipe that worked** (reuse it): compare `_build_id_lookups`
 across every template — 20 economies must come back *identical* to the legacy

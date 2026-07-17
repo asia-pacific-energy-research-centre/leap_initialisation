@@ -102,28 +102,36 @@ being removed everywhere.
 
 #### In-flight area migrations (as of 2026-07-17)
 
-`12_NZ` is the reference/target state — it is ahead, not different. Unique branch
-paths per area:
+`12_NZ` is the reference/target state. `01_AUS` was migrated to match it on
+2026-07-17. Unique branch paths per area:
 
-| Branch family | `12_NZ` | `20_USA` | `01_AUS` | Target |
+| Branch family | `12_NZ` | `01_AUS` | `20_USA` | Target |
 | --- | --- | --- | --- | --- |
-| `Demand\Other loss and own use\Oil refineries` | 0 | 21 | 21 | **0 everywhere** |
-| `Demand\Other loss and own use\Non specified own uses` | 12 | 0 | 0 | **12 everywhere** |
-| `Transformation\Non specified transformation\Auxiliary Fuels` | 0 | 11 | 11 | **0 everywhere** |
+| `Demand\Other loss and own use\Oil refineries` | 0 | 0 | 21 | **0 everywhere** |
+| `Demand\Other loss and own use\Non specified own uses` | 12 | 12 | 0 | **12 everywhere** |
+| `Transformation\Non specified transformation\Auxiliary Fuels` | 0 | 0 | 11 | **0 everywhere** |
 | `Transformation\Oil Refining\...\Auxiliary Fuels` | 23 | 23 | 23 | 23 (already aligned) |
-| total branch paths | 646 | 714 | 665 | converging |
+| total branch paths | 646 | 645 | 714 | converging |
 
 1. **Refinery own use moves to the refining process's auxiliary fuels.**
    `Demand\Other loss and own use\Oil refineries` is being deleted from every
    area; refinery own use is carried by
    `Transformation\Oil Refining\Processes\Oil Refining\Auxiliary Fuels`, which
    already exists identically (23 paths) in every area — and is already what the
-   code writes. Done for `12_NZ`; pending everywhere else.
+   code writes. Done for `12_NZ` and `01_AUS`; pending everywhere else.
 2. **Non-specified own use becomes a Demand branch.**
    `Demand\Other loss and own use\Non specified own uses` is being introduced in
    every area, replacing
    `Transformation\Non specified transformation\Auxiliary Fuels` for that
-   purpose. Done for `12_NZ`; pending everywhere else.
+   purpose. Done for `12_NZ` and `01_AUS`; pending everywhere else.
+
+**What "identical apart from IDs" looks like in practice.** `01_AUS` and `12_NZ`
+are now migrated to the same structure: they share **644** branch paths and
+differ on **143** of their `BranchID`s. Same shape, own numbering — that is the
+target state, and it is exactly why an ID must never be borrowed across areas.
+The one remaining structural gap is
+`Transformation\Electricity interim\...\Feedstock Fuels\Ammonia`, present in
+`12_NZ` and absent from `01_AUS`.
 
 **Consequence — expected `-1` rows while a migration is in flight.** A seed built
 against an un-migrated area emits `BranchID=-1` for branches that area has not
