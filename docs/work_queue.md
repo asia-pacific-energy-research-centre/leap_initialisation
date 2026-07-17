@@ -24,7 +24,7 @@ of its own work before handing files across.
 
 ### Workpath A — per-economy export-template routing
 
-**Current owner:** other agent. **Status:** active.
+**Current owner:** routing agent. **Status:** active and paused at the shared-helper handoff.
 
 Primary files:
 
@@ -39,7 +39,7 @@ until the routing work is handed back and verified.
 
 ### Workpath B — catalog and LEAP export readiness
 
-**Current owner:** this workpath. **Status:** catalog and transfer preflight
+**Current owner:** catalog/readiness agent. **Status:** catalog and transfer preflight
 Phase 1 complete; readiness framework is next.
 
 Completed:
@@ -62,6 +62,20 @@ be split by file ownership before implementation.
 - When a shared helper must change, pause and coordinate rather than creating a
   second resolver or key implementation.
 - Verification runs must use a clean tree or an isolated worktree.
+
+### Shared-helper handoff — required before Workpath A continues
+
+Workpath A needs aggregate-aware template resolution for `00_APEC` and for
+economies without a dedicated template. The current wrapper is
+`_leap_export_template_for_economy` in `codebase/functions/supply_leap_io.py`,
+which is held by Workpath B, while the resolver primitives live in
+`codebase/utilities/leap_export_template_resolver.py`.
+
+The agreed solution is to promote the aggregate-aware wrapper into public API in
+`leap_export_template_resolver.py`, leaving a thin compatibility alias in
+`supply_leap_io.py`. This is a coordinated two-workpath change. Do not import a
+private function across the workpaths or duplicate the wrapper in the three
+standalone workflow modules.
 
 ## The blocker structure
 
@@ -283,9 +297,10 @@ a separate set of file-scoped tasks after the standalone routing handoff:
 1. Inventory each remaining caller and classify it as per-economy, shared-union,
    aggregate fallback, or legacy-only.
 2. Route real-economy ID/metadata/branch-existence checks through the resolved
-   economy template.
-3. Route reset and zero-fill scope through the appropriate economy template or
-   shared catalog.
+   economy template **after excluding Workpath A's three standalone modules**;
+   their `EXPORT_ID_LOOKUP_PATH` routing is already tracked above.
+3. Review remaining zero-fill/catalog scope sources. Reset-scope routing is
+   already complete in [9] (`23aac52`) and must not be reimplemented here.
 4. Retain `data/full model export.xlsx` only where an explicit aggregate or
    legacy fallback is intended, and document each retained use.
 5. Verify NZ first, then test the shared resolver contract for other economies;
@@ -295,7 +310,9 @@ a separate set of file-scoped tasks after the standalone routing handoff:
 The NZ run exposed the current priority case: `Demand\\Other loss and own use\\Non
 specified own uses\\Electricity` exists in the NZ template but not in the USA
 `full model export.xlsx`, so the later verification step still reports it as
-unmatched.
+unmatched. This is both a real full-model-source dependency and part of the
+documented area-migration lag; do not design a permanent economy-specific
+exception for it.
 
 **Verification recipe that worked** (reuse it): compare `_build_id_lookups`
 across every template — 20 economies must come back *identical* to the legacy
