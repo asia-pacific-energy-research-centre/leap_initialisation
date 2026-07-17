@@ -290,6 +290,50 @@ diagnostics, and no invalid final workbook is written or substituted.
   and re-fails the same 3 tests; still pending a substantive review of what
   the current blocking findings actually are before deciding whether to
   leave `True` long-term.
+- 2026-07-17: **Substantive review done — the evidence the 2026-07-10 decision
+  was waiting for.** Measured by validating the fresh, correctly-routed `12_NZ`
+  seed (`SEED_12_NZ_TGT_REF_CA`, 0 ID disagreements vs its template) with the
+  flag **off**. 388 rows would block, and they are **two unrelated things**:
+
+  | Rule | Rows | What it is | Significant? |
+  | --- | --- | --- | --- |
+  | SEED-003 | 156 | missing IDs | **No** |
+  | SEED-011 | 156 | branch absent from template | **No** |
+  | SEED-008 | 76 | share group sums to 0, not 100 | **Yes** |
+
+  SEED-003 and SEED-011 are the **same 32 paths** counted twice (verified
+  identical): the zero-valued in-flight area-migration rows already signed off in
+  `work_queue`, which resolve when the other areas migrate. For these the
+  2026-07-10 judgement was **correct** — they should not hold up a run.
+
+  SEED-008 is **not** that. All 76 rows are one branch,
+  `Transformation\Hydrogen transformation\Processes\Electrolysers\Feedstock Fuels`
+  (Reference and Target), with `evidence: sum=0` — the electrolyser feedstock
+  share group sums to zero while capacity is explicitly nonzero. A plant with
+  capacity and no feedstock: the same family as SEED-013, and a genuine modelling
+  gap. **For this the judgement was wrong** — the flag is masking it.
+
+  So the deviation is ~80% justified and ~20% harmful, and the harmful 20% is
+  narrow and nameable. **A global flag is the wrong instrument for that split.**
+
+  **Recommended path out** (restores this rule in full):
+  1. Declare narrow, reviewed exceptions for the 32 migration-lag paths. The
+     mechanism already exists (`validation_exceptions` →
+     `prepare_seed_rows_for_write`; matched on explicit fields with a required
+     `reason`) and is exactly what it is for.
+  2. Fix or explicitly except the electrolyser share group — decide whether NZ
+     should have electrolyser capacity at all, or whether the feedstock mix is
+     missing.
+  3. Revert the flag to `False`. The 3 `test_baseline_seed_writer_validation.py`
+     tests go green and their `xfail` markers are deleted (not the tests).
+
+  **Observability defect found while doing this, worth fixing regardless:** the
+  consolidated `*_rule_findings.csv` **cannot** answer this question, because the
+  flag clears the `blocking` column before the CSV is written — every row reads
+  `blocking=False`. The artifact meant to inform the review is stripped of the
+  one field the review needs, *by the thing under review*. That is very likely
+  why this sat open for a week. The CSV should record what **would** have blocked
+  and note that the downgrade was applied.
 
 ## INIT-006: Baseline-seed scenario windows and refining capacity policy
 
