@@ -158,6 +158,50 @@ def write_export_sheet(path, sheet_name, header_rows, columns, data):
         output.to_excel(writer, sheet_name=sheet_name, index=False, header=False)
 
 
+def _report_unmatched_ids(merged, reference, reference_name: str, norm_text) -> None:
+    """Explain unmatched rows, singling out an export/template area disagreement.
+
+    Matching deliberately requires Region. If a row would have matched with
+    Region ignored, the export and its reference are for *different LEAP areas* —
+    borrowing the reference's IDs there would import the data into the wrong
+    area's branches, silently and plausibly. Say so instead; the rows keep -1.
+    """
+    unmatched = merged[merged["BranchID"].isna()]
+    if unmatched.empty:
+        return
+
+    region_blind = {
+        (norm_text(r["Branch Path"]), norm_text(r["Variable"]), norm_text(r["Scenario"]))
+        for _, r in reference.iterrows()
+    }
+    would_match_but_for_region = unmatched.apply(
+        lambda r: (
+            r["__k_Branch Path"], r["__k_Variable"], r["__k_Scenario"],
+        ) in region_blind,
+        axis=1,
+    )
+    n_region = int(would_match_but_for_region.sum())
+    n_absent = int(len(unmatched)) - n_region
+
+    if n_absent:
+        print(
+            f"[WARN] attach_export_ids: {n_absent} row(s) have no branch in "
+            f"{reference_name}; keeping BranchID=-1. Expected while an area "
+            f"migration is in flight — a *nonzero* -1 row is actionable."
+        )
+    if n_region:
+        export_regions = sorted({str(x) for x in unmatched.loc[would_match_but_for_region, "Region"]})
+        ref_regions = sorted({str(x) for x in reference["Region"].dropna().unique()})
+        print(
+            f"[WARN] attach_export_ids: {n_region} row(s) match {reference_name} on "
+            f"branch/variable/scenario but NOT on Region: export has "
+            f"{export_regions}, reference has {ref_regions}. These are different "
+            f"LEAP areas. Keeping BranchID=-1 rather than borrowing the "
+            f"reference's IDs, which would import into the wrong area. Fix the "
+            f"region routing or pass the matching economy's template."
+        )
+
+
 def attach_export_ids(
     export_df: pd.DataFrame,
     reference_export_path: Path | str | None,
@@ -168,6 +212,12 @@ def attach_export_ids(
 
     Rows that are not found in the reference workbook are kept and receive -1
     IDs. This mirrors the consolidated reconciliation output behavior.
+
+    Matching requires Region and Scenario to agree, and never falls back to a
+    looser key. Each economy is its own LEAP area with its own IDs, so a row
+    that matches on branch/variable but disagrees on Region belongs to a
+    *different area* — taking the reference's IDs there resolves and imports
+    into the wrong branch. -1 is the honest answer; see `_report_unmatched_ids`.
     """
     id_cols = ["BranchID", "VariableID", "ScenarioID", "RegionID"]
     key_cols = ["Branch Path", "Variable", "Scenario", "Region"]
@@ -227,76 +277,7 @@ def attach_export_ids(
     )
 
     if merged["BranchID"].isna().any():
-        fallback_source = reference[required_cols].copy()
-        for col in ["Branch Path", "Variable", "Scenario"]:
-            fallback_source[f"__k_{col}"] = fallback_source[col].map(_norm_text)
-        fallback_source = fallback_source.drop_duplicates(
-            subset=["__k_Branch Path", "__k_Variable", "__k_Scenario"],
-            keep="first",
-        )
-        fallback_map = (
-            fallback_source
-            .set_index(["__k_Branch Path", "__k_Variable", "__k_Scenario"])[id_cols]
-            .apply(lambda row: tuple(row.values.tolist()), axis=1)
-            .to_dict()
-        )
-        fallback_mask = merged["BranchID"].isna()
-        if fallback_mask.any():
-            fallback_ids = merged.loc[
-                fallback_mask,
-                ["__k_Branch Path", "__k_Variable", "__k_Scenario"],
-            ].apply(
-                lambda row: fallback_map.get(
-                    (
-                        row["__k_Branch Path"],
-                        row["__k_Variable"],
-                        row["__k_Scenario"],
-                    ),
-                    (pd.NA, pd.NA, pd.NA, pd.NA),
-                ),
-                axis=1,
-            )
-            fallback_values = pd.DataFrame(
-                fallback_ids.tolist(),
-                columns=id_cols,
-                index=merged.index[fallback_mask],
-            )
-            for col in id_cols:
-                merged.loc[fallback_mask, col] = fallback_values[col].values
-
-    if merged["BranchID"].isna().any():
-        fallback_source = reference[required_cols].copy()
-        for col in ["Branch Path", "Variable"]:
-            fallback_source[f"__k_{col}"] = fallback_source[col].map(_norm_text)
-        fallback_source = fallback_source.drop_duplicates(
-            subset=["__k_Branch Path", "__k_Variable"],
-            keep="first",
-        )
-        fallback_map = (
-            fallback_source
-            .set_index(["__k_Branch Path", "__k_Variable"])[id_cols]
-            .apply(lambda row: tuple(row.values.tolist()), axis=1)
-            .to_dict()
-        )
-        fallback_mask = merged["BranchID"].isna()
-        if fallback_mask.any():
-            fallback_ids = merged.loc[
-                fallback_mask,
-                ["__k_Branch Path", "__k_Variable"],
-            ].apply(
-                lambda row: fallback_map.get(
-                    (row["__k_Branch Path"], row["__k_Variable"]),
-                    (pd.NA, pd.NA, pd.NA, pd.NA),
-                ),
-                axis=1,
-            )
-            fallback_values = pd.DataFrame(
-                fallback_ids.tolist(),
-                columns=id_cols,
-                index=merged.index[fallback_mask],
-            )
-            for col in id_cols:
-                merged.loc[fallback_mask, col] = fallback_values[col].values
+        _report_unmatched_ids(merged, reference, path.name, _norm_text)
 
     for col in id_cols:
         merged[col] = pd.to_numeric(merged[col], errors="coerce").fillna(-1).astype(int)
