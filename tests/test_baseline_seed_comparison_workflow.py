@@ -6,6 +6,8 @@ import pandas as pd
 import pytest
 
 from codebase.baseline_seed_comparison_workflow import (
+    DEFAULT_TEMPLATE_PATH,
+    _resolve_validation_template,
     build_share_sum_checks,
     compare_seed_tables,
     read_seed_workbook,
@@ -19,6 +21,36 @@ from codebase.functions.baseline_seed_validation import (
 )
 from codebase.functions.patch_baseline_seeds import MODULE_REGISTRY
 from codebase.functions import patch_baseline_seeds
+
+
+def test_default_validation_template_resolves_for_requested_economy(monkeypatch, tmp_path):
+    resolved = tmp_path / "12_NZ.xlsx"
+    calls = []
+
+    def fake_resolve(economy, *, fallback):
+        calls.append((economy, fallback))
+        return resolved
+
+    monkeypatch.setattr(
+        "codebase.baseline_seed_comparison_workflow.leap_export_template_resolver.resolve_leap_export_template_or_fallback",
+        fake_resolve,
+    )
+
+    assert _resolve_validation_template("12_NZ", None) == resolved
+    assert calls == [("12_NZ", DEFAULT_TEMPLATE_PATH)]
+
+
+def test_explicit_validation_template_bypasses_economy_resolution(monkeypatch, tmp_path):
+    def fail_resolve(*args, **kwargs):
+        raise AssertionError("explicit validation templates must not be resolved")
+
+    monkeypatch.setattr(
+        "codebase.baseline_seed_comparison_workflow.leap_export_template_resolver.resolve_leap_export_template_or_fallback",
+        fail_resolve,
+    )
+    explicit = tmp_path / "fixture.xlsx"
+
+    assert _resolve_validation_template("12_NZ", explicit) == explicit
 
 
 def _row(branch: str, variable: str, expression: object, *, branch_id: int = 1) -> dict[str, object]:

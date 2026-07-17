@@ -23,6 +23,7 @@ from codebase.functions.baseline_seed_validation import (
     resolve_logical_duplicates,
     validate_seed_rows,
 )
+from codebase.utilities import leap_export_template_resolver
 
 
 # --- Stable configuration ---
@@ -47,6 +48,7 @@ DIFFERENCE_CLASSIFICATIONS = {
 }
 SEED_FILE_PATTERN = "leap_import_baseline_seed_*.xlsx"
 ECONOMY_PATTERN = re.compile(r"leap_import_baseline_seed_(\d{2}_[A-Za-z]+)_")
+DEFAULT_TEMPLATE_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,19 @@ def _text(value: object) -> str:
     if value is None or pd.isna(value):
         return ""
     return str(value).strip()
+
+
+def _resolve_validation_template(
+    economy: str,
+    template_path: str | Path | None,
+) -> Path:
+    """Use an economy template unless the caller explicitly pins one."""
+    if template_path is not None:
+        return _resolve(template_path)
+    return leap_export_template_resolver.resolve_leap_export_template_or_fallback(
+        economy,
+        fallback=DEFAULT_TEMPLATE_PATH,
+    )
 
 
 def _economy_from_filename(path: Path) -> str:
@@ -612,7 +627,7 @@ def run_baseline_seed_comparison(
     share_tolerance: float = 1e-6,
     required_years: Iterable[int] | None = None,
     required_scenarios: Iterable[str] | None = None,
-    template_path: str | Path | None = REPO_ROOT / "data" / "full model export.xlsx",
+    template_path: str | Path | None = None,
     validate_reference: bool = False,
     validation_exceptions: Iterable[dict[str, object]] | None = None,
 ) -> ComparisonOutputs:
@@ -621,7 +636,7 @@ def run_baseline_seed_comparison(
     candidate_files = discover_seed_files(candidate_dir)
     output_path = _resolve(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    resolved_template_path = _resolve(template_path) if template_path is not None else None
+    explicit_template_path = _resolve(template_path) if template_path is not None else None
 
     inventory_rows: list[dict[str, object]] = []
     summary_rows: list[dict[str, object]] = []
@@ -643,6 +658,11 @@ def run_baseline_seed_comparison(
         comparison_economies = available_economies
 
     for economy in sorted(comparison_economies):
+        resolved_template_path = (
+            explicit_template_path
+            if explicit_template_path is not None
+            else _resolve_validation_template(economy, None)
+        )
         reference_file = reference_files.get(economy)
         candidate_file = candidate_files.get(economy)
         inventory_status = "paired"
