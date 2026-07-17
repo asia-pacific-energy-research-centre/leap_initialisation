@@ -83,7 +83,7 @@ FUEL_CATALOG_PATH = (
     INTEGRATED_LEAP_EXPORTS_ROOT
     / "supporting_files"
     / "checks"
-    / "transformation_supply_fuel_branch_catalog.csv"
+    / "leap_fuel_branch_catalog.csv"
 )
 FUEL_CATALOG_COVERAGE_CSV = DEFAULT_OUTPUT_DIR / "supporting_files" / "checks" / "template_fuel_catalog_coverage.csv"
 FUEL_CATALOG_COVERAGE_FAIL_ON_MISSING = False

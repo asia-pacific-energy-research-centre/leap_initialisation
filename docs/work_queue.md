@@ -340,6 +340,23 @@ Open implementation check: confirm that the catalog-building path actually
 constructs the intended union rather than treating `data/full model export.xlsx`
 (the USA export) as the complete source. Do not make the catalog economy-specific.
 
+### Catalog filename transition
+
+The canonical output is now `leap_fuel_branch_catalog.csv`. For compatibility,
+the old `transformation_supply_fuel_branch_catalog.csv` is written as a second
+copy and remains readable as a fallback. Remove the legacy copy only after:
+
+1. repository code and archived workflows read the canonical filename;
+2. downstream notebooks, scheduled jobs, and external review scripts have been
+   checked for the old filename; and
+3. at least one complete workflow run has produced and consumed the canonical
+   file successfully.
+
+At that point, stop writing the compatibility copy, update the output manifests,
+and delete the old file from generated output directories. Do not remove it
+merely because the new file exists; the old name may still be used by external
+review tooling.
+
 ## [12] Baseline-seed trustworthiness — audited 2026-07-17, regeneration is NOT the answer
 
 Audit of `SEED_21ECON_0E555F_TGT_REF_CA` against each economy's *resolved*

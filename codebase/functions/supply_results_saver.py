@@ -33,7 +33,10 @@ from codebase.supply_reconciliation_config import (
 )
 from codebase.utilities.workflow_utils import _resolve
 from codebase.utilities import workflow_common
-from codebase.utilities.fuel_catalog_preflight import build_incremental_template_catalog
+from codebase.utilities.fuel_catalog_preflight import (
+    LEGACY_FUEL_CATALOG_PATH,
+    build_incremental_template_catalog,
+)
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP_EXPORTS_ROOT
 from codebase.utilities.master_config import config_table_exists, read_config_table
 from codebase.configuration import workflow_config as workflow_cfg
@@ -1013,17 +1016,26 @@ def _build_transformation_supply_fuel_catalog(
     supply_export_paths: Iterable[Path],
     output_dir: Path | str = RESULTS_CHECKS_DIR,
 ) -> Path:
-    """Build and save a CSV catalog of transformation/supply fuels by branch root."""
+    """Build and save the canonical LEAP fuel-branch catalog.
+
+    The legacy filename is written beside the canonical file until all external
+    readers have migrated.
+    """
     output_path = _resolve(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    catalog_path = output_path / "transformation_supply_fuel_branch_catalog.csv"
+    catalog_path = output_path / "leap_fuel_branch_catalog.csv"
+    legacy_catalog_path = output_path / Path(LEGACY_FUEL_CATALOG_PATH).name
     catalog_df = _build_transformation_supply_fuel_catalog_df(
         transformation_export_paths=transformation_export_paths,
         supply_export_paths=supply_export_paths,
         include_print_summary=True,
     )
     catalog_df.to_csv(catalog_path, index=False)
-    print(f"[INFO] Wrote transformation/supply fuel catalog to {catalog_path}")
+    if legacy_catalog_path != catalog_path:
+        catalog_df.to_csv(legacy_catalog_path, index=False)
+    print(f"[INFO] Wrote LEAP fuel-branch catalog to {catalog_path}")
+    if legacy_catalog_path != catalog_path:
+        print(f"[INFO] Wrote legacy compatibility copy to {legacy_catalog_path}")
     return catalog_path
 
 

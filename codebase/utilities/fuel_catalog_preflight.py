@@ -19,6 +19,12 @@ DEFAULT_FUEL_CATALOG_PATH = (
     INTEGRATED_LEAP_EXPORTS_ROOT
     / "supporting_files"
     / "checks"
+    / "leap_fuel_branch_catalog.csv"
+)
+LEGACY_FUEL_CATALOG_PATH = (
+    INTEGRATED_LEAP_EXPORTS_ROOT
+    / "supporting_files"
+    / "checks"
     / "transformation_supply_fuel_branch_catalog.csv"
 )
 DEFAULT_FUEL_PROBE_PATH = (
@@ -1055,6 +1061,10 @@ def load_fuel_catalog(
 ) -> pd.DataFrame:
     """Load and normalize the shared fuel catalog."""
     path = _resolve(catalog_path)
+    if not path.exists() and path == _resolve(DEFAULT_FUEL_CATALOG_PATH):
+        legacy_path = _resolve(LEGACY_FUEL_CATALOG_PATH)
+        if legacy_path.exists():
+            path = legacy_path
     if path.exists():
         df = pd.read_csv(path)
     elif allow_full_model_fallback:
