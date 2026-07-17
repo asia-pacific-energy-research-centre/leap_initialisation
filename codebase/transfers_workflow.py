@@ -49,6 +49,7 @@ from codebase.configuration.config import (
     BRANCH_DEMAND_TECHNOLOGY,
 )
 from codebase.utilities import workflow_common
+from codebase.utilities import leap_export_template_resolver
 from codebase.functions.transfers_utils import (
     _sum_series,
     _flow_has_nonzero,
@@ -89,6 +90,12 @@ TRANSFER_SUBFLOWS = [
 # If True, filter subtotal rows immediately before transfer calculations.
 DROP_SUBTOTALS_FIRST = True
 DEFAULT_SCENARIOS = list(workflow_cfg.TRANSFERS_DEFAULT_SCENARIOS)
+# FALLBACK ONLY — not the ID lookup. The workbook's economy resolves its own LEAP
+# export template (each economy is a separate area with its own BranchIDs); this
+# legacy single export is used only for aggregate sentinels and economies with no
+# template yet. Do not pass it as id_lookup_path to "be explicit": that is the
+# `073c489` bypass, which made a routing fix a no-op in production for a day
+# while its tests passed, because they pinned the template too.
 EXPORT_ID_LOOKUP_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 
 # Category templates that help organize transfers when per-economy mappings are missing.
@@ -818,7 +825,7 @@ def save_transfer_export(
     scenarios: list[str] | None = None,
     output_dir: str | None = None,
     filename_template: str | None = None,
-    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
+    id_lookup_path: Path | str | None = None,
 ) -> str | None:
     """Save a LEAP export workbook for transfer process records."""
     if not process_records:
@@ -844,7 +851,16 @@ def save_transfer_export(
         filename,
         core.EXPORT_MODEL_NAME,
         scenario_list,
-        id_lookup_path=id_lookup_path,
+        # None means "resolve this workbook's own economy" — same `economy` the
+        # filename is built from, so the IDs and the name cannot disagree.
+        id_lookup_path=(
+            id_lookup_path
+            if id_lookup_path is not None
+            else leap_export_template_resolver.resolve_leap_export_template_or_fallback(
+                economy,
+                fallback=EXPORT_ID_LOOKUP_PATH,
+            )
+        ),
     )
 
 def format_export_filename(
@@ -873,7 +889,7 @@ def assemble_transfer_workbook(
     use_output_targets: bool = False,
     feedstock_method: str | None = None,
     aggregate_economy_label: str | None = None,
-    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
+    id_lookup_path: Path | str | None = None,
     build_export: bool = core.BUILD_LEAP_EXPORT,
     full_branch_catalog_df: pd.DataFrame | None = None,
     in_scope_sector_titles: set[str] | None = None,
@@ -963,7 +979,16 @@ def assemble_transfer_workbook(
             export_filename,
             core.EXPORT_MODEL_NAME,
             scenario_list,
-            id_lookup_path=id_lookup_path,
+            # None means "resolve this workbook's own economy" (economy_label,
+            # the same value the filename uses).
+            id_lookup_path=(
+                id_lookup_path
+                if id_lookup_path is not None
+                else leap_export_template_resolver.resolve_leap_export_template_or_fallback(
+                    economy_label,
+                    fallback=EXPORT_ID_LOOKUP_PATH,
+                )
+            ),
             full_branch_catalog_df=full_branch_catalog_df,
             in_scope_sector_titles=in_scope_sector_titles,
         )
@@ -1068,7 +1093,7 @@ def run_transfer_export_and_import(
     create_branches: bool = True,
     fill_branches: bool = True,
     aggregate_economy_label: str | None = None,
-    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
+    id_lookup_path: Path | str | None = None,
     feedstock_method: str | None = None,
     **export_kwargs,
 ) -> list[Path]:
@@ -1173,7 +1198,7 @@ def run_transfer_pipeline(
     create_branches: bool = True,
     fill_branches: bool = True,
     aggregate_economy_label: str | None = None,
-    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
+    id_lookup_path: Path | str | None = None,
     **export_kwargs,
 ) -> list[Path]:
     return run_transfer_export_and_import(

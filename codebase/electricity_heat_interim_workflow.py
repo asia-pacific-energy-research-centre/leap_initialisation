@@ -60,6 +60,7 @@ from codebase.configuration.config import (
     BRANCH_DEMAND_TECHNOLOGY,
 )
 from codebase.utilities import workflow_common
+from codebase.utilities import leap_export_template_resolver
 from codebase.mappings.canonical_loaders import (
     build_code_to_display_name,
     load_canonical_sheet,
@@ -76,6 +77,12 @@ EXPORT_FILENAME_PREFIX = "electricity_heat_interim"
 EXPORT_FILENAME_TEMPLATE = "electricity_heat_interim_{economy}_{scenario}.xlsx"
 EXPORT_FILENAME_FALLBACK = "electricity_heat_interim_export.xlsx"
 DEFAULT_SCENARIOS = list(workflow_cfg.TRANSFORMATION_WORKFLOW_DEFAULT_SCENARIOS)
+# FALLBACK ONLY — not the ID lookup. Each economy resolves its own LEAP export
+# template (each economy is a separate area with its own BranchIDs); this legacy
+# single export is used only for aggregate sentinels and economies with no
+# template yet. Do not pass it as id_lookup_path to "be explicit": that is the
+# `073c489` bypass, which made a routing fix a no-op in production for a day
+# while its tests passed, because they pinned the template too.
 EXPORT_ID_LOOKUP_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 
 # ---------------------------------------------------------------------------
@@ -1114,7 +1121,7 @@ def assemble_electricity_heat_interim_workbook(
     economies: Iterable[str] | None = None,
     scenarios: Sequence[str] | None = None,
     export_output_dir: Path | str | None = None,
-    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
+    id_lookup_path: Path | str | None = None,
 ) -> list[Path]:
     """Build rows for all three interim modules, write one LEAP workbook per economy."""
     economy_list = list(economies or core.ECONOMIES_TO_ANALYZE)
@@ -1151,7 +1158,17 @@ def assemble_electricity_heat_interim_workbook(
             export_filename,
             core.EXPORT_MODEL_NAME,
             scenario_list,
-            id_lookup_path=id_lookup_path,
+            # None means "resolve this economy's own template". This writes one
+            # workbook per economy, so resolving inside the loop is what keeps a
+            # multi-economy call from stamping the first economy's IDs on all.
+            id_lookup_path=(
+                id_lookup_path
+                if id_lookup_path is not None
+                else leap_export_template_resolver.resolve_leap_export_template_or_fallback(
+                    economy,
+                    fallback=EXPORT_ID_LOOKUP_PATH,
+                )
+            ),
             full_branch_catalog_df=branch_catalog,
             in_scope_sector_titles=in_scope,
         )
@@ -1215,7 +1232,7 @@ def run_electricity_heat_interim_export_and_import(
     region: str | None = None,
     create_branches: bool = True,
     fill_branches: bool = True,
-    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
+    id_lookup_path: Path | str | None = None,
     **export_kwargs,
 ) -> list[Path]:
     """Run exports and optionally push the interim workbook into LEAP."""

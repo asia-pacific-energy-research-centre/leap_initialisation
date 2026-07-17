@@ -27,6 +27,7 @@ except Exception as exc:
 
 from codebase.functions import transformation_analysis_utils as core
 from codebase.configuration import workflow_config as workflow_cfg
+from codebase.utilities import leap_export_template_resolver
 from codebase.functions import leap_api, leap_exports
 from codebase.functions.conservation_policy import build_with_conservation_policy
 from codebase.functions.analysis_input_write_dispatcher import (
@@ -44,6 +45,12 @@ LEAP_API_AVAILABLE = leap_api.is_available()
 SHEET_NAME = workflow_cfg.TRANSFORMATION_WORKFLOW_SHEET_NAME
 EXPORT_FILENAME_PREFIX = workflow_cfg.TRANSFORMATION_WORKFLOW_EXPORT_FILENAME_PREFIX
 DEFAULT_SCENARIOS = list(workflow_cfg.TRANSFORMATION_WORKFLOW_DEFAULT_SCENARIOS)
+# FALLBACK ONLY — not the ID lookup. The workbook's economy resolves its own LEAP
+# export template (each economy is a separate area with its own BranchIDs); this
+# legacy single export is used only for aggregate sentinels and economies with no
+# template yet. Do not pass it as id_lookup_path to "be explicit": that is the
+# `073c489` bypass, which made a routing fix a no-op in production for a day
+# while its tests passed, because they pinned the template too.
 EXPORT_ID_LOOKUP_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 # Projection allocation behavior is configured in
 # `codebase/transformation_analysis_utils.py`:
@@ -419,7 +426,7 @@ def assemble_transformation_workbook(
     scenarios: Sequence[str] | None = None,
     export_output_dir: Path | str | None = None,
     filename_template: str | None = None,
-    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
+    id_lookup_path: Path | str | None = None,
     feedstock_method: str | None = None,
     aggregate_economy_label: str | None = None,
     build_export: bool = core.BUILD_LEAP_EXPORT,
@@ -473,7 +480,17 @@ def assemble_transformation_workbook(
             export_filename,
             core.EXPORT_MODEL_NAME,
             scenario_list,
-            id_lookup_path=id_lookup_path,
+            # None means "resolve this workbook's own economy". economy_label is
+            # the workbook's primary economy; a workbook spanning economies would
+            # span LEAP regions, which save_transformation_export already refuses.
+            id_lookup_path=(
+                id_lookup_path
+                if id_lookup_path is not None
+                else leap_export_template_resolver.resolve_leap_export_template_or_fallback(
+                    economy_label,
+                    fallback=EXPORT_ID_LOOKUP_PATH,
+                )
+            ),
             in_scope_sector_titles=core.get_analyzed_sector_titles(),
         )
         if export_path:
@@ -500,7 +517,7 @@ def run_transformation_export_and_import(
     create_branches: bool = True,
     fill_branches: bool = True,
     aggregate_economy_label: str | None = None,
-    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
+    id_lookup_path: Path | str | None = None,
     feedstock_method: str | None = None,
     **export_kwargs,
 ) -> list[Path]:
@@ -637,7 +654,7 @@ def run_transformation_pipeline(
     create_branches: bool = True,
     fill_branches: bool = True,
     aggregate_economy_label: str | None = None,
-    id_lookup_path: Path | str | None = EXPORT_ID_LOOKUP_PATH,
+    id_lookup_path: Path | str | None = None,
     **export_kwargs,
 ) -> list[Path]:
     return run_transformation_export_and_import(
