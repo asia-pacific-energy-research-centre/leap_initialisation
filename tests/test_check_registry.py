@@ -46,6 +46,7 @@ REGISTERED_CHECKS: dict[str, str] = {
     # F3 - LEAP-import readiness
     "validate_region": "codebase/functions/leap_exports.py",
     "_ensure_export_contains_scenarios": "codebase/refining_workflow.py",
+    "run_export_readiness": "codebase/utilities/leap_export_readiness.py",
     # F4 - preflight
     "run_preflight_compressed_projection": "codebase/functions/supply_preflight.py",
     "_validate_capacity_priority_coverage": "codebase/supply_reconciliation_allocation.py",

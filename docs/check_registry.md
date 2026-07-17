@@ -208,6 +208,7 @@ shared implementation.
 | Current Accounts scenario present | `_ensure_current_accounts_scenario` (`supply_reconciliation_balance_tables.py:516`) | |
 | manual-import workbook shape | `validate_workbook_for_manual_import` (`analysis_input_write_dispatcher.py:464`), `_validate_workbook_structure_against_canonical` (`:298`) | |
 | power-interim fuel/sector coverage | `validate_power_interim_fuel_coverage` (`electricity_heat_interim_workflow.py:582`), `validate_power_interim_sub1sectors` (`:133`) | |
+| shared export readiness runner | `utilities/leap_export_readiness.py` (`run_export_readiness`) | logical keys, LEAP IDs, Region consistency, shared fuel-catalog coverage, and legacy transfer paths; writes consolidated findings and summary outputs |
 
 ---
 
