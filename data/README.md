@@ -74,11 +74,64 @@ alike. A borrowed ID resolves and imports — into the wrong branch.
 ```text
 leap_export_templates/leap_export_template 20_USA.xlsx
 leap_export_templates/leap_export_template 12_NZ.xlsx
-leap_export_templates/leap_export_template 01_AUS_COMP_GEN.xlsx
+leap_export_templates/leap_export_template 05_PRC_COMP_GEN.xlsx
 ```
 
 Resolved by `codebase/utilities/leap_export_template_resolver.py`; never build
 the path by hand.
+
+#### Areas are structurally identical by intent
+
+**Every LEAP area is meant to have the same branch structure.** The only
+differences that are legitimate are:
+
+1. the `BranchID`/`VariableID` values themselves (each area numbers its own), and
+2. possibly the distribution of fuels within the `Resources` branch.
+
+Everything else being equal is the design. So **a structural difference between
+two areas is a migration that has not finished yet — not a fact about those
+economies, and not something to design around.** Do not add fallback logic,
+per-area special cases, or "this economy legitimately lacks X" reasoning to
+accommodate one. Finish the migration in LEAP instead.
+
+This matters because the opposite reading is seductive and wrong. `12_NZ` has no
+own-use `Oil refineries` branch, and it is true that New Zealand's only refinery
+closed in 2022 — so the gap *looks* like it encodes a real fact about the
+economy. It does not. `12_NZ` is simply the first area migrated; the branch is
+being removed everywhere.
+
+#### In-flight area migrations (as of 2026-07-17)
+
+`12_NZ` is the reference/target state — it is ahead, not different. Unique branch
+paths per area:
+
+| Branch family | `12_NZ` | `20_USA` | `01_AUS` | Target |
+| --- | --- | --- | --- | --- |
+| `Demand\Other loss and own use\Oil refineries` | 0 | 21 | 21 | **0 everywhere** |
+| `Demand\Other loss and own use\Non specified own uses` | 12 | 0 | 0 | **12 everywhere** |
+| `Transformation\Non specified transformation\Auxiliary Fuels` | 0 | 11 | 11 | **0 everywhere** |
+| `Transformation\Oil Refining\...\Auxiliary Fuels` | 23 | 23 | 23 | 23 (already aligned) |
+| total branch paths | 646 | 714 | 665 | converging |
+
+1. **Refinery own use moves to the refining process's auxiliary fuels.**
+   `Demand\Other loss and own use\Oil refineries` is being deleted from every
+   area; refinery own use is carried by
+   `Transformation\Oil Refining\Processes\Oil Refining\Auxiliary Fuels`, which
+   already exists identically (23 paths) in every area — and is already what the
+   code writes. Done for `12_NZ`; pending everywhere else.
+2. **Non-specified own use becomes a Demand branch.**
+   `Demand\Other loss and own use\Non specified own uses` is being introduced in
+   every area, replacing
+   `Transformation\Non specified transformation\Auxiliary Fuels` for that
+   purpose. Done for `12_NZ`; pending everywhere else.
+
+**Consequence — expected `-1` rows while a migration is in flight.** A seed built
+against an un-migrated area emits `BranchID=-1` for branches that area has not
+caught up on, and against a migrated area emits `-1` for branches it has already
+dropped. For `12_NZ` this accounts for exactly its 156 `-1` seed rows: 123
+own-use refinery + 33 non-specified-transformation auxiliary fuel, **all
+zero-valued**. That is the intended signal, not a defect (see the `-1` rules
+below). A *nonzero* `-1` row remains actionable.
 
 #### The `_COMP_GEN` suffix
 

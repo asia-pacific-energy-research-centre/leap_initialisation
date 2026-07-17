@@ -312,15 +312,25 @@ carry the same distortion.
   fails in the *dangerous* direction: seeds built pre-resolver share the same
   distortion, so both sides of the diff agree and the check reports **EQUIVALENT
   for the wrong reason**.
-- **Areas legitimately lack branches.** With a correct per-economy template,
-  `12_NZ` surfaces 33 `Non specified transformation\...\Auxiliary Fuels\*` rows
-  (Biogasoline, Electricity, …) as *only-in-seed* / `BranchID=-1`. That is a real
-  area gap, not a patch defect — `12_NZ` has 646 branch paths to `20_USA`'s 714.
-  Only-in-seed normally reads as a hard failure; classify by area first.
-  **Confirmed harmless 2026-07-16:** all 33 are zero-valued, so they are genuine
-  no-ops (per `data/README.md`, a *nonzero* `-1` row would be actionable — an
-  intended value silently skipped). Signed off: leave them. If a *nonzero* `-1`
-  ever appears for NZ, that is new and real — which is why the writer's
+- **Areas differ only because a migration is unfinished — they do NOT
+  "legitimately lack branches".** Corrected 2026-07-17; the earlier wording here
+  taught the wrong reason. Every area is intended to be structurally identical
+  apart from its own IDs (and possibly Resources fuel distribution) — see
+  *Areas are structurally identical by intent* in `data/README.md`. With a
+  correct per-economy template, `12_NZ` surfaces 33
+  `Non specified transformation\...\Auxiliary Fuels\*` rows (Biogasoline,
+  Electricity, …) as *only-in-seed* / `BranchID=-1`, and 123 own-use
+  `Oil refineries` rows likewise — 156 in total. `12_NZ` has 646 branch paths to
+  `20_USA`'s 714 **because `12_NZ` is the first area migrated, not because New
+  Zealand is different.** (It is true that NZ's only refinery closed in 2022;
+  that coincidence makes the wrong reading tempting. The branch is being deleted
+  from every area regardless.)
+  **Confirmed harmless 2026-07-16, reason corrected 2026-07-17:** all 156 are
+  zero-valued, so they are genuine no-ops (per `data/README.md`, a *nonzero* `-1`
+  row would be actionable — an intended value silently skipped). Signed off:
+  leave them; they resolve when the other areas migrate. Do **not** add fallback
+  logic or per-area special cases to make them go away. If a *nonzero* `-1` ever
+  appears for NZ, that is new and real — which is why the writer's
   `[WARN] … unresolved BranchID=-1` should stay.
 - **Multi-output WIP signature.** If capacity, historical production, efficiency,
   output shares and aux-fuel ratios all move by **one exact ratio**, that is the
