@@ -601,6 +601,11 @@ def test_combined_export_blocks_by_default_on_conflicting_duplicates(
             output_dir=output_dir,
             economy_label="20_USA",
             scenarios=["Reference"],
+            # Pin the fixture template: this test is about validation, not
+            # routing, and the default would load the real 20_USA template from
+            # data/. Routing is covered by
+            # test_combined_export_resolves_template_from_economy_label.
+            template_path=template,
         )
 
 
@@ -633,10 +638,88 @@ def test_combined_export_downgrades_blocking_findings_when_configured(
         output_dir=output_dir,
         economy_label="20_USA",
         scenarios=["Reference"],
+        template_path=template,  # pin the fixture; see the test above
     )
 
     assert written is not None
     assert written.exists()
+
+
+def test_combined_export_resolves_template_from_economy_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The default must resolve each economy's own template, not a pinned path.
+
+    Regression test for the recorded bypass: a pinned id_lookup/template applies
+    one area's BranchIDs to every economy, and tests that pin the template
+    themselves exercise the override branch and so cannot catch it. This test
+    therefore asserts the *default* (template_path=None) path specifically.
+    """
+    source = tmp_path / "supply_leap_imports_12_NZ_reference.xlsx"
+    _write_leap_and_viewing_workbook(source, [_row("Data(2023,1)")])
+    template = tmp_path / "full model export.xlsx"
+    _write_template(template)
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io.RESULTS_VERIFICATION_EXPORT_PATH", template
+    )
+
+    seen: list[object] = []
+
+    def _fake_resolver(economy: object) -> Path:
+        seen.append(economy)
+        return template
+
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io._leap_export_template_for_economy",
+        _fake_resolver,
+    )
+
+    save_combined_supply_transformation_export(
+        supply_export_paths=[source],
+        transformation_export_paths=[],
+        transfer_export_paths=[],
+        output_dir=tmp_path / "output",
+        economy_label="12_NZ",
+        scenarios=["Reference"],
+    )
+
+    assert seen == ["12_NZ"], (
+        "template must be resolved from economy_label when template_path is None; "
+        f"resolver saw {seen!r}"
+    )
+
+
+def test_combined_export_explicit_template_bypasses_the_resolver(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicit template_path is honoured — the multi-economy single-file
+    output relies on this, since its label spans areas and is not an economy."""
+    source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
+    _write_leap_and_viewing_workbook(source, [_row("Data(2023,1)")])
+    template = tmp_path / "full model export.xlsx"
+    _write_template(template)
+
+    def _explode(economy: object) -> Path:
+        raise AssertionError(f"resolver must not be consulted; got {economy!r}")
+
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io._leap_export_template_for_economy",
+        _explode,
+    )
+
+    written = save_combined_supply_transformation_export(
+        supply_export_paths=[source],
+        transformation_export_paths=[],
+        transfer_export_paths=[],
+        output_dir=tmp_path / "output",
+        economy_label="20_USA-01_AUS-05_PRC",
+        scenarios=["Reference"],
+        template_path=template,
+    )
+
+    assert written is not None
 
 
 #%%

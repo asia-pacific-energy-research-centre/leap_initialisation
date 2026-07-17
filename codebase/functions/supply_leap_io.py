@@ -912,8 +912,16 @@ def save_combined_supply_transformation_export(
     filename_template: str = COMBINED_EXPORT_FILENAME_TEMPLATE,
     economy_label: str = "economy",
     scenarios: Iterable[str] | None = None,
+    template_path: Path | str | None = None,
 ) -> Path | None:
-    """Save a single workbook that combines supply + transformation + transfers rows."""
+    """Save a single workbook that combines supply + transformation + transfers rows.
+
+    template_path defaults to None, meaning "resolve from economy_label" — each
+    economy is its own LEAP area with its own BranchIDs, so a pinned path applies
+    one area's IDs to every economy (the same mistake already recorded against
+    write_per_economy_combined_workbooks). Pass it explicitly only when the
+    workbook genuinely spans areas and no single template applies.
+    """
     supply_paths = [Path(item) for item in supply_export_paths if Path(item).exists()]
     transformation_paths = [
         Path(item) for item in transformation_export_paths if Path(item).exists()
@@ -995,7 +1003,11 @@ def save_combined_supply_transformation_export(
     )
     validation = prepare_seed_rows_for_write(
         leap_data,
-        template_path=_resolve(RESULTS_VERIFICATION_EXPORT_PATH),
+        template_path=(
+            _resolve(template_path)
+            if template_path is not None
+            else _leap_export_template_for_economy(economy_label)
+        ),
         diagnostics_dir=diagnostics_dir,
         diagnostic_stem=diagnostic_stem,
         required_years_by_scenario=required_years_by_scenario,

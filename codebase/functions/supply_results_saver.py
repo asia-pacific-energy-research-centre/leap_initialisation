@@ -3718,6 +3718,13 @@ def run_results_linked_transformation_supply_workflow(
                 filename_template=COMBINED_EXPORT_FILENAME_TEMPLATE,
                 economy_label="-".join(economy_list) if economy_list else "economy",
                 scenarios=export_scenario_list,
+                # This single-file output spans every economy in the run, so no
+                # one area's template applies and economy_label is not an economy
+                # ("20_USA-01_AUS-05_PRC"). Pinned deliberately: its IDs are not
+                # area-correct for non-USA rows and it is a results/verification
+                # artifact, not a per-economy LEAP import. The per-economy
+                # combine above resolves its own template.
+                template_path=_resolve(RESULTS_VERIFICATION_EXPORT_PATH),
             )
         if combined_export_path is None or not Path(combined_export_path).exists():
             if _economy_export_errors:
