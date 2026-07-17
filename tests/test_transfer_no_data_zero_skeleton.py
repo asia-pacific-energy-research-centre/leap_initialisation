@@ -5,6 +5,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from codebase.functions import supply_leap_io
 from codebase.functions import transformation_record_builder as record_builder
@@ -74,6 +75,7 @@ def test_transfer_override_writer_keeps_no_data_economy(
 ) -> None:
     """No-data economies still receive one producer workbook per scenario."""
     calls: list[tuple[str, str, int]] = []
+    preflight_calls: list[dict[str, object]] = []
     projection_scenarios: list[str | None] = []
 
     def _fake_build_transfer_rows(economy, use_output_targets, scenario=None):
@@ -114,6 +116,11 @@ def test_transfer_override_writer_keeps_no_data_economy(
         "_find_legacy_transfer_branch_paths",
         lambda export_path: [],
     )
+    monkeypatch.setattr(
+        supply_leap_io.fuel_catalog_preflight,
+        "run_fuel_catalog_preflight",
+        lambda **kwargs: preflight_calls.append(kwargs) or {"skipped": False},
+    )
 
     paths = supply_leap_io.save_transfer_exports_with_supply_overrides(
         reconciliation_table=pd.DataFrame(),
@@ -132,6 +139,59 @@ def test_transfer_override_writer_keeps_no_data_economy(
     assert all(record_count == 0 for _, _, record_count in calls)
     assert all("05_PRC" in path.name for path in paths)
     assert projection_scenarios == ["target", "reference", "reference"]
+    assert [call["scenario"] for call in preflight_calls] == [
+        "Target",
+        "Reference",
+        "Current Accounts",
+    ]
+    assert all(call["context"] == "transfers_workflow.export_generation" for call in preflight_calls)
+
+
+def test_transfer_override_writer_rejects_legacy_generic_transfer_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Legacy generic Transfers branches must stop before catalog preflight/import."""
+    def _fake_build_transfer_rows(economy, use_output_targets, scenario=None):
+        return []
+
+    def _fake_save(*args, **kwargs):
+        path = Path(args[5]) / args[6]
+        path.touch()
+        return str(path)
+
+    monkeypatch.setattr(
+        supply_leap_io.transfers_workflow,
+        "build_transfer_rows",
+        _fake_build_transfer_rows,
+    )
+    monkeypatch.setattr(
+        supply_leap_io.transformation_workflow.core,
+        "save_transformation_export",
+        _fake_save,
+    )
+    monkeypatch.setattr(
+        supply_leap_io,
+        "_find_legacy_transfer_branch_paths",
+        lambda export_path: ["Transformation\\Transfers\\Legacy process"],
+    )
+    preflight_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        supply_leap_io.fuel_catalog_preflight,
+        "run_fuel_catalog_preflight",
+        lambda **kwargs: preflight_calls.append(kwargs) or {"skipped": False},
+    )
+
+    with pytest.raises(ValueError, match="legacy generic transfer branches"):
+        supply_leap_io.save_transfer_exports_with_supply_overrides(
+            reconciliation_table=pd.DataFrame(),
+            economies=["05_PRC"],
+            scenarios=["Reference"],
+            output_dir=tmp_path,
+            full_branch_catalog_df=_minimal_transfer_catalog(),
+        )
+
+    assert preflight_calls == []
 
 
 def test_transfer_projection_routes_generic_crosswalk_flow_to_active_subflow() -> None:

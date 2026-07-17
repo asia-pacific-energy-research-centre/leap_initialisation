@@ -32,6 +32,7 @@ from codebase.supply_reconciliation_config import (
 from codebase.utilities.workflow_utils import _resolve
 from codebase.utilities import workflow_common
 from codebase.utilities import leap_export_template_resolver
+from codebase.utilities import fuel_catalog_preflight
 from codebase.functions.leap_expressions import build_data_expression_from_row
 from codebase.functions.leap_excel_io import (
     add_leap_preamble,
@@ -822,6 +823,17 @@ def save_transfer_exports_with_supply_overrides(
                         "Transfer export still contains legacy generic transfer branches "
                         f"in {export_file.name}: {sample}"
                     )
+                fuel_catalog_preflight.run_fuel_catalog_preflight(
+                    export_path=export_file,
+                    sheet_name="LEAP",
+                    scenario=scenario,
+                    context="transfers_workflow.export_generation",
+                    # Generation may run in workbook-only mode. Use the
+                    # existing catalog/fallback here; the LEAP/API import path
+                    # performs stale-source refresh when an application exists.
+                    auto_refresh_stale_catalog=False,
+                    strict_missing=False,
+                )
                 saved_paths.append(export_file)
     return saved_paths
 
