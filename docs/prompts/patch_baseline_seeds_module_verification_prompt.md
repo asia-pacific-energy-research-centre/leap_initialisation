@@ -36,6 +36,8 @@ Known verified/fixed areas:
   seeds (see Module Notes for the row counts and dates).
 - The transformation auto-regen sectors are GATED: `run_patch()` raises
   `NotImplementedError` for them. Refresh those through the full workflow only.
+  **They are the last unverified module, and settling them is a task of its own:
+  see [transformation_patch_ungate_final_verification_prompt.md](transformation_patch_ungate_final_verification_prompt.md).**
 - `losses_own_use` is patchable and verified end-to-end (including the Brunei
   retry); see Module Notes.
 
@@ -251,9 +253,17 @@ nonspecified_transformation
 transformation
 ```
 
+> **➡️ Superseded 2026-07-17 — use
+> [transformation_patch_ungate_final_verification_prompt.md](transformation_patch_ungate_final_verification_prompt.md).**
+> Transformation is the last unverified module, the definitive test now has a
+> built harness
+> (`codebase/scrapbook/transformation_ungate_equivalence_harness.py`), and its
+> preconditions are met bar a fresh seed. That prompt is the single source of
+> truth for this question; the notes below are retained as background only.
+
 Status: GATED for now. `run_patch()` raises `NotImplementedError` for any module
 with `auto_sector_keys` (i.e. every module above). Leave the gate in place until
-the definitive test below passes — but note the gate's original rationale is now
+the definitive test passes — but note the gate's original rationale is now
 in doubt.
 
 Reassessment (2026-07-16): the gate's evidence ("20_USA: 7 process-efficiency /
