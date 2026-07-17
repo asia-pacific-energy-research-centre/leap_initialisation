@@ -61,14 +61,15 @@ def _resolve(path: Path | str) -> Path:
 def _template_source_paths(
     *,
     template_directory: Path | str = DEFAULT_TEMPLATE_DIRECTORY,
-    full_model_export_path: Path | str = DEFAULT_FULL_MODEL_EXPORT_PATH,
+    full_model_export_path: Path | str | None = None,
 ) -> list[Path]:
     """Return the distinct LEAP export workbooks that form the catalog union."""
     directory = _resolve(template_directory)
     paths = sorted(directory.glob("leap_export_template *.xlsx")) if directory.exists() else []
-    full_model_path = _resolve(full_model_export_path)
-    if full_model_path.exists():
-        paths.append(full_model_path)
+    if full_model_export_path is not None:
+        full_model_path = _resolve(full_model_export_path)
+        if full_model_path.exists():
+            paths.append(full_model_path)
 
     unique: dict[str, Path] = {}
     for path in paths:
@@ -158,7 +159,7 @@ def _build_fuel_registry(catalog_df: pd.DataFrame) -> pd.DataFrame:
 def build_incremental_template_catalog(
     *,
     template_directory: Path | str = DEFAULT_TEMPLATE_DIRECTORY,
-    full_model_export_path: Path | str = DEFAULT_FULL_MODEL_EXPORT_PATH,
+    full_model_export_path: Path | str | None = None,
     full_model_sheet: str = DEFAULT_FULL_MODEL_EXPORT_SHEET,
     cache_directory: Path | str = DEFAULT_FUEL_CATALOG_SOURCE_CACHE_DIRECTORY,
     manifest_path: Path | str = DEFAULT_FUEL_CATALOG_MANIFEST_PATH,

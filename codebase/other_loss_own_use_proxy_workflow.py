@@ -179,8 +179,12 @@ EXPORT_FILENAME_TEMPLATE = str(
 # Existing LEAP export workbook used to attach BranchID, VariableID,
 # ScenarioID, and RegionID to generated rows. Rows that don't match are
 # dropped with a [WARN] (branch not yet in LEAP / export key is stale).
-# Refresh data/full model export.xlsx from LEAP to include new branches.
-EXPORT_KEY_WORKBOOK_PATH = REPO_ROOT / "data" / "full model export.xlsx"
+# Economy-specific templates are the primary key/branch source. This USA
+# template is retained only as the explicit fallback for aggregate runs that
+# do not have one economy's area to resolve.
+EXPORT_KEY_WORKBOOK_PATH = (
+    REPO_ROOT / "data" / "leap_export_templates" / "leap_export_template 20_USA.xlsx"
+)
 EXPORT_KEY_WORKBOOK_SHEET = "Export"
 
 # DEMAND_ROOT_PARTS imported from other_loss_own_use_proxy_utils

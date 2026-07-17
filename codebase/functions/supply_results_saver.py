@@ -86,6 +86,7 @@ from codebase.utilities.leap_results_dashboard_balance import (
     convert_leap_balances_to_esto_long_table,
 )
 from codebase.utilities.leap_balance_export_resolver import resolve_balance_export_workbook
+from codebase.utilities import leap_export_template_resolver
 from codebase.utilities.leap_results_dashboard_utils import (
     DEFAULT_EXPLICIT_LEAP_MAPPINGS,
     DEFAULT_EXPLICIT_LEAP_REASSIGNMENTS,
@@ -832,7 +833,10 @@ def _build_transformation_supply_fuel_catalog_df(
 
     if USE_FULL_MODEL_EXPORT_CATALOG_SOURCE:
         template_catalog_df, _ = build_incremental_template_catalog(
-            full_model_export_path=FULL_MODEL_EXPORT_CATALOG_PATH,
+            # The economy templates are the canonical branch source. The old
+            # full-model export is a cross-economy union and must not seed rows
+            # into an individual economy's producer workbook.
+            full_model_export_path=None,
             full_model_sheet=FULL_MODEL_EXPORT_CATALOG_SHEET,
         )
         if not template_catalog_df.empty:
@@ -1008,6 +1012,47 @@ def _build_transformation_supply_fuel_catalog_df(
             print(f" - {row['module_or_root']}: {int(row['unique_fuels'])} fuel(s)")
 
     return catalog_df
+
+
+def _catalog_for_economy(
+    catalog_df: pd.DataFrame,
+    economy: str,
+) -> pd.DataFrame:
+    """Restrict producer zero-fill scaffolding to one economy's template."""
+    if catalog_df is None or catalog_df.empty:
+        return catalog_df
+    if leap_export_template_resolver.is_aggregate_economy(economy):
+        # Aggregate outputs have no single LEAP area. The catalog union of
+        # economy templates is the correct scope for those outputs.
+        return catalog_df
+    try:
+        template_path = leap_export_template_resolver.resolve_leap_export_template(
+            economy,
+            warn_on_provisional=False,
+        )
+        template_rows = _read_branch_variable_rows(template_path, sheet_name="Export")
+        if template_rows.empty or "Branch Path" not in template_rows.columns:
+            return catalog_df.iloc[0:0].copy()
+        allowed_paths = {
+            str(value).strip().casefold()
+            for value in template_rows["Branch Path"].dropna()
+            if str(value).strip()
+        }
+        filtered = catalog_df[
+            catalog_df["branch_path"].astype(str).str.strip().str.casefold().isin(allowed_paths)
+        ].copy()
+        removed = len(catalog_df) - len(filtered)
+        if removed:
+            print(
+                f"[INFO] Restricted producer branch catalog for {economy} to "
+                f"{len(filtered)} template rows (removed {removed} cross-economy rows)."
+            )
+        return filtered
+    except (FileNotFoundError, ValueError) as exc:
+        raise FileNotFoundError(
+            f"Cannot build producer branch catalog for {economy}: "
+            "an economy-specific LEAP export template is required."
+        ) from exc
 
 
 def _build_transformation_supply_fuel_catalog(
@@ -3367,7 +3412,10 @@ def run_results_linked_transformation_supply_workflow(
             scenarios=export_scenario_list,
             output_dir=TRANSFORMATION_EXPORT_OUTPUT_DIR,
             filename_template=TRANSFORMATION_EXPORT_FILENAME_TEMPLATE,
-            full_branch_catalog_df=pre_run_catalog_df if not pre_run_catalog_df.empty else None,
+            full_branch_catalog_df=(
+                _catalog_for_economy(pre_run_catalog_df, economy)
+                if not pre_run_catalog_df.empty else None
+            ),
             records_by_scenario_out=transformation_records_by_scenario,
         )
         econ_transfer_paths = save_transfer_exports_with_supply_overrides(
@@ -3376,7 +3424,10 @@ def run_results_linked_transformation_supply_workflow(
             scenarios=export_scenario_list,
             output_dir=TRANSFORMATION_EXPORT_OUTPUT_DIR,
             filename_template=transfers_workflow.EXPORT_FILENAME_TEMPLATE,
-            full_branch_catalog_df=pre_run_catalog_df if not pre_run_catalog_df.empty else None,
+            full_branch_catalog_df=(
+                _catalog_for_economy(pre_run_catalog_df, economy)
+                if not pre_run_catalog_df.empty else None
+            ),
         )
         econ_dummy: list[Path] = []
         if RUN_ELECTRICITY_HEAT_INTERIM:
