@@ -140,8 +140,22 @@ OUTPUT_FUEL_VALIDATION_ESTO_PATHS = [
 # ACTIVITY_VARIABLE, INTENSITY_VARIABLE imported from other_loss_own_use_proxy_utils
 EXPORT_MODEL_NAME = "Other loss and own use proxy import"
 
-# LEAP region written into the export workbook.
+# Fallback LEAP region for the export workbook. Only used when the economy has
+# no entry in the APEC economy->region map; a resolvable economy always wins so
+# a single-economy run cannot inherit another economy's region.
 EXPORT_REGION = workflow_cfg.GLOBAL_REGION
+
+
+def _resolve_export_region(economy: str) -> str:
+    """Return the LEAP region for ``economy``, falling back to EXPORT_REGION.
+
+    Imported lazily: supply_data_pipeline pulls in the wider supply stack, and
+    this module is imported by it during standalone runs.
+    """
+    from codebase.functions.supply_data_pipeline import get_region_for_economy
+
+    resolved = str(get_region_for_economy(economy) or "").strip()
+    return resolved or EXPORT_REGION
 
 # Scenarios written to the workbook. Common values are "Target", "Reference",
 # and "Current Accounts". Keep "Current Accounts" if you want base-year
@@ -1338,7 +1352,7 @@ def assemble_proxy_workbook(
 ) -> Path:
     scenario_list = _normalize_scenarios(scenarios)
     output_scope = _normalize_output_fuel_scope(output_fuel_scope)
-    region = region or EXPORT_REGION
+    region = region or _resolve_export_region(economy)
     esto_data = load_esto_data()
     ninth_data = load_ninth_data()
     is_aggregate, aggregate_label, _ = workflow_common.resolve_aggregate_economy(

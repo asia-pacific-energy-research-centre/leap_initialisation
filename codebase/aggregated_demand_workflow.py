@@ -106,7 +106,20 @@ SCENARIO_CSV_MAP: dict[str, str] = {
     "Target": "target",
 }
 DEFAULT_EXPORT_FILENAME_TEMPLATE = "aggregated_demand_{economy}_{scenario}.xlsx"
+# Fallback only: used when an economy has no APEC economy->region entry.
 DEFAULT_EXPORT_REGION = getattr(workflow_cfg, "GLOBAL_REGION", "United States")
+
+
+def _resolve_export_region(economy: str) -> str:
+    """Return the LEAP region for ``economy``, falling back to DEFAULT_EXPORT_REGION.
+
+    Imported lazily to match supply_leap_io, which imports this module from
+    inside its functions to avoid a circular import at module load.
+    """
+    from codebase.functions.supply_data_pipeline import get_region_for_economy
+
+    resolved = str(get_region_for_economy(economy) or "").strip()
+    return resolved or DEFAULT_EXPORT_REGION
 
 # Economy codes that mean "aggregate all member economies rather than filtering"
 _AGGREGATE_ECONOMY_SENTINELS: frozenset[str] = frozenset({
@@ -1279,7 +1292,7 @@ def save_aggregated_demand_as_leap_workbook(
     economy: str,
     output_path: Path,
     scenarios: list[str] | None = None,
-    region: str = DEFAULT_EXPORT_REGION,
+    region: str | None = None,
     base_year: int = BASE_YEAR,
     final_year: int = PROJECTION_END_YEAR,
     data_path: Path = PROJECTION_DATA_PATH,
@@ -1306,8 +1319,13 @@ def save_aggregated_demand_as_leap_workbook(
 
     When id_lookup_path is provided, BranchID/VariableID/ScenarioID columns are merged
     from that file (a LEAP full export with header=2). RegionID is always set to 1.
+
+    region defaults to the economy's own LEAP region so that the Region column
+    always agrees with the economy whose IDs id_lookup_path resolves. Pass an
+    explicit region only to override that.
     """
     use_scenarios = scenarios if scenarios is not None else list(LEAP_SCENARIOS)
+    region = region or _resolve_export_region(economy)
     if demand is None:
         demand = build_aggregated_demand_all_scenarios(
             economy=economy,
@@ -1770,7 +1788,6 @@ def main(
         economy=economy,
         output_path=output_path,
         scenarios=use_scenarios,
-        region=DEFAULT_EXPORT_REGION,
         base_year=BASE_YEAR,
         final_year=final_year,
         data_path=PROJECTION_DATA_PATH,

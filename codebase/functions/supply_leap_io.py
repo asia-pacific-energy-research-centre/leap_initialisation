@@ -1282,7 +1282,7 @@ def build_aggregated_demand_workbooks_for_results_supply(
     economies: Iterable[str],
     scenarios: Iterable[str],
     output_dir: Path | str = EXPORT_OUTPUT_DIR,
-    region: str = LEAP_IMPORT_REGION,
+    region: str | None = None,
     excluded_sectors: list[str] | None = None,
     use_sector_branches: bool = False,
 ) -> list[Path]:
@@ -2095,7 +2095,7 @@ def build_other_demand_zeroing_workbooks(
     scenarios: Iterable[str],
     economies: Iterable[str] | None = None,
     output_dir: Path | str = EXPORT_OUTPUT_DIR,
-    region: str = LEAP_IMPORT_REGION,
+    region: str | None = None,
     source_path: Path | str | None = None,
     source_sheet: str = "Export",
 ) -> list[Path]:
@@ -2139,7 +2139,7 @@ def build_other_demand_zeroing_workbooks(
             source_path=resolved_source,
             sheet_name=source_sheet,
             scenarios=scenario_list,
-            region=region,
+            region=region or supply_data_pipeline.get_region_for_economy(economy),
             exclude_branch_prefixes=exclude_prefixes if exclude_prefixes else None,
         )
         if result is not None:

@@ -807,7 +807,6 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
             FUEL_MAPPINGS_PATH,
             BASE_YEAR,
             PROJECTION_END_YEAR,
-            DEFAULT_EXPORT_REGION,
         )
         from codebase.supply_reconciliation_config import (
             AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES,
@@ -828,7 +827,6 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
                 economy=economy,
                 output_path=out_path,
                 scenarios=list(LEAP_SCENARIOS),
-                region=DEFAULT_EXPORT_REGION,
                 base_year=BASE_YEAR,
                 final_year=PROJECTION_END_YEAR,
                 data_path=PROJECTION_DATA_PATH,

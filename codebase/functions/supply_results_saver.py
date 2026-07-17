@@ -3411,7 +3411,6 @@ def run_results_linked_transformation_supply_workflow(
                     economies=[economy],
                     scenarios=export_scenario_list,
                     output_dir=EXPORT_OUTPUT_DIR,
-                    region=LEAP_IMPORT_REGION,
                     excluded_sectors=_effective_agg_demand_excluded,
                     use_sector_branches=bool(AGGREGATED_DEMAND_USE_SECTOR_BRANCHES),
                 )
@@ -3582,7 +3581,6 @@ def run_results_linked_transformation_supply_workflow(
         demand_zeroing_paths = build_other_demand_zeroing_workbooks(
             scenarios=export_scenario_list,
             output_dir=EXPORT_OUTPUT_DIR,
-            region=LEAP_IMPORT_REGION,
         )
     fuel_branch_catalog_df = _build_transformation_supply_fuel_catalog_df(
         transformation_export_paths=transformation_export_paths,
