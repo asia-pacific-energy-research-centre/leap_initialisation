@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +31,16 @@ DEFAULT_FULL_MODEL_EXPORT_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 DEFAULT_FULL_MODEL_EXPORT_SHEET = "Export"
 DEFAULT_STALE_DAYS = 7
 MAX_SAMPLE_ITEMS = 8
+DEFAULT_TEMPLATE_DIRECTORY = REPO_ROOT / "data" / "leap_export_templates"
+DEFAULT_FUEL_CATALOG_SOURCE_CACHE_DIRECTORY = (
+    INTEGRATED_LEAP_EXPORTS_ROOT / "supporting_files" / "checks" / "fuel_catalog_sources"
+)
+DEFAULT_FUEL_CATALOG_MANIFEST_PATH = (
+    INTEGRATED_LEAP_EXPORTS_ROOT / "supporting_files" / "checks" / "fuel_catalog_sources_manifest.json"
+)
+DEFAULT_FUEL_REGISTRY_PATH = (
+    INTEGRATED_LEAP_EXPORTS_ROOT / "supporting_files" / "checks" / "fuel_registry.csv"
+)
 
 _STALE_DECISIONS: dict[tuple[str, int], bool] = {}
 _PREFLIGHT_RUN_CACHE: set[tuple[str, str, str]] = set()
@@ -39,6 +50,180 @@ def _resolve(path: Path | str) -> Path:
     raw = str(path).replace("\\", "/")
     candidate = Path(raw)
     return candidate if candidate.is_absolute() else (REPO_ROOT / candidate)
+
+
+def _template_source_paths(
+    *,
+    template_directory: Path | str = DEFAULT_TEMPLATE_DIRECTORY,
+    full_model_export_path: Path | str = DEFAULT_FULL_MODEL_EXPORT_PATH,
+) -> list[Path]:
+    """Return the distinct LEAP export workbooks that form the catalog union."""
+    directory = _resolve(template_directory)
+    paths = sorted(directory.glob("leap_export_template *.xlsx")) if directory.exists() else []
+    full_model_path = _resolve(full_model_export_path)
+    if full_model_path.exists():
+        paths.append(full_model_path)
+
+    unique: dict[str, Path] = {}
+    for path in paths:
+        resolved = path.resolve()
+        unique[str(resolved).lower()] = resolved
+    return list(unique.values())
+
+
+def _source_file_signature(path: Path) -> dict[str, object]:
+    """Use metadata first so unchanged Excel files are not reparsed."""
+    stat = path.stat()
+    return {
+        "path": str(path.resolve()),
+        "size": int(stat.st_size),
+        "modified_ns": int(stat.st_mtime_ns),
+    }
+
+
+def _add_catalog_source_metadata(rows: list[dict[str, object]], source_path: Path) -> pd.DataFrame:
+    """Attach source metadata while preserving every fuel label exactly."""
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        return frame
+    frame["source_template"] = source_path.name
+    frame["source_path"] = str(source_path.resolve())
+    return frame
+
+
+def _build_fuel_registry(catalog_df: pd.DataFrame) -> pd.DataFrame:
+    """Build one registry row per exact fuel label and catalog scope."""
+    if catalog_df.empty:
+        return pd.DataFrame(
+            columns=[
+                "fuel_name",
+                "normalized_name",
+                "catalog_type",
+                "module_or_root",
+                "fuel_group",
+                "source_templates",
+                "branch_count",
+                "label_variant_count",
+            ]
+        )
+
+    work = catalog_df.copy()
+    if "source_template" not in work:
+        work["source_template"] = work.get("source_workbook", "")
+    for column in ("fuel_name", "catalog_type", "module_or_root", "fuel_group"):
+        if column not in work:
+            work[column] = ""
+        work[column] = work[column].map(_normalize_text)
+    work["normalized_name"] = work["fuel_name"].map(normalize_fuel_label)
+
+    variant_counts = (
+        work[work["fuel_name"].ne("")]
+        .groupby(
+            ["catalog_type", "module_or_root", "fuel_group", "normalized_name"],
+            dropna=False,
+        )["fuel_name"]
+        .nunique()
+        .rename("label_variant_count")
+        .reset_index()
+    )
+
+    registry = (
+        work[work["fuel_name"].ne("")]
+        .groupby(
+            ["fuel_name", "normalized_name", "catalog_type", "module_or_root", "fuel_group"],
+            dropna=False,
+            as_index=False,
+        )
+        .agg(
+            source_templates=("source_template", lambda values: "; ".join(sorted(set(values)))),
+            branch_count=("branch_path", "nunique"),
+        )
+        .merge(
+            variant_counts,
+            on=["catalog_type", "module_or_root", "fuel_group", "normalized_name"],
+            how="left",
+        )
+        .sort_values(["catalog_type", "module_or_root", "fuel_group", "fuel_name"])
+        .reset_index(drop=True)
+    )
+    return registry
+
+
+def build_incremental_template_catalog(
+    *,
+    template_directory: Path | str = DEFAULT_TEMPLATE_DIRECTORY,
+    full_model_export_path: Path | str = DEFAULT_FULL_MODEL_EXPORT_PATH,
+    full_model_sheet: str = DEFAULT_FULL_MODEL_EXPORT_SHEET,
+    cache_directory: Path | str = DEFAULT_FUEL_CATALOG_SOURCE_CACHE_DIRECTORY,
+    manifest_path: Path | str = DEFAULT_FUEL_CATALOG_MANIFEST_PATH,
+    registry_path: Path | str = DEFAULT_FUEL_REGISTRY_PATH,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Build the shared catalog union, reparsing only changed source workbooks."""
+    source_paths = _template_source_paths(
+        template_directory=template_directory,
+        full_model_export_path=full_model_export_path,
+    )
+    cache_dir = _resolve(cache_directory)
+    manifest_file = _resolve(manifest_path)
+    registry_file = _resolve(registry_path)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        previous_manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        previous_manifest = {}
+
+    current_manifest: dict[str, object] = {}
+    frames: list[pd.DataFrame] = []
+    for source_path in source_paths:
+        signature = _source_file_signature(source_path)
+        source_key = str(source_path.resolve()).lower()
+        cache_name = f"{source_path.stem}.csv"
+        cache_path = cache_dir / cache_name
+        previous = previous_manifest.get(source_key, {})
+        unchanged = (
+            isinstance(previous, dict)
+            and previous.get("size") == signature["size"]
+            and previous.get("modified_ns") == signature["modified_ns"]
+            and cache_path.exists()
+        )
+
+        if unchanged:
+            frame = pd.read_csv(cache_path)
+        else:
+            rows = _catalog_rows_from_full_model_export(
+                source_path=source_path,
+                sheet_name=full_model_sheet,
+            )
+            frame = _add_catalog_source_metadata(rows, source_path)
+            frame.to_csv(cache_path, index=False)
+
+        if not frame.empty:
+            frames.append(frame)
+        current_manifest[source_key] = {
+            **signature,
+            "cache_path": str(cache_path.resolve()),
+        }
+
+    catalog_df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    if not catalog_df.empty:
+        dedupe_columns = [
+            "catalog_type",
+            "scenario",
+            "module_or_root",
+            "fuel_group",
+            "fuel_name",
+            "branch_path",
+            "variable",
+        ]
+        catalog_df = catalog_df.drop_duplicates(subset=dedupe_columns).reset_index(drop=True)
+
+    registry_df = _build_fuel_registry(catalog_df)
+    registry_file.parent.mkdir(parents=True, exist_ok=True)
+    registry_df.to_csv(registry_file, index=False)
+    manifest_file.parent.mkdir(parents=True, exist_ok=True)
+    manifest_file.write_text(json.dumps(current_manifest, indent=2), encoding="utf-8")
+    return catalog_df, registry_df
 
 
 def _normalize_header_value(value: object) -> str:
@@ -390,6 +575,10 @@ def refresh_fuel_catalog_from_sources(
     probe_output_path: Path | str = DEFAULT_FUEL_PROBE_PATH,
     full_model_export_path: Path | str = DEFAULT_FULL_MODEL_EXPORT_PATH,
     full_model_sheet: str = DEFAULT_FULL_MODEL_EXPORT_SHEET,
+    template_directory: Path | str = DEFAULT_TEMPLATE_DIRECTORY,
+    source_cache_directory: Path | str = DEFAULT_FUEL_CATALOG_SOURCE_CACHE_DIRECTORY,
+    source_manifest_path: Path | str = DEFAULT_FUEL_CATALOG_MANIFEST_PATH,
+    fuel_registry_path: Path | str = DEFAULT_FUEL_REGISTRY_PATH,
     leap_app=None,
     max_probe_only_ratio: float = 0.25,
 ) -> dict[str, object]:
@@ -397,11 +586,14 @@ def refresh_fuel_catalog_from_sources(
     Refresh the shared fuel catalog by probing LEAP and cross-validating against full-model export.
     Raises on validation failures.
     """
-    full_rows = _catalog_rows_from_full_model_export(
-        source_path=full_model_export_path,
-        sheet_name=full_model_sheet,
+    full_df, _ = build_incremental_template_catalog(
+        template_directory=template_directory,
+        full_model_export_path=full_model_export_path,
+        full_model_sheet=full_model_sheet,
+        cache_directory=source_cache_directory,
+        manifest_path=source_manifest_path,
+        registry_path=fuel_registry_path,
     )
-    full_df = _rows_to_df(full_rows)
     if full_df.empty:
         raise RuntimeError(
             "Fuel catalog refresh failed: full model export yielded no catalog rows at "
@@ -465,6 +657,11 @@ def refresh_fuel_catalog_from_sources(
         )
         .reset_index(drop=True)
     )
+
+    registry_df = _build_fuel_registry(merged_df)
+    registry_file = _resolve(fuel_registry_path)
+    registry_file.parent.mkdir(parents=True, exist_ok=True)
+    registry_df.to_csv(registry_file, index=False)
 
     catalog_path_resolved = _resolve(catalog_path)
     catalog_path_resolved.parent.mkdir(parents=True, exist_ok=True)
@@ -938,13 +1135,13 @@ def _scope_rows_from_export_df(
     return out[out["fuel_name_norm"] != ""].reset_index(drop=True)
 
 
-def _expected_fuels_for_scope(
+def _expected_branch_rows_for_scope(
     catalog_df: pd.DataFrame,
     *,
     catalog_type: str,
     module_or_root: str,
     scenario: str = "",
-) -> set[str]:
+) -> set[tuple[str, str]]:
     if catalog_df.empty:
         return set()
     scope = catalog_df[
@@ -958,7 +1155,11 @@ def _expected_fuels_for_scope(
         scoped = scope[scope["scenario_norm"] == scenario_norm]
         if not scoped.empty:
             scope = scoped
-    return {value for value in scope["fuel_name_norm"].tolist() if value}
+    return {
+        (str(row.branch_path).strip(), str(row.variable).strip())
+        for row in scope.itertuples(index=False)
+        if str(row.branch_path).strip()
+    }
 
 
 def run_fuel_catalog_preflight(
@@ -1065,17 +1266,21 @@ def run_fuel_catalog_preflight(
     ):
         sample = group.iloc[0]
         scenario_value = _normalize_text(sample.get("scenario") or scenario or "")
-        expected = _expected_fuels_for_scope(
+        expected = _expected_branch_rows_for_scope(
             catalog_df,
             catalog_type=catalog_type,
             module_or_root=module_or_root,
             scenario=scenario_value,
         )
-        actual = {item for item in group["fuel_name_norm"].tolist() if item}
+        actual = {
+            (str(row.branch_path).strip(), str(row.variable).strip())
+            for row in group.itertuples(index=False)
+            if str(row.branch_path).strip()
+        }
         if not expected:
             status = "no_catalog_scope"
-            missing: set[str] = set()
-            extra = set()
+            missing: set[tuple[str, str]] = set()
+            extra: set[tuple[str, str]] = set()
         else:
             missing = expected - actual
             extra = actual - expected
@@ -1092,8 +1297,14 @@ def run_fuel_catalog_preflight(
                 "actual_count": len(actual),
                 "missing_count": len(missing),
                 "extra_count": len(extra),
-                "missing_fuels": "; ".join(sorted(missing)),
-                "extra_fuels": "; ".join(sorted(extra)),
+                "missing_fuels": "; ".join(sorted({path.rsplit("\\", 1)[-1] for path, _ in missing})),
+                "extra_fuels": "; ".join(sorted({path.rsplit("\\", 1)[-1] for path, _ in extra})),
+                "missing_branch_rows": "; ".join(
+                    f"{path} [{variable}]" for path, variable in sorted(missing)
+                ),
+                "extra_branch_rows": "; ".join(
+                    f"{path} [{variable}]" for path, variable in sorted(extra)
+                ),
             }
         )
 
