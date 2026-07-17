@@ -295,6 +295,18 @@ carry the same distortion.
 
 ## Known pre-existing failures — not regressions, do not chase
 
+- `tests/test_baseline_seed_writer_validation.py` — **3 failures**, found
+  2026-07-17 and previously undocumented:
+  `test_final_writer_writes_diagnostics_before_conflict_blocks`,
+  `test_writer_accumulates_economy_failures_and_writes_no_final_workbook`,
+  `test_default_reference_validation_window_requires_2023_through_2060`.
+  The first two expect `BaselineSeedValidationError` and get DID NOT RAISE — the
+  writer is not blocking where the tests say it should, so either the tests are
+  stale or a guard regressed. **Not investigated; worth a look precisely because
+  they are blocking-behaviour tests that no longer block.** Verified identical at
+  `bbbddf5` (i.e. before the region-routing work), so they are not fallout from
+  it.
+
 - `tests/test_supply_assets.py::test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup`
   — **stale test**. It monkeypatches `apply_matt_subtotal_mapping`, which now
   only exists under `archive/` and `scrapbook/`. Verified failing at HEAD
