@@ -24,14 +24,17 @@ of its own work before handing files across.
 
 ### Workpath A — per-economy export-template routing
 
-**Current owner:** routing agent. **Status:** active and paused at the shared-helper handoff.
+**Current owner:** routing agent. **Status:** active — shared-helper handoff done
+(`supply_leap_io.py` released to Workpath B); routing the three standalone
+modules next.
 
 Primary files:
 
 - `codebase/transformation_workflow.py`
 - `codebase/transfers_workflow.py`
 - `codebase/electricity_heat_interim_workflow.py`
-- shared template-resolution helpers, if required
+- `codebase/utilities/leap_export_template_resolver.py` (shared helper — done;
+  coordinate before changing again)
 
 Objective: route standalone `EXPORT_ID_LOOKUP_PATH` entry points through the
 economy-specific template resolver. Do not edit these files from Workpath B
@@ -63,19 +66,27 @@ be split by file ownership before implementation.
   second resolver or key implementation.
 - Verification runs must use a clean tree or an isolated worktree.
 
-### Shared-helper handoff — required before Workpath A continues
+### Shared-helper handoff ✅ DONE 2026-07-17 — `supply_leap_io.py` released to Workpath B
 
-Workpath A needs aggregate-aware template resolution for `00_APEC` and for
-economies without a dedicated template. The current wrapper is
-`_leap_export_template_for_economy` in `codebase/functions/supply_leap_io.py`,
-which is held by Workpath B, while the resolver primitives live in
-`codebase/utilities/leap_export_template_resolver.py`.
+The aggregate-aware wrapper is now public API:
+`leap_export_template_resolver.resolve_leap_export_template_or_fallback(economy, *, fallback=...)`.
+`supply_leap_io._leap_export_template_for_economy` is a thin alias over it and is
+unchanged for every existing caller.
 
-The agreed solution is to promote the aggregate-aware wrapper into public API in
-`leap_export_template_resolver.py`, leaving a thin compatibility alias in
-`supply_leap_io.py`. This is a coordinated two-workpath change. Do not import a
-private function across the workpaths or duplicate the wrapper in the three
-standalone workflow modules.
+**Workpath B is unblocked: `supply_leap_io.py` is released.** Workpath A will not
+touch it again for the standalone routing.
+
+Two design points worth keeping:
+
+- **The fallback is injected, not imported.** `leap_export_template_resolver` is a
+  leaf utility with no `codebase` imports; importing the config that owns the
+  legacy single export would create a cycle. Each caller passes its own legacy
+  constant, so the three standalone modules can share one wrapper while keeping
+  their own `EXPORT_ID_LOOKUP_PATH` fallback. Keep that module import-free.
+- Verified behaviour-identical to the pre-promotion wrapper across `12_NZ`,
+  `01_AUS`, `20_USA`, `05_PRC` (provisional), `00_APEC` (aggregate) and an
+  unknown economy. 98 tests pass, including Workpath B's
+  `test_fuel_catalog_preflight`.
 
 ## The blocker structure
 

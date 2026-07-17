@@ -15,6 +15,7 @@ from codebase.utilities.leap_export_template_resolver import (
     read_leap_export_template_area,
     reset_provisional_template_warnings,
     resolve_leap_export_template,
+    resolve_leap_export_template_or_fallback,
 )
 
 
@@ -44,6 +45,58 @@ def test_resolves_template_for_economy(tmp_path):
     expected = _write_template(tmp_path, "20_USA")
 
     assert resolve_leap_export_template("20_USA", templates_root=tmp_path) == expected
+
+
+def test_fallback_wrapper_prefers_the_economy_template_over_the_fallback(tmp_path):
+    """The whole point: a real economy must never silently take the fallback."""
+    expected = _write_template(tmp_path, "12_NZ")
+    fallback = tmp_path / "full model export.xlsx"
+
+    resolved = resolve_leap_export_template_or_fallback(
+        "12_NZ", fallback=fallback, templates_root=tmp_path
+    )
+
+    assert resolved == expected
+    assert resolved != fallback
+
+
+def test_fallback_wrapper_uses_fallback_for_aggregate_sentinels(tmp_path):
+    """00_APEC spans areas, so no single template applies."""
+    _write_template(tmp_path, "12_NZ")
+    fallback = tmp_path / "full model export.xlsx"
+
+    assert resolve_leap_export_template_or_fallback(
+        "00_APEC", fallback=fallback, templates_root=tmp_path
+    ) == fallback
+
+
+def test_fallback_wrapper_warns_and_falls_back_for_an_unknown_economy(tmp_path, capsys):
+    """An economy with no template falls back, but must say so — the warning is
+    the signal that a template needs exporting, not a detail."""
+    _write_template(tmp_path, "12_NZ")
+    fallback = tmp_path / "full model export.xlsx"
+
+    resolved = resolve_leap_export_template_or_fallback(
+        "99_NOPE", fallback=fallback, templates_root=tmp_path
+    )
+
+    assert resolved == fallback
+    assert "[WARN]" in capsys.readouterr().out
+
+
+def test_fallback_wrapper_does_not_swallow_a_borrowed_template(tmp_path):
+    """resolve_leap_export_template refuses to borrow another area's template;
+    the wrapper must not turn that refusal into a silent wrong answer -- it
+    returns the caller's explicit fallback, never another economy's file."""
+    other = _write_template(tmp_path, "20_USA")
+    fallback = tmp_path / "full model export.xlsx"
+
+    resolved = resolve_leap_export_template_or_fallback(
+        "12_NZ", fallback=fallback, templates_root=tmp_path
+    )
+
+    assert resolved == fallback
+    assert resolved != other
 
 
 def test_resolution_is_case_insensitive_and_strips_whitespace(tmp_path):

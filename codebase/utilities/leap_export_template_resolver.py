@@ -197,6 +197,42 @@ def resolve_leap_export_template(
     return template.path
 
 
+def resolve_leap_export_template_or_fallback(
+    economy: object,
+    *,
+    fallback: Path | str,
+    templates_root: Path | str = DEFAULT_LEAP_EXPORT_TEMPLATES_ROOT,
+    warn_on_provisional: bool = True,
+) -> Path:
+    """Return the economy's template, or ``fallback`` where none can apply.
+
+    Two cases legitimately have no single per-economy template: aggregate
+    sentinels (``00_APEC``, ``ALL_ECONOMIES``), which span areas, and an economy
+    with no template yet. Everything else resolves to its own area's template —
+    `resolve_leap_export_template` raises rather than borrow another area's IDs,
+    and this wrapper turns that refusal into an explicit, warned fallback.
+
+    ``fallback`` is **injected, not imported**: this module is a leaf utility
+    with no codebase imports, and importing the config that owns the legacy
+    single export would create a cycle. Each caller passes its own legacy
+    constant, so there is one wrapper rather than one per module.
+
+    Do not use this to paper over a missing template for a real economy — the
+    warning it emits is the signal that a template needs exporting.
+    """
+    if is_aggregate_economy(economy):
+        return _resolve_path(fallback)
+    try:
+        return resolve_leap_export_template(
+            economy,
+            templates_root=templates_root,
+            warn_on_provisional=warn_on_provisional,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"[WARN] {exc}")
+        return _resolve_path(fallback)
+
+
 def reset_provisional_template_warnings() -> None:
     """Clear the once-per-economy provisional-template warning state."""
     _PROVISIONAL_USE_WARNED.clear()

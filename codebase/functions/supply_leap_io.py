@@ -1414,16 +1414,16 @@ def _branch_leaf_tokens(label: object) -> set[str]:
 def _leap_export_template_for_economy(economy: object) -> Path:
     """Return the LEAP export template whose IDs apply to this economy.
 
-    Falls back to the legacy single export for aggregate sentinels, which span
-    areas, and when an economy has no template yet.
+    Thin alias over
+    `leap_export_template_resolver.resolve_leap_export_template_or_fallback`,
+    which now owns the aggregate-aware logic so the standalone transformation /
+    transfers / electricity-heat entry points can share it instead of growing a
+    second copy. This module supplies the legacy single export as the fallback.
     """
-    if leap_export_template_resolver.is_aggregate_economy(economy):
-        return _resolve(RESULTS_VERIFICATION_EXPORT_PATH)
-    try:
-        return leap_export_template_resolver.resolve_leap_export_template(economy)
-    except (FileNotFoundError, ValueError) as exc:
-        print(f"[WARN] {exc}")
-        return _resolve(RESULTS_VERIFICATION_EXPORT_PATH)
+    return leap_export_template_resolver.resolve_leap_export_template_or_fallback(
+        economy,
+        fallback=RESULTS_VERIFICATION_EXPORT_PATH,
+    )
 
 
 def _load_reference_export_data(source_path: Path | str | None = None) -> pd.DataFrame:
