@@ -16,7 +16,36 @@ from codebase.functions.supply_leap_io import (
     save_combined_supply_transformation_export,
     write_per_economy_combined_workbooks,
 )
+from codebase.configuration import workflow_config as workflow_cfg
 from codebase.configuration.workflow_config import get_baseline_seed_validation_years
+
+# These tests assert the INIT-005 guarantee: a blocking finding raises
+# BaselineSeedValidationError and no final workbook is written. That guarantee is
+# currently switched off on purpose --
+# BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True
+# (workflow_config.py:91, set 2026-07-10) clears the `blocking` column in
+# prepare_seed_rows_for_write, and the raise is gated on it being non-empty.
+#
+# Marked xfail *conditionally on the flag itself*, not unconditionally, so this
+# maintains itself: flip the flag back to False and these run normally and must
+# pass. strict=True means a stale xfail is reported rather than lingering.
+#
+# The point is that three unexplained red tests are indistinguishable from "a
+# guard silently stopped blocking" -- the exact failure this repo keeps hitting.
+# This keeps the suite green *and* the deviation legible. Delete the marker, do
+# not delete the tests: they are the specification.
+_XFAIL_WHILE_BLOCKING_DOWNGRADED = pytest.mark.xfail(
+    workflow_cfg.BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS,
+    reason=(
+        "BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS=True downgrades "
+        "blocking findings to warnings, so the writer does not raise. Deliberate, "
+        "temporary deviation from INIT-005, pending review of whether the current "
+        "blocking findings are significant enough to hold up a run. See INIT-005 "
+        "History in docs/special_rules_and_design_decisions.md and the entry in "
+        "docs/work_queue.md. Revert the flag to False to restore the guarantee."
+    ),
+    strict=True,
+)
 
 
 def _row(expression: str) -> dict[str, object]:
@@ -138,6 +167,7 @@ def test_final_writer_collapses_exact_duplicates_and_populates_ids(
     assert data[["BranchID", "VariableID", "ScenarioID", "RegionID"]].iloc[0].tolist() == [101, 420, 2, 1]
 
 
+@_XFAIL_WHILE_BLOCKING_DOWNGRADED
 def test_final_writer_writes_diagnostics_before_conflict_blocks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -166,6 +196,7 @@ def test_final_writer_writes_diagnostics_before_conflict_blocks(
     assert list(diagnostics.glob("*_duplicate_groups.csv"))
 
 
+@_XFAIL_WHILE_BLOCKING_DOWNGRADED
 def test_writer_accumulates_economy_failures_and_writes_no_final_workbook(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -392,6 +423,7 @@ def test_final_writer_preserves_non_branch_ids_for_warning_only_aggregated_deman
     assert not aggregate_findings["blocking"].any()
 
 
+@_XFAIL_WHILE_BLOCKING_DOWNGRADED
 def test_default_reference_validation_window_requires_2023_through_2060(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
