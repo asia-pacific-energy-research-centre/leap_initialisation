@@ -16,6 +16,53 @@ detail rather than duplicating it.
 3. **Verification runs against a dirty tree are unreadable.** See the blocker
    below — this is not a style preference, it cost a retracted conclusion.
 
+## Parallel workpaths
+
+Two agents may work concurrently only when their file ownership is explicit.
+This queue is the shared coordination point; each agent must update the status
+of its own work before handing files across.
+
+### Workpath A — per-economy export-template routing
+
+**Current owner:** other agent. **Status:** active.
+
+Primary files:
+
+- `codebase/transformation_workflow.py`
+- `codebase/transfers_workflow.py`
+- `codebase/electricity_heat_interim_workflow.py`
+- shared template-resolution helpers, if required
+
+Objective: route standalone `EXPORT_ID_LOOKUP_PATH` entry points through the
+economy-specific template resolver. Do not edit these files from Workpath B
+until the routing work is handed back and verified.
+
+### Workpath B — catalog and LEAP export readiness
+
+**Current owner:** this workpath. **Status:** catalog and transfer preflight
+Phase 1 complete; readiness framework is next.
+
+Completed:
+
+- incremental all-template fuel-branch catalog;
+- exact-label fuel registry;
+- canonical `leap_fuel_branch_catalog.csv` name with legacy compatibility copy;
+- transfer export catalog preflight and legacy-root rejection.
+
+Next work may use `fuel_catalog_preflight.py`, `supply_leap_io.py`, readiness
+tests, and documentation, but must not modify Workpath A files. The remaining
+full-model dependency is tracked below as a cross-cutting follow-up and should
+be split by file ownership before implementation.
+
+### Handoff rules
+
+- Before editing, check `git status --short` and this section.
+- Do not edit a file listed under another active workpath.
+- One coherent change per commit; state the files and tests in the commit.
+- When a shared helper must change, pause and coordinate rather than creating a
+  second resolver or key implementation.
+- Verification runs must use a clean tree or an isolated worktree.
+
 ## The blocker structure
 
 The transformation prerequisite has landed. **The export-template track's
@@ -225,6 +272,30 @@ Not all ~15 constants are equal. Audited by call site (not by definition):
 (transformation / transfers / electricity-heat). They take `economies=` already;
 default `id_lookup_path` to `None` and resolve per economy, keeping the constant
 only as a fallback. Delete `AGGREGATED_DEMAND_ID_LOOKUP_PATH` as its own commit.
+
+### Remaining full-model dependency — separate follow-up
+
+The fuel catalog no longer treats `data/full model export.xlsx` as the complete
+fuel-branch source, but several other real-economy paths still use it for IDs,
+metadata, branch existence, reset scope, or validation. Add and execute this as
+a separate set of file-scoped tasks after the standalone routing handoff:
+
+1. Inventory each remaining caller and classify it as per-economy, shared-union,
+   aggregate fallback, or legacy-only.
+2. Route real-economy ID/metadata/branch-existence checks through the resolved
+   economy template.
+3. Route reset and zero-fill scope through the appropriate economy template or
+   shared catalog.
+4. Retain `data/full model export.xlsx` only where an explicit aggregate or
+   legacy fallback is intended, and document each retained use.
+5. Verify NZ first, then test the shared resolver contract for other economies;
+   a full end-to-end run for every economy is not required solely to prove
+   region routing.
+
+The NZ run exposed the current priority case: `Demand\\Other loss and own use\\Non
+specified own uses\\Electricity` exists in the NZ template but not in the USA
+`full model export.xlsx`, so the later verification step still reports it as
+unmatched.
 
 **Verification recipe that worked** (reuse it): compare `_build_id_lookups`
 across every template — 20 economies must come back *identical* to the legacy
