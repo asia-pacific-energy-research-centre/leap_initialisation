@@ -224,7 +224,14 @@ def build_incremental_template_catalog(
             "branch_path",
             "variable",
         ]
+        source_templates = (
+            catalog_df.groupby(dedupe_columns, dropna=False)["source_template"]
+            .agg(lambda values: "; ".join(sorted(set(values.dropna().astype(str)))))
+            .rename("source_templates")
+            .reset_index()
+        )
         catalog_df = catalog_df.drop_duplicates(subset=dedupe_columns).reset_index(drop=True)
+        catalog_df = catalog_df.merge(source_templates, on=dedupe_columns, how="left")
 
     registry_df = _build_fuel_registry(catalog_df)
     catalog_file.parent.mkdir(parents=True, exist_ok=True)

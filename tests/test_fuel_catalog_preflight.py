@@ -63,6 +63,44 @@ def test_incremental_catalog_reuses_unchanged_sources_and_preserves_exact_labels
     assert calls == sorted([usa.name, nz.name]) + [nz.name]
 
 
+def test_catalog_records_all_source_templates_for_deduplicated_rows(tmp_path, monkeypatch):
+    source_directory = tmp_path / "templates"
+    source_directory.mkdir()
+    usa = source_directory / "leap_export_template usa.xlsx"
+    nz = source_directory / "leap_export_template nz.xlsx"
+    usa.write_bytes(b"usa")
+    nz.write_bytes(b"nz")
+
+    def fake_rows(*, source_path, sheet_name):
+        return [
+            {
+                "catalog_type": "transformation",
+                "source_workbook": source_path.name,
+                "scenario": "Reference",
+                "module_or_root": "Electricity Generation",
+                "fuel_group": "Feedstock Fuels",
+                "fuel_name": "Natural gas",
+                "branch_path": "Transformation\\Electricity Generation\\Feedstock Fuels\\Natural gas",
+                "variable": "Feedstock Fuel Share",
+                "catalog_source": "template",
+                "probe_status": "",
+            }
+        ]
+
+    monkeypatch.setattr(preflight, "_catalog_rows_from_full_model_export", fake_rows)
+    catalog, _ = preflight.build_incremental_template_catalog(
+        template_directory=source_directory,
+        full_model_export_path=tmp_path / "does-not-exist.xlsx",
+        cache_directory=tmp_path / "cache",
+        manifest_path=tmp_path / "manifest.json",
+        catalog_path=tmp_path / "catalog.csv",
+        registry_path=tmp_path / "fuel_registry.csv",
+    )
+
+    assert len(catalog) == 1
+    assert catalog.iloc[0]["source_templates"] == "; ".join(sorted([usa.name, nz.name]))
+
+
 def test_preflight_expected_identity_is_branch_path_and_variable():
     catalog = pd.DataFrame(
         [
