@@ -24,21 +24,26 @@ of its own work before handing files across.
 
 ### Workpath A — per-economy export-template routing
 
-**Current owner:** routing agent. **Status:** active — shared-helper handoff done
-(`supply_leap_io.py` released to Workpath B); routing the three standalone
-modules next.
+**Current owner:** unowned — ✅ **complete and handed back 2026-07-17.**
+All four files are released; Workpath B may take them.
 
-Primary files:
+Delivered:
 
-- `codebase/transformation_workflow.py`
-- `codebase/transfers_workflow.py`
-- `codebase/electricity_heat_interim_workflow.py`
-- `codebase/utilities/leap_export_template_resolver.py` (shared helper — done;
-  coordinate before changing again)
+- `6af7833` — aggregate-aware resolution promoted to shared public API
+  (`resolve_leap_export_template_or_fallback`); `supply_leap_io` alias unchanged.
+- `ee4e5d1` — the three standalone modules route `id_lookup_path` per economy.
+  Nine entry points no longer default to `20_USA`'s area. `EXPORT_ID_LOOKUP_PATH`
+  survives in each module as the **aggregate/no-template fallback only**.
 
-Objective: route standalone `EXPORT_ID_LOOKUP_PATH` entry points through the
-economy-specific template resolver. Do not edit these files from Workpath B
-until the routing work is handed back and verified.
+Released files: `transformation_workflow.py`, `transfers_workflow.py`,
+`electricity_heat_interim_workflow.py`, `leap_export_template_resolver.py`
+(coordinate before changing the shared helper again).
+
+**Do not reintroduce a pinned `id_lookup_path` default or pass the constant "to
+be explicit"** — that is the `073c489` bypass, which made a routing fix a
+production no-op for a day while its tests stayed green because they pinned the
+template too. `tests/test_standalone_export_id_lookup_routing.py` now fails if a
+pinned default reappears.
 
 ### Workpath B — catalog and LEAP export readiness
 
@@ -286,17 +291,20 @@ Not all ~15 constants are equal. Audited by call site (not by definition):
 | --- | --- |
 | `supply_leap_io` combined-workbook template | **WAS LIVE — fixed `e799029`.** `save_combined_supply_transformation_export` pinned USA while taking `economy_label`; `combined_st_12_NZ` had 126/126 discriminating paths on USA IDs, `combined_st_01_AUS` 125/125. Seeds unaffected. |
 | `supply_reconciliation_config:312` `AGGREGATED_DEMAND_ID_LOOKUP_PATH` | **DEAD — zero references** anywhere including tests. Orphaned when `cdb813d` fixed the bypass. Delete it. |
-| `transformation_workflow:47`, `transfers_workflow:92`, `electricity_heat_interim_workflow:79`, `:161` `EXPORT_ID_LOOKUP_PATH` | **Standalone-only, still un-routed.** Defaults on `assemble_*_workbook` / `run_*_export_and_import` / `run_*_pipeline`. The baseline-seed path never passes `id_lookup_path`, so `save_transformation_export` skips `attach_export_ids` and the combine fills IDs. These pipelines already take `economies=`, so routing them is the same `None`-means-resolve pattern. **Live the moment anyone runs a standalone pipeline for a real-template economy — which now includes `01_AUS`.** |
+| `transformation_workflow`, `transfers_workflow`, `electricity_heat_interim_workflow` `EXPORT_ID_LOOKUP_PATH` | **WAS LIVE for standalone runs — routed `ee4e5d1`.** Nine entry points defaulted `id_lookup_path` to `20_USA`'s area; a standalone run for any other economy stamped USA BranchIDs onto its rows. Now `None` = resolve the workbook's economy; the constant remains the aggregate/no-template fallback only. The baseline-seed path was never affected (it passes no `id_lookup_path`, so the combine fills IDs). |
+| `electricity_heat_interim_workflow:161` `POWER_INTERIM_REFERENCE_WORKBOOK_PATH` | **Not an ID lookup — different class, deliberately left.** It backs `validate_power_interim_fuel_coverage`, a fuel-branch *existence* check. Per [11] fuel branches are shared-union by design, so pinning is defensible here — and Workpath B's catalog work may supersede it. **Workpath B call, not routing.** Do not "fix" it by analogy with the ID lookups. |
 | `supply_reconciliation_config:310` `RESULTS_VERIFICATION_EXPORT_PATH` | Mostly a deliberate fallback: `_leap_export_template_for_economy` returns it for aggregate sentinels and unresolvable economies, and `supply_preflight` uses it only via `template_path or ...` where no caller relies on the default. |
 | `workflow_config:313` `SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH` | Routed in `3756ccb` ([8]); used only as `source_path if source_path is not None else ...`. |
 | `patch_baseline_seeds:87` | Deliberate fallback; per-economy writing/validation already call `_template_for_economy`. |
 | `fuel_catalog_preflight:29` | Shared-union catalog by design; template changes trigger incremental rebuilds. Do not make it economy-specific. See [11]. |
 | `baseline_seed_comparison_workflow:615` | Standalone comparison default; pass the resolved template when template-backed validation is enabled. |
 
-**Next concrete step:** route the standalone `EXPORT_ID_LOOKUP_PATH` entry points
-(transformation / transfers / electricity-heat). They take `economies=` already;
-default `id_lookup_path` to `None` and resolve per economy, keeping the constant
-only as a fallback. Delete `AGGREGATED_DEMAND_ID_LOOKUP_PATH` as its own commit.
+**Both next steps are done** (`ee4e5d1` standalone routing, `28dabe7` dead
+constant). Every ID-lookup path identified by this audit now resolves per
+economy. What remains under [7] is the wider *full-model dependency* sweep below
+(metadata, branch existence, validation references) — a different class from ID
+lookups, and one where a shared or aggregate source is sometimes correct. Do not
+route those by analogy; classify each first.
 
 ### Remaining full-model dependency — separate follow-up
 
