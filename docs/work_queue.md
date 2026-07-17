@@ -321,12 +321,24 @@ patching is redundant — but removing it is a behaviour change with its own bla
 radius. Every template uses `RegionID=1`, so region **IDs** need no work.
 Decide deliberately; do not fold it into a threading commit.
 
-## [11] `fuel_catalog_preflight` — open question, not a task
+## [11] `fuel_catalog_preflight` — shared-union design decision
 
-`DEFAULT_FULL_MODEL_EXPORT_PATH` pins the single export. **Whether the fuel
-catalog is even economy-specific is unresolved** — fuel *names* may legitimately
-be shared across areas, in which case pinning is correct and should be documented
-as deliberate rather than "fixed". Answer the question before touching it.
+The fuel catalog is intentionally a **shared union of valid fuels**, not an
+economy-specific branch catalog. The LEAP model is being built so every economy
+area contains fuels that may be used by any economy for the relevant sector.
+Therefore the catalog should validate generated fuel scopes against the union,
+even when an individual economy's template does not yet contain every member of
+that union.
+
+`12_NZ` is currently the most up-to-date real economy template and is the primary
+real-template validation case. A clean NZ run is sufficient evidence for the
+current routing work; USA/AUS and other economies do not need separate end-to-end
+runs merely to prove region handling, provided the resolver correctly selects the
+economy template and preserves template differences.
+
+Open implementation check: confirm that the catalog-building path actually
+constructs the intended union rather than treating `data/full model export.xlsx`
+(the USA export) as the complete source. Do not make the catalog economy-specific.
 
 ## [12] Baseline-seed trustworthiness — audited 2026-07-17, regeneration is NOT the answer
 
