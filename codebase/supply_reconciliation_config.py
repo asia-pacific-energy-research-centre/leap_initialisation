@@ -309,7 +309,12 @@ LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH = (
 USE_RESULTS_VERIFICATION_EXPORT_SOURCE = True
 RESULTS_VERIFICATION_EXPORT_PATH = REPO_ROOT / "data" / "full model export.xlsx"
 RESULTS_VERIFICATION_EXPORT_SHEET = "Export"
-AGGREGATED_DEMAND_ID_LOOKUP_PATH = REPO_ROOT / "data" / "full model export.xlsx"
+# AGGREGATED_DEMAND_ID_LOOKUP_PATH removed 2026-07-17: dead since cdb813d routed
+# the aggregated-demand ID lookup per economy. Do not reintroduce a pinned
+# default here — `073c489` was a production no-op for a day precisely because
+# callers passed this constant explicitly and took the override branch, and the
+# tests passed throughout because they pin the template too. The lookup resolves
+# from the economy via `_leap_export_template_for_economy`.
 
 # Backward-compatible aliases used by existing catalog helpers.
 USE_FULL_MODEL_EXPORT_CATALOG_SOURCE = USE_RESULTS_VERIFICATION_EXPORT_SOURCE
