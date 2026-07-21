@@ -67,6 +67,40 @@ across runs*: for the standard 21 economies it always resolves to
 into the first one's directory and interleave outputs. For any run whose output
 you intend to keep, set an explicit dated label, and restore `"auto"` afterwards.
 
+### Running two economies at once — supported by the workflow, blocked by the config
+
+The workflow itself supports this. Locks are per-economy, each run gets its own
+labelled output tree, and a second run touching an economy already being written
+stops with a clear error rather than overwriting. See "Concurrent runs" in
+`docs/supply_reconciliation_workflow_guide.md`. For concurrent runs keep
+`RUN_OUTPUT_LABEL = "auto"` — the automatic label encodes the economy scope, so
+two different scopes get two different folders. (The `"auto"` collision trap
+above is the *opposite* case: the **same** scope run twice.)
+
+**But you cannot currently launch them safely from one working tree**, because
+`ECONOMIES` is a module-level literal in `codebase/supply_reconciliation_workflow.py`
+and there is no per-process override. Launching a second run means editing that
+file while the first is running, and that is not safe here:
+
+When the workflow is run as a script, the entry point is `__main__`, so
+`codebase.supply_reconciliation_workflow` is **not** in `sys.modules`.
+`supply_preflight` then performs a late `from codebase.supply_reconciliation_workflow
+import ...` during the preflight, which **re-reads the source file from disk**.
+Any edit made between launch and that moment is picked up by the *running*
+process. This is the same duplicate-module behaviour recorded under T1 in the
+register — it is observed, not theoretical.
+
+So, in order of preference:
+
+1. **Run economies sequentially.** The default, and correct until the config
+   surface changes.
+2. If you genuinely need parallelism, the fix is small and worth doing properly:
+   give `ECONOMIES` and `RUN_OUTPUT_LABEL` a per-process override — an
+   environment variable or CLI argument read at startup — so two runs need no
+   file edit at all. That change belongs in the Phase 2 configuration work
+   (`work_queue.md` [14]), not improvised the day you need it.
+3. **Do not** edit `ECONOMIES` to launch a second run while one is in flight.
+
 ## Prompt docs workflow
 
 - Multi-step agent prompts (plan-first implementation tasks, investigation prompts, prompt packs) live in `docs/prompts/`.
