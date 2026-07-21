@@ -2,14 +2,19 @@
 
 Phase 4 (`docs/prompts/phase_4_monolith_decomposition_execution.md`) split
 ``codebase/supply_reconciliation_workflow.py`` into sibling modules but kept
-them coupled through module-level globals.  Three hand-maintained mechanisms
-push wrapper state outward:
+them coupled through module-level globals.  Four mechanisms push wrapper state
+outward - three hand-maintained, one derived:
 
 * ``_sync_extracted_runtime_state()`` - 4 runtime accumulators onto ``_sra``,
   plus 5 config names onto ``_srt``/``_sra``/``_srh``/``_srs``;
 * ``_sync_results_saver_overrides()`` - a hand-maintained list of ~37 names
   onto ``codebase/functions/supply_results_saver.py``;
-* ``_refresh_extracted_runtime_state()`` - the accumulators back.
+* ``_refresh_extracted_runtime_state()`` - the accumulators back;
+* ``_broadcast_preset_overrides()`` - every key of every ``_PRESET_*`` dict,
+  minus ``_PRESET_BROADCAST_PINS``, onto every loaded ``codebase`` module that
+  already defines the name.  Derived from the presets rather than listed, so
+  it cannot go stale when a preset key is added; added under
+  ``docs/work_queue.md`` [17] to fix the omission the tests below characterize.
 
 The failure mode these tests exist to catch: a name that an extracted module
 reads as a module global, and that the wrapper rebinds, but that nobody added
@@ -36,9 +41,10 @@ A name N is a forwardable setting for extracted module T when **all** hold:
    private copy of a config default.
 3. **N is not in the allowlist** below.
 
-Then N must appear in the forwarding list that targets T.  The lists are read
-out of the wrapper's source by AST, not duplicated here, so a rename on either
-side is caught.
+Then N must be delivered to T - either by appearing in the forwarding list that
+targets T, or by being a broadcast preset key.  The lists are read out of the
+wrapper's source by AST and the preset keys off the imported module, not
+duplicated here, so a rename on either side is caught.
 
 Source is read with ``encoding="utf-8-sig"`` throughout: several
 ``codebase/*.py`` files carry a UTF-8 BOM that makes naive ``ast.parse``
@@ -99,19 +105,18 @@ FORWARDING_ALLOWLIST = {
     "RUN_OUTPUT_LABEL",
 }
 
-# FINDING (2026-07-21, characterization only - deliberately not fixed in this
-# commit).  These names are set by `_PRESET_BASELINE_SEED` /
-# `_PRESET_RESULTS_UPDATE` on the wrapper - the preset literals are even
-# annotated "# overrides config default" - and are read as module globals by
-# `supply_results_saver` inside
-# `run_results_linked_transformation_supply_workflow`, but they are absent from
-# `_sync_results_saver_overrides`'s list.  The saver therefore uses the
-# *config default*, not the preset value.  Two of them differ from the default
-# under the currently active preset:
+# FINDING (2026-07-21), FIXED in the same day's [17] sequence.  These names are
+# set by `_PRESET_BASELINE_SEED` / `_PRESET_RESULTS_UPDATE` on the wrapper - the
+# preset literals are even annotated "# overrides config default" - and are read
+# as module globals by `supply_results_saver` inside
+# `run_results_linked_transformation_supply_workflow`, but they were absent from
+# `_sync_results_saver_overrides`'s list, so the saver used the *config default*.
+# `_broadcast_preset_overrides()` now delivers them.  The two that differ from
+# the default under the active preset are held back by
+# `_PRESET_BROADCAST_PINS` until the isolated behaviour commit, so the mechanism
+# fix provably changes no output:
 #   RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT  wrapper True / saver False
 #   ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT             wrapper True / saver False
-# The wrapper's `[INFO] run_with_config toggles:` line prints the wrapper value,
-# so the log reports the intended setting while the saver acts on the default.
 # FINDING (2026-07-21).  Entries of `_sync_results_saver_overrides`'s list that
 # resolve on neither side.  `_sync_results_saver_overrides` guards every push
 # with `if name in globals()`, so a dead entry is a silent no-op rather than an
@@ -122,19 +127,14 @@ KNOWN_STALE_FORWARDED_NAMES = {
     "TRANSFORMATION_SUPPLY_CACHE_PATH",
 }
 
+# What remains undelivered once `_broadcast_preset_overrides()` is accounted
+# for: exactly the names deliberately withheld in `_PRESET_BROADCAST_PINS`, and
+# only for the modules that read them.  Sourced from the wrapper so that
+# removing a pin (the behaviour commit) shows up here as a single change rather
+# than needing this baseline edited to match.
 KNOWN_UNFORWARDED = {
-    "_srs": {
-        "AGGREGATED_DEMAND_EXCLUDED_SECTORS",
-        "AGGREGATED_DEMAND_USE_SECTOR_BRANCHES",
-        "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT",
-        "USE_AGGREGATED_DEMAND_AS_DUMMY",
-        "WRITE_AGGREGATED_DEMAND_WORKBOOK",
-        "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT",
-    },
-    "_srt": {
-        "AGGREGATED_DEMAND_EXCLUDED_SECTORS",
-        "USE_AGGREGATED_DEMAND_AS_DUMMY",
-    },
+    "_srs": set(_wrapper._PRESET_BROADCAST_PINS),
+    "_srt": set(),
     "_sra": set(),
     "_srh": set(),
 }
@@ -273,6 +273,9 @@ def _unforwarded_for(alias: str) -> set[str]:
     forwarded = set(SYNC_CONFIG_NAMES)
     if alias == "_srs":
         forwarded |= set(SAVER_OVERRIDE_NAMES)
+    # `_broadcast_preset_overrides()` reaches every loaded codebase module that
+    # defines the name, so it covers all four targets at once.
+    forwarded |= set(_wrapper._preset_override_names())
     candidates = _wrapper_rebound_settings() - FORWARDING_ALLOWLIST
     return (candidates & _module_globals_read_by(_parse(path))) - forwarded
 
@@ -364,12 +367,12 @@ def test_known_unforwarded_settings_do_not_grow(alias):
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "Known Phase 4 defect, characterized not fixed: supply_results_saver reads "
-        "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT, "
-        "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT, USE_AGGREGATED_DEMAND_AS_DUMMY, "
-        "WRITE_AGGREGATED_DEMAND_WORKBOOK, AGGREGATED_DEMAND_USE_SECTOR_BRANCHES and "
-        "AGGREGATED_DEMAND_EXCLUDED_SECTORS as module globals, and the presets "
-        "override the first two, but none are in _sync_results_saver_overrides"
+        "The delivery mechanism is fixed, but "
+        "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT and "
+        "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT are still withheld by "
+        "_PRESET_BROADCAST_PINS so the mechanism commits change no output. "
+        "Emptying the pin set (docs/work_queue.md [17], behaviour commit) turns "
+        "this green"
     ),
 )
 def test_no_wrapper_setting_is_read_unforwarded():
@@ -383,11 +386,12 @@ def test_no_wrapper_setting_is_read_unforwarded():
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "Known Phase 4 defect: the active preset sets "
-        "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT and "
-        "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT on the wrapper (both annotated "
-        "'# overrides config default'), but supply_results_saver still holds the "
-        "config default because neither name is forwarded"
+        "The active preset sets RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT "
+        "and ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT on the wrapper (both annotated "
+        "'# overrides config default'), and _broadcast_preset_overrides() can now "
+        "deliver them, but both are withheld by _PRESET_BROADCAST_PINS until the "
+        "isolated behaviour commit, so supply_results_saver still holds the config "
+        "default"
     ),
 )
 @pytest.mark.parametrize(
@@ -401,10 +405,85 @@ def test_preset_overridden_flags_reach_the_saver(name):
     """The same defect stated in values rather than names.
 
     Both flags gate real behaviour inside
-    ``run_results_linked_transformation_supply_workflow`` (current-accounts
-    scenario expansion, and the other-demand zeroing workbooks).
+    ``run_results_linked_transformation_supply_workflow`` (the zero-reset before
+    filling, and the other-demand zeroing workbooks).
     """
+    _wrapper._sync_results_saver_overrides()
     assert getattr(_srs, name) == getattr(_wrapper, name)
+
+
+def test_pinned_preset_names_are_still_read_by_the_saver():
+    """A pin is only meaningful while something reads the name.
+
+    If `supply_results_saver` stopped reading a pinned flag, the pin would be
+    silently protecting nothing and the behaviour commit would be a no-op.
+    """
+    saver_reads = _module_globals_read_by(_parse(CONFIG_PUSH_TARGETS["_srs"][1]))
+    for name in _wrapper._PRESET_BROADCAST_PINS:
+        assert name in saver_reads, (
+            f"{name!r} is pinned out of the preset broadcast but supply_results_saver "
+            "no longer reads it; drop the pin instead of carrying it"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 2b. The broadcast mechanism itself
+# ---------------------------------------------------------------------------
+
+
+def test_preset_broadcast_delivers_an_unpinned_key_to_every_reader():
+    """The mechanism fix, stated independently of any particular flag.
+
+    Rebinding an unpinned preset key on the wrapper - what a notebook edit does
+    - must reach every loaded codebase module that reads it, not just the four
+    modules named in the hand-maintained lists.
+    """
+    name = "WRITE_AGGREGATED_DEMAND_WORKBOOK"
+    assert name in _wrapper._preset_override_names(), (
+        f"{name} is no longer an unpinned preset key; pick another for this test"
+    )
+    targets = [
+        module
+        for module in vars(_wrapper).values()
+        if getattr(module, "__name__", "").startswith("codebase.")
+        and name in vars(module)
+    ]
+    assert targets, f"no loaded codebase module defines {name}"
+
+    original_wrapper = getattr(_wrapper, name)
+    originals = [(module, getattr(module, name)) for module in targets]
+    sentinel = not original_wrapper
+    try:
+        setattr(_wrapper, name, sentinel)
+        _wrapper._broadcast_preset_overrides()
+        for module in targets:
+            assert getattr(module, name) is sentinel, (
+                f"a wrapper rebind of {name} did not reach {module.__name__}"
+            )
+    finally:
+        setattr(_wrapper, name, original_wrapper)
+        for module, value in originals:
+            setattr(module, name, value)
+
+
+def test_preset_broadcast_withholds_pinned_names():
+    """The pins must actually hold, or the mechanism commits are not inert."""
+    originals = {
+        name: (getattr(_wrapper, name), getattr(_srs, name))
+        for name in _wrapper._PRESET_BROADCAST_PINS
+    }
+    try:
+        for name in _wrapper._PRESET_BROADCAST_PINS:
+            setattr(_wrapper, name, "SENTINEL")
+        _wrapper._broadcast_preset_overrides()
+        for name in _wrapper._PRESET_BROADCAST_PINS:
+            assert getattr(_srs, name) != "SENTINEL", (
+                f"{name} is pinned but the broadcast delivered it anyway"
+            )
+    finally:
+        for name, (wrapper_value, saver_value) in originals.items():
+            setattr(_wrapper, name, wrapper_value)
+            setattr(_srs, name, saver_value)
 
 
 # ---------------------------------------------------------------------------

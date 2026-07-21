@@ -350,6 +350,45 @@ _ORIGINAL_BUILD_CAPACITY_PROCESS_CATALOG = None
 _ORIGINAL_BUILD_LABEL_TO_ESTO_PRODUCT_LOOKUP = _build_label_to_esto_product_lookup
 
 
+# Preset names deliberately withheld from `_broadcast_preset_overrides()`.
+# Removing a name here is a BEHAVIOUR CHANGE: the preset value starts reaching
+# the modules that read it. Kept as a one-line revert for exactly that reason.
+# See docs/work_queue.md [17]; both entries are removed in the behaviour commit
+# that follows the mechanism fix.
+_PRESET_BROADCAST_PINS: set[str] = {
+    "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT",
+    "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT",
+}
+
+
+def _preset_override_names() -> set[str]:
+    """Every key any `_PRESET_*` dict can set, minus the withheld pins."""
+    names: set[str] = set()
+    for name, value in globals().items():
+        if name.startswith("_PRESET_") and isinstance(value, dict):
+            names |= set(value)
+    return names - _PRESET_BROADCAST_PINS
+
+
+def _broadcast_preset_overrides() -> None:
+    """Deliver this wrapper's preset values to every module that reads them.
+
+    `globals().update(ACTIVE_PRESET)` rebinds the preset keys on this wrapper
+    only. Modules extracted by the Phase 4 split hold their own copies, taken
+    from `supply_reconciliation_config` via `import *`, so without this the
+    preset silently loses to the config default in every consumer - see
+    docs/work_queue.md [17].
+
+    `_broadcast_config_overrides` is used rather than a hand-maintained name
+    list because it walks `sys.modules` and sets only attributes a module
+    already defines, so it cannot go stale when a preset key is added or a
+    module starts reading one.
+    """
+    _broadcast_config_overrides(
+        {name: globals()[name] for name in _preset_override_names() if name in globals()}
+    )
+
+
 def _sync_extracted_runtime_state() -> None:
     """Propagate notebook/test monkeypatches on this wrapper into extracted modules."""
     runtime_names = [
@@ -381,6 +420,9 @@ def _sync_extracted_runtime_state() -> None:
 def _sync_results_saver_overrides() -> None:
     """Forward legacy monkeypatches on this wrapper into supply_results_saver."""
     _sync_extracted_runtime_state()
+    # Re-broadcast so a preset key edited in the notebook after import (the
+    # documented way to change a run) still reaches its consumers.
+    _broadcast_preset_overrides()
     names = [
         "archive_config_dir_once_per_day",
         "load_balance_demand_inputs",
@@ -892,6 +934,9 @@ THROW_ERROR_AFTER_RUN = True
 # Unpack preset — does not overwrite ECONOMIES/SCENARIOS set above. Presets can
 # override the defaults immediately above, including PREFLIGHT_* toggles.
 globals().update(ACTIVE_PRESET)
+# The update above only rebinds names on this wrapper; deliver them to the
+# modules that actually read them before anything resolves paths or runs.
+_broadcast_preset_overrides()
 _refresh_output_paths_for_current_pass_mode()
 
 # ---------------------------------------------------------------------------
@@ -1043,6 +1088,7 @@ def _run_results_update_readiness_check() -> None:
 
 def run_with_config() -> dict[str, object]:
     """Run the notebook-configured workflow while optionally preventing PC sleep."""
+    _broadcast_preset_overrides()
     _refresh_output_paths_for_current_pass_mode()
     with _log_to_file(_workflow_log_path()) as log_path:
         print(f"[LOG] Writing output to: {log_path}")
