@@ -59,19 +59,28 @@ def _resolve_classification_source_path(source_path=None) -> Path:
     return path
 
 
-def resolve_classification_source_for_economy(economy) -> Path:
+def resolve_classification_source_for_economy(economy) -> Path | None:
     """Return the export template whose Resources tree applies to this economy.
 
-    Falls back to the configured single export for aggregate sentinels, which
-    span areas, and for economies with no template yet.
+    Aggregate sentinels and economies without a template have no area-correct
+    Resources tree. Return ``None`` for them so callers use the ESTO-based
+    fallback rather than borrowing another economy's classification.
     """
     if economy is None or leap_export_template_resolver.is_aggregate_economy(economy):
-        return _resolve_classification_source_path()
+        print(
+            "[WARN] No economy-specific supply classification template is available for "
+            f"{economy!r}; using legacy ESTO-based classification."
+        )
+        return None
     try:
         return leap_export_template_resolver.resolve_leap_export_template(economy)
     except (FileNotFoundError, ValueError) as exc:
         print(f"[WARN] {exc}")
-        return _resolve_classification_source_path()
+        print(
+            "[WARN] Supply root classification will use the legacy ESTO-based rule; "
+            "it will not borrow another economy's template."
+        )
+        return None
 
 
 def _classification_cache_key(path: Path) -> str:
@@ -430,6 +439,10 @@ def _get_supply_branch_roots_for_entry(fuel_key, fuel_entry, source_path=None):
     fuel_name = str(entry.get("fuel_name") or "").strip()
     esto_label = str(entry.get("fuel_label_esto") or "").strip()
     key_label = str(fuel_key or "").strip()
+    if source_path is None:
+        classification = _classify_supply_root_for_product(esto_label or fuel_name or key_label)
+        return [["Resources", "Secondary" if classification == "secondary" else "Primary"]]
+
     resolved_source = _resolve_classification_source_path(source_path)
 
     root_from_export = _resolve_supply_root_from_export_lookup(

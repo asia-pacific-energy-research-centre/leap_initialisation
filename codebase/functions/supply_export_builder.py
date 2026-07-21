@@ -260,24 +260,29 @@ def build_supply_log_rows(
             for scenario in scenario_names:
                 for branch_root in branch_roots:
                     branch_type = str(branch_root[-1] if branch_root else "").strip().lower()
-                    template_label = _resolve_supply_branch_label_from_export(
-                        branch_type,
-                        display_name,
-                        entry.get("fuel_label_esto"),
-                        fuel_key,
-                        source_path=classification_source,
-                    )
+                    template_label = None
+                    if classification_source is not None:
+                        template_label = _resolve_supply_branch_label_from_export(
+                            branch_type,
+                            display_name,
+                            entry.get("fuel_label_esto"),
+                            fuel_key,
+                            source_path=classification_source,
+                        )
                     safe_name = sanitize_leap_label(template_label or display_name)
                     branch_path = build_branch_path(branch_root + [safe_name])
-                    if not _supply_branch_exists_in_export_source(
-                        branch_path, source_path=classification_source
+                    if (
+                        classification_source is not None
+                        and not _supply_branch_exists_in_export_source(
+                            branch_path, source_path=classification_source
+                        )
                     ):
                         miss_key = f"{economy}|{scenario}|{branch_path}"
                         if miss_key not in _SUPPLY_BRANCH_PATH_MISS_WARNED:
                             _SUPPLY_BRANCH_PATH_MISS_WARNED.add(miss_key)
                             print(
                                 "[WARN] Skipping supply export row for branch not present in "
-                                "canonical full-model export source: "
+                                "the economy-specific export template: "
                                 f"{branch_path} (economy={economy}, scenario={scenario}, fuel={display_name})"
                             )
                         continue

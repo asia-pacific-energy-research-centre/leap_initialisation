@@ -131,6 +131,16 @@ def test_supply_branch_classification_normalizes_lookup_names_and_fallback_roots
         branch_classification._normalize_supply_lookup_fuel_name("17 Electricity")
         == "electricity"
     )
+
+
+def test_supply_classification_does_not_borrow_a_template_for_unknown_economy() -> None:
+    assert branch_classification.resolve_classification_source_for_economy("99_TEST") is None
+    roots = branch_classification._get_supply_branch_roots_for_entry(
+        "17 Electricity",
+        {"fuel_label_esto": "17 Electricity", "fuel_name": "Electricity"},
+        source_path=None,
+    )
+    assert roots == [["Resources", "Secondary"]]
     assert branch_classification._classify_supply_root_for_product("17 Electricity") == "secondary"
     assert branch_classification._classify_supply_root_for_product("01 Coal") == "primary"
     assert (

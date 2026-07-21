@@ -64,6 +64,11 @@ copy) instead.
   `baseline_seed_comparison_workflow.py`, `transformation_workflow.py`, and
   `transfers_workflow.py`; these were also repointed to the canonical USA
   template.
+- Supply-root classification is economy-dependent in normal supply exports:
+  each economy resolves and reads its own template. For an aggregate or a
+  missing template, the workflow now uses the legacy ESTO classification rule
+  without borrowing USA's Resources tree. The incremental all-template fuel
+  catalog remains the shared-union diagnostic/provenance source.
 - **Task 7 remains pending.** The post-retirement fleet run has not been used
   to certify provisional baseline seeds; it must be run under the execution
   handoff below before claiming fleet-wide import readiness.
