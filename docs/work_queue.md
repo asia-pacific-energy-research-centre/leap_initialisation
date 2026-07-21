@@ -697,6 +697,12 @@ per-economy templates" are closed.
 
 ## [16] Initialisation refactor — Phase 3/4/5 roadmap
 
+> **Resuming this work? Start with
+> [prompts/initialisation_refactor_continuation.md](prompts/initialisation_refactor_continuation.md).**
+> It is the open-thread register for everything agreed on 2026-07-21 — eleven
+> threads, what is decided, what is still open, and the order to take them in.
+> This section is the roadmap; that file is the worklist.
+
 **Status 2026-07-21 — planned, not started.** Three execution briefs added.
 **Read them before trusting `AGENTS.md`'s "Planned workflow improvements"
 section: two of its three phase descriptions are measurably stale.**
