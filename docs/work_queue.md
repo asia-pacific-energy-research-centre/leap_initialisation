@@ -575,8 +575,77 @@ Detailed execution brief: `docs/prompts/phase_2_configuration_standardisation_ex
 ## [17] ⚠️ PRIORITY — two preset overrides never reach the code that reads them
 
 **Found 2026-07-21 by `tests/test_reconciliation_state_forwarding.py` (`a279615`),
-verified independently. Not a regression — long-standing.** Fix is deferred
-until the in-flight fleet run finishes (it holds the file that must change).
+verified independently. Not a regression — long-standing.**
+
+### Status 2026-07-21 evening — mechanism FIXED, behaviour flip NOT DONE
+
+| Step | Commit | State |
+| --- | --- | --- |
+| 1. Deliver preset overrides | `3928a7b` | **done**, inert (two names pinned) |
+| 2. Toggles line reports effective values | `857b6e4` | **done** |
+| 3. Remove dead forwarding entry | `2017ef4` | **done** |
+| 4. Flip the behaviour on | — | **not committed — but see the warning below** |
+| 5. Record verification evidence | — | not started |
+
+> **⚠️ As this was written, an uncommitted step-4 flip was sitting in the working
+> tree from a concurrent session** — `_PRESET_BROADCAST_PINS` emptied and the
+> three `xfail` markers dropped. It is not in any commit above. Before trusting
+> this table, check `git diff codebase/supply_reconciliation_workflow.py`:
+> **if that set is empty, the behaviour is live and unverified.** Two sessions
+> were editing this file at once; that is the same hazard as the blocker below,
+> and it is why the verification numbers do not exist yet.
+
+**As committed**, the repository is in a deliberate, safe resting state: the
+delivery mechanism works, the two flags that would change output are held back
+by `_PRESET_BROADCAST_PINS` in `supply_reconciliation_workflow.py`, and
+behaviour is what it was before this work. **Emptying that set is the whole of
+step 4** — one line, and reverting that one commit restores current behaviour.
+It must not be done without the verification runs below.
+
+**Blocker (user decision, 2026-07-21): the A/B verification was paused because
+other sessions were committing to this repo concurrently** — two commits
+(`16e4a26`, `2ffd09c`) landed from another session at 17:57–17:58, mid-task. A
+before/after seed comparison is only attributable if the tree is otherwise
+still. Resume when commits to `codebase/` have stopped.
+
+#### Corrected verification design — the prompt's baseline is no longer valid
+
+The execution prompt says to prove steps 1–3 inert by reproducing the `01_AUS`
+reference seed built at `70a6c88`. **Do not do this.** 21 commits — 12 touching
+`codebase/` — plus a template refresh and the two concurrent commits above sit
+between `70a6c88` and the current parent, so any difference would be
+unattributable. Run a three-point A/B on current code instead:
+
+1. `01_AUS` at `2ffd09c` (the parent of this work) — baseline;
+2. `01_AUS` at `2017ef4` (step 3) — **must match run 1**; this is what proves
+   steps 1–3 inert. If it does not match, stop and understand it before step 4;
+3. `01_AUS` at step 4 — the behaviour measurement.
+
+Compare post-boundary on both sides (branch-path key sets, row counts, per
+economy/scenario/fuel totals) and classify every difference. `ECONOMIES` and
+`RUN_OUTPUT_LABEL` are the operator's; the user approved changing both in the
+working tree only, never committed, restored afterwards.
+
+#### What was measured, and where the original write-up was incomplete
+
+Reproduced independently before any change, and the defect is **wider than the
+table below**. `scripts/check_preset_forwarding.py` (added by step 1) is the
+permanent import-only reproduction — it acquires no locks and writes nothing:
+
+- Six names, not two, were undelivered to `supply_results_saver`; four did not
+  diverge under the active preset and so were latent, as recorded below.
+- `OTHER_LOSS_OWN_USE_PROXY_STAGE` and `RUN_ELECTRICITY_HEAT_INTERIM` were
+  additionally undelivered to `supply_leap_io`, which the original write-up did
+  not name. Inert under `baseline_seed`: in
+  `_resolve_other_loss_own_use_proxy_activity_source_mode`, `"auto"` and
+  `"first"` both resolve to `esto_ninth`.
+- `supply_preflight` holds its own copy of
+  `RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT` too — that copy is what
+  the honest `[WARN] Reset reminder` line was reading.
+- The compressed **projection** preflight does not override the reset flag (only
+  the `results_update` preflight does, at `supply_preflight.py:1229`), so after
+  step 4 that preflight will exercise the reset as well. Its outputs are
+  isolated under `preflight_compressed_projection/`.
 
 ### The defect
 
@@ -648,7 +717,9 @@ same hole for the first and third. They are latent, not active.
 
 Also found: `TRANSFORMATION_SUPPLY_CACHE_PATH` is **in** the forwarding list but
 defined nowhere in `codebase/`. `_sync_results_saver_overrides` guards each push
-with `if name in globals()`, so a dead entry is a silent no-op.
+with `if name in globals()`, so a dead entry is a silent no-op. **Fixed in
+`2017ef4`**, along with the test pin that exempted it — a new dead entry now
+fails outright rather than being eligible for an exemption.
 
 ### The decision — SETTLED 2026-07-21: the presets are right
 
@@ -671,33 +742,97 @@ Full instructions, preconditions and verification plan:
 [prompts/preset_forwarding_fix_execution_prompt.md](prompts/preset_forwarding_fix_execution_prompt.md).
 Summary of the sequence (after the fleet run, in this order):
 
-1. **`codex: deliver preset overrides to extracted modules`** — the mechanism
-   fix only, with the two divergent names still pinned to their *current*
-   effective values so behaviour is unchanged and the diff is provably inert.
-   Prefer routing through `_broadcast_config_overrides` (which cannot go stale)
-   over extending the hand list.
-2. **`codex: make the toggles line report effective values`** — print what the
-   consumers hold, not what the wrapper holds. This defect was invisible for
-   weeks because the log lied.
-3. **`codex: remove the dead TRANSFORMATION_SUPPLY_CACHE_PATH forwarding`**.
-4. **Then** (the modelling decision is settled — see above), flip the flags in
-   one isolated commit and measure a **single-economy** before/after seed diff,
-   post-boundary on both sides. Expect real differences; the point is to
-   confirm they are the *intended* ones — supply/transformation Import/Export/
-   target values reset to zero before filling, and demand-zeroing rows present
-   — and nothing else. Only after that check passes should a fleet run be
-   relaunched.
+1. **`3928a7b codex: deliver preset overrides to the modules that read them`** —
+   DONE. Routed through `_broadcast_config_overrides` as preferred, not by
+   extending the hand list: `_broadcast_preset_overrides()` derives its names
+   from the `_PRESET_*` dicts themselves, so it cannot go stale when a preset
+   key is added or a module starts reading one. The two divergent names are
+   withheld by `_PRESET_BROADCAST_PINS`, keeping their effective `False`.
+   Evidence: 17 (name, module) pairs where a module reads a preset key; the
+   only readers still disagreeing with the wrapper are the two pins.
+2. **`857b6e4 codex: make the run_with_config toggles line report effective
+   values`** — DONE. `_effective_setting()` reduces across every loaded
+   `codebase` module that defines the name and reports disagreement explicitly.
+   `ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT` and `USE_AGGREGATED_DEMAND_AS_DUMMY`
+   were never on the line at all and were added. `_preset_delivery_warnings()`
+   generalises it: any preset key whose consumers disagree with the wrapper now
+   prints `[WARN] Preset not in effect: ...`, distinguishing a deliberate pin
+   from an undelivered name, so a future pin cannot be silent. Verified at the
+   pinned state — the toggles line reports `RUN_RESET_...=False`, agreeing with
+   the reminder's `DISABLED`.
+3. **`2017ef4 codex: remove the dead TRANSFORMATION_SUPPLY_CACHE_PATH
+   forwarding`** — DONE.
+4. **`codex: deliver the supply reset and demand zeroing presets` — DONE, code
+   landed; single-economy verification run STILL OUTSTANDING.**
+   `_PRESET_BROADCAST_PINS` is now empty; that one-line set is the entire flip
+   and reverting that single commit restores the previous behaviour.
+   `scripts/check_preset_forwarding.py` now reports **zero** disagreeing
+   readers and **zero** stale copies. The measurement — a **single-economy**
+   before/after seed diff, post-boundary on both sides — has **not** been run:
+   it needs a fresh `RUN_OUTPUT_LABEL`, which is the operator's to give (the
+   working tree still carries the dead fleet run's label). **Do not relaunch
+   the fleet run (T11) until that check passes.**
 5. Un-`xfail` the three strict xfails in
-   `tests/test_reconciliation_state_forwarding.py` as each is resolved.
+   `tests/test_reconciliation_state_forwarding.py` — DONE in step 4's commit,
+   which was required: all three described the pins, so emptying the set turned
+   them green and, being `strict=True`, they would have failed the suite as
+   unexpected passes. 60 passed, 0 xfailed.
+
+### Correction: the defect is wider than this entry first said
+
+Recorded 2026-07-21 from `scripts/check_preset_forwarding.py`. Above, this entry
+attributes the stale copies to `supply_results_saver` (plus
+`supply_reconciliation_tables` for two latent names). In fact **nine** modules
+held a stale copy of both flags: `supply_demand_mapping`, `supply_leap_io`,
+`supply_preflight`, `supply_reconciliation_tables`,
+`supply_reconciliation_allocation`, `supply_reconciliation_balance_tables`,
+`supply_reconciliation_config`, `supply_reconciliation_history`,
+`supply_reconciliation_results`.
+
+Holding a copy is not the same as acting on one, and the blast radius of step 4
+is set by the latter. Established by AST (loaded, never stored or bound) plus
+inspection of every use site:
+
+| Module | `RUN_RESET_...` | `ZERO_OTHER_DEMAND_...` | Effect of the flip |
+| --- | --- | --- | --- |
+| `supply_results_saver` | reads, 8 sites | reads, 1 site | **The only behaviour change.** `:3246` the zero-reset (substantive); `:3678` the demand-zeroing workbooks; `:2876` inert (see below); `:3718-3766` inert, inside the disabled `INCLUDE_LEAP_IMPORT` block |
+| `supply_preflight` | reads, 2 sites | copy only | **Log line only** at `:526` — the `[WARN] Reset reminder` now reads `ENABLED`. Separately, `:1230` forces the flag `False` for the *results-update* preflight, so that preflight is insulated |
+| `supply_leap_io` | reads, 1 site | copy only | Inert: `:2387` sits in the LEAP API import path, and the API is decommissioned |
+| the other six | copy only, never loaded | copy only, never loaded | None |
+
+Two consequences the original entry did not state:
+
+- **`:2876` is inert for the active preset, and now confirmed rather than
+  assumed.** In reset mode the saver appends `Current Accounts` to the export
+  scenarios; `SCENARIOS` is already `['Target', 'Reference', 'Current
+  Accounts']`, so the append is a no-op. It would *not* be inert for any run
+  with a narrower scenario list.
+- **The compressed *projection* preflight is not insulated.** Only the
+  results-update preflight pins the flag `False` (`:1230`).
+  `RUN_PREFLIGHT_COMPRESSED_PROJECTION` is `True` under the baseline-seed
+  preset, so that preflight now runs *with* the zero-reset, where before it did
+  not. Arguably a correction — the preflight is meant to mirror the run it
+  gates — but it is a change in the preflight's own output and should not
+  surprise anyone reading its diagnostics.
+
+Reset scope is unrestricted: `RESET_SCOPE_ECONOMIES`, `_SCENARIOS`, `_YEARS`,
+`_SECTOR_TITLES` and `_ESTO_PRODUCTS` are all `None`, so the reset applies to
+every run economy, scenario and year.
+
+The demand-zeroing gate is a conjunction — `ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT
+and USE_AGGREGATED_DEMAND_AS_DUMMY`. The second is `True` under the active
+preset, so delivering the first is sufficient to start producing the workbooks.
 
 ### Guardrails
 
-- Do not fix this while the fleet run is live — it edits
-  `supply_reconciliation_workflow.py`, which carries the run's temporary label.
-- Step 4 must never be bundled with step 1. Mechanism and behaviour change are
-  separately revertible or this becomes unattributable.
-- Do not delete the `[WARN] Reset reminder` line — it is currently the only
-  honest signal in the log.
+- Step 4 must never be bundled with steps 1–3. Mechanism and behaviour change
+  are separately revertible or this becomes unattributable.
+- Do not delete the `[WARN] Reset reminder` line. It was the only honest signal
+  in the log; as of `857b6e4` the toggles line agrees with it, but the reminder
+  is still the independent check.
+- `_PRESET_BROADCAST_PINS` is not a config knob. It exists solely to keep steps
+  1–3 inert; nothing should be added to it, and it should be empty and deleted
+  once step 4 lands.
 
 ## [16] Initialisation refactor — Phase 3/4/5 roadmap
 
@@ -981,6 +1116,12 @@ carry the same distortion.
   — **stale test**. It monkeypatches `apply_matt_subtotal_mapping`, which now
   only exists under `archive/` and `scrapbook/`. Verified failing at HEAD
   independently of any current work. Either update or delete the test.
+- `tests/test_leap_export_template_resolver.py::test_read_area_from_real_usa_template`
+  — **added to this list 2026-07-21**, having been found by the [17] full-suite
+  run and mistaken for a regression until checked. Confirmed failing at
+  `2713a51`, before any [17] work. Not diagnosed; it asserts on an area string
+  read from the real USA template, so today's template refresh is the first
+  place to look.
 - ~~`tests/test_module_attribute_contracts.py::test_no_bare_name_misattribution[codebase.functions.supply_leap_io]`~~
   — **cleared.** Was failing mid-flight while the export-template work was
   uncommitted; passes at `6bda122` (39/39). Left here only to stop it being

@@ -60,15 +60,44 @@ re-homed, archive it per `docs/prompts/AGENTS.md`.
 - Nothing holds `supply_reconciliation_workflow.py` any more. Phase 4 and [17]
   work are unblocked.
 
+**Update, 2026-07-21 evening.** [17] steps 1-3 are committed (`3928a7b`,
+`857b6e4`, `2017ef4`); the behaviour flip is paused. Two facts worth carrying
+forward:
+
+- **Another session committed to `codebase/` during this one** (`16e4a26`,
+  `2ffd09c`, 17:57-17:58). Standing safety rule 1 covers a *live run*; this is
+  the adjacent hazard - concurrent commits make any before/after measurement
+  unattributable even with no run in flight. That is why T1's verification was
+  paused rather than run.
+- **A second pre-existing test failure exists** and was not on the "do not
+  chase" list: `tests/test_leap_export_template_resolver.py::
+  test_read_area_from_real_usa_template`. Confirmed failing at `2713a51`, i.e.
+  before any [17] work. Full suite at that point: 2 failed, 788 passed,
+  11 skipped, 6 xfailed, 12 subtests passed.
+
 ## Thread register
 
-### T1 - [17] preset forwarding defect. IN PROGRESS (this is "step 1")
+### T1 - [17] preset forwarding defect. MECHANISM DONE, BEHAVIOUR FLIP PAUSED
 
 Decision settled: **the presets are right**; fix forwarding so the zero-reset
 and demand zeroing take effect, accepting that seed contents change for every
 economy. Verify with a **single-economy** before/after check, not a fleet run.
-Six sequenced steps in `work_queue.md` [17]. Suggested economy: `01_AUS` (real
-template, clean reference seed at `70a6c88`) or `12_NZ`.
+
+**Steps 1-3 landed 2026-07-21** (`3928a7b`, `857b6e4`, `2017ef4`) and are
+deliberately inert: `_broadcast_preset_overrides()` now delivers preset keys to
+the modules that read them, but the two flags that change output are withheld
+by `_PRESET_BROADCAST_PINS`. Behaviour is unchanged from before the work.
+
+**Step 4 is paused by user decision**, not by anything technical: other
+sessions were committing to `codebase/` concurrently (`16e4a26`, `2ffd09c`
+landed mid-task), and a before/after seed comparison is only attributable
+against a still tree. **Resume when commits to `codebase/` have stopped.**
+
+To resume: empty `_PRESET_BROADCAST_PINS`, drop the three now-stale
+`xfail(strict=True)` markers in `tests/test_reconciliation_state_forwarding.py`
+in the same commit, and run the three-point A/B in `work_queue.md` [17].
+**Do not use the `70a6c88` reference seed as the baseline** - 21 commits and a
+template refresh sit between it and this work; [17] explains the replacement.
 
 Do not bundle the mechanism fix (steps 1-3) with the behaviour flip (step 4).
 

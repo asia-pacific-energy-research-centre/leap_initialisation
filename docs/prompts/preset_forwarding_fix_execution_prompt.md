@@ -1,7 +1,18 @@
 # Preset forwarding fix - execution prompt (T1 / work_queue [17])
 
 Type: implementation + single-economy verification prompt.
-Status: active, opened 2026-07-21. **Current priority.**
+Status: **partly executed 2026-07-21.** Commits 1-3 are landed (`3928a7b`,
+`857b6e4`, `2017ef4`); commit 4 and the verification are paused. **Read
+`docs/work_queue.md` [17] "Status" first — it supersedes parts of this file.**
+
+Two instructions below are now wrong and are corrected in [17]:
+
+- the reference-seed baseline (the `70a6c88` `01_AUS` seed is no longer
+  comparable; use the three-point A/B on current code);
+- the preconditions, which are satisfied for commits 1-3 and were re-checked.
+
+The commit-4 guidance, the out-of-scope list and the stop-and-ask conditions all
+still stand.
 Register entry: T1 in [`initialisation_refactor_continuation.md`](initialisation_refactor_continuation.md)
 Full detail: `docs/work_queue.md` [17]
 
