@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import ast
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -455,6 +456,70 @@ def test_preset_broadcast_delivers_an_unpinned_key_to_every_reader():
         setattr(_wrapper, name, original_wrapper)
         for module, value in originals:
             setattr(module, name, value)
+
+
+def test_duplicate_wrapper_module_is_not_counted_as_a_consumer():
+    """The wrapper must not be mistaken for a consumer of its own settings.
+
+    Production runs this file as a script, so ``__name__`` is ``"__main__"`` and
+    a name-based self-check never matches; ``supply_preflight``'s late import
+    then loads the same file again under its package name, leaving two live
+    copies in one process.  Both apply the preset to themselves, so the second
+    copy looked like a consumer holding the preset value - and every withheld
+    setting reported ``<inconsistent across consumers: ...>`` instead of its
+    real effective value.  Observed in the [17] A/B before-leg log.
+    """
+    duplicate = types.ModuleType("codebase.supply_reconciliation_workflow__duplicate")
+    duplicate.__file__ = _wrapper.__file__
+    name = "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT"
+    setattr(duplicate, name, "SENTINEL_FROM_DUPLICATE_WRAPPER")
+    sys.modules[duplicate.__name__] = duplicate
+    try:
+        consumers = _wrapper._consumer_values(name)
+        assert duplicate.__name__ not in consumers, (
+            "a second module object for this same file was counted as a consumer"
+        )
+        effective = _wrapper._effective_setting(name)
+        assert "inconsistent" not in str(effective), (
+            f"the duplicate wrapper copy corrupted the effective value: {effective!r}"
+        )
+    finally:
+        del sys.modules[duplicate.__name__]
+
+
+def test_unhashable_setting_is_not_reported_as_undelivered():
+    """A list-valued setting must not be permanently flagged as undelivered.
+
+    ``_effective_setting`` used to collect values in a set and substitute
+    ``repr`` for unhashable ones, so ``PATCH_MODULE = []`` became ``"[]"`` and
+    never compared equal to the real ``[]``.  Every run printed
+    ``[WARN] Preset not in effect: PATCH_MODULE ... (NOT DELIVERED - investigate)``
+    for a name that had been delivered correctly - noise on the one line whose
+    job is to be believed.
+    """
+    name = "PATCH_MODULE"
+    if name not in _wrapper._preset_override_names() and not hasattr(_wrapper, name):
+        pytest.skip(f"{name} is no longer a wrapper setting")
+    effective = _wrapper._effective_setting(name)
+    assert _wrapper._values_match(effective, getattr(_wrapper, name)), (
+        f"{name}: effective {effective!r} does not match wrapper "
+        f"{getattr(_wrapper, name)!r}"
+    )
+    assert not any(
+        line.startswith(f"{name}:") for line in _wrapper._preset_delivery_warnings()
+    ), f"{name} is still reported as undelivered"
+
+
+def test_values_match_survives_settings_whose_equality_is_not_a_bool():
+    """Reporting must not crash a run on an array-like config value."""
+
+    class _ArrayLike:
+        def __eq__(self, other):  # element-wise result, truthiness raises
+            raise ValueError("truth value of an array is ambiguous")
+
+    left, right = _ArrayLike(), _ArrayLike()
+    assert _wrapper._values_match(left, left) is True
+    assert _wrapper._values_match(left, right) in (True, False)
 
 
 def test_toggles_line_and_reset_reminder_report_the_same_value():

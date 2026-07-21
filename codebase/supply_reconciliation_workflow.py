@@ -393,17 +393,55 @@ def _broadcast_preset_overrides() -> None:
 
 
 def _consumer_values(name: str) -> dict[str, object]:
-    """The value each loaded codebase module holds for `name`, keyed by module."""
+    """The value each loaded codebase module holds for `name`, keyed by module.
+
+    Excludes *this* module by file rather than by ``__name__``. Production runs
+    this file as a script (``python codebase/supply_reconciliation_workflow.py``),
+    so ``__name__`` is ``"__main__"`` and a name-based guard never matches; worse,
+    ``supply_preflight``'s late import then loads the same file a second time
+    under ``codebase.supply_reconciliation_workflow``, leaving two live copies of
+    the wrapper in one process. Both apply the preset to themselves, so the
+    imported copy looks like a consumer holding the preset value and every
+    withheld setting reports as ``<inconsistent across consumers: ...>``.
+    Comparing ``__file__`` catches every copy however it was loaded.
+    """
+    this_file = globals().get("__file__")
+    resolved_self = Path(this_file).resolve() if this_file else None
     values: dict[str, object] = {}
     for module_name, module in list(sys.modules.items()):
         if module is None or module_name == __name__:
             continue
         if module_name != "codebase" and not module_name.startswith("codebase."):
             continue
+        module_file = getattr(module, "__file__", None)
+        if resolved_self is not None and module_file:
+            try:
+                if Path(module_file).resolve() == resolved_self:
+                    continue
+            except OSError:  # unresolvable path - fall through and include it
+                pass
         module_dict = getattr(module, "__dict__", None)
         if module_dict is not None and name in module_dict:
             values[module_name] = module_dict[name]
     return values
+
+
+def _values_match(left: object, right: object) -> bool:
+    """Equality that survives settings whose ``==`` is not a plain bool.
+
+    Config values include lists, ``None`` and pandas-backed objects; an array-like
+    ``==`` returns an element-wise result whose truthiness raises. Fall back to
+    identity, then ``repr``, rather than letting a report crash a run.
+    """
+    try:
+        return bool(left == right)
+    except Exception:
+        if left is right:
+            return True
+        try:
+            return repr(left) == repr(right)
+        except Exception:
+            return False
 
 
 def _effective_setting(name: str) -> object:
@@ -414,18 +452,21 @@ def _effective_setting(name: str) -> object:
     wrapper's copy is what let docs/work_queue.md [17] survive unnoticed: the
     toggles line printed `RUN_RESET_...=True` on the same run whose reset was
     off. Falls back to the wrapper only when no consumer defines the name.
+
+    Values are compared with ``==`` and collected in a list rather than a set:
+    an unhashable setting such as ``PATCH_MODULE = []`` cannot go in a set, and
+    substituting its ``repr`` made ``[]`` compare unequal to the real ``[]``,
+    so every run reported it as undelivered when it had been delivered fine.
     """
-    values = set()
+    distinct: list[object] = []
     for value in _consumer_values(name).values():
-        try:
-            values.add(value)
-        except TypeError:  # unhashable (e.g. a list setting) - compare by repr
-            values.add(repr(value))
-    if not values:
+        if not any(_values_match(value, seen) for seen in distinct):
+            distinct.append(value)
+    if not distinct:
         return globals().get(name)
-    if len(values) == 1:
-        return next(iter(values))
-    return f"<inconsistent across consumers: {sorted(map(str, values))}>"
+    if len(distinct) == 1:
+        return distinct[0]
+    return f"<inconsistent across consumers: {sorted(repr(value) for value in distinct)}>"
 
 
 def _preset_delivery_warnings() -> list[str]:
@@ -444,7 +485,7 @@ def _preset_delivery_warnings() -> list[str]:
         if not consumers:
             continue
         effective = _effective_setting(name)
-        if effective != globals()[name]:
+        if not _values_match(effective, globals()[name]):
             reason = (
                 "withheld by _PRESET_BROADCAST_PINS"
                 if name in _PRESET_BROADCAST_PINS
