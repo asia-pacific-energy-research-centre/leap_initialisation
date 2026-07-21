@@ -15,6 +15,7 @@ import pytest
 
 import codebase.aggregated_demand_workflow as aggregated_demand_workflow
 import codebase.functions.supply_reconciliation_tables as supply_reconciliation_tables
+from codebase.utilities.workflow_utils import clear_csv_cache, load_esto_csv, load_ninth_outlook_csv
 from codebase.aggregated_demand_workflow import (
     _apply_first_projection_year_bridge,
     _extract_contextual_projection_years,
@@ -23,6 +24,55 @@ from codebase.aggregated_demand_workflow import (
     build_aggregated_demand_as_dummy,
     resolve_active_branch_excluded_sectors,
 )
+
+
+def test_narrow_reference_loaders_reuse_shared_cache_without_mutating_source(tmp_path) -> None:
+    clear_csv_cache()
+    esto_source = tmp_path / "esto.csv"
+    ninth_source = tmp_path / "ninth.csv"
+    pd.DataFrame([
+        {
+            "economy": "01AUS", "flows": "14.01 Test", "products": "01 Fuel",
+            "is_subtotal": False, "2022": 2.0, "unused": "ignore",
+        },
+    ]).to_csv(esto_source, index=False)
+    pd.DataFrame([
+        {
+            "economy": "01_AUS", "scenarios": "reference", "sectors": "14_industry_sector",
+            "sub1sectors": "x", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x",
+            "fuels": "01_fuel", "subfuels": "x", "subtotal_results": False,
+            "2022": 2.0, "2023": 3.0, "unused": "ignore",
+        },
+    ]).to_csv(ninth_source, index=False)
+
+    esto_loaded = aggregated_demand_workflow._load_esto_base_csv(
+        esto_source,
+        economy="01_AUS",
+        base_year=2022,
+    )
+    ninth_loaded = aggregated_demand_workflow._load_demand_csv(
+        ninth_source,
+        economy="01_AUS",
+        final_year=2023,
+    )
+    cached_esto = load_esto_csv(
+        esto_source,
+        usecols=["economy", "flows", "products", "is_subtotal", "2022"],
+    )
+    cached_ninth = load_ninth_outlook_csv(
+        ninth_source,
+        usecols=[
+            "economy", "scenarios", "sectors", "sub1sectors", "sub2sectors",
+            "sub3sectors", "sub4sectors", "fuels", "subfuels", "subtotal_results", "2022", "2023",
+        ],
+    )
+
+    assert esto_loaded["economy"].tolist() == ["01_AUS"]
+    assert cached_esto["economy"].tolist() == ["01AUS"]
+    assert "unused" not in esto_loaded.columns
+    assert "unused" not in ninth_loaded.columns
+    assert cached_ninth["economy"].tolist() == ["01_AUS"]
+    clear_csv_cache()
 
 
 def test_contextual_projection_uses_same_sector_esto_fuel_shares(monkeypatch):

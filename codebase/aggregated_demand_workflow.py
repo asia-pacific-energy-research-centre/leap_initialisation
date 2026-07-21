@@ -55,6 +55,7 @@ from codebase.functions.ninth_projection_mapping import (
 from codebase.utilities.output_paths import STANDALONE_LEAP_EXPORTS_ROOT
 from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
 from codebase.utilities import workflow_common
+from codebase.utilities.workflow_utils import load_esto_csv, load_ninth_outlook_csv
 
 # ── Data sources ──────────────────────────────────────────────────────────────
 DATA_DIR = REPO_ROOT / "data"
@@ -592,7 +593,9 @@ def _load_demand_csv(
     year_cols = [str(y) for y in range(BASE_YEAR, final_year + 1)]
     header = pd.read_csv(path, nrows=0)
     use_cols = [c for c in [*stable_cols, *year_cols] if c in header.columns]
-    df = pd.read_csv(path, usecols=use_cols, low_memory=False)
+    # Keep this narrow read cached across the three scenario builds. Copy before
+    # normalising/filtering because the shared loader returns its cached frame.
+    df = load_ninth_outlook_csv(path, usecols=use_cols).copy()
     for col in [
         "economy", "scenarios", "sectors", "sub1sectors", "sub2sectors",
         "sub3sectors", "sub4sectors", "fuels", "subfuels",
@@ -625,7 +628,9 @@ def _load_esto_base_csv(
     year_cols = [str(base_year)]
     header = pd.read_csv(path, nrows=0)
     use_cols = [c for c in [*stable_cols, *year_cols] if c in header.columns]
-    df = pd.read_csv(path, usecols=use_cols, low_memory=False)
+    # Keep this narrow read cached across the three scenario builds. Copy before
+    # normalising/filtering because the shared loader returns its cached frame.
+    df = load_esto_csv(path, usecols=use_cols).copy()
     for col in ["economy", "flows", "products"]:
         df[col] = df[col].astype(str).str.strip()
     df["economy"] = df["economy"].map(_normalize_esto_economy)

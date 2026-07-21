@@ -18,6 +18,7 @@ not affect later callers in the same Python process.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -39,8 +40,16 @@ class _CachedCsv:
     dataframe: pd.DataFrame
 
 
-# Module-level cache: resolved source path → loaded value and source signature.
-_csv_cache: dict[Path, _CachedCsv] = {}
+@dataclass(frozen=True)
+class _CsvCacheKey:
+    """A source plus the selected columns used to read it."""
+
+    path: Path
+    usecols: tuple[str, ...] | None
+
+
+# Module-level cache: source and selected columns → loaded value and signature.
+_csv_cache: dict[_CsvCacheKey, _CachedCsv] = {}
 
 
 def _resolve(path: Path | str) -> Path:
@@ -84,16 +93,28 @@ def _csv_source_signature(path: Path) -> tuple[int, int]:
     return stat.st_mtime_ns, stat.st_size
 
 
-def _load_cached_csv(path: Path) -> pd.DataFrame:
+def _normalize_usecols(usecols: Sequence[str] | None) -> tuple[str, ...] | None:
+    """Create a stable cache-key representation for a selected column set."""
+    if usecols is None:
+        return None
+    return tuple(sorted({str(column) for column in usecols}))
+
+
+def _load_cached_csv(
+    path: Path,
+    *,
+    usecols: Sequence[str] | None = None,
+) -> pd.DataFrame:
     """Read ``path`` when absent or changed; otherwise return its cached frame."""
+    key = _CsvCacheKey(path=path, usecols=_normalize_usecols(usecols))
     signature = _csv_source_signature(path)
-    cached = _csv_cache.get(path)
+    cached = _csv_cache.get(key)
     if cached is None or cached.signature != signature:
-        _csv_cache[path] = _CachedCsv(
+        _csv_cache[key] = _CachedCsv(
             signature=signature,
-            dataframe=pd.read_csv(path, low_memory=False),
+            dataframe=pd.read_csv(path, usecols=key.usecols, low_memory=False),
         )
-    return _csv_cache[path].dataframe
+    return _csv_cache[key].dataframe
 
 
 def clear_csv_cache(path: Path | str | None = None) -> None:
@@ -106,17 +127,27 @@ def clear_csv_cache(path: Path | str | None = None) -> None:
     if path is None:
         _csv_cache.clear()
         return
-    _csv_cache.pop(_resolve(path).resolve(), None)
+    source_path = _resolve(path).resolve()
+    keys_to_remove = [key for key in _csv_cache if key.path == source_path]
+    for key in keys_to_remove:
+        _csv_cache.pop(key, None)
 
 
-def load_ninth_outlook_csv(path: Path | str | None = None) -> pd.DataFrame:
-    """Load the 9th Outlook merged energy CSV, caching by path.
+def load_ninth_outlook_csv(
+    path: Path | str | None = None,
+    *,
+    usecols: Sequence[str] | None = None,
+) -> pd.DataFrame:
+    """Load the 9th Outlook merged energy CSV, caching by path and columns.
 
     Parameters
     ----------
     path:
         Explicit path to the CSV file. Defaults to
         ``data/merged_file_energy_ALL_20251106.csv`` under REPO_ROOT.
+    usecols:
+        Optional source columns to load. A selected-column frame has its own
+        cache entry, so it never forces a full-table read.
 
     Returns
     -------
@@ -124,21 +155,28 @@ def load_ninth_outlook_csv(path: Path | str | None = None) -> pd.DataFrame:
     any column filtering or economy subsetting.
     """
     key = _resolve(path).resolve() if path else _DEFAULT_NINTH_PATH.resolve()
-    return _load_cached_csv(key)
+    return _load_cached_csv(key, usecols=usecols)
 
 
-def load_esto_csv(path: Path | str | None = None) -> pd.DataFrame:
-    """Load the ESTO base-table CSV, caching by path.
+def load_esto_csv(
+    path: Path | str | None = None,
+    *,
+    usecols: Sequence[str] | None = None,
+) -> pd.DataFrame:
+    """Load the ESTO base-table CSV, caching by path and columns.
 
     Parameters
     ----------
     path:
         Explicit path to the CSV file. Defaults to the configured
         ``esto_base_table_path`` (see ``workflow_config.get_energy_source_config``).
+    usecols:
+        Optional source columns to load. A selected-column frame has its own
+        cache entry, so it never forces a full-table read.
 
     Returns
     -------
     DataFrame with all columns from the file.
     """
     key = _resolve(path).resolve() if path else _DEFAULT_ESTO_PATH.resolve()
-    return _load_cached_csv(key)
+    return _load_cached_csv(key, usecols=usecols)

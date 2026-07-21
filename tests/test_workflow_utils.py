@@ -163,6 +163,40 @@ class TestCsvCache(unittest.TestCase):
         clear_csv_cache()
         self.assertIsNot(second, load_esto_csv(second_source))
 
+    def test_column_projections_cache_separately_and_clear_together(self):
+        source = self.temporary_path / "source.csv"
+        source.write_text("a,b,c\n1,2,3\n", encoding="utf-8")
+
+        first_projection = load_ninth_outlook_csv(source, usecols=["b", "a"])
+        same_projection = load_ninth_outlook_csv(source, usecols=["a", "b"])
+        second_projection = load_ninth_outlook_csv(source, usecols=["c"])
+
+        self.assertIs(first_projection, same_projection)
+        self.assertIsNot(first_projection, second_projection)
+        self.assertEqual(first_projection.columns.tolist(), ["a", "b"])
+        self.assertEqual(second_projection.columns.tolist(), ["c"])
+
+        clear_csv_cache(source)
+        self.assertIsNot(first_projection, load_ninth_outlook_csv(source, usecols=["a", "b"]))
+        self.assertIsNot(second_projection, load_ninth_outlook_csv(source, usecols=["c"]))
+
+    def test_changed_source_reloads_all_cached_column_projections(self):
+        source = self.temporary_path / "source.csv"
+        source.write_text("a,b\n1,2\n", encoding="utf-8")
+        first_a = load_esto_csv(source, usecols=["a"])
+        first_b = load_esto_csv(source, usecols=["b"])
+
+        source.write_text("a,b\n3,4\n", encoding="utf-8")
+        stat = source.stat()
+        os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
+        second_a = load_esto_csv(source, usecols=["a"])
+        second_b = load_esto_csv(source, usecols=["b"])
+
+        self.assertIsNot(first_a, second_a)
+        self.assertIsNot(first_b, second_b)
+        self.assertEqual(second_a.loc[0, "a"], 3)
+        self.assertEqual(second_b.loc[0, "b"], 4)
+
 
 _NINTH_MISSING = not _DEFAULT_NINTH_PATH.exists()
 _ESTO_MISSING = not _DEFAULT_ESTO_PATH.exists()
