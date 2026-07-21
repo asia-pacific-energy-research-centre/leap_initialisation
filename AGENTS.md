@@ -401,10 +401,10 @@ Work through in this sequence. Items marked *(depends on X)* must wait for X to 
 
 **Documentation — independent, can be done at any time:**
 
-- **D1** — Add surplus/shortfall rules section to supply reconciliation guide
-- **D2** — Document LEAP export process in the guide
-- **D3** — Expand guide with descriptions of all seven supporting scripts
-- **D4** — Update iteration count section once real pass-count data is available
+- **D1** — Complete: surplus/shortfall rules are documented in guide section 12b.
+- **D2** — Complete: the LEAP Energy Balance export procedure is in guide section 9b.
+- **D3** — Complete: guide section "The initialisation workflow scripts" describes all seven supporting scripts.
+- **D4** — Pending: update iteration-count guidance once real results-update pass-count data is available.
 
 ---
 
@@ -537,35 +537,32 @@ The pipeline overview section has a todo: "Check whether anything from the mappi
 
 ---
 
-## Documentation gaps: supply reconciliation guide
+## Documentation status: supply reconciliation guide
 
-Gaps in `C:\Users\Work\github\leap_initialisation\docs\supply_reconciliation_workflow_guide.md`. These slow down modellers trying to run the workflow independently.
+Status of the documentation tasks for
+`C:\Users\Work\github\leap_initialisation\docs\supply_reconciliation_workflow_guide.md`.
 
-### D1. Surplus and shortfall rules
+### D1. Surplus and shortfall rules - complete
 
-Document how surplus and shortfall rules are configured in LEAP, what the main options are, and when to use each. This is flagged in four places in the guide (sections 12 and 17) — consolidate into one clear section. Also confirm the pre-run checklist item "Confirm the surplus and shortfall rules in LEAP are set correctly" has enough supporting detail nearby.
+Completed in guide section 12b. It documents shortfall and surplus rule choices,
+module ordering, Resources behaviour, and the diagnosis of unexpected imports
+or exports.
 
-### D2. LEAP export process
+### D2. LEAP export process - complete
 
-Document the LEAP results export process: which settings are needed, which years and fuels to include, and why it takes a long time. This is the first thing a modeller needs to do on each pass and is currently undocumented.
+Completed in guide section 9b, including results view, units, detail level,
+Malaysia exception, export action, expected time, and placement guidance.
 
-### D3. Seven supporting workflow scripts
+### D3. Seven supporting workflow scripts - complete
 
-Expand the guide to describe each of the seven supporting scripts:
+Completed in the guide's "The initialisation workflow scripts" table. Keep it
+updated if a producer's role or output contract changes.
 
-- `codebase/aggregated_demand_workflow.py`
-- `codebase/electricity_heat_interim_workflow.py`
-- `codebase/other_loss_own_use_proxy_workflow.py`
-- `codebase/refining_workflow.py`
-- `codebase/supply_workflow.py`
-- `codebase/transformation_workflow.py`
-- `codebase/transfers_workflow.py`
+### D4. Iteration count section update - pending real evidence
 
-These are central to the initialisation process. The "Planned improvements" section already lists them but the guide does not explain what they do.
-
-### D4. Iteration count section update
-
-Section 11 ("How many iterations are expected") notes it needs updating once more is known. Update with real observed pass counts once available. The convergence rate feature (in "Planned workflow improvements" above) will eventually give a quantitative answer here.
+Section 11 remains qualitative until enough real results-update runs have
+recorded comparable pass counts and convergence outcomes. Do not infer a
+numeric expectation from a baseline-seed fleet run alone.
 
 ---
 

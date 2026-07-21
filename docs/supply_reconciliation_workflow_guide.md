@@ -437,11 +437,26 @@ Three source data files underpin the mapping and comparison steps used by this w
 
 The date suffix in the 9th Outlook filenames (e.g. `20251106`) records when the file was produced. When a new 9th Outlook vintage is released both files should be updated together and the suffix updated to match.
 
-### Full-model Analysis export
+### Per-economy LEAP export templates
 
-`data/full model export.xlsx` is the structural reference used to turn generated values into LEAP-importable rows. It supplies branch, variable, scenario, and region IDs; validates branch existence and metadata; identifies Resources roots and transformation fuel leaves; and defines reset/zeroing scope. It is not the source of the generated energy values.
+`data/leap_export_templates/` is the structural reference used to turn generated
+values into LEAP-importable rows. The retired `data/full model export.xlsx` is
+not a runtime dependency. Each real economy should resolve its own
+`leap_export_template <economy>.xlsx`; the USA template is only a documented
+fallback for aggregate/no-template cases. The templates supply branch, variable,
+scenario, and region IDs; validate branch existence and metadata; identify
+Resources roots and transformation fuel leaves; and define reset/zeroing scope.
+They are not the source of generated energy values.
 
-Refresh it from the canonical LEAP area after any structural change: a branch, process, module, output/feedstock/auxiliary fuel leaf, variable, scenario, or Resources root is added, removed, renamed, moved, or deleted and recreated. A data-value or projection update with no LEAP structure change does not normally require refresh. Preserve the `Export` sheet, LEAP preamble/header layout, all relevant branches and variables, Current Accounts/Reference/Target scenarios, ID columns, metadata, and hierarchy columns. Archive the previous copy before replacement.
+Refresh the affected economy's template after a structural LEAP-area change: a
+branch, process, module, output/feedstock/auxiliary-fuel leaf, variable,
+scenario, or Resources root is added, removed, renamed, moved, or deleted and
+recreated. A data-value or projection update with no LEAP structure change does
+not normally require a refresh. Preserve the `Export` sheet, LEAP
+preamble/header layout, all relevant branches and variables, Current
+Accounts/Reference/Target scenarios, ID columns, metadata, and hierarchy
+columns. Do not copy IDs between economies; a missing branch must be migrated
+in the real LEAP area and re-exported, not fabricated in Python.
 
 Treat `-1` as an unresolved-ID sentinel, not a valid ordinary branch ID. Nonzero missing-ID rows cannot be relied on to import. Zero missing-ID rows also require review when they are intended to clear an existing value. Resolve duplicate `Branch Path + Variable + Scenario + Region` keys before share-total checks or import; conflicting duplicate expressions are invalid even if one duplicate is currently skipped because its ID is `-1`. See `data/README.md` and `CROSS-001` in `docs/special_rules_and_design_decisions.md` for the complete lifecycle and validation rule.
 
