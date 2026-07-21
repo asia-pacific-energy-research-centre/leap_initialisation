@@ -48,6 +48,26 @@ shared one area. **Confirming that equivalence is Task 0** — the whole plan re
 on repointing these uses at the `20_USA` template (or a purpose-named canonical
 copy) instead.
 
+## Implementation record (2026-07-21)
+
+- **Task 0 passed.** The former `data/full model export.xlsx` and
+  `data/leap_export_templates/leap_export_template 20_USA.xlsx` had identical
+  SHA-256 hashes (`a686e9dc517aa56b36e4de55ba5839ac6c877d4a9561cad55e52177abca48c0d`),
+  9,182 Export rows, key/ID columns, and parsed sheet contents.
+- **Tasks 1-6 were implemented in commit `8d4043d`.** The former file was moved
+  to `data/archive/full model export_retired_20260721.xlsx`; an older,
+  non-identical archive copy was retained unchanged. The shared fuel catalog
+  rebuilt byte-identically (6,191 rows; SHA-256
+  `33a64998ad2cc0b7e7011911637c01b6d92d816f1acad3a4c064f58f06aee589`).
+- The runtime sweep found additional fallback/reference users in
+  `aggregated_demand_workflow.py`, `electricity_heat_interim_workflow.py`,
+  `baseline_seed_comparison_workflow.py`, `transformation_workflow.py`, and
+  `transfers_workflow.py`; these were also repointed to the canonical USA
+  template.
+- **Task 7 remains pending.** The post-retirement fleet run has not been used
+  to certify provisional baseline seeds; it must be run under the execution
+  handoff below before claiming fleet-wide import readiness.
+
 ## Inventory — every live dependency (grep the path string, not the constant)
 
 Classified by *what the file is read for*. "Runtime read" = the file is actually
