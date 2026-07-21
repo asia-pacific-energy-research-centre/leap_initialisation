@@ -466,6 +466,32 @@ def test_preset_broadcast_delivers_an_unpinned_key_to_every_reader():
             setattr(module, name, value)
 
 
+def test_toggles_line_and_reset_reminder_report_the_same_value():
+    """The two log lines that disagreed for weeks must now agree by construction.
+
+    ``[INFO] run_with_config toggles:`` printed the wrapper's copy while
+    ``[WARN] Reset reminder:`` reported ``supply_preflight``'s - the run log
+    said the reset was on for every run in which it was off
+    (``docs/work_queue.md`` [17]).  Both now resolve to the consumer value.
+    """
+    import codebase.functions.supply_preflight as _spf
+
+    name = "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT"
+    assert _wrapper._effective_setting(name) == getattr(_spf, name), (
+        "the toggles line and the reset reminder would report different values"
+    )
+
+
+def test_preset_delivery_warnings_name_every_withheld_preset():
+    """A pinned preset must announce itself; silence is how [17] survived."""
+    warned = " ".join(_wrapper._preset_delivery_warnings())
+    for name in _wrapper._PRESET_BROADCAST_PINS:
+        assert name in warned, (
+            f"{name} is withheld from the broadcast but the run prints no warning "
+            "saying so"
+        )
+
+
 def test_preset_broadcast_withholds_pinned_names():
     """The pins must actually hold, or the mechanism commits are not inert."""
     originals = {

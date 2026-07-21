@@ -389,6 +389,71 @@ def _broadcast_preset_overrides() -> None:
     )
 
 
+def _consumer_values(name: str) -> dict[str, object]:
+    """The value each loaded codebase module holds for `name`, keyed by module."""
+    values: dict[str, object] = {}
+    for module_name, module in list(sys.modules.items()):
+        if module is None or module_name == __name__:
+            continue
+        if module_name != "codebase" and not module_name.startswith("codebase."):
+            continue
+        module_dict = getattr(module, "__dict__", None)
+        if module_dict is not None and name in module_dict:
+            values[module_name] = module_dict[name]
+    return values
+
+
+def _effective_setting(name: str) -> object:
+    """Report what the consumers hold for `name`, not what this wrapper holds.
+
+    The wrapper's own global is only what the preset asked for; it is not
+    evidence that the value reached the module that acts on it. Reporting the
+    wrapper's copy is what let docs/work_queue.md [17] survive unnoticed: the
+    toggles line printed `RUN_RESET_...=True` on the same run whose reset was
+    off. Falls back to the wrapper only when no consumer defines the name.
+    """
+    values = set()
+    for value in _consumer_values(name).values():
+        try:
+            values.add(value)
+        except TypeError:  # unhashable (e.g. a list setting) - compare by repr
+            values.add(repr(value))
+    if not values:
+        return globals().get(name)
+    if len(values) == 1:
+        return next(iter(values))
+    return f"<inconsistent across consumers: {sorted(map(str, values))}>"
+
+
+def _preset_delivery_warnings() -> list[str]:
+    """Preset keys whose consumers disagree with this wrapper.
+
+    Generic replacement for trusting any single printed toggle: whatever the
+    reason for a divergence - a new pin, a module that stopped being imported
+    before the broadcast, a stray direct assignment - the run says so rather
+    than reporting the intent and acting on something else.
+    """
+    warnings: list[str] = []
+    for name in sorted(set(_preset_override_names()) | set(_PRESET_BROADCAST_PINS)):
+        if name not in globals():
+            continue
+        consumers = _consumer_values(name)
+        if not consumers:
+            continue
+        effective = _effective_setting(name)
+        if effective != globals()[name]:
+            reason = (
+                "withheld by _PRESET_BROADCAST_PINS"
+                if name in _PRESET_BROADCAST_PINS
+                else "NOT DELIVERED - investigate"
+            )
+            warnings.append(
+                f"{name}: preset asked for {globals()[name]!r}, consumers hold "
+                f"{effective!r} ({reason})"
+            )
+    return warnings
+
+
 def _sync_extracted_runtime_state() -> None:
     """Propagate notebook/test monkeypatches on this wrapper into extracted modules."""
     runtime_names = [
@@ -1198,12 +1263,18 @@ def _run_with_config_locked() -> dict[str, object]:
             f"{supply_data_pipeline.EXPORT_FINAL_YEAR} exceeds LEAP max year {LEAP_IMPORT_MAX_YEAR}; "
             f"supply_reconciliation_workflow is clamping FINAL_YEAR to {FINAL_YEAR}."
         )
+    # Preset-controlled toggles are reported from the consumers, not from this
+    # wrapper: the wrapper's copy is the request, the consumer's is what runs.
     print(
         "[INFO] run_with_config toggles: "
         f"ACTIVE_SUPPLY_LINK_METHOD={ACTIVE_SUPPLY_LINK_METHOD}, "
-        f"CAPACITY_UNMET_PASS_MODE={CAPACITY_UNMET_PASS_MODE}, "
+        f"CAPACITY_UNMET_PASS_MODE={_effective_setting('CAPACITY_UNMET_PASS_MODE')}, "
         "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT="
-        f"{RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT}, "
+        f"{_effective_setting('RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT')}, "
+        "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT="
+        f"{_effective_setting('ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT')}, "
+        "USE_AGGREGATED_DEMAND_AS_DUMMY="
+        f"{_effective_setting('USE_AGGREGATED_DEMAND_AS_DUMMY')}, "
         f"ANALYSIS_INPUT_WRITE_MODE={analysis_write_mode}, "
         f"LEAP_IMPORT_LOG_LEVEL={LEAP_IMPORT_LOG_LEVEL}, "
         f"RUN_LEAP_FUEL_BRANCH_PROBE_AT_START={RUN_LEAP_FUEL_BRANCH_PROBE_AT_START}, "
@@ -1212,13 +1283,13 @@ def _run_with_config_locked() -> dict[str, object]:
         f"LEAP_IMPORT_TRANSFORMATION_TO_LEAP={LEAP_IMPORT_TRANSFORMATION_TO_LEAP}, "
         f"LEAP_IMPORT_TRANSFERS_TO_LEAP={LEAP_IMPORT_TRANSFERS_TO_LEAP}, "
         f"LEAP_IMPORT_INCLUDE_CURRENT_ACCOUNTS={LEAP_IMPORT_INCLUDE_CURRENT_ACCOUNTS}, "
-        f"SCRAPE_LEAP_RESULTS={SCRAPE_LEAP_RESULTS}, "
+        f"SCRAPE_LEAP_RESULTS={_effective_setting('SCRAPE_LEAP_RESULTS')}, "
         f"RESULTS_WRITE_LEGACY_SIDECAR_FILES={RESULTS_WRITE_LEGACY_SIDECAR_FILES}, "
         f"RUN_OTHER_LOSS_OWN_USE_PROXY={RUN_OTHER_LOSS_OWN_USE_PROXY}, "
-        f"OTHER_LOSS_OWN_USE_PROXY_STAGE={OTHER_LOSS_OWN_USE_PROXY_STAGE}, "
+        f"OTHER_LOSS_OWN_USE_PROXY_STAGE={_effective_setting('OTHER_LOSS_OWN_USE_PROXY_STAGE')}, "
         f"OTHER_LOSS_OWN_USE_OUTPUT_FUEL_SCOPE={OTHER_LOSS_OWN_USE_OUTPUT_FUEL_SCOPE}, "
         f"OTHER_LOSS_OWN_USE_INCLUDE_IN_LEAP_IMPORT={OTHER_LOSS_OWN_USE_INCLUDE_IN_LEAP_IMPORT}, "
-        f"RUN_ELECTRICITY_HEAT_INTERIM={RUN_ELECTRICITY_HEAT_INTERIM}, "
+        f"RUN_ELECTRICITY_HEAT_INTERIM={_effective_setting('RUN_ELECTRICITY_HEAT_INTERIM')}, "
         f"BALANCE_DEMAND_FAIL_ON_MAPPING_ISSUES={BALANCE_DEMAND_FAIL_ON_MAPPING_ISSUES}, "
         f"RUN_PREFLIGHT_COMPRESSED_PROJECTION={RUN_PREFLIGHT_COMPRESSED_PROJECTION}, "
         f"PREFLIGHT_COMPRESSED_FAIL_FAST={PREFLIGHT_COMPRESSED_FAIL_FAST}, "
@@ -1230,6 +1301,8 @@ def _run_with_config_locked() -> dict[str, object]:
         f"KEEP_PC_AWAKE_WHILE_RUNNING={KEEP_PC_AWAKE_WHILE_RUNNING}, "
         f"ENABLE_COMPLETION_BEEP={ENABLE_COMPLETION_BEEP}"
     )
+    for _delivery_warning in _preset_delivery_warnings():
+        print(f"[WARN] Preset not in effect: {_delivery_warning}")
     try:
         output = run_results_linked_transformation_supply_workflow(
             economies=ECONOMIES,
