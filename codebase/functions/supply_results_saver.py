@@ -53,7 +53,10 @@ from codebase.mappings.canonical_mapping import (
     load_sheet_map,
 )
 from codebase.functions import supply_data_pipeline, leap_api, patch_baseline_seeds
-from codebase.functions.analysis_input_write_dispatcher import get_analysis_input_write_mode
+from codebase.functions.analysis_input_write_dispatcher import (
+    get_analysis_input_write_mode,
+    reset_is_effective,
+)
 from codebase.functions.baseline_seed_validation import (
     apply_template_ids,
     build_template_id_lookup,
@@ -3243,7 +3246,9 @@ def run_results_linked_transformation_supply_workflow(
             )
         except Exception as exc:
             print(f"[WARN] Results-update closure diagnostic could not run: {exc}")
-    if RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT and not include_leap_import:
+    if RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT and not reset_is_effective(
+        RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT
+    ):
         # The reset is the *wipe* half of a wipe-then-fill pair whose fill half is
         # the LEAP API import pass (the `... or RUN_RESET_...` clauses further down,
         # and supply_leap_io's forced Current Accounts fill). With the API
@@ -3260,7 +3265,7 @@ def run_results_linked_transformation_supply_workflow(
             "without that pass it would delete real Import/Export values. See "
             "docs/work_queue.md [17]."
         )
-    elif RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT:
+    elif reset_is_effective(RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT):
         reset_economies = RESET_SCOPE_ECONOMIES if RESET_SCOPE_ECONOMIES is not None else economy_list
         reset_scenarios = RESET_SCOPE_SCENARIOS if RESET_SCOPE_SCENARIOS is not None else export_scenario_list
         reset_scenarios = _ensure_current_accounts_scenario(reset_scenarios)

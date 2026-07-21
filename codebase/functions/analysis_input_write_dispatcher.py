@@ -84,6 +84,42 @@ def is_workbook_mode() -> bool:
     return get_analysis_input_write_mode() == "workbook"
 
 
+def reset_is_effective(run_reset_flag: object) -> bool:
+    """Is the supply/transformation trade reset actually going to happen?
+
+    Single source of truth for "is the reset on", called by every site that
+    gates or reports it, so the flag's *delivery* and its *effect* cannot drift
+    apart again - see docs/work_queue.md [17].
+
+    The reset is the wipe half of a wipe-then-fill pair whose fill half is the
+    LEAP API import pass. In workbook mode that pass never runs, so the wipe
+    would delete real Import/Export values rather than staging them for a
+    refill - measured at 1,111,593 PJ of AUS exports on a single-economy A/B.
+    The flag being ``True`` is therefore necessary but not sufficient.
+
+    ``run_reset_flag`` is a parameter rather than a module global on purpose:
+    reading a module's own mirrored copy is exactly the defect [17] exists for.
+    Callers pass what they hold; this function owns only the rule.
+
+    Anything that is not an unambiguous boolean resolves to ``False``. The
+    wrapper's ``_effective_setting`` can return a marker string such as
+    ``"<inconsistent across consumers: ['False', 'True']>"`` when consumers
+    disagree, and ``bool()`` of that is ``True`` - which would call the reset
+    effective precisely when the state is confused. The gated operation is
+    destructive, so ambiguity fails closed. Callers that need to *report* the
+    difference between "cleanly off" and "unknown" must inspect their own input
+    separately; collapsing the two is fine for a gate and lossy for a log line.
+    """
+    flag = run_reset_flag
+    if not isinstance(flag, bool):
+        # numpy.bool_ and friends expose .item(); strings, None and markers do not
+        # survive this and correctly fall through to False.
+        flag = getattr(flag, "item", lambda: flag)()
+        if not isinstance(flag, bool):
+            return False
+    return flag and not is_workbook_mode()
+
+
 def ensure_api_write_allowed(context_label: str) -> None:
     if is_workbook_mode():
         raise RuntimeError(

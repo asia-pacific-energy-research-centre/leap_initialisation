@@ -44,23 +44,31 @@ def _reset_guard_node():
         if "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT" not in names:
             continue
         # The gating branch, not the `include_current_accounts=` expression.
-        if isinstance(node.test, ast.BoolOp) or "include_leap_import" in names:
+        if "reset_is_effective" in names or "include_leap_import" in names:
             return node
     return None
 
 
 def test_reset_is_gated_on_the_leap_import_pass():
-    """The wipe may only run when the fill will run."""
+    """The wipe may only run when the fill will run.
+
+    Asserts the *rule* is consulted, not a particular spelling of it: the gate
+    must route through ``reset_is_effective``, the shared predicate that owns
+    "is the reset on" for every site that gates or reports it. Accepting a bare
+    ``include_leap_import`` here as well would permit a second, drifting notion
+    of the rule - which is the failure mode [17] documents.
+    """
     node = _reset_guard_node()
     assert node is not None, (
         "no `if` gating RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT found in "
         "supply_results_saver - the reset must not be reachable unguarded"
     )
     names = {n.id for n in ast.walk(node.test) if isinstance(n, ast.Name)}
-    assert "include_leap_import" in names, (
-        "the reset guard no longer references include_leap_import. Without the LEAP "
-        "import fill pass the reset deletes real Import/Export values rather than "
-        "staging them - see docs/work_queue.md [17]."
+    assert "reset_is_effective" in names, (
+        "the reset guard no longer routes through reset_is_effective. Without the "
+        "LEAP import fill pass the reset deletes real Import/Export values rather "
+        "than staging them, and a second copy of that rule will drift from the one "
+        "the log reports - see docs/work_queue.md [17]."
     )
 
 

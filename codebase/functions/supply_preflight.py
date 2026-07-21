@@ -49,7 +49,10 @@ from codebase.mappings.canonical_mapping import (
     load_sheet_map,
 )
 from codebase.functions import supply_data_pipeline, leap_api, patch_baseline_seeds
-from codebase.functions.analysis_input_write_dispatcher import get_analysis_input_write_mode
+from codebase.functions.analysis_input_write_dispatcher import (
+    get_analysis_input_write_mode,
+    reset_is_effective,
+)
 from codebase import (
     aggregated_demand_workflow,
     electricity_heat_interim_workflow,
@@ -523,7 +526,11 @@ def _print_reset_mode_reminder(
         run_scenarios,
         default_label="all run scenarios",
     )
-    if RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT:
+    # Reported through the shared predicate, not the raw flag: the reset is
+    # refused in workbook mode (docs/work_queue.md [17]), and a line that reads
+    # the flag alone announces ENABLED on runs where nothing is reset - the same
+    # log-lies-about-effect failure [17] was raised for.
+    if reset_is_effective(RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT):
         economy_preview = _format_scope_preview(
             RESET_SCOPE_ECONOMIES,
             default_label=run_economy_preview,
