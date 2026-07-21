@@ -743,8 +743,15 @@ Phase 5: **D5B.2 decided 2026-07-21 — drop it.** Sectors become ready in any
 order, so pre-generation is the wrong shape; the existing
 `resolve_active_branch_excluded_sectors` and `_sector_exclusion_suffix` already
 generate the needed file on demand (5B.1 is already built). Replaced by two gaps: the seed patch path ignores active-branch
-resolution, and there is no paired demand-zeroing patch — see the Phase 5 brief
-G1/G2, and note G2 is blocked on [17]. Still open: D5A.1, D5C.2.
+resolution (G1), and **the demand-zeroing side has no concept of an active
+sector at all** (G2) — `build_demand_zeroing_rows` zeros every non-share
+`Demand\` branch except the placeholder, share variables, and the own-use
+prefix, and is never told the excluded sectors. So declaring a sector active
+would drop it from the placeholder *and* zero its detailed branches: silent
+energy loss, reachable from a full run, not just from a patch. Latent only
+because `DETAILED_DEMAND_BRANCHES_ACTIVE` is `None` today — **the first
+handed-over demand sector triggers it.** See the Phase 5 brief G1/G2; final
+testing of G2 is blocked on [17]. Still open: D5A.1, D5C.2.
 
 ## [15] Modelling-configuration scoped reviews
 

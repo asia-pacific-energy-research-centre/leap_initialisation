@@ -172,20 +172,63 @@ Note also that this path imports the constant from
 not be seen (currently inert - preset value equals config default; related to
 [17]).
 
-**G2 - patching the aggregate alone is not sufficient, and can zero a sector to
-nothing.** The `aggregated_demand` module deliberately strips only
-`Demand\All demand aggregated\` "so as not to remove demand-zeroing and other
-independently owned branches". Correct as far as it goes - but it means the
-**zeroing workbook is not updated**. If a modeller makes Industry real and the
-aggregate is patched to exclude Industry while the seed's zeroing rows still
-zero the detailed Industry branches, Industry ends up **zero in LEAP with
-nothing replacing it**. There is no `demand_zeroing` entry in `MODULE_REGISTRY`
-at all.
-This is compounded today by [17]: `ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT`
-never reaches the saver, so **no demand-zeroing workbooks are being produced in
-the first place**. G2 cannot be properly designed or tested until [17] is
-resolved, because the artifact it must keep consistent does not currently
-exist.
+**G2 - the zeroing side has no concept of an active sector at all.**
+*Corrected and widened 2026-07-21 after reading the implementation: this is not
+merely a patch-path gap, it is a gap in the feature as a whole.*
+
+`build_demand_zeroing_rows` (`aggregated_demand_workflow.py:1525`) zeros
+**every** non-share `Demand\` branch found in the economy's export template,
+excluding exactly three things:
+
+1. `DEMAND_AGGREGATED_BRANCH_PREFIX` (`Demand\All demand aggregated`);
+2. `DEMAND_SHARE_VARIABLES` (Device/Sales/Stock Share, so LEAP's "shares must
+   sum to 100" rule is not broken);
+3. whatever the caller passes in `exclude_branch_prefixes`.
+
+The only caller, `build_other_demand_zeroing_workbooks`
+(`supply_leap_io.py:2256`), populates (3) with **one** value: the own-use proxy
+prefix, and only when `ZERO_OTHER_DEMAND_EXCLUDE_OWN_USE_PROXY_BRANCHES` is
+set. It is never given the excluded-sector list, the active demand branches, or
+anything derived from them.
+
+**So the two halves of the double-count guard disagree by construction:**
+
+| | knows which sectors are real? |
+|---|---|
+| Aggregate placeholder (`resolve_active_branch_excluded_sectors`) | **yes** - removes an active sector from the lump |
+| Demand zeroing (`build_demand_zeroing_rows`) | **no** - zeros the detailed branch anyway |
+
+The failure is therefore reachable **from a full run, not only from a patch**:
+declare `DETAILED_DEMAND_BRANCHES_ACTIVE = ["Industry"]`, and the placeholder
+correctly drops Industry while the zeroing workbook still writes `0` over every
+detailed Industry branch. Industry ends up **zero in LEAP with nothing
+replacing it** - silent energy loss, no error, and the total simply comes out
+low.
+
+On top of that, the patch path cannot fix it even in principle: there is no
+`demand_zeroing` entry in `MODULE_REGISTRY`, and the `aggregated_demand` module
+deliberately strips only the placeholder subtree "so as not to remove
+demand-zeroing and other independently owned branches".
+
+**Why this has not bitten yet:** `DETAILED_DEMAND_BRANCHES_ACTIVE` is `None` and
+`AGGREGATED_DEMAND_EXCLUDED_SECTORS` is empty, so nothing is currently excluded
+from the placeholder - the two halves agree trivially because neither excludes
+anything. **The first modeller to hand over a real demand sector triggers it.**
+That makes this a blocker for the workflow the user actually described
+(modellers completing sectors and importing them when ready), not a theoretical
+tidy-up.
+
+Compounded by [17]: `ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT` never reaches the
+saver, so **no demand-zeroing workbooks are being produced at all right now**.
+G2 cannot be finally tested until [17] is resolved, because the artifact it must
+stay consistent with does not currently exist. The design work can proceed
+before then.
+
+**Required shape of the fix:** the active-sector list must reach *both* halves
+from **one** source, so they cannot drift. Pass the resolved exclusions into
+`build_other_demand_zeroing_workbooks` and translate them to branch prefixes
+there, rather than computing them twice. Add a test asserting that for any
+active-branch list, no branch is both dropped from the placeholder and zeroed.
 
 **Revised 5B work items, in order:**
 

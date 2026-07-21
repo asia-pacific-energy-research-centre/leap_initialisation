@@ -26,6 +26,66 @@ before any large refactor or rewrite.
 - The known `Non specified own uses` issue is a template migration gap: do not
   create missing LEAP IDs in Python or copy them from another economy.
 
+## Structural assessment 2026-07-21 — the file is healthy; coverage is the weakness
+
+Measured while resolving Phase 4's D4.4 (see
+`docs/prompts/phase_4_monolith_decomposition_execution.md`). Recording it here
+because the follow-up work belongs to this review, not to Phase 4.
+
+**No structural work is warranted.** `AGENTS.md`'s "2,900-line monolith …
+so internally tangled that rewriting from scratch may be cleaner" no longer
+describes this code:
+
+| Metric | `other_loss_own_use_proxy_workflow.py` | `functions/other_loss_own_use_proxy_utils.py` |
+|---|---|---|
+| Lines | 1,770 (not 2,923) | 2,343 |
+| Largest function | `assemble_proxy_workbook` 356 lines / 43 branches | `build_proxy_source_coverage_gaps` 183 / 42 |
+| Next two | 140 / 21, 103 / 8 | 122 / 15, 106 / 6 |
+| Everything else | under ~70 lines | under ~90 lines |
+| `TODO`/`FIXME`/`HACK` | 1 | 0 |
+
+`PROXY_CONFIG` is 19 declarative entries on one uniform 8-key schema
+(`process_key`, `process_label`, `leap_process_label`, `activity_label`,
+`activity_sources`, `target_sources`, `enabled`, `notes`). Adding a process is a
+data edit. Only `assemble_proxy_workbook` is large enough that its size could
+plausibly hide a defect; splitting it is optional cleanup, not a prerequisite.
+
+### The actual gap: the tested set and the enabled set only partly overlap
+
+60 tests exist (`test_other_loss_own_use_proxy_workflow.py` 59,
+`test_other_loss_own_use_proxy_aggregate.py` 1), but they are aimed partly at
+processes that are switched off:
+
+- **Enabled (9):** `coal_mines`, `electricity_chp_and_heat_plants`,
+  `liquefaction_regasification_plants`, `oil_and_gas_extraction`,
+  `pump_storage_plants`, `nuclear_industry`,
+  `gasification_plants_for_biogases`, `nonspecified_own_uses`,
+  `transmission_and_distribution_losses`.
+- **Disabled (10):** `gas_works_plants`, `gas_to_liquids_plants`, `coke_ovens`,
+  `blast_furnaces`, `patent_fuel_plants`, `bkb_pb_plants`,
+  `liquefaction_plants_coal_to_oil`, `oil_refineries`,
+  `charcoal_production_plants`, `ccs`.
+- Test mentions: `liquefaction` 18, `coal_mines` 15, `blast_furnaces` 13,
+  `gas_works` 4, `coke_ovens` 4, `oil_refineries` 3, `nonspecified_own_uses` 2,
+  `pumped` 1. **Three of the four most-tested processes are disabled.**
+
+**Five enabled processes are not named anywhere in the tests:**
+`electricity_chp_and_heat_plants`, `oil_and_gas_extraction`,
+`nuclear_industry`, `gasification_plants_for_biogases`,
+`transmission_and_distribution_losses`.
+
+**Priority action for this review:** build fixtures for those five first (this
+is deliverable 1 below, narrowed to a concrete starting set). Two of them are
+material — `electricity_chp_and_heat_plants` and
+`transmission_and_distribution_losses` carry large own-use/loss volumes — and
+`pump_storage_plants` has already produced a real defect once (see the
+pump-storage strict-check history).
+
+Caveat: this assessment covers structure and coverage shape only. It does not
+establish that the proxy's values are correct. A well-structured, well-covered
+module can still encode the wrong methodology; that remains the separate
+modelling question in "Design decisions required".
+
 ## Discovery deliverables
 
 Create a compact inventory (in this prompt or a companion findings note) with:
