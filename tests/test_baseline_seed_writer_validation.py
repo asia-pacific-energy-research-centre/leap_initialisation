@@ -13,6 +13,7 @@ from codebase.functions.baseline_seed_validation import (
     validate_seed_rows,
 )
 from codebase.functions.supply_leap_io import (
+    _baseline_seed_filename,
     save_combined_supply_transformation_export,
     write_per_economy_combined_workbooks,
 )
@@ -46,6 +47,19 @@ _XFAIL_WHILE_BLOCKING_DOWNGRADED = pytest.mark.xfail(
     ),
     strict=True,
 )
+
+
+def test_baseline_seed_filename_marks_comp_gen_templates() -> None:
+    assert _baseline_seed_filename(
+        "02_BD",
+        "20260721",
+        Path("leap_export_template 02_BD_COMP_GEN.xlsx"),
+    ) == "leap_import_baseline_seed_02_BD_PRELIM_20260721.xlsx"
+    assert _baseline_seed_filename(
+        "01_AUS",
+        "20260721",
+        Path("leap_export_template 01_AUS.xlsx"),
+    ) == "leap_import_baseline_seed_01_AUS_20260721.xlsx"
 
 
 def _row(expression: str) -> dict[str, object]:

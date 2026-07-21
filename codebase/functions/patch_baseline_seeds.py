@@ -465,7 +465,7 @@ def _canonical_template_lookup(path: Path) -> TemplateIdLookup:
 
 
 SEED_FILENAME_PATTERN = re.compile(
-    r"^leap_import_baseline_seed_(?P<economy>.+?)_(?P<stamp>\d{8})\.xlsx$",
+    r"^leap_import_baseline_seed_(?P<economy>\d{2}_[A-Za-z]+)(?:_PRELIM)?_(?P<stamp>\d{8})\.xlsx$",
     re.IGNORECASE,
 )
 

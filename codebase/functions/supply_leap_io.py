@@ -1427,6 +1427,20 @@ def _leap_export_template_for_economy(economy: object) -> Path:
     )
 
 
+def _baseline_seed_filename(
+    economy_token: str,
+    run_stamp: str,
+    template_path: Path,
+) -> str:
+    """Return a seed filename that identifies provisional template provenance."""
+    provisional_marker = (
+        "_PRELIM"
+        if leap_export_template_resolver.is_provisional_template(template_path)
+        else ""
+    )
+    return f"leap_import_baseline_seed_{economy_token}{provisional_marker}_{run_stamp}.xlsx"
+
+
 def _load_reference_export_data(source_path: Path | str | None = None) -> pd.DataFrame:
     """Load the reference export used for branch path remapping and metadata backfill.
 
@@ -2018,7 +2032,11 @@ def write_per_economy_combined_workbooks(
         leap_df = _assemble_sheet(leap_export_df, leap_ordered)
         viewing_df = add_leap_preamble(prepare_for_viewing_sheet_df(combined))
 
-        out_path = out_dir / f"leap_import_baseline_seed_{econ_token}_{run_stamp}.xlsx"
+        out_path = out_dir / _baseline_seed_filename(
+            econ_token,
+            run_stamp,
+            id_lookup_resolved,
+        )
         prepared_workbooks.append((econ_token, leap_df, viewing_df, out_path))
 
     if enforce_validation:
