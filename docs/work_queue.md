@@ -475,6 +475,18 @@ override branch. Fixed in `cdb813d`. When routing anything here, check the
 *callers*, not just the function — and note the tests passed throughout, because
 they pin the template explicitly too, exercising the very branch that masked it.
 
+## [13] Retire / archive `data/full model export.xlsx` — scoped 2026-07-21
+
+**Not blocked; follow-on to [7].** ID-routing no longer depends on this file, but
+it is still read at runtime as the **shared-union fuel-catalog source** (currently
+the *sole* source under `LEAP_API_BLOCKED`), the **cross-economy single-file /
+verification reference**, and several **fallbacks**. Archiving is a
+*repoint-and-verify* task (repoint these uses at the canonical `20_USA` template),
+not a delete. Full inventory, sequenced one-commit tasks, and the acceptance gate:
+[full_model_export_retirement_scope.md](full_model_export_retirement_scope.md).
+**Task 0 gates the rest:** confirm `full model export.xlsx` ≡
+`leap_export_template 20_USA.xlsx` before repointing anything.
+
 ## [8] `supply_branch_classification` threading — completed 2026-07-16
 
 Landed in `3756ccb`. `supply_export_builder` now passes the current economy's
