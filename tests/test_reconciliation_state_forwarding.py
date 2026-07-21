@@ -117,15 +117,13 @@ FORWARDING_ALLOWLIST = {
 # fix provably changes no output:
 #   RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT  wrapper True / saver False
 #   ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT             wrapper True / saver False
-# FINDING (2026-07-21).  Entries of `_sync_results_saver_overrides`'s list that
-# resolve on neither side.  `_sync_results_saver_overrides` guards every push
-# with `if name in globals()`, so a dead entry is a silent no-op rather than an
-# error - which is exactly why the list can rot unnoticed.
-#   TRANSFORMATION_SUPPLY_CACHE_PATH  defined nowhere in codebase/; only
-#   TRANSFORMATION_SUPPLY_CACHE_ENABLED exists.
-KNOWN_STALE_FORWARDED_NAMES = {
-    "TRANSFORMATION_SUPPLY_CACHE_PATH",
-}
+# FINDING (2026-07-21), FIXED.  `TRANSFORMATION_SUPPLY_CACHE_PATH` sat in
+# `_sync_results_saver_overrides`'s list but was defined nowhere in `codebase/`
+# (only `TRANSFORMATION_SUPPLY_CACHE_ENABLED` exists).  Every push is guarded by
+# `if name in globals()`, so a dead entry is a silent no-op rather than an error
+# - which is exactly why the list can rot unnoticed.  The entry is gone, and
+# `test_saver_override_name_exists_on_wrapper_and_target` below now fails
+# outright on any new one rather than carrying a pinned exemption.
 
 # What remains undelivered once `_broadcast_preset_overrides()` is accounted
 # for: exactly the names deliberately withheld in `_PRESET_BROADCAST_PINS`, and
@@ -297,14 +295,6 @@ def test_saver_override_list_is_nonempty_and_unique():
 
 @pytest.mark.parametrize("name", SAVER_OVERRIDE_NAMES)
 def test_saver_override_name_exists_on_wrapper_and_target(name):
-    if name in KNOWN_STALE_FORWARDED_NAMES:
-        # Pinned finding: assert it is still dead on both sides, so that either
-        # reviving it or removing it from the list is a visible change.
-        assert not hasattr(_wrapper, name) and not hasattr(_srs, name), (
-            f"{name!r} is pinned as a stale forwarding entry but now exists; "
-            "remove it from KNOWN_STALE_FORWARDED_NAMES"
-        )
-        return
     assert hasattr(_wrapper, name), (
         f"{name!r} is forwarded to supply_results_saver but does not exist on "
         "supply_reconciliation_workflow - stale entry or typo"

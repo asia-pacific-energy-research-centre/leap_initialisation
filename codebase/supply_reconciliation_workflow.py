@@ -523,7 +523,6 @@ def _sync_results_saver_overrides() -> None:
         "RESULTS_RUNTIME_DIR",
         "CAPACITY_UNMET_STATE_PATH",
         "TRANSFORMATION_SUPPLY_CACHE_ENABLED",
-        "TRANSFORMATION_SUPPLY_CACHE_PATH",
         "SKIP_ECONOMIES_WITH_EXISTING_EXPORTS",
         "SCENARIOS",
     ]
