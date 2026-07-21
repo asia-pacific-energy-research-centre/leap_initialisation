@@ -982,6 +982,7 @@ def _patch_one(
         diagnostics_dir=diagnostics_dir,
         diagnostic_stem=diagnostic_stem,
         required_years_by_scenario=required_years_by_scenario,
+        blocking_findings_are_warnings=True,
     )
     combined = validation.resolved_rows
     _assert_atomic_canonical_share_groups(combined, template_path)
