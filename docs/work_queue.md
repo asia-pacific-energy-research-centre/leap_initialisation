@@ -577,15 +577,175 @@ Detailed execution brief: `docs/prompts/phase_2_configuration_standardisation_ex
 **Found 2026-07-21 by `tests/test_reconciliation_state_forwarding.py` (`a279615`),
 verified independently. Not a regression — long-standing.**
 
-### Status 2026-07-21 evening — mechanism FIXED, behaviour flip NOT DONE
+### Status 2026-07-21 late evening — SETTLED. All five steps done, verified
 
 | Step | Commit | State |
 | --- | --- | --- |
 | 1. Deliver preset overrides | `3928a7b` | **done**, inert (two names pinned) |
 | 2. Toggles line reports effective values | `857b6e4` | **done** |
 | 3. Remove dead forwarding entry | `2017ef4` | **done** |
-| 4. Flip the behaviour on | — | **not committed — but see the warning below** |
-| 5. Record verification evidence | — | not started |
+| 4. Flip the behaviour on | `62678a2` | **done** — pins emptied, three strict xfails un-marked |
+| 4b. Gate the reset on its refill pass | `c5401a5` | **done** — required by step 5's evidence, see below |
+| 5. Record verification evidence | this section | **done** |
+
+**Net outcome of the whole of [17], stated plainly because it is
+counter-intuitive: the delivery mechanism is fixed, the logging is honest,
+and today's behaviour is unchanged.** The flags now reach their consumers, and
+the reset they enable is correctly refused in workbook mode because the pass
+that would complete it no longer exists. The flag becomes live again if the
+LEAP API returns.
+
+#### Step 4 shipped a large defect. Step 5 caught it. This is why the standard exists
+
+The single-economy A/B (`01_AUS`, post-boundary on both sides) found that
+`62678a2` alone **destroyed 1,111,593 PJ of exports** and nothing refilled
+them. A green test suite had said nothing: `62678a2` shipped with 792 passing
+tests.
+
+Measured, before → after `62678a2`, in `leap_import_baseline_seed_01_AUS_*.xlsx`
+(sheet `LEAP`, 3,432 rows both sides, key sets identical):
+
+| Variable | Before | After |
+| --- | --- | --- |
+| `Exports` | 40 non-zero rows, **1,111,593 PJ** | 0 non-zero, **0.0** |
+| `Imports` | 0 non-zero | 0 non-zero |
+| `Export Target` | 0 non-zero | 0 non-zero |
+| `Import Target` | 0 non-zero | 0 non-zero |
+| `Maximum Production` | 47 non-zero, 1,292,331 PJ | unchanged |
+
+Largest removals (PJ, summed 2022–2060, each across Reference and Target):
+Other bituminous coal 205,407; Coking coal 172,680; LNG 155,338; Crude oil
+10,197. Example: `Resources\Primary\Coking coal` / Exports / Reference went
+from `Data(2022,0.0, 2023,4693.665, 2024,4687.922, …)` to all zeros.
+
+**The loss also reached the yearly balance tables** — row counts identical at
+1,207, values changed, sums *rising* because exports carry a negative sign:
+REF 2022 2,374,832 → 2,646,751 (+271,919); REF 2030 +261,748; REF 2050
++238,587; TGT 2022 +271,919.
+
+**The seed workbook was byte-identical throughout.** That is not containment —
+it is the signature of this failure mode. The seed is built from a *pre-reset*
+snapshot, so it looks perfect while everything genuinely downstream of the
+reset call is corrupted. Anyone verifying [17] by diffing seeds alone would
+have passed it.
+
+#### Root cause
+
+The reset is the **wipe half of a wipe-then-fill pair whose fill half is the
+LEAP API import pass** — the `... or RUN_RESET_...` clauses at
+`supply_results_saver.py:3718-3766` and `supply_leap_io.py:2387`'s forced
+Current Accounts fill. The API is decommissioned and production runs in
+workbook mode, so the fill never executes. A wipe with no fill does not stage
+a refill; it deletes.
+
+Those clauses were previously recorded here as "inert, do not chase". **That
+classification was correct as code and wrong as semantics** — their not
+executing is precisely what makes the wipe destructive. Corrected.
+
+Note also that on `01_AUS` the *only* non-zero values in the reset's entire
+column family were the legitimate exports. There was no stale data to clear,
+so this entry's original premise — that stale Import/Export/target values
+persist and need resetting — is **not borne out** for this economy.
+
+#### Correction to the settled decision
+
+The decision recorded above ("the presets are right", user, 2026-07-21) was
+settled on the assumption that **delivering** the flag was the whole fix and
+was harmless. This measurement falsifies that assumption. The presets are still
+right about intent; the flag was designed for a lifecycle that no longer runs.
+`c5401a5` resolves it by gating rather than by reverting, so intent and
+behaviour agree again. Confirmed with the user 2026-07-21 in preference to
+reverting `62678a2`.
+
+#### Verification evidence — the re-run at `c5401a5`
+
+Three single-economy runs, `01_AUS`, all post-boundary, tolerance 1e-6
+relative with a 1e-9 absolute floor, key sets required to match exactly:
+
+| Leg | Label | Reset | Result |
+| --- | --- | --- | --- |
+| before | `SEED_01_AUS_PRESETFLIP_BEFORE_20260721` | withheld by pins | baseline, 30m 04s |
+| after | `SEED_01_AUS_PRESETFLIP_AFTER_20260721` | **ran** | defect above, 29m 23s |
+| fixed | `SEED_01_AUS_PRESETFLIP_FIXED_20260721` | skipped by gate | **reproduces before exactly**, 31m 40s |
+
+Fixed vs before: seed workbook 2,520 rows, 0 key changes, 0 cell changes,
+per-scenario totals identical; LEAP import workbook 3,432 rows, 0 numeric and
+0 non-numeric expression changes; all six balance tables delta +0.0.
+
+The A/B design departed from the three-point plan recorded earlier in this
+entry. `*.xlsx` and `*.csv` are gitignored, so config workbooks and input data
+are not in git: a `git worktree` at an old commit has nothing to run against,
+and a detached checkout was refused because another session was committing to
+this repo concurrently. Substituted a two-point A/B toggling
+`_PRESET_BROADCAST_PINS` in the working tree, which reproduces the step-3 and
+step-4 states without moving `HEAD`. The dropped leg only tested whether the
+mechanism commits changed anything, which `scripts/check_preset_forwarding.py`
+proves statically.
+
+#### Findings 2 and 3 — one masked, one not a defect
+
+**Finding 2 — the aggregate-sentinel raise is MASKED, not resolved.** With the
+reset enabled, `reset_..._to_zero` resolved a LEAP export template through the
+strict `resolve_leap_export_template` (`supply_reconciliation_tables.py:1807`,
+`:1815`), which raises on `00_APEC`, the aggregate sentinel the compressed
+projection preflight runs. Every run then ended in a deferred `RuntimeError`.
+`c5401a5` stops the reset being entered at all, so the raise no longer fires —
+**but the call site is still wrong and returns the moment the API does.** The
+fix is the `resolve_leap_export_template_or_fallback` sibling, which
+short-circuits on aggregate sentinels. Open.
+
+**Finding 3 — the missing demand-zeroing workbooks are NOT a defect.** Both
+legs produce zero of them, and two separate wrong explanations were proposed
+before the chain was measured (that no detailed demand branches exist; and
+that `zero_fill_unset_rows` returns empty against valid input). Neither holds.
+On both the USA and AUS templates:
+
+```
+template rows                      9012 / 8315
+Demand\ rows                       2298
+minus Demand\All demand aggregated 1236
+minus share variables              1236
+zero_fill_unset_rows(...)          1236   <- not empty
+minus Demand\Other loss and own use   0
+```
+
+Every non-aggregated `Demand\` branch in the template sits under
+`Demand\Other loss and own use`, which is excluded whenever
+`ZERO_OTHER_DEMAND_EXCLUDE_OWN_USE_PROXY_BRANCHES` is `True`
+(`supply_reconciliation_config.py:1092`) because the own-use proxy populates
+those branches in the same pass. Zero rows is **correct**. Region is a red
+herring: `zero_fill_unset_rows` overwrites `Region` rather than filtering on
+it, returning 1,236 rows for every region value tested.
+
+This sharpens register **T6 G2** rather than weakening it: the builder is armed
+and working, and emits nothing today only because this template's detailed
+demand is entirely own-use. The first genuine sector handover adds branches
+outside that prefix and they **will** be zeroed. Nothing distinguishes
+"correctly empty" from "about to delete a live sector" — the builder should say
+*why* it emitted nothing (`all 1,236 candidates excluded as own-use proxy
+branches`) rather than logging a bare `No demand zeroing rows`. That diagnostic
+belongs to G2.
+
+#### Open items this work created or uncovered
+
+1. **`sector_set` is computed but never applied to the reconciliation mask**
+   (`supply_reconciliation_tables.py:1854`; the mask at `:1886-1905` uses
+   economy ∧ scenario ∧ product ∧ year only). It gates the *transformation
+   records* half alone, so `RESET_SCOPE_SECTOR_TITLES` silently does nothing to
+   the reconciliation half. Dormant while the reset is gated off, but it is the
+   first knob anyone will reach for if the API returns.
+2. **Finding 2's strict resolver**, above.
+3. **A third dishonest log line.** `supply_preflight.py:526` reports reset state
+   from the flag alone and never sees the gate, so after `c5401a5` it prints
+   `reset is ENABLED` on runs where the reset is skipped. Being fixed via a
+   shared `reset_is_effective()` predicate in
+   `codebase/functions/analysis_input_write_dispatcher.py`, which every site
+   that reports or gates the reset calls, so delivery and effect cannot drift
+   apart again. The wrapper's toggles line has the same gap and is being fixed
+   against the same predicate.
+
+**Do not** relaunch the fleet run (register T11) expecting the reset to have
+done anything. It will not, by design, until the API returns.
 
 > **⚠️ As this was written, an uncommitted step-4 flip was sitting in the working
 > tree from a concurrent session** — `_PRESET_BROADCAST_PINS` emptied and the
