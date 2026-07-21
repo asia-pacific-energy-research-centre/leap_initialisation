@@ -38,6 +38,27 @@ longer carries `PRELIM` before calling its seed import-ready.
 The marker currently applies to final per-economy baseline-seed workbooks. It
 does not imply that every intermediate source workbook has a `PRELIM` suffix.
 
+### Sibling marker: `UNVERIFIED`, and automatic promotion
+
+A labelled run (`RUN_OUTPUT_LABEL`, the workflow default `"auto"`) writes every
+artifact under `baseline_seed/runs/<LABEL>/`, but `patch_baseline_seeds` and the
+equivalence harness glob the **primary** `baseline_seed/` directory only. A
+finished run's seed was therefore invisible to them until copied by hand. Since
+2026-07-21 the writer promotes each finished seed to the primary directory
+automatically (`supply_leap_io.promote_baseline_seed_to_primary_dir`):
+
+- the run-scoped copy is always **kept** as the record of the run;
+- an existing primary file of the same name is **moved to `archive/` with a
+  timestamp** before being replaced, so promotion never destroys a seed;
+- an economy whose seed still carries **blocking findings** is promoted with an
+  `_UNVERIFIED` marker so it cannot be mistaken for clean output.
+
+Marker order is `..._<ECON>[_PRELIM][_UNVERIFIED]_<YYYYMMDD>.xlsx`. Both markers
+are **optional groups in `patch_baseline_seeds.SEED_FILENAME_PATTERN`** — the
+regex anchors on the date stamp, so a marker it did not know about would make the
+seed silently invisible to the patcher rather than merely flagged. Add any future
+marker to that pattern at the same time.
+
 ## What this file is
 
 `data/full model export.xlsx` is a LEAP **Export** of the `20_USA` area. Its

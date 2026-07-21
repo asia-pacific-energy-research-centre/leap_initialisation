@@ -466,8 +466,16 @@ def _canonical_template_lookup(path: Path) -> TemplateIdLookup:
     return lookup
 
 
+# Two optional provenance markers may sit between the economy and the stamp:
+#   _PRELIM      — built from a provisional (_COMP_GEN) template, so its IDs come
+#                  from another economy's area.
+#   _UNVERIFIED  — promoted to the primary directory while blocking findings
+#                  remained (see `supply_leap_io.promote_baseline_seed_to_primary_dir`).
+# Both are deliberately matched rather than excluded: a marked seed must stay
+# discoverable and clearly labelled, not silently invisible to the patcher.
 SEED_FILENAME_PATTERN = re.compile(
-    r"^leap_import_baseline_seed_(?P<economy>\d{2}_[A-Za-z]+)(?:_PRELIM)?_(?P<stamp>\d{8})\.xlsx$",
+    r"^leap_import_baseline_seed_(?P<economy>\d{2}_[A-Za-z]+)"
+    r"(?:_PRELIM)?(?:_UNVERIFIED)?_(?P<stamp>\d{8})\.xlsx$",
     re.IGNORECASE,
 )
 

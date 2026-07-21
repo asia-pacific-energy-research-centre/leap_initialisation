@@ -1441,6 +1441,67 @@ def _baseline_seed_filename(
     return f"leap_import_baseline_seed_{economy_token}{provisional_marker}_{run_stamp}.xlsx"
 
 
+# Labelled runs write under `baseline_seed/runs/<LABEL>/`; unlabelled runs write
+# straight into `baseline_seed/`. This is the directory name that distinguishes
+# the two, and the only thing promotion keys on.
+_RUN_SCOPED_SEED_DIR_MARKER = "runs"
+
+
+def promote_baseline_seed_to_primary_dir(
+    seed_path: Path,
+    *,
+    unverified: bool,
+) -> Path | None:
+    """Copy a run-scoped baseline seed up into the primary ``baseline_seed`` dir.
+
+    A labelled run (``RUN_OUTPUT_LABEL``) writes every artifact under
+    ``baseline_seed/runs/<LABEL>/``, but `patch_baseline_seeds.BASELINE_SEED_DIR`
+    and the equivalence harness glob the **primary** directory only. Without this
+    step a finished run's seed is invisible to them until someone copies it by
+    hand, which is exactly the confusion this promotion removes.
+
+    Returns the promoted path, or ``None`` when there is nothing to do — an
+    unlabelled run already writes into the primary directory, so promotion would
+    be a self-copy.
+
+    ``unverified=True`` tags the promoted copy for an economy that still carries
+    blocking findings, so it cannot be mistaken for clean output. The marker sits
+    in the same optional position as ``_PRELIM`` (before the date stamp) and is
+    optional in `patch_baseline_seeds._SEED_NAME_RE`, so a tagged seed stays
+    discoverable rather than silently vanishing from the patcher's view.
+
+    The run-scoped copy is always left in place as the record of the run; this
+    only ever adds to the primary directory. An existing file of the same name is
+    moved into ``archive/`` with a timestamp first, so promotion never destroys a
+    previous seed.
+    """
+    run_dir = seed_path.parent
+    if run_dir.parent.name != _RUN_SCOPED_SEED_DIR_MARKER:
+        return None
+    primary_dir = run_dir.parent.parent
+
+    if unverified:
+        head, _, stamp = seed_path.stem.rpartition("_")
+        target_name = f"{head}_UNVERIFIED_{stamp}{seed_path.suffix}"
+    else:
+        target_name = seed_path.name
+    target = primary_dir / target_name
+
+    primary_dir.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        archive_dir = primary_dir / "archive"
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        superseded = archive_dir / f"{target.stem}_superseded_{stamp}{target.suffix}"
+        shutil.move(str(target), str(superseded))
+        print(f"[INFO] Archived previous primary seed -> {superseded.name}")
+
+    shutil.copy2(seed_path, target)
+    marker = " (UNVERIFIED: blocking findings remain)" if unverified else ""
+    print(f"[INFO] Promoted baseline seed to primary dir -> {target}{marker}")
+    return target
+
+
 def _load_reference_export_data(source_path: Path | str | None = None) -> pd.DataFrame:
     """Load the reference export used for branch path remapping and metadata backfill.
 
@@ -2073,6 +2134,16 @@ def write_per_economy_combined_workbooks(
                 f"issue groups: {consolidated_issue_groups_path}"
             )
 
+        # Economies whose seed still carries blocking findings. Tracked per
+        # economy (not per run) so promotion tags only the seeds that are
+        # actually unverified, rather than penalising a clean economy that
+        # happened to run alongside a blocked one.
+        blocked_econ_tokens = (
+            {str(economy) for economy in blocking["economy"].tolist()}
+            if not blocking.empty
+            else set()
+        )
+
         # In deferred-error mode, write the prepared workbooks for diagnosis and
         # register the blocking error for the workflow's final summary.
         for econ_token, leap_df, viewing_df, out_path in prepared_workbooks:
@@ -2085,6 +2156,10 @@ def write_per_economy_combined_workbooks(
                 viewing_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
             _run_combined_readiness(economy=econ_token, output_path=out_path, region=get_region_for_economy(econ_token))
             print(f"[INFO] Wrote baseline seed for economy={econ_token} -> {out_path.name} (stamp={run_stamp})")
+            promote_baseline_seed_to_primary_dir(
+                out_path,
+                unverified=str(econ_token) in blocked_econ_tokens,
+            )
             written.append(out_path)
 
         if not blocking.empty:
