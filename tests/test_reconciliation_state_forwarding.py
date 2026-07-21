@@ -58,6 +58,7 @@ or any other entry point that acquires economy run locks or writes to
 from __future__ import annotations
 
 import ast
+import sys
 from pathlib import Path
 
 import pytest
@@ -112,11 +113,17 @@ FORWARDING_ALLOWLIST = {
 # `run_results_linked_transformation_supply_workflow`, but they were absent from
 # `_sync_results_saver_overrides`'s list, so the saver used the *config default*.
 # `_broadcast_preset_overrides()` now delivers them.  The two that differ from
-# the default under the active preset are held back by
-# `_PRESET_BROADCAST_PINS` until the isolated behaviour commit, so the mechanism
-# fix provably changes no output:
-#   RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT  wrapper True / saver False
-#   ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT             wrapper True / saver False
+# the default under the active preset were held back by `_PRESET_BROADCAST_PINS`
+# for the mechanism commits, so those were provably output-inert, and released
+# in the isolated behaviour commit that follows:
+#   RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT  wrapper True, now delivered
+#   ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT             wrapper True, now delivered
+# Only `supply_results_saver` gates behaviour on either (the zero-reset before
+# filling, and the other-demand zeroing workbooks).  `supply_preflight` reads the
+# first for a log line only and forces it False for the results-update preflight;
+# `supply_leap_io` reads it inside the decommissioned LEAP API path.  The other
+# six modules that hold a copy never load the name - see
+# `scripts/check_preset_forwarding.py`, which splits readers from stale copies.
 # FINDING (2026-07-21), FIXED.  `TRANSFORMATION_SUPPLY_CACHE_PATH` sat in
 # `_sync_results_saver_overrides`'s list but was defined nowhere in `codebase/`
 # (only `TRANSFORMATION_SUPPLY_CACHE_ENABLED` exists).  Every push is guarded by
@@ -136,6 +143,14 @@ KNOWN_UNFORWARDED = {
     "_sra": set(),
     "_srh": set(),
 }
+
+# The two flags whose delivery is the substance of [17].  Named here rather than
+# read from `_PRESET_BROADCAST_PINS` because that set is now empty: tests that
+# iterate the pins would pass vacuously and stop guarding anything.
+BEHAVIOUR_FLAGS = (
+    "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT",
+    "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -354,17 +369,6 @@ def test_known_unforwarded_settings_do_not_grow(alias):
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "The delivery mechanism is fixed, but "
-        "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT and "
-        "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT are still withheld by "
-        "_PRESET_BROADCAST_PINS so the mechanism commits change no output. "
-        "Emptying the pin set (docs/work_queue.md [17], behaviour commit) turns "
-        "this green"
-    ),
-)
 def test_no_wrapper_setting_is_read_unforwarded():
     """The end state the forwarding list is supposed to guarantee."""
     offenders = {
@@ -373,17 +377,6 @@ def test_no_wrapper_setting_is_read_unforwarded():
     assert not any(offenders.values()), offenders
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "The active preset sets RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT "
-        "and ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT on the wrapper (both annotated "
-        "'# overrides config default'), and _broadcast_preset_overrides() can now "
-        "deliver them, but both are withheld by _PRESET_BROADCAST_PINS until the "
-        "isolated behaviour commit, so supply_results_saver still holds the config "
-        "default"
-    ),
-)
 @pytest.mark.parametrize(
     "name",
     [
@@ -402,17 +395,19 @@ def test_preset_overridden_flags_reach_the_saver(name):
     assert getattr(_srs, name) == getattr(_wrapper, name)
 
 
-def test_pinned_preset_names_are_still_read_by_the_saver():
-    """A pin is only meaningful while something reads the name.
+def test_the_two_behaviour_flags_are_still_read_by_the_saver():
+    """Delivery is only worth anything while something reads the name.
 
-    If `supply_results_saver` stopped reading a pinned flag, the pin would be
-    silently protecting nothing and the behaviour commit would be a no-op.
+    These are the two flags whose delivery is the whole point of
+    ``docs/work_queue.md`` [17].  If `supply_results_saver` stopped reading one,
+    the behaviour commit would silently become a no-op and the seed diff
+    recorded against it would no longer mean what it says.
     """
     saver_reads = _module_globals_read_by(_parse(CONFIG_PUSH_TARGETS["_srs"][1]))
-    for name in _wrapper._PRESET_BROADCAST_PINS:
+    for name in BEHAVIOUR_FLAGS:
         assert name in saver_reads, (
-            f"{name!r} is pinned out of the preset broadcast but supply_results_saver "
-            "no longer reads it; drop the pin instead of carrying it"
+            f"{name!r} is delivered to supply_results_saver but the module no longer "
+            "reads it as a module global; [17]'s behaviour commit is now a no-op"
         )
 
 
@@ -432,10 +427,16 @@ def test_preset_broadcast_delivers_an_unpinned_key_to_every_reader():
     assert name in _wrapper._preset_override_names(), (
         f"{name} is no longer an unpinned preset key; pick another for this test"
     )
+    # Enumerate from `sys.modules`, not from the wrapper's own namespace: the
+    # broadcast reaches every loaded `codebase` module, which is a superset of
+    # the ones the wrapper happens to bind a name for.  Restoring only the
+    # latter leaks the sentinel into the rest of the session.
     targets = [
         module
-        for module in vars(_wrapper).values()
-        if getattr(module, "__name__", "").startswith("codebase.")
+        for module_name, module in list(sys.modules.items())
+        if module is not None
+        and (module_name == "codebase" or module_name.startswith("codebase."))
+        and module is not _wrapper
         and name in vars(module)
     ]
     assert targets, f"no loaded codebase module defines {name}"
@@ -472,34 +473,48 @@ def test_toggles_line_and_reset_reminder_report_the_same_value():
     )
 
 
-def test_preset_delivery_warnings_name_every_withheld_preset():
-    """A pinned preset must announce itself; silence is how [17] survived."""
-    warned = " ".join(_wrapper._preset_delivery_warnings())
-    for name in _wrapper._PRESET_BROADCAST_PINS:
-        assert name in warned, (
-            f"{name} is withheld from the broadcast but the run prints no warning "
-            "saying so"
-        )
+def test_no_preset_is_withheld_in_normal_operation():
+    """The shipped pin set must be empty, and the run must say so by silence.
+
+    ``_PRESET_BROADCAST_PINS`` is a deliberate lever, not a resting state: a
+    name left in it is a preset the operator asked for and the run does not
+    apply.  Shipping a non-empty set is how [17] would recur.
+    """
+    assert _wrapper._PRESET_BROADCAST_PINS == set(), (
+        "a preset is being withheld from its consumers on the shipped default; "
+        "if that is intended it belongs in docs/work_queue.md, not only in code"
+    )
+    assert _wrapper._preset_delivery_warnings() == [], (
+        "presets are not reaching their consumers: "
+        f"{_wrapper._preset_delivery_warnings()}"
+    )
 
 
-def test_preset_broadcast_withholds_pinned_names():
-    """The pins must actually hold, or the mechanism commits are not inert."""
-    originals = {
-        name: (getattr(_wrapper, name), getattr(_srs, name))
-        for name in _wrapper._PRESET_BROADCAST_PINS
-    }
+def test_preset_broadcast_withholds_a_pinned_name():
+    """The withholding lever must still work, or [17] has no one-line revert.
+
+    Exercised with a temporary pin because the shipped set is empty (see the
+    test above).  This is the mechanism the behaviour commit would be reverted
+    through, so it has to stay alive even while unused.
+    """
+    name = "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT"
+    original_pins = set(_wrapper._PRESET_BROADCAST_PINS)
+    original_wrapper = getattr(_wrapper, name)
+    original_saver = getattr(_srs, name)
     try:
-        for name in _wrapper._PRESET_BROADCAST_PINS:
-            setattr(_wrapper, name, "SENTINEL")
+        _wrapper._PRESET_BROADCAST_PINS = {name}
+        setattr(_wrapper, name, "SENTINEL")
         _wrapper._broadcast_preset_overrides()
-        for name in _wrapper._PRESET_BROADCAST_PINS:
-            assert getattr(_srs, name) != "SENTINEL", (
-                f"{name} is pinned but the broadcast delivered it anyway"
-            )
+        assert getattr(_srs, name) != "SENTINEL", (
+            f"{name} was pinned but the broadcast delivered it anyway"
+        )
+        assert any(name in warning for warning in _wrapper._preset_delivery_warnings()), (
+            f"{name} is withheld but the run prints no warning saying so"
+        )
     finally:
-        for name, (wrapper_value, saver_value) in originals.items():
-            setattr(_wrapper, name, wrapper_value)
-            setattr(_srs, name, saver_value)
+        _wrapper._PRESET_BROADCAST_PINS = original_pins
+        setattr(_wrapper, name, original_wrapper)
+        setattr(_srs, name, original_saver)
 
 
 # ---------------------------------------------------------------------------

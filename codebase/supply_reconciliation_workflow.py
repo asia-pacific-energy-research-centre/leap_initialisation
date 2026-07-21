@@ -351,14 +351,17 @@ _ORIGINAL_BUILD_LABEL_TO_ESTO_PRODUCT_LOOKUP = _build_label_to_esto_product_look
 
 
 # Preset names deliberately withheld from `_broadcast_preset_overrides()`.
-# Removing a name here is a BEHAVIOUR CHANGE: the preset value starts reaching
-# the modules that read it. Kept as a one-line revert for exactly that reason.
-# See docs/work_queue.md [17]; both entries are removed in the behaviour commit
-# that follows the mechanism fix.
-_PRESET_BROADCAST_PINS: set[str] = {
-    "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT",
-    "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT",
-}
+# Adding a name here is a BEHAVIOUR CHANGE: the preset value stops reaching the
+# modules that read it, and the run announces the withholding through
+# `_preset_delivery_warnings()`. The set exists as a one-line lever for exactly
+# that reason and is deliberately empty in normal operation.
+#
+# It briefly held RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT and
+# ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT so that the delivery-mechanism commits
+# for docs/work_queue.md [17] were provably output-inert. Emptying it is that
+# item's behaviour commit: the zero-reset before filling and the other-demand
+# zeroing workbooks now run as both active presets always intended.
+_PRESET_BROADCAST_PINS: set[str] = set()
 
 
 def _preset_override_names() -> set[str]:

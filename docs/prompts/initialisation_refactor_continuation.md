@@ -77,7 +77,45 @@ forward:
 
 ## Thread register
 
-### T1 - [17] preset forwarding defect. MECHANISM DONE, BEHAVIOUR FLIP PAUSED
+### T1 - [17] preset forwarding defect. CODE COMPLETE, MEASUREMENT OUTSTANDING
+
+**Update, later on 2026-07-21: step 4 resumed on the user's explicit
+authorisation and the flip has landed.** The four commits are:
+
+| Commit | What | Output-affecting |
+|---|---|---|
+| `3928a7b` | deliver preset overrides to the modules that read them | no (pinned) |
+| `857b6e4` | make the `run_with_config` toggles line report effective values | no |
+| `2017ef4` | remove the dead `TRANSFORMATION_SUPPLY_CACHE_PATH` forwarding | no |
+| step 4 below | empty `_PRESET_BROADCAST_PINS` - the flip | **YES. Revert this one alone.** |
+
+`scripts/check_preset_forwarding.py` now reports zero disagreeing readers and
+zero stale copies. `tests/test_reconciliation_state_forwarding.py`: 60 passed,
+0 xfailed - all three strict xfails resolved and un-marked in the flip commit,
+which was mandatory rather than optional (being `strict=True`, they would have
+failed the suite as unexpected passes).
+
+**The single-economy before/after comparison has NOT been run.** It is the
+substance of the task and it remains open. It needs a fresh `RUN_OUTPUT_LABEL`,
+which is the operator's to give - the working tree still carries the dead fleet
+run's label. Two fresh runs are required (before = flip commit reverted or the
+flags forced `False`; after = flip commit), compared **post-boundary on both
+sides**: branch-path key sets, row counts, per economy/scenario/fuel totals,
+tolerance stated. Never use `SEED_21ECON` as a reference.
+
+Expect exactly two differences - supply/transformation Import/Export/target
+values zeroed before filling, and demand-zeroing workbooks present where the
+live run directory has none. Anything else is a stop-and-report.
+
+See [17]'s "Correction: the defect is wider than this entry first said" for the
+measured blast radius: nine modules held a stale copy of the flags, but only
+`supply_results_saver` gates behaviour on them. `supply_preflight` changes one
+log line, and the compressed *projection* preflight is **not** insulated from
+the flip (only the results-update one pins the flag `False`).
+
+The prior pause rationale below still stands as a caution and is retained.
+
+### T1 (historical) - why step 4 was paused earlier
 
 Decision settled: **the presets are right**; fix forwarding so the zero-reset
 and demand zeroing take effect, accepting that seed contents change for every
