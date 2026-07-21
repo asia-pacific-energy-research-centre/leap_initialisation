@@ -282,6 +282,45 @@ dormant. **If the API is ever re-enabled, converge this first** — see
 
 ## [7] Finish the per-economy export-template rollout
 
+> **Status 2026-07-21 — the ID-routing class is COMPLETE; 01_AUS verified safe.**
+> A full re-inventory (grep the path string `full model export.xlsx`, per the
+> method warning below) plus an empirical resolver check settles the dangerous
+> direction. No production path stamps USA IDs onto a real economy's rows:
+>
+> - **Every ID-lookup / ID-borrowing site now routes per economy.**
+>   `attach_export_ids` requires Region **and** Scenario to match (`12e1482`,
+>   test `test_transformation_export_region_guard.py` now asserts the *safe*
+>   behaviour — the 4-day-old memory listing this as "open/approved" was stale);
+>   the three standalone modules' `EXPORT_ID_LOOKUP_PATH` default to `None` =
+>   resolve-per-economy (`ee4e5d1`); `aggregated_demand` defaults `ID_LOOKUP_AUTO`
+>   (`6714db0`); `supply_branch_classification` routes (`3756ccb`); reset scope
+>   routes (`23aac52`); combined-workbook writer routes (`e799029`).
+> - **Empirical resolver check** (recipe below), run 2026-07-21: `01_AUS` resolves
+>   to its own **real** template `leap_export_template 01_AUS.xlsx`
+>   (`is_provisional=False`), **303 of 2748** shared paths carry a *different*
+>   BranchID from USA; `12_NZ` 304/2749; `20_USA` 0/3102; every `_COMP_GEN`
+>   economy (`05_PRC`, `06_HKC`, `07_INA`, …) 0 discriminating paths (USA IDs
+>   verbatim, as designed). So the resolver hands `01_AUS` its own area, and every
+>   ID caller goes through the resolver.
+> - **Remaining `full model export.xlsx` references are all deliberate**, each now
+>   classified: resolver/`x or FALLBACK` fallbacks (`patch_baseline_seeds:87`,
+>   `RESULTS_VERIFICATION_EXPORT_PATH`, `SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH`,
+>   the standalone `EXPORT_ID_LOOKUP_PATH` constants); shared-union / shared-column
+>   references by design ([11]: `fuel_catalog_preflight`,
+>   `POWER_INTERIM_REFERENCE_WORKBOOK_PATH`,
+>   `workflow_common.diagnose_missing_canonical_branches` (informational, never
+>   raises), `ANALYSIS_INPUT_CANONICAL_TEMPLATE_PATHS` (canonical column layout,
+>   shared by every area; also on the decommissioned API path)); and cross-economy
+>   verification artifacts (`supply_results_saver` single-file combine at `:3796`
+>   and the results-verification diagnostic at `:1772` — both now carry a comment
+>   explaining the deliberate pin).
+>
+> **What genuinely remains** is the wider full-model *metadata/validation* sweep
+> below, which is now down to confirming (not routing) the deliberate references,
+> plus the `01_AUS` end-to-end **seed** run (a resolver check proves ID routing;
+> it does not prove the ~15 constants have no other live effect on a standalone
+> `01_AUS` run). The seed run is the honest remaining evidence.
+
 **Not blocked.** Paced by an external event, not by other work — see the deadline.
 
 Landed: the resolver, the combined-workbook writer, and the seed patcher resolve

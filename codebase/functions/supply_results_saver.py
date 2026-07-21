@@ -1769,6 +1769,12 @@ def save_results_linked_single_workbook(
         return out, dropped_report, kept_nonzero_report
 
     def _load_results_verification_data() -> tuple[pd.DataFrame, Path, str]:
+        # Deliberate USA pin, not an un-routed ID lookup. This reference backs a
+        # metadata-mismatch *diagnostic* over the single results-linked workbook,
+        # which spans every economy in the run (see this function's `economies`
+        # arg) — no one area's template applies. It attaches no IDs to a
+        # per-economy seed; the per-economy combine resolves its own template.
+        # Same class as the pinned template at the combined-export call below.
         source_path = _resolve(RESULTS_VERIFICATION_EXPORT_PATH)
         source_sheet = RESULTS_VERIFICATION_EXPORT_SHEET
         if not USE_RESULTS_VERIFICATION_EXPORT_SOURCE:
