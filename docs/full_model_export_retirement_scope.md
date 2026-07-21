@@ -11,7 +11,32 @@ criteria.
 > `12_NZ`, `20_USA`) resolve to their own templates and no longer take IDs from
 > this file. What remains are the **shared-union**, **aggregate/verification**,
 > and **fallback** uses below. Archiving is a *repoint-and-verify* task, not a
-> delete.
+> delete. After archiving, run the fleet-wide provisional baseline-seed check
+> described below before treating the retirement as complete.
+
+## Provisional seed naming policy
+
+Baseline seeds produced with a computer-generated (`_COMP_GEN`) template are
+now marked as provisional:
+
+```text
+leap_import_baseline_seed_02_BD_PRELIM_YYYYMMDD.xlsx
+```
+
+Seeds produced with a real economy template retain the normal filename:
+
+```text
+leap_import_baseline_seed_01_AUS_YYYYMMDD.xlsx
+```
+
+`PRELIM` is provenance, not a validation result. A provisional seed can be a
+useful and internally consistent workflow output, but its IDs are still based
+on the source area used to create the `_COMP_GEN` template (usually USA). When
+a real template arrives, regenerate that economy and confirm the filename no
+longer carries `PRELIM` before calling its seed import-ready.
+
+The marker currently applies to final per-economy baseline-seed workbooks. It
+does not imply that every intermediate source workbook has a `PRELIM` suffix.
 
 ## What this file is
 
@@ -71,6 +96,15 @@ Tests that build their own `tmp_path / "full model export.xlsx"` fixtures;
    run the full acceptance gate below, and update any manifest/docs. Keep the
    canonical `20_USA` template as the single source going forward.
 
+7. **Run the provisional-fleet acceptance pass.** After Tasks 0-6 are
+   complete, run the all-economy baseline-seed workflow using the execution
+   procedure below. At minimum this covers every economy whose resolved
+   template is still `_COMP_GEN`; preferably run all 21 configured economies so
+   the same pass also exercises the three real-template routes (`01_AUS`,
+   `12_NZ`, and `20_USA`). This is a strong integration test of retirement and
+   workflow behavior, but it is not proof of economy-specific ID correctness
+   for the provisional economies.
+
 ## Acceptance criteria (the gate before archiving)
 
 - Task 0 equivalence confirmed and recorded.
@@ -81,6 +115,104 @@ Tests that build their own `tmp_path / "full model export.xlsx"` fixtures;
 - One end-to-end run (NZ or AUS, whichever is fresh) with the file **moved out of
   `data/`** completes without a `[WARN] … not found`, an empty catalog, or any
   new `BranchID=-1` row that was not already present.
+
+The post-archive fleet pass must additionally demonstrate:
+
+- every `_COMP_GEN` economy receives a current seed whose filename contains
+  `PRELIM`;
+- every real-template economy receives a current seed without `PRELIM`;
+- the resolved template path and provisional/real status are recorded per
+  economy;
+- no seed is called LEAP-import-ready solely because the workflow completed;
+  unresolved IDs, unknown paths, and validation findings are reported by rule
+  and economy;
+- the shared fuel catalog is non-empty and its rebuild is identical to (or
+  explicitly explained against) the committed catalog;
+- per-economy readiness, region, duplicate-key, producer-coverage, canonical
+  share, conservation, and deferred-error diagnostics are collected;
+- outputs are classified using modification timestamps from this run, not
+  merely by files already existing on disk.
+
+## Post-retirement fleet run: execution handoff
+
+Use the notebook-safe entry point in
+`codebase/supply_reconciliation_workflow.py` with
+`ACTIVE_PRESET = _PRESET_BASELINE_SEED`, all three scenarios, and
+`THROW_ERROR_AFTER_RUN = True`. The standard full-run economy order and
+scenario list are defined by
+`docs/prompts/supply_reconciliation_full_baselineseed_run_execution_prompt.md`;
+read the live values from the workflow before launching rather than copying an
+old list into a new script.
+
+The expected provisional set is currently:
+
+```text
+02_BD, 03_CDA, 04_CHL, 05_PRC, 06_HKC, 07_INA, 08_JPN, 09_ROK,
+10_MAS, 11_MEX, 13_PNG, 14_PE, 15_PHL, 16_RUS, 17_SGP, 18_CT,
+19_THA, 21_VN
+```
+
+The real-template set currently includes `01_AUS`, `12_NZ`, and `20_USA`.
+Confirm this from the resolver at run time because the set changes as new
+templates arrive.
+
+Before launch:
+
+1. Read `AGENTS.md`, this document, and the full baseline-seed execution
+   prompt.
+2. Run `git status --short`; preserve unrelated changes and do not stage them.
+   Restore any temporary economy-scope override before a fleet run, unless the
+   run metadata explicitly records a deliberate subset.
+3. Record the starting commit, configuration, economy list, scenarios, start
+   time, and exact launch command.
+4. Confirm no other workflow Python process is running.
+5. Confirm the retirement repoints are committed and
+   `data/full model export.xlsx` is unavailable for the archive acceptance
+   test.
+
+Launch detached with `C:\Users\Work\miniconda3\python.exe`, using new,
+uniquely timestamped stdout/stderr logs under `outputs/logs/`. Record the PID
+and a metadata file containing the commit, start time, command, and log paths.
+Do not overwrite a prior run log or launch inline behind a tool timeout.
+
+While healthy, poll no more often than once every ten minutes. At each poll,
+record process/CPU state, latest stage/economy/scenario, new warnings/errors,
+and newly modified per-economy workbooks. Silence in a buffered log is not a
+stall; a flat CPU time across polls is the relevant stall signal. Do not stop a
+healthy run merely to inspect it.
+
+After completion, produce an economy-by-economy table with one of:
+
+- **Completed successfully** — fresh workbook from this run and no deferred
+  error attached;
+- **Completed with warnings** — fresh workbook but non-blocking findings;
+- **Export failed** — no fresh workbook from this run;
+- **Attempted but incomplete** — started but did not reach export completion;
+- **Not attempted** — never reached before termination.
+
+Review the consolidated rule findings across all rows, not only
+`blocking=True`. The configured baseline-seed policy downgrades some blocking
+findings to warnings so the run can expose the complete fleet picture. Do not
+silently turn a finding into an exception or loosen validation to make the run
+green. Classify each issue as infrastructure, diagnostic-only,
+data/configuration, export validation, or calculation/domain logic, and leave
+mapping/design decisions for explicit user review.
+
+The final report must include the start/end commits and times, exact commands,
+all log paths, per-economy statuses and output paths, `PRELIM`/template
+provenance, grouped findings, conservation/deferred errors, catalog results,
+comparison/timing outputs, any restarts, unresolved import-readiness issues,
+and final `git status --short`. Confirm that no workflow process remains.
+
+## What this fleet run proves — and what it does not
+
+It is strong evidence that the retired-file replacement works across the
+workflow: catalog loading, template routing, seed writing, readiness checks,
+scenario coverage, and diagnostics all execute across many economies. It is
+not evidence that a `_COMP_GEN` economy's IDs are its own. Those economies stay
+provisional until a real template is available and that economy is regenerated
+and revalidated. Do not bulk-regenerate merely to clear a `PRELIM` marker; the
+marker is cleared by real-template provenance, not by another run.
 
 ## Traps (from `work_queue.md` "Traps that already cost time")
 
