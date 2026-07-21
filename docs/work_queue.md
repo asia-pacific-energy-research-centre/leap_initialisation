@@ -572,6 +572,124 @@ Detailed execution brief: `docs/prompts/phase_2_configuration_standardisation_ex
   one visible source of truth, explicit caller arguments still win, and its
   focused tests pass.
 
+## [17] ⚠️ PRIORITY — two preset overrides never reach the code that reads them
+
+**Found 2026-07-21 by `tests/test_reconciliation_state_forwarding.py` (`a279615`),
+verified independently. Not a regression — long-standing.** Fix is deferred
+until the in-flight fleet run finishes (it holds the file that must change).
+
+### The defect
+
+`_PRESET_BASELINE_SEED` sets these on `supply_reconciliation_workflow`, each
+annotated `# overrides config default`. They are **absent from
+`_sync_results_saver_overrides`'s hand-maintained list**, so
+`supply_results_saver` keeps its own `import *` copy of the config default:
+
+| Name | Wrapper (preset) | Config default | `supply_results_saver` |
+| --- | --- | --- | --- |
+| `RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT` | `True` | `False` | **`False`** |
+| `ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT` | `True` | `False` | **`False`** |
+
+Neither `_sync_results_saver_overrides()` nor `_broadcast_config_overrides()`
+delivers them (the broadcast at `supply_reconciliation_workflow.py:574` carries
+only `CAPACITY_UNMET_PASS_MODE` plus refreshed *paths*).
+
+**Intent is not ambiguous.** `supply_reconciliation_config.py:1096` is commented
+`# PRESET-CONTROLLED DEFAULT: both active presets replace this value.` The
+mechanism meant to replace it does not.
+
+**The log actively misreports it.** In the live run's log, two adjacent lines:
+
+```text
+4293: [INFO] run_with_config toggles: ... RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT=True, ...
+4294: [WARN] Reset reminder: supply/transformation import-export reset is DISABLED.
+```
+
+`:4293` prints the wrapper value; `:4294` reports the saver's. Anyone reading
+the toggles line — which is what the run-review prompts read — sees `True`.
+
+### Scope: which seeds are affected
+
+The same `reset is DISABLED` warning appears in
+`SEED_21ECON_0E555F_TGT_REF_CA` and `SEED_01_AUS_TGT_REF_CA`, so **every recent
+baseline seed was built this way**, including the `01_AUS` seed used as [7]'s
+end-to-end evidence. [7]'s conclusion is unaffected — it concerns BranchID
+routing, not reset — but no recent seed is a "clean reset" baseline.
+
+### What actually changes when the flags are delivered — measured, not assumed
+
+Live consequences today (workbook mode, LEAP import disabled):
+
+1. **`supply_results_saver.py:3223` — the zero-reset is skipped.**
+   `reset_supply_and_transformation_import_export_to_zero(...)` never runs, so
+   supply/transformation Import/Export/target values are not zeroed before
+   filling. Stale values persist in the reconciliation table and process
+   records. **This is the substantive one.**
+2. **`:3655` — demand-zeroing workbooks are never built.**
+   `build_other_demand_zeroing_workbooks(...)` is skipped; the live run
+   directory contains zero such workbooks. Detailed demand branches are
+   therefore not zeroed against the `All demand aggregated` placeholder, which
+   is the double-count guard.
+
+Currently **inert**, do not chase:
+
+- `:2853` appends `Current Accounts` to export scenarios in reset mode — the
+  fleet run already runs TGT/REF/CA, so this is a no-op for it.
+- `:3695-3743` — five `... or RUN_RESET_...` clauses that force
+  `include_current_accounts` on LEAP import. All inside the
+  `INCLUDE_LEAP_IMPORT` block, which is False (workbook mode; API
+  decommissioned). Inert until the API returns.
+
+Four further names are in the same hole but **do not currently diverge**
+(preset value equals config default): `USE_AGGREGATED_DEMAND_AS_DUMMY`,
+`WRITE_AGGREGATED_DEMAND_WORKBOOK`, `AGGREGATED_DEMAND_EXCLUDED_SECTORS`,
+`AGGREGATED_DEMAND_USE_SECTOR_BRANCHES`. `supply_reconciliation_tables` has the
+same hole for the first and third. They are latent, not active.
+
+Also found: `TRANSFORMATION_SUPPLY_CACHE_PATH` is **in** the forwarding list but
+defined nowhere in `codebase/`. `_sync_results_saver_overrides` guards each push
+with `if name in globals()`, so a dead entry is a silent no-op.
+
+### The decision this needs before any code change
+
+**Which side is wrong is a modelling call, not a code call.** The presets say
+`True`; every recent seed was produced the `False` way and reviewed that way.
+Delivering the flags will change seed contents across all economies. Options:
+
+- (a) fix forwarding → reset and demand-zeroing switch on → seeds change;
+- (b) accept current behaviour → change the preset literals to `False` and
+  delete the misleading `# overrides config default` comments;
+- (c) fix forwarding but re-review whether reset scope is still wanted now that
+  per-economy templates are in place ([7]).
+
+Do not pick by reading the code — the code cannot say which was intended.
+
+### Sequenced fix (after the fleet run, in this order)
+
+1. **`codex: deliver preset overrides to extracted modules`** — the mechanism
+   fix only, with the two divergent names still pinned to their *current*
+   effective values so behaviour is unchanged and the diff is provably inert.
+   Prefer routing through `_broadcast_config_overrides` (which cannot go stale)
+   over extending the hand list.
+2. **`codex: make the toggles line report effective values`** — print what the
+   consumers hold, not what the wrapper holds. This defect was invisible for
+   weeks because the log lied.
+3. **`codex: remove the dead TRANSFORMATION_SUPPLY_CACHE_PATH forwarding`**.
+4. **Then, and only after the modelling decision above**, flip the flags in one
+   isolated commit and measure a one-economy before/after seed diff
+   (post-boundary on both sides) to quantify the change.
+5. Un-`xfail` the three strict xfails in
+   `tests/test_reconciliation_state_forwarding.py` as each is resolved.
+
+### Guardrails
+
+- Do not fix this while the fleet run is live — it edits
+  `supply_reconciliation_workflow.py`, which carries the run's temporary label.
+- Step 4 must never be bundled with step 1. Mechanism and behaviour change are
+  separately revertible or this becomes unattributable.
+- Do not delete the `[WARN] Reset reminder` line — it is currently the only
+  honest signal in the log.
+
 ## [16] Initialisation refactor — Phase 3/4/5 roadmap
 
 **Status 2026-07-21 — planned, not started.** Three execution briefs added.

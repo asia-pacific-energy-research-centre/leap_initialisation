@@ -41,7 +41,10 @@ so the split is self-documented as done.
 
 ### The defect the split left behind
 
-Three mechanisms keep the extracted modules coupled through module globals:
+**Four** mechanisms keep the extracted modules coupled through module globals
+(this brief originally said three; the fourth was found while implementing the
+first characterization test - see mechanism 4, which is also the better model
+for the eventual fix):
 
 1. **Star re-export.** `supply_reconciliation_workflow.py:65` does
    `from codebase.supply_reconciliation_config import *`, explicitly so that
@@ -63,12 +66,30 @@ Three mechanisms keep the extracted modules coupled through module globals:
    rebound at runtime by `_refresh_output_paths_for_current_pass_mode()`
    (`:562`) and then re-mirrored.
 
+4. **`_broadcast_config_overrides()`** (`supply_preflight.py:1686`) walks
+   `sys.modules` and sets the named attribute on **every** loaded `codebase.*`
+   module that already defines it, returning a restore snapshot. Called from
+   `_refresh_output_paths_for_current_pass_mode()` (`:574`) and from preflight
+   (`:1296`, restored at `:1361`/`:1989`).
+   **This is the one mechanism that cannot go stale**, because it is driven by
+   what the modules actually define rather than by a hand-maintained list - and
+   it is therefore the better model for the eventual fix. But note what it is
+   *given*: only `CAPACITY_UNMET_PASS_MODE` plus the refreshed paths. The
+   preset dict is applied by `globals().update(ACTIVE_PRESET)` (`:894`) with
+   **no** following broadcast, which is precisely why the preset flags do not
+   arrive. See `docs/work_queue.md` [17].
+
 Consequences that matter, in order:
 
-- **Correctness is maintained by a list.** Any newly extracted name that is not
-  added to the ~30-name list is silently not forwarded. This is the same shape
-  of failure as the `073c489` routing bypass recorded in `work_queue.md` [7]
-  (fix landed, production no-op for a day, tests green throughout).
+- **Correctness is maintained by a list, and the list is already wrong.** Any
+  newly extracted name not added to the list (37 names, one of them dead) is
+  silently not forwarded. This is the same shape of failure as the `073c489`
+  routing bypass recorded in `work_queue.md` [7] (fix landed, production no-op
+  for a day, tests green throughout). **Confirmed 2026-07-21, not
+  hypothetical:** two preset overrides annotated `# overrides config default`
+  never reach `supply_results_saver`, disabling the supply/transformation
+  zero-reset and the demand-zeroing workbooks across every recent baseline
+  seed. Full detail and the sequenced fix: `docs/work_queue.md` [17].
 - **The process is the unit of isolation.** Two economies cannot run in the
   same interpreter with different output labels. This is the concrete reason
   Phase 5 parallelism must be process-based, not thread-based.

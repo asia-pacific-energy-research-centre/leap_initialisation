@@ -198,6 +198,33 @@ run-scoped `OUTPUT_DIR` / `RUN_OUTPUT_LABEL` / `CAPACITY_UNMET_STATE_PATH`
 rebound at runtime). Two economies in one interpreter would interleave those
 globals. **Threads are unsafe; this is not a tuning question.**
 
+### A parallel path already exists, and it is the unsafe kind
+
+Found 2026-07-21, after this brief was first written:
+`supply_reconciliation_config.PARALLEL_ECONOMY_WORKERS: int = 0` is consumed at
+`supply_results_saver.py:3526`, which - when the value exceeds 1 - runs
+per-economy export generation under a **`concurrent.futures.ThreadPoolExecutor`**
+(`:3529`), sharing one interpreter and therefore one copy of every mirrored
+module global. It aggregates per-economy exceptions into
+`_economy_export_errors` and continues, which is the right failure policy
+(matches D5C.4).
+
+**The only thing preventing harm today is that the default is 0.** Treat this
+as live risk, not as a head start:
+
+- **Do not raise `PARALLEL_ECONOMY_WORKERS` above 1 before Phase 4 B2/B3.**
+  Worth an explicit guard: refuse values > 1 with a message pointing at [17]
+  and this brief, rather than leaving a foot-gun switched off by convention.
+- The `_run_one_economy` / `_collect_economy_result` decomposition it already
+  has is genuinely useful and should be **kept** - it is the natural worker
+  boundary for a process pool. Reuse it; convert the executor, do not rewrite
+  the seam.
+- Whether threads are safe for the *export generation* step specifically, as
+  opposed to a whole run, deserves its own measurement rather than assumption:
+  the answer depends on whether `_run_one_economy` touches any mirrored global.
+  Determine that before deciding whether the existing thread path can simply be
+  deleted or must be preserved behind the same guard.
+
 ### Process isolation
 
 - Use processes, one economy per process, `spawn` start method (Windows has no
