@@ -380,6 +380,19 @@ pins no severity of its own.
    a finished seed manufactures false differences. (This directly explains the
    transformation-patch gate's premise — see the patch-baseline-seeds work.)
 
+   **SETTLED 2026-07-21 — the gate is NOT merely this artifact; keep it.** The
+   definitive equivalence harness
+   (`codebase/scrapbook/transformation_ungate_equivalence_harness.py`) ran the
+   REAL patcher against a fresh, current-rules `12_NZ` seed (stamp `20260717`,
+   past the `20260716` rules change) and diffed **post-boundary vs post-boundary**
+   — both sides cross `prepare_seed_rows_for_write`, so the raw-vs-seed trap does
+   not apply. Verdict **DEFECT**: 1209 rows dropped, 21 invented, 72 non-benign
+   value changes. The divergence is structural — the patcher's transformation path
+   uses the simplified `_collect_auto_regen`, not the workbook producer
+   `save_transformation_exports_with_split_targets` — so deleting the gate would
+   corrupt seeds. See `docs/work_queue.md` [1] for the offending paths and the
+   mandatory rewire.
+
 5. **Self-bypassing conservation check (F5) — RESOLVED 2026-07-16.** The
    projection conservation check used to downgrade its own failure to a warning
    and silently re-run non-strict in one producer while three others blocked and a

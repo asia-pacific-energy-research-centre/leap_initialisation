@@ -4,7 +4,8 @@ Single source of truth for *what is left, in what order, and what blocks what*
 across the supply-reconciliation / baseline-seed work. Cross-references the
 detail rather than duplicating it.
 
-> Living document — last reconciled with the tree **2026-07-17**. Re-check
+> Living document — last reconciled with the tree **2026-07-21** ([1]
+> transformation ungate settled: gate stays, see below). Re-check
 > `git status --short` before trusting the "blocked" markers.
 
 ## How to use this
@@ -171,27 +172,56 @@ unaffected" holds here (only coke ovens moved).
 
 ---
 
-## [1] Transformation ungate
+## [1] Transformation ungate — ⛔ SETTLED 2026-07-21: gate STAYS (harness returned DEFECT)
 
-**Ready.** See `docs/prompts/patch_baseline_seeds_module_verification_prompt.md`
-(§ transformation auto-regen sectors) for the full reassessment and the definitive test.
+**The definitive test has now run and the gate's premise holds. Do not delete the
+gate.** The earlier hypothesis that it rested on a raw-vs-seed measurement
+artifact is **disproven for `12_NZ`.**
 
-The gate (`run_patch` raises `NotImplementedError` for any module with
-`auto_sector_keys`) may rest on a measurement artifact — its evidence appears to
-have compared **raw** helper output against a finished seed, skipping the seed
-writer. That is **not yet evidenced**: the AUS/USA runs that suggested it were
-themselves confounded (pinned template + multi-output WIP) and were retracted.
+**Evidence (post-boundary vs post-boundary, the trap avoided).**
+`codebase/scrapbook/transformation_ungate_equivalence_harness.py 12_NZ` ran the
+REAL patcher (`_run_patch_locked`, bypassing only the `NotImplementedError`
+gate) against a fresh full-run seed and diffed the result:
 
-To settle it, run with **both** controls in place:
-- `_template_for_economy(econ)` per economy (never a pinned `FULL_MODEL_EXPORT_PATH`), and
-- clean HEAD transformation code (e.g. a temporary `git worktree` at HEAD with
-  seed/data paths pointed back at the main repo).
+- seed: `leap_import_baseline_seed_12_NZ_20260717.xlsx` (stamp `20260717`, past
+  the `20260716` transformation-rules change — not stale);
+- both sides cross `prepare_seed_rows_for_write`, so canonical share completion /
+  cross-scenario borrowing applies equally — the raw-vs-seed artifact is excluded
+  by construction;
+- verdict **DEFECT**: **1209 rows dropped**, **21 rows invented**, 0 benign +
+  **72 non-benign value changes**.
 
-Note ungating is **not just deleting the gate**: the patcher's transformation path
-uses `_collect_auto_regen` (the simplified path), **not**
-`save_transformation_exports_with_split_targets`. Ungating means rewiring
-transformation to be workbook-based via that helper (the `transfers` model), then
-dropping the gate.
+**Nature of the defect — a mix of all three failure classes, structural not
+numeric:**
+
+- *Changed values (single-output selection differs).* Gas to liquids Output
+  Share flips `Gas and diesel oil` 100→0 and `Kerosene` 0→100; Gas works plants
+  Feedstock Share flips `Coal tar` 100→0 and `Lignite` 0→100; Hydrogen
+  transformation `Ammonia` Import Target 0 → ~0.11/0.023.
+- *Dropped rows (patch omits split-target rows).* e.g. BKB and PB plants
+  `Output Fuels\{BKB and PB, Peat products}` Export Target / Import Target across
+  all three scenarios — rows the workbook producer emits and the simplified path
+  does not.
+- *Invented rows.* Hydrogen transformation `Processes\Smr wo ccs`
+  Exogenous Capacity / Historical Production / Process Efficiency — emitted by
+  the patch, absent from the full run.
+
+**Root cause = the exact gap this item always named.** The patcher's
+transformation path uses the simplified `_collect_auto_regen`, **not** the
+workbook producer `save_transformation_exports_with_split_targets`. The two are
+not equivalent, so deleting the gate would corrupt every patched transformation
+seed.
+
+**Smallest follow-up to actually ungate (unchanged, now mandatory not optional):**
+rewire the patcher's transformation path to be workbook-based via
+`save_transformation_exports_with_split_targets` (the `transfers` model), remove
+`auto_sector_keys` from the transformation `MODULE_REGISTRY` entries **only after**
+that path is in place, then re-run this harness and require PASS. Keep the gate
+until it does. Full recipe in the harness header and
+`docs/prompts/transformation_final_handoff_and_verification_prompt.md` (§ If the
+result is DEFECT).
+
+Run artifact: `outputs/transformation_ungate_12_NZ_rerun.log` (RESULT block).
 
 ## [2] Last conservation site ✅ Completed 2026-07-17
 
