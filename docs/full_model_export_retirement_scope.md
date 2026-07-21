@@ -69,9 +69,20 @@ copy) instead.
   missing template, the workflow now uses the legacy ESTO classification rule
   without borrowing USA's Resources tree. The incremental all-template fuel
   catalog remains the shared-union diagnostic/provenance source.
-- **Task 7 remains pending.** The post-retirement fleet run has not been used
-  to certify provisional baseline seeds; it must be run under the execution
-  handoff below before claiming fleet-wide import readiness.
+- **Task 7 — first real-economy evidence PASSED 2026-07-21; fleet run still
+  pending.** A full `01_AUS` run (scenarios Target/Reference/Current Accounts) was
+  completed at `b45ccc6` with the file archived. It produced
+  `runs/SEED_01_AUS_TGT_REF_CA/leap_import_baseline_seed_01_AUS_20260721.xlsx`
+  with **zero** file-not-found / `IDs will be -1` / `missing/empty` regressions in
+  the log, and the seed carries AUS's own IDs on **504/504** discriminating rows
+  (0 on USA), `Region=Australia`, and **0** `BranchID=-1` rows. This confirms the
+  repoint is sound for a real-template economy on a live end-to-end path.
+  **Still pending:** the *fleet-wide* run certifying the provisional (`PRELIM`)
+  seeds for the remaining economies.
+  - Pre-existing, not caused by the retirement: the deferred preflight error
+    `48 row(s) have BranchID=-1 with non-zero values`, all
+    `Demand\Other loss and own use\Non specified own uses\*` (migration lag).
+    They do not reach the seed.
 
 ## Inventory — every live dependency (grep the path string, not the constant)
 
@@ -80,7 +91,7 @@ opened during a normal run; "fallback" = only opened when a primary path yields
 `None`/misses.
 
 | # | Site | Class | Reads at runtime? | Action to archive |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | A | `fuel_catalog_preflight.py:36` `DEFAULT_FULL_MODEL_EXPORT_PATH` | shared-union fuel-branch catalog source ([7]/[11]) | **YES — and currently the *sole* source**: the catalog is LEAP-probe **+** full-model-export, but the probe needs the decommissioned LEAP API (`LEAP_API_BLOCKED`), so the export alone feeds the catalog today | Repoint to the canonical `20_USA` template (or a named `canonical fuel branch union.xlsx`). Highest-risk item — do it first and verify the catalog is byte-stable. |
 | B | `supply_results_saver.py:3796` | cross-economy single-file combined export `template_path` (`RESULTS_VERIFICATION_EXPORT_PATH`) | **YES** — read for IDs of the all-economy single-file artifact | Repoint to the `20_USA` template. Already documented as a deliberate pin; the artifact spans all economies so no one area is "correct" — USA is the intentional reference. |
 | C | `supply_results_saver.py:1772` `_load_results_verification_data` | results-verification metadata-mismatch reference (`RESULTS_VERIFICATION_EXPORT_PATH`, `USE_RESULTS_VERIFICATION_EXPORT_SOURCE=True`) | **YES** — live by default | Repoint to the `20_USA` template. Diagnostic only (never raises), but it is read. |
@@ -91,6 +102,7 @@ opened during a normal run; "fallback" = only opened when a primary path yields
 | H | `patch_baseline_seeds.py:87` `FULL_MODEL_EXPORT_PATH` | deliberate aggregate/no-template fallback for the patcher | fallback | Repoint to the `20_USA` template; per-economy writing/validation already resolve `_template_for_economy`. |
 
 ### Out of scope / non-production references (leave alone)
+
 Tests that build their own `tmp_path / "full model export.xlsx"` fixtures;
 `scripts/`, `scrapbook/`, `old_workflows/`, `mapping_tools/`; and any
 `leap_utilities` path. These do not gate archiving the `data/` copy.

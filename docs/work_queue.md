@@ -315,11 +315,40 @@ dormant. **If the API is ever re-enabled, converge this first** — see
 >   and the results-verification diagnostic at `:1772` — both now carry a comment
 >   explaining the deliberate pin).
 >
-> **What genuinely remains** is the wider full-model *metadata/validation* sweep
-> below, which is now down to confirming (not routing) the deliberate references,
-> plus the `01_AUS` end-to-end **seed** run (a resolver check proves ID routing;
-> it does not prove the ~15 constants have no other live effect on a standalone
-> `01_AUS` run). The seed run is the honest remaining evidence.
+> **✅ END-TO-END EVIDENCE LANDED 2026-07-21 — [7] is complete for the real
+> templates.** The `01_AUS` seed run (the honest remaining evidence) was run to
+> completion at `b45ccc6` and its seed audited against AUS's own template:
+>
+> | Measurement | Result |
+> | --- | --- |
+> | Seed | `runs/SEED_01_AUS_TGT_REF_CA/leap_import_baseline_seed_01_AUS_20260721.xlsx` (3,432 rows, no `PRELIM` — real template) |
+> | Discriminating paths (AUS vs USA template BranchID differs) | 303 |
+> | Seed rows on those paths following **AUS** IDs | **504** |
+> | Seed rows following **USA** IDs | **0** |
+> | Seed rows on neither | **0** |
+> | `Region` values in seed | `Australia` (uniform) |
+> | `BranchID=-1` rows in seed | **0** |
+>
+> Contrast the pre-fix failure recorded in [12]: `12_NZ`'s old seed carried 507
+> rows across 131 paths on **USA** BranchIDs. `01_AUS` now carries none.
+>
+> Run also doubles as [13] Task 7 evidence: it completed with
+> `data/full model export.xlsx` **archived**, with zero file-not-found /
+> `IDs will be -1` / `missing/empty` regressions in the log.
+>
+> **Known, pre-existing and NOT a regression:** the deferred preflight error
+> (`48 row(s) have BranchID=-1 with non-zero values`). Every one is
+> `Demand\Other loss and own use\Non specified own uses\*` — the migration-lag
+> class already recorded in the traps section. They never reach the seed (which
+> has 0 `-1` rows). Note the APEC-aggregate preflight artifact reports these with
+> `Region='United States'`: that is the deliberate `GLOBAL_REGION` fallback for
+> the `00_APEC` sentinel ([10]), **not** the region-routing bug — the AUS run
+> proper reports them as `Region='Australia'`.
+>
+> Remaining under [7]: nothing for the real templates. The 18 `_COMP_GEN`
+> economies still resolve to USA-derived IDs by construction and can only be
+> fixed by a real per-area export ([12]) — now surfaced by the `PRELIM` seed
+> naming policy.
 
 **Not blocked.** Paced by an external event, not by other work — see the deadline.
 
