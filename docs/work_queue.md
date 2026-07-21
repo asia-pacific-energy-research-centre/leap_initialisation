@@ -604,10 +604,14 @@ inferring.
 
 ### Decisions awaiting a human
 
-Phase 3: D3.1 (retire the `unified_name_lookup` consolidation API — it silently
-drops every authored override because it reads a column that no longer exists),
-D3.2 (must display-name lookup exclude `IS_LEAP_ROLLUP_NAME` rows? — mapping
-owner), D3.3–D3.5.
+Phase 3: **D3.1 and D3.2 decided 2026-07-21** — retire the `unified_name_lookup`
+consolidation API rather than repair it (the workbook no longer expresses the
+override rule it encodes), and exclude `IS_LEAP_ROLLUP_NAME` rows from
+display-name resolution, because **no rollup ever appears in LEAP** — its
+components do, recursively where a component is itself a rollup. Details in the
+Phase 3 brief. Still open: D3.3–D3.5, plus one question back to the mapping
+owner (is `IS_LEAP_ROLLUP_NAME` set on every rollup label, or only those noticed
+so far?).
 Phase 4: D4.1 (state-injection style), D4.3 (`supply_results_saver.py` split
 now or later), D4.4 (own-use incremental vs rewrite — brief recommends
 incremental), D4.5 (drop the <500 LOC target).

@@ -132,11 +132,64 @@ complete on unit tests alone.
 
 | # | Decision | Options | Recommendation |
 |---|---|---|---|
-| D3.1 | `unified_name_lookup` consolidation API (O2) | (a) delete `load_source_records`/`build_unified_name_lookup`, keep `load_active_mapping_sheet`; (b) repair `_is_genuine_override` against the current schema | **(a)** - the override semantics the function encodes no longer exist in the sheet; repairing it invents a rule nobody authored |
-| D3.2 | Must display-name resolution exclude `IS_LEAP_ROLLUP_NAME` rows? (O3) | exclude / include / include-with-warning | Ask the mapping owner. Do not guess - a rollup label written as a LEAP branch name is a silent data defect |
+| D3.1 | `unified_name_lookup` consolidation API (O2) | (a) delete `load_source_records`/`build_unified_name_lookup`, keep `load_active_mapping_sheet`; (b) repair `_is_genuine_override` against the current schema | **DECIDED 2026-07-21: (a) retire.** See below |
+| D3.2 | Must display-name resolution exclude `IS_LEAP_ROLLUP_NAME` rows? (O3) | exclude / include / include-with-warning | **DECIDED 2026-07-21: exclude.** See below |
 | D3.3 | Retire `config/master_config.xlsx` and `config/leap_mappings.xlsx` from the repo? | delete / move to `config/legacy/` / keep | **move to `config/legacy/`** and let the compat layer resolve by name; deletion is a separate, later step once no path resolves to them |
 | D3.4 | Does initialisation own its rollup-rule reading, or should it call a shared leap_mappings helper? | duplicate reader here / import from leap_mappings / agreed frozen column contract | **frozen column contract + contract test here.** Cross-repo Python imports are not currently a pattern in this repo |
 | D3.5 | Tolerance for O5 equivalence | exact keys + totals within X PJ | Propose: branch-row key sets exactly equal; per economy/scenario/fuel totals within 1e-6 relative |
+
+### D3.1 - DECIDED 2026-07-21: retire the consolidation API
+
+Delete `load_source_records` and `build_unified_name_lookup` together with the
+dead `_is_genuine_override` helper. Keep `load_active_mapping_sheet`, which is
+the only function with a live caller
+(`aggregated_demand_workflow.py:41`).
+
+Rationale: `_is_genuine_override` encodes an override rule -
+"`matches_original_product_flow_name` is False" - that the canonical workbook
+no longer expresses. Repairing it against the current schema would mean
+inventing a replacement rule that no mapping author wrote down.
+
+**A note on the alternative that was considered and rejected**: deriving the
+override check from the workbook itself (e.g. "an override exists when
+`leap_display_name` differs from the name mechanically derived from `code`").
+That is a reasonable-sounding repair, but it changes the *meaning* of the
+column: it would treat every incidental difference - spacing, casing,
+pluralisation, a name that simply happens not to match the derivation - as a
+deliberate override. The current sheet has no column expressing intent, so the
+honest move is to stop pretending the API can detect it. Retirement also makes
+the question moot rather than leaving a subtly wrong heuristic in place. If a
+genuine need for intent-marking returns, it should come back as an authored
+column in `leap_mappings`, not as a heuristic here.
+
+### D3.2 - DECIDED 2026-07-21: exclude rollup names, and recurse to components
+
+Rollup labels **must never be written as LEAP branch names**. Rollups are a
+comparison-side construct; **no rollup ever appears in LEAP.** What appears in
+LEAP is the rollup's *components* - and where a component is itself a rollup,
+its components, recursively, down to labels that are real LEAP branches.
+
+Implementation consequences:
+
+- Filter `IS_LEAP_ROLLUP_NAME` rows out of display-name resolution inside
+  `codebase/mappings/canonical_loaders.py`, so all five display-name call sites
+  inherit it, alongside the existing `USED_IN_LEAP_INITIALISATION` filter.
+- **A rollup label reaching a LEAP branch write is an error, not a fallback.**
+  Do not silently substitute a derived name - that would hide the defect. It
+  should surface as a named failure identifying the code and the call site.
+- **Resolution must be recursive, not single-level.** A component that is
+  itself a rollup must be expanded again. A one-level expansion would leave
+  intermediate rollups in the output and is the likely-looking wrong
+  implementation, so the test must include a rollup-of-rollup case explicitly.
+- The component expansion itself is authored in `leap_mappings`
+  (`leap_rollup_rules` / `esto_rollup_rules` / `ninth_rollup_rules`, already
+  read by `supply_demand_mapping.py:587-589`). **Do not build a second,
+  initialisation-local notion of what a rollup expands to.**
+- This raises a question to put back to the mapping owner rather than answer
+  here: is `IS_LEAP_ROLLUP_NAME` guaranteed set on *every* rollup label in
+  `leap_display_names`, or only on those noticed so far? If the flag is
+  incomplete, the filter is necessary but not sufficient, and a cross-check
+  against the rollup-rule sheets' rolled-pair columns is the stronger test.
 
 ## Staged sequence of small commits
 
@@ -157,18 +210,25 @@ Each commit is independently revertible and adds its own focused test.
    test that an unexpected schema fails fast with a named error rather than
    producing empty rule sets. Record D3.4's answer in the module docstring.
 
-3. **`codex: retire the unified name lookup consolidation API`** *(safe)*
-   Implements D3.1. If (a): delete the two functions plus their dead
-   `_is_genuine_override` helper, keep `load_active_mapping_sheet` and its
-   callers untouched, and update the scrapbook caller or mark it archived. If
-   (b): repair against current columns and add a test proving an authored
-   override survives. Either way add a regression test.
+3. **`codex: retire the unified name lookup consolidation API`** *(safe during
+   fleet run)* Implements D3.1 as decided. Delete `load_source_records`,
+   `build_unified_name_lookup` and `_is_genuine_override`; keep
+   `load_active_mapping_sheet` and leave its callers untouched. Handle the
+   scrapbook caller (`codebase/scrapbook/aggregated_demand_bridge_jetfuel_test.py`)
+   - it imports `load_active_mapping_sheet`, so verify before assuming it
+   breaks. Add a regression test that the surviving function still serves
+   `aggregated_demand_workflow`, and that the removed names are gone.
 
-4. **`codex: resolve rollup labels in display-name lookup`** *(needs D3.2)*
-   Only if the mapping owner says rollup labels must be excluded. Route the
-   exclusion through `canonical_loaders` so all five display-name call sites
-   inherit it, alongside the existing `USED_IN_LEAP_INITIALISATION` filter.
-   **Output-affecting** - see equivalence gate below.
+4. **`codex: exclude rollup labels from display-name resolution`**
+   *(D3.2 decided; MUST WAIT for the fleet run)* Filter `IS_LEAP_ROLLUP_NAME`
+   in `canonical_loaders` so all five call sites inherit it. A rollup label
+   reaching a LEAP branch write raises a named error rather than falling back
+   to a derived name. Component resolution is **recursive** and sourced from
+   the leap_mappings rollup-rule sheets - no second local expansion table.
+   Tests must include a rollup-of-rollup case and an "unflagged rollup caught
+   by cross-check against the rolled-pair columns" case.
+   **Output-affecting** - see equivalence gate below. Never bundle with another
+   change.
 
 5. **`codex: move legacy mapping workbooks out of the runtime config dir`**
    *(needs D3.3, safe during fleet run only if nothing resolves to them - prove
