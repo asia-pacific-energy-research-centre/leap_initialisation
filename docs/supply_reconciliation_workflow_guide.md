@@ -941,6 +941,26 @@ Code improvements planned for this workflow and its supporting scripts. Mirrored
 
 Caps and override settings (`CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS`, `CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS`, and related sentinels) are now defined in `codebase/supply_reconciliation_config.py` (Python, not JSON). Supporting functions have been extracted to modules in `codebase/functions/` and `codebase/`, reducing `supply_reconciliation_workflow.py` from 13,794 LOC to ~637 LOC (imports and notebook config block only). See Phase 4 of the refactor for details.
 
+### Shared workflow utilities — partially complete
+
+`codebase/utilities/workflow_utils.py` is now the shared home for repository
+path resolution, economy-code normalization, year-column normalization, and
+process-level ESTO/9th CSV loading. The reconciliation/configuration modules
+and own-use proxy already use it, and `tests/test_workflow_utils.py` protects
+the utility contract.
+
+The remaining Phase 1 work is migration and hardening rather than a new
+utility module:
+
+- move the remaining safe full-table ESTO/9th readers to the shared loaders;
+- add file-signature cache invalidation and an explicit notebook cache-clear
+  helper, so a changed source file cannot be silently reused by a long-lived
+  Python process;
+- retain selective-column readers where loading the complete 9th Outlook CSV
+  would materially worsen memory or runtime, unless a measured replacement is
+  better;
+- add focused regression tests before each workflow migration.
+
 ### Convergence rate reporting and run history tracking
 
 Iterative capacity-unmet passes now calculate convergence metrics from the saved pass history. The pass summary includes the run id, pass count, first and current gap, gap closure percentage, last-pass gap delta, unresolved fuel count, and trend. Each pass also appends one row to `outputs/leap_exports/supply_reconciliation/<pass_mode>/supporting_files/runtime/capacity_unmet_convergence.csv`.

@@ -293,16 +293,24 @@ Exception: `other_loss_own_use_proxy_workflow.py` (2,923 LOC) is so internally t
 
 ### Implementation phases
 
-#### Phase 1 — Shared utilities (low risk, unlocks everything else)
+#### Phase 1 — Shared utilities (partially complete; finish migration and hardening)
 
-Extract into a new `codebase/utilities/workflow_utils.py`:
+`codebase/utilities/workflow_utils.py` already provides `_resolve(path)`,
+`_normalize_economy(e)`, `_normalize_year_columns(df)`, and process-level ESTO/
+9th CSV loaders. The reconciliation/configuration modules and own-use proxy
+already import parts of it; `tests/test_workflow_utils.py` covers the initial
+utility contract.
 
-- `_resolve(path)` — currently duplicated in 5+ scripts
-- `_normalize_economy(e)` — duplicated in 3+
-- `_normalize_year_columns(df)` — duplicated
-- Common ESTO/9th CSV loading with caching (the 9th Outlook CSV is 200MB+ and loaded redundantly across scripts — a shared cached loader or pre-processed Parquet file would cut startup time significantly)
+Remaining work is deliberately narrow:
 
-Add smoke tests alongside this phase — even simple "does this run without crashing on a known input" tests will catch regressions during the rest of the refactor.
+- migrate the remaining safe raw ESTO/9th readers to the shared API, beginning
+  with the own-use proxy; do not replace selective-column readers in
+  `aggregated_demand_workflow.py` with an unconditional full 9th load without
+  measuring memory/runtime;
+- add cache invalidation keyed to source-file signature, plus an explicit
+  cache-clear helper for notebook use, so changed inputs cannot be silently
+  reused in a long-lived process;
+- add focused loader/migration smoke tests before moving each workflow.
 
 #### Phase 2 — Config standardisation
 
@@ -381,7 +389,7 @@ Work through in this sequence. Items marked *(depends on X)* must wait for X to 
 
 **Initialisation repo refactor (`leap_initialisation`) — independent track, can run alongside mapping/dashboard work:**
 
-1. **Phase 1** — Extract shared utilities into `codebase/utilities/workflow_utils.py`
+1. **Phase 1** — Finish shared-utility migration and cache hardening
 2. **Phase 2** — Config standardisation across all seven workflow scripts
 3. **Phase 3** — Connect workflow scripts to `outlook_mappings_master.xlsx` *(depends on M2)*
 4. **Phase 4** — Break up `supply_reconciliation_workflow.py` monolith; consider rewrite of `other_loss_own_use_proxy_workflow.py`
