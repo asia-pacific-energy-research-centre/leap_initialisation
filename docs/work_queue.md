@@ -572,6 +572,48 @@ Detailed execution brief: `docs/prompts/phase_2_configuration_standardisation_ex
   one visible source of truth, explicit caller arguments still win, and its
   focused tests pass.
 
+## [16] Initialisation refactor — Phase 3/4/5 roadmap
+
+**Status 2026-07-21 — planned, not started.** Three execution briefs added.
+**Read them before trusting `AGENTS.md`'s "Planned workflow improvements"
+section: two of its three phase descriptions are measurably stale.**
+
+| Phase | Brief | State per `AGENTS.md` | Measured state 2026-07-21 |
+| --- | --- | --- | --- |
+| 3 | [phase_3_canonical_mapping_migration_execution.md](prompts/phase_3_canonical_mapping_migration_execution.md) | blocked on leap_mappings M2; seven scripts still on legacy workbooks | **M2 is done** (all three pipeline scripts read `outlook_mappings_master.xlsx`); initialisation runtime reads are already canonical (C1–C7), and the C5 electricity/heat blocker has since cleared. Remaining work is schema-contract hardening, ownership, one latent defect, and the deferred equivalence evidence |
+| 4 | [phase_4_monolith_decomposition_execution.md](prompts/phase_4_monolith_decomposition_execution.md) | split a 13,628-LOC monolith; consider rewriting the own-use proxy | **The split already landed** (`supply_reconciliation_workflow.py` is 1,253 LOC; config/allocation/history + three more modules exist). The own-use proxy is 1,770 LOC over a 2,343-LOC utils module, so the rewrite premise is retired. Remaining work is retiring the shared-mutable-global backchannel the split left behind |
+| 5 | [phase_5_feature_improvements_execution.md](prompts/phase_5_feature_improvements_execution.md) | convergence tracking, parallelism, demand aggregation | 5A largely built (needs run fingerprints + retention); 5B needs modelling decisions; **5C parallelism is blocked on Phase 4** — the "minimal changes" claim in `AGENTS.md` is not supported by the code |
+
+### Ordering
+
+1. **Phase 4 characterization tests first** (brief commits 1–3, test-only).
+   They are safe during a fleet run and are the precondition for everything
+   else, including 5C.
+2. **Phase 3 commits 1–2** (schema + rollup contract tests) in parallel — they
+   touch different files and are also fleet-run safe.
+3. Phase 5A whenever convenient; it is self-contained.
+4. Phase 4 B2/B3 state injection, then 5C.
+
+### Fleet-run boundary
+
+The working tree currently carries a temporary `RUN_OUTPUT_LABEL` in
+`codebase/supply_reconciliation_workflow.py`. **Nothing in [16] may edit that
+file until the run finishes and the label is restored to `"auto"`.** Each brief
+ends with an explicit "safe now vs must wait" table; follow it rather than
+inferring.
+
+### Decisions awaiting a human
+
+Phase 3: D3.1 (retire the `unified_name_lookup` consolidation API — it silently
+drops every authored override because it reads a column that no longer exists),
+D3.2 (must display-name lookup exclude `IS_LEAP_ROLLUP_NAME` rows? — mapping
+owner), D3.3–D3.5.
+Phase 4: D4.1 (state-injection style), D4.3 (`supply_results_saver.py` split
+now or later), D4.4 (own-use incremental vs rewrite — brief recommends
+incremental), D4.5 (drop the <500 LOC target).
+Phase 5: D5A.1 (manifest vs widening the convergence CSV), D5B.2 (which subset
+family aggregated demand pre-generates), D5C.2 (worker-count default).
+
 ## [15] Modelling-configuration scoped reviews
 
 These are deliberately outside Phase 2: their settings alter model behaviour,
