@@ -572,6 +572,25 @@ Detailed execution brief: `docs/prompts/phase_2_configuration_standardisation_ex
   one visible source of truth, explicit caller arguments still win, and its
   focused tests pass.
 
+## [15] Modelling-configuration scoped reviews
+
+These are deliberately outside Phase 2: their settings alter model behaviour,
+fallback policy, or an operational run contract. Review and implement each as
+a separate task, in this order:
+
+1. `docs/prompts/refining_workflow_scoped_review.md` - small legacy-wrapper
+   adapter and path/default review.
+2. `docs/prompts/aggregated_demand_scoped_review.md` - demand definition,
+   source filters, zeroing contract, and selective-cache policy.
+3. `docs/prompts/other_loss_own_use_proxy_scoped_review.md` - proxy activity,
+   intensity, fallback, and template-ID contract.
+4. `docs/prompts/supply_reconciliation_presets_scoped_review.md` - run-preset
+   inventory and explicit configuration boundary for the long-running workflow.
+
+No item in [15] may be folded into the Phase 2 wrapper-default commits. The
+briefs are review/plan documents; each must be updated with findings before
+its implementation begins.
+
 Phase 1 cache hardening and narrow-loader reuse landed in `56f951a`,
 `3116741`, and `eca34af`. Do not re-open that work unless a workflow needs a
 different cache projection or a measured memory/runtime regression is found.
