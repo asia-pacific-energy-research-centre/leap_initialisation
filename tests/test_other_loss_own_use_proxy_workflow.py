@@ -5,10 +5,59 @@ import pytest
 
 from codebase import other_loss_own_use_proxy_workflow as workflow
 from codebase.functions.other_loss_own_use_proxy_utils import build_proxy_source_coverage_gaps
+from codebase.utilities.workflow_utils import clear_csv_cache, load_esto_csv, load_ninth_outlook_csv
 
 
 def _coal_config() -> dict[str, object]:
     return workflow.PROXY_CONFIG[0]
+
+
+def test_load_esto_data_preserves_filters_without_mutating_cached_source(tmp_path) -> None:
+    clear_csv_cache()
+    source = tmp_path / "esto.csv"
+    pd.DataFrame([
+        {"economy": "01AUS", "products": "01 Coal", "is_subtotal": False, "2022": 1.0},
+        {"economy": "01AUS", "products": "19 Total", "is_subtotal": False, "2022": 2.0},
+        {"economy": "01AUS", "products": "02 Coke", "is_subtotal": True, "2022": 3.0},
+    ]).to_csv(source, index=False)
+
+    loaded = workflow.load_esto_data(source)
+    cached_source = load_esto_csv(source)
+
+    assert loaded["products"].tolist() == ["01 Coal"]
+    assert loaded["economy_key"].tolist() == ["01_AUS"]
+    assert 2022 in loaded.columns
+    assert "economy_key" not in cached_source.columns
+    assert cached_source["is_subtotal"].tolist() == [False, False, True]
+    clear_csv_cache()
+
+
+def test_load_ninth_data_preserves_filters_without_mutating_cached_source(tmp_path) -> None:
+    clear_csv_cache()
+    source = tmp_path / "ninth.csv"
+    pd.DataFrame([
+        {
+            "economy": "01AUS", "scenarios": "target", "subtotal_results": False,
+            "fuels": "01_coal", "subfuels": "x", "2023": 1.0,
+        },
+        {
+            "economy": "01AUS", "scenarios": "reference", "subtotal_results": False,
+            "fuels": "01_coal", "subfuels": "x", "2023": 2.0,
+        },
+        {
+            "economy": "01AUS", "scenarios": "target", "subtotal_results": True,
+            "fuels": "01_coal", "subfuels": "x", "2023": 3.0,
+        },
+    ]).to_csv(source, index=False)
+
+    loaded = workflow.load_ninth_data(source)
+    cached_source = load_ninth_outlook_csv(source)
+
+    assert loaded["economy_key"].tolist() == ["01_AUS"]
+    assert loaded[2023].tolist() == [1.0]
+    assert "economy_key" not in cached_source.columns
+    assert len(cached_source) == 3
+    clear_csv_cache()
 
 
 def test_export_key_workbook_resolves_for_economy_when_not_overridden(monkeypatch, tmp_path) -> None:

@@ -58,6 +58,8 @@ from codebase.utilities.workflow_utils import (
     _normalize_economy,
     _normalize_year_columns,
     _resolve,
+    load_esto_csv,
+    load_ninth_outlook_csv,
 )
 from codebase.utilities.leap_balance_export_resolver import (
     build_leap_balance_activity_series,
@@ -735,7 +737,9 @@ PROXY_CONFIG = [
 
 
 def load_esto_data(path: Path | str = ESTO_DATA_PATH) -> pd.DataFrame:
-    df = pd.read_csv(_resolve(path), low_memory=False)
+    # The shared loader returns a cached frame; this workflow adds columns and
+    # filters rows, so it must work on its own copy.
+    df = load_esto_csv(path).copy()
     df = _normalize_year_columns(df)
     df["economy_key"] = df["economy"].apply(_normalize_economy)
     if "is_subtotal" in df.columns:
@@ -752,7 +756,9 @@ def load_esto_data(path: Path | str = ESTO_DATA_PATH) -> pd.DataFrame:
 
 
 def load_ninth_data(path: Path | str = NINTH_DATA_PATH) -> pd.DataFrame:
-    df = pd.read_csv(_resolve(path), low_memory=False)
+    # The shared loader returns a cached frame; this workflow adds columns and
+    # filters rows, so it must work on its own copy.
+    df = load_ninth_outlook_csv(path).copy()
     df = _normalize_year_columns(df)
     if "economy" in df.columns:
         df["economy_key"] = df["economy"].apply(_normalize_economy)
@@ -795,7 +801,7 @@ def load_output_fuel_validation_esto_tables(
     tables: list[tuple[str, pd.DataFrame]] = []
     for path_value in paths:
         path = _resolve(path_value)
-        df = pd.read_csv(path, low_memory=False)
+        df = load_esto_csv(path).copy()
         df = _normalize_year_columns(df)
         tables.append((path.name, df))
     return tables
