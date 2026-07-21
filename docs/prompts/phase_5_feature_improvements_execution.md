@@ -122,7 +122,87 @@ workbook. Measured:
   aggregated-demand scoped review both record that this is deliberate and must
   not be swapped for a full-frame cache without measurement.
 
-### The three sub-features, separately shippable
+### RE-SCOPED 2026-07-21 - most of 5B already exists
+
+Inspection of the module changed this feature substantially. **5B.1 is already
+built, and 5B.2's premise is wrong.**
+
+- **Per-sector filename IDs (5B.1) exist.** `_sector_exclusion_suffix`
+  (`aggregated_demand_workflow.py:310`) already renders excluded sectors into a
+  deterministic filename suffix using `_SECTOR_SHORT_CODES` - e.g.
+  `_no_IND`, `_no_BD_IND`, sorted so the suffix is order-independent.
+- **"Any order" sector readiness is already supported, on demand.**
+  `resolve_active_branch_excluded_sectors(active_branches, sector_map,
+  base_excluded)` (`:406`) merges manually configured exclusions with the ESTO
+  sectors implied by whichever LEAP demand groups are currently real, and
+  deduplicates (Freight road + Passenger road both map to `15_02_road` and are
+  excluded once). Backed by `LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP`
+  (`supply_reconciliation_config.py:1049`, 6 groups) and the manual switch
+  `DETAILED_DEMAND_BRANCHES_ACTIVE` (`:1072`, currently `None`).
+- **It can even infer readiness automatically.**
+  `_infer_active_demand_branch_groups(sector_table)` +
+  `resolve_effective_aggregated_demand_exclusions`
+  (`supply_reconciliation_tables.py:~700-731`) detect active demand groups from
+  the LEAP results sector table, falling back to the manual list.
+- Subtraction is taken from **9th/ESTO source data, not detailed LEAP branch
+  results**, deliberately - so the placeholder shrinks by the source amount
+  regardless of how the detailed branch later evolves. Preserve that.
+
+**Therefore 5B.2 (pre-generate all subset combinations) should be dropped.**
+The power set was never the requirement, and the sequence framing is also
+unnecessary: the system already generates the one file you ask for, named for
+what it excludes. Generating 256 files per economy/scenario would be strictly
+worse than calling the existing resolver with the current active-branch list.
+
+### The remaining gap: the patch path, and the zeroing counterpart
+
+Two real gaps remain, and they are what "handle a demand change on the spot"
+actually requires:
+
+**G1 - the seed patch path ignores active-branch resolution.**
+`patch_baseline_seeds.py` module `aggregated_demand` (`:246`, `:812-849`)
+rebuilds the placeholder workbook and passes
+`excluded_sectors=AGGREGATED_DEMAND_EXCLUDED_SECTORS` - the **manual base list
+only**. It never calls `resolve_active_branch_excluded_sectors` and never
+consults `DETAILED_DEMAND_BRANCHES_ACTIVE`, so a patch cannot express "Industry
+just became real" the way a full run can. Fixing this is small and is the
+highest-value item in 5B.
+Note also that this path imports the constant from
+`supply_reconciliation_config` **directly**, so a preset override of it would
+not be seen (currently inert - preset value equals config default; related to
+[17]).
+
+**G2 - patching the aggregate alone is not sufficient, and can zero a sector to
+nothing.** The `aggregated_demand` module deliberately strips only
+`Demand\All demand aggregated\` "so as not to remove demand-zeroing and other
+independently owned branches". Correct as far as it goes - but it means the
+**zeroing workbook is not updated**. If a modeller makes Industry real and the
+aggregate is patched to exclude Industry while the seed's zeroing rows still
+zero the detailed Industry branches, Industry ends up **zero in LEAP with
+nothing replacing it**. There is no `demand_zeroing` entry in `MODULE_REGISTRY`
+at all.
+This is compounded today by [17]: `ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT`
+never reaches the saver, so **no demand-zeroing workbooks are being produced in
+the first place**. G2 cannot be properly designed or tested until [17] is
+resolved, because the artifact it must keep consistent does not currently
+exist.
+
+**Revised 5B work items, in order:**
+
+1. *(after [17])* Confirm what the zeroing workbook contains once it is
+   produced again, and whether it honours active-branch exclusions.
+2. Route the patch path through `resolve_active_branch_excluded_sectors` so a
+   patch and a full run produce the same placeholder for the same active-branch
+   list (G1). Test: identical rows from both paths.
+3. Add a paired zeroing update to the patch - either a `demand_zeroing` module
+   or an explicit coupling to `aggregated_demand` - so the two can never
+   disagree (G2). **Design so that patching one without the other is
+   impossible or loudly refused**, since the failure is silent energy loss.
+4. Optional: `DETAILED_DEMAND_BRANCHES_ACTIVE` is a module-level constant, so a
+   modeller must edit config to declare readiness. Consider a run-scope
+   argument instead - but check it against [17]'s forwarding problem first.
+
+### The original three sub-features (5B.3 only remains)
 
 **5B.1 Per-sector filename IDs.** Encode the included-branch subset in the
 filename using `_SECTOR_SHORT_CODES`. Output-contract change: downstream
@@ -150,8 +230,8 @@ clarity rule in mind (primary outputs narrow; detail in `extra_detail`).
 
 | # | Decision | Recommendation |
 |---|---|---|
-| D5B.1 | Change the default filename, or add opt-in IDs? | **Opt-in first**, flip the default only after consumers are confirmed |
-| D5B.2 | What subset family is generated in 5B.2? | Ask the modeller. Propose: the linear "sectors migrated so far" sequence, not the power set |
+| D5B.1 | Change the default filename, or add opt-in IDs? | **Moot - already built.** `_sector_exclusion_suffix` already produces `_no_IND`-style suffixes |
+| D5B.2 | What subset family is generated in 5B.2? | **DECIDED 2026-07-21: none - drop 5B.2.** Sectors become ready in any order, at modeller discretion, so pre-generation is the wrong shape. The existing resolver already generates the needed file on demand; the work is instead to make the **seed patch path** able to apply a demand change without a full run (G1/G2 above) |
 | D5B.3 | Contributions on a separate sheet or a sidecar CSV? | **Separate sheet** in the same workbook - the modeller's stated need is to subtract without another file |
 | D5B.4 | Do contributions need to reconcile exactly to the aggregate? | Yes, and assert it in a test - a contribution table that does not sum to the aggregate is worse than none |
 

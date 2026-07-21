@@ -730,11 +730,21 @@ components do, recursively where a component is itself a rollup. Details in the
 Phase 3 brief. Still open: D3.3–D3.5, plus one question back to the mapping
 owner (is `IS_LEAP_ROLLUP_NAME` set on every rollup label, or only those noticed
 so far?).
-Phase 4: D4.1 (state-injection style), D4.3 (`supply_results_saver.py` split
-now or later), D4.4 (own-use incremental vs rewrite — brief recommends
-incremental), D4.5 (drop the <500 LOC target).
-Phase 5: D5A.1 (manifest vs widening the convergence CSV), D5B.2 (which subset
-family aggregated demand pre-generates), D5C.2 (worker-count default).
+Phase 4: **D4.1 decided 2026-07-21 — take the explicit-injection path** (B2
+allocation ledger + B3 run context are in scope). Reinforced by [17] and by
+`PARALLEL_ECONOMY_WORKERS` already driving a `ThreadPoolExecutor` over the
+mirrored globals. **D4.4 resolved by inspection — no structural work on the
+own-use proxy is warranted**: `PROXY_CONFIG` is 19 uniform declarative entries,
+only 3 functions are oversized, and `AGENTS.md`'s "internally tangled" claim no
+longer holds. The real weakness is coverage shape — 5 of the 9 *enabled*
+processes are untested while 3 of the 4 most-tested are *disabled* — which is a
+task for the own-use scoped review, not Phase 4. Still open: D4.3, D4.5.
+Phase 5: **D5B.2 decided 2026-07-21 — drop it.** Sectors become ready in any
+order, so pre-generation is the wrong shape; the existing
+`resolve_active_branch_excluded_sectors` and `_sector_exclusion_suffix` already
+generate the needed file on demand (5B.1 is already built). Replaced by two gaps: the seed patch path ignores active-branch
+resolution, and there is no paired demand-zeroing patch — see the Phase 5 brief
+G1/G2, and note G2 is blocked on [17]. Still open: D5A.1, D5C.2.
 
 ## [15] Modelling-configuration scoped reviews
 

@@ -161,11 +161,29 @@ multiply the number of modules needing mirrored state.
 
 | # | Decision | Options | Recommendation |
 |---|---|---|---|
-| D4.1 | Injection style for B2/B3 | (a) explicit parameter object passed down; (b) a single shared `RunContext` module-level singleton; (c) keep mirroring, add a test that the ~30-name list is complete | **(a)**, staged behind (c). (c) is a cheap immediate safety net; (b) reproduces the current defect with better naming |
+| D4.1 | Injection style for B2/B3 | (a) explicit parameter object passed down; (b) a single shared `RunContext` module-level singleton; (c) keep mirroring, add a test that the ~30-name list is complete | **DECIDED 2026-07-21: (a), staged behind (c).** (c) landed as `a279615`. See below |
 | D4.2 | Retire the star imports? | yes, per module, after B1 measurement / no | Yes, but **only after** the measurement, and one module per commit |
 | D4.3 | Is `supply_results_saver.py` split in this phase or deferred? | split now / defer to a follow-on | **Defer.** Land B2+B3 first, re-measure, then decide with real coupling numbers |
-| D4.4 | Own-use proxy: incremental or rewrite? | see framework below | **Incremental.** The rewrite premise was retired by the decomposition that already happened |
+| D4.4 | Own-use proxy: incremental or rewrite? | see framework below | **DECIDED 2026-07-21: neither — no structural work is warranted.** The file was inspected; see the assessment below |
 | D4.5 | Target LOC for the orchestrator | keep AGENTS.md's <500 / drop the target | **Drop the numeric target.** 1,253 LOC is mostly the preset block and the log/preflight orchestration, both of which are contracts. LOC is not the defect; shared mutable state is |
+
+### D4.1 - DECIDED 2026-07-21: take the explicit-injection path
+
+Option (a). The safety-net test (c) has landed as `a279615` and immediately
+proved the mirroring mechanism is not merely fragile but **already broken in
+production** (`docs/work_queue.md` [17]), which settles the question
+independently of runtime: the class of defect is real, it survived weeks
+unnoticed, and no amount of list maintenance prevents the next one.
+
+A second, decisive input: `PARALLEL_ECONOMY_WORKERS` already exists and already
+drives a `ThreadPoolExecutor` over economies (`supply_results_saver.py:3526`),
+sharing exactly the mirrored globals. Today it is safe only because the default
+is 0. Explicit injection is what makes that switch usable rather than a
+foot-gun, so B2/B3 have value even if wall-clock never mattered.
+
+Scope confirmation: B2 (allocation ledger) and B3 (run context) are in.
+D4.3 (`supply_results_saver.py`) stays deferred until they land and coupling is
+re-measured.
 
 ### D4.4 decision framework (own-use proxy: incremental vs rewrite)
 
@@ -186,7 +204,76 @@ Rewrite only if **all four** hold. Measure, do not estimate:
    already extracted, marginal extraction cost is low.
 
 Conclusion: **incremental**, and it is gated behind characterization tests, not
-behind Phase 4 sequencing. Record this in the scoped review when it reports.
+behind Phase 4 sequencing.
+
+### D4.4 - RESOLVED 2026-07-21 by inspecting the file: leave it alone
+
+The framework above asks "incremental or rewrite". Having actually measured the
+module, the honest answer is **neither is warranted**. `AGENTS.md`'s "so
+internally tangled that rewriting from scratch may be cleaner" is not supported
+by the code as it stands.
+
+Measured (`ast`, read as `utf-8-sig`):
+
+| Metric | `other_loss_own_use_proxy_workflow.py` | `functions/other_loss_own_use_proxy_utils.py` |
+|---|---|---|
+| Lines | 1,770 | 2,343 |
+| Largest function | `assemble_proxy_workbook` 356 lines / 43 branches | `build_proxy_source_coverage_gaps` 183 / 42 |
+| 2nd, 3rd largest | 140 / 21, 103 / 8 | 122 / 15, 106 / 6 |
+| Everything else | under ~70 lines | under ~90 lines |
+| `TODO`/`FIXME`/`HACK` | 1 | 0 |
+
+`PROXY_CONFIG` is **19 declarative entries sharing one uniform 8-key schema**
+(`process_key`, `process_label`, `leap_process_label`, `activity_label`,
+`activity_sources`, `target_sources`, `enabled`, `notes`), constructed by
+`make_proxy_config`. Each entry declares its ESTO / 9th / LEAP-balance activity
+and target selections as data. That is a table-driven design, not a tangle -
+adding a process is a data edit, and the per-process behaviour is readable
+without tracing control flow.
+
+So the "2,900-line monolith with 300-line fuel lists and complex fallback
+logic" described in `AGENTS.md` has already been dealt with. Three functions are
+genuinely oversized; the rest of both files is unremarkable.
+
+**Recommended action: none as structural work.** If anything is done, it is one
+optional, self-contained commit splitting `assemble_proxy_workbook` (356
+lines/43 branches) into its evident phases. It is the only function in either
+file where size plausibly hides a defect. This is a nice-to-have, not a
+prerequisite for anything.
+
+**The real weakness is test coverage shape, not structure.** 60 tests exist
+across `test_other_loss_own_use_proxy_workflow.py` (59) and
+`test_other_loss_own_use_proxy_aggregate.py` (1), but the tested set and the
+*enabled* set only partly overlap:
+
+- **Enabled (9):** `coal_mines`, `electricity_chp_and_heat_plants`,
+  `liquefaction_regasification_plants`, `oil_and_gas_extraction`,
+  `pump_storage_plants`, `nuclear_industry`,
+  `gasification_plants_for_biogases`, `nonspecified_own_uses`,
+  `transmission_and_distribution_losses`.
+- **Disabled (10):** `gas_works_plants`, `gas_to_liquids_plants`, `coke_ovens`,
+  `blast_furnaces`, `patent_fuel_plants`, `bkb_pb_plants`,
+  `liquefaction_plants_coal_to_oil`, `oil_refineries`,
+  `charcoal_production_plants`, `ccs`.
+- Tests name `liquefaction` (18), `coal_mines` (15), `blast_furnaces` (13),
+  `gas_works` (4), `coke_ovens` (4), `oil_refineries` (3),
+  `nonspecified_own_uses` (2), `pumped` (1) - i.e. **three of the four
+  most-tested processes are disabled**, while five enabled processes
+  (`electricity_chp_and_heat_plants`, `oil_and_gas_extraction`,
+  `nuclear_industry`, `gasification_plants_for_biogases`,
+  `transmission_and_distribution_losses`) are not named in the test file at
+  all.
+
+That is where effort should go if this module is a worry: **add fixtures for
+the five untested enabled processes**, per the scoped review's deliverable 1.
+That is a test task, owned by
+`docs/prompts/other_loss_own_use_proxy_scoped_review.md`, not a Phase 4 task.
+
+Caveat on this assessment: it measures structure and coverage shape. It does
+**not** establish that the proxy's numbers are right - the enabled processes
+could be well-structured and still model the wrong thing. If distrust of the
+outputs is the actual concern, the fixtures above are the first step, and the
+methodology question is a modelling review, not a refactor.
 
 ## Characterization tests - before any code moves
 
