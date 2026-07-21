@@ -3243,7 +3243,24 @@ def run_results_linked_transformation_supply_workflow(
             )
         except Exception as exc:
             print(f"[WARN] Results-update closure diagnostic could not run: {exc}")
-    if RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT:
+    if RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT and not include_leap_import:
+        # The reset is the *wipe* half of a wipe-then-fill pair whose fill half is
+        # the LEAP API import pass (the `... or RUN_RESET_...` clauses further down,
+        # and supply_leap_io's forced Current Accounts fill). With the API
+        # decommissioned and analysis_write_mode == "workbook", nothing refills the
+        # trade columns after they are zeroed, so running the wipe alone deletes
+        # real export data instead of staging it for a refill: measured on 01_AUS,
+        # 1,111,593 PJ of coal/LNG/crude exports zeroed with no replacement.
+        # Printed loudly rather than skipped silently - a toggles line reading True
+        # beside a reset that did not run is exactly what hid docs/work_queue.md [17].
+        print(
+            "[WARN] RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT=True but the LEAP "
+            "import pass is disabled (analysis_write_mode is not 'api'). The reset is "
+            "SKIPPED: it zeroes the trade columns that the import pass would refill, and "
+            "without that pass it would delete real Import/Export values. See "
+            "docs/work_queue.md [17]."
+        )
+    elif RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT:
         reset_economies = RESET_SCOPE_ECONOMIES if RESET_SCOPE_ECONOMIES is not None else economy_list
         reset_scenarios = RESET_SCOPE_SCENARIOS if RESET_SCOPE_SCENARIOS is not None else export_scenario_list
         reset_scenarios = _ensure_current_accounts_scenario(reset_scenarios)
