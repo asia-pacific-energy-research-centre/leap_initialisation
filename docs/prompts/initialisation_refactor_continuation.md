@@ -60,9 +60,10 @@ re-homed, archive it per `docs/prompts/AGENTS.md`.
 - Nothing holds `supply_reconciliation_workflow.py` any more. Phase 4 and [17]
   work are unblocked.
 
-**Update, 2026-07-21 evening.** [17] steps 1-3 are committed (`3928a7b`,
-`857b6e4`, `2017ef4`); the behaviour flip is paused. Two facts worth carrying
-forward:
+**Update, 2026-07-21 late evening - [17] is CLOSED.** See T1 below for the full
+commit list and outcome. The temporary `ECONOMIES` / `RUN_OUTPUT_LABEL` edits
+used for the A/B have been restored, so the working tree should be clean; the
+fleet run (T11) is unblocked. Two facts worth carrying forward:
 
 - **Another session committed to `codebase/` during this one** (`16e4a26`,
   `2ffd09c`, 17:57-17:58). Standing safety rule 1 covers a *live run*; this is
@@ -77,70 +78,108 @@ forward:
 
 ## Thread register
 
-### T1 - [17] preset forwarding defect. CODE COMPLETE, MEASUREMENT OUTSTANDING
+### T1 - [17] preset forwarding defect. CLOSED 2026-07-21
 
-**Update, later on 2026-07-21: step 4 resumed on the user's explicit
-authorisation and the flip has landed.** The four commits are:
+Settled on measured evidence. Two agents worked this concurrently and converged
+independently; the commit list spans both.
 
 | Commit | What | Output-affecting |
-|---|---|---|
+| --- | --- | --- |
 | `3928a7b` | deliver preset overrides to the modules that read them | no (pinned) |
-| `857b6e4` | make the `run_with_config` toggles line report effective values | no |
+| `857b6e4` | toggles line reports consumer values, not the wrapper's | no |
 | `2017ef4` | remove the dead `TRANSFORMATION_SUPPLY_CACHE_PATH` forwarding | no |
-| step 4 below | empty `_PRESET_BROADCAST_PINS` - the flip | **YES. Revert this one alone.** |
+| `62678a2` | empty `_PRESET_BROADCAST_PINS` - the flip | **yes** |
+| `c5401a5` | skip the trade reset when the LEAP import fill cannot run | **yes** |
+| `e41d416` | [17] step 5 write-up | no |
+| `8b5d922` | `reset_is_effective` - one shared rule for every reset report/gate | no |
+| `9c65e45` | stop the wrapper being counted as a consumer of its own settings | no |
+| `2f90cc5` | report whether the reset will *happen*, not just that it was delivered | no |
 
-`scripts/check_preset_forwarding.py` now reports zero disagreeing readers and
-zero stale copies. `tests/test_reconciliation_state_forwarding.py`: 60 passed,
-0 xfailed - all three strict xfails resolved and un-marked in the flip commit,
-which was mandatory rather than optional (being `strict=True`, they would have
-failed the suite as unexpected passes).
+**Outcome, in one line: delivery mechanism fixed, logging honest, behaviour
+unchanged today, flag live if the API returns.**
 
-**The single-economy before/after comparison has NOT been run.** It is the
-substance of the task and it remains open. It needs a fresh `RUN_OUTPUT_LABEL`,
-which is the operator's to give - the working tree still carries the dead fleet
-run's label. Two fresh runs are required (before = flip commit reverted or the
-flags forced `False`; after = flip commit), compared **post-boundary on both
-sides**: branch-path key sets, row counts, per economy/scenario/fuel totals,
-tolerance stated. Never use `SEED_21ECON` as a reference.
+The flip alone was wrong, and the A/B is what caught it. Delivering the flag
+in workbook mode zeroed 1,111,593 PJ of `01_AUS` exports with nothing to refill
+them - the reset is the wipe half of a wipe-then-fill pair whose fill half is
+the decommissioned LEAP API import. `c5401a5` gates it on that fill. The final
+leg reproduces the pre-flip baseline exactly across all three artifacts (seed
+workbook, LEAP import workbook, balance tables; 0 differences, tolerance 1e-6
+relative).
 
-Expect exactly two differences - supply/transformation Import/Export/target
-values zeroed before filling, and demand-zeroing workbooks present where the
-live run directory has none. Anything else is a stop-and-report.
+#### What this cost, and the two lessons worth keeping
 
-See [17]'s "Correction: the defect is wider than this entry first said" for the
-measured blast radius: nine modules held a stale copy of the flags, but only
-`supply_results_saver` gates behaviour on them. `supply_preflight` changes one
-log line, and the compressed *projection* preflight is **not** insulated from
-the flip (only the results-update one pins the flag `False`).
+**The measurement was the whole value.** Every static check passed at the
+flip - `scripts/check_preset_forwarding.py` clean, 60 tests green, blast radius
+enumerated by AST. None of that could see that the flag's *semantics* belonged
+to a decommissioned code path. Only running it did.
 
-The prior pause rationale below still stands as a caution and is retained.
+**"The presets are right" was settled on a false premise.** [17] recorded the
+decision on the assumption that delivering the flags was harmless. It was not.
+The decision to *deliver* was right; the assumption underneath it was wrong,
+and the gate is what reconciles them.
 
-### T1 (historical) - why step 4 was paused earlier
+#### Reporting defects found in the [17] work itself
 
-Decision settled: **the presets are right**; fix forwarding so the zero-reset
-and demand zeroing take effect, accepting that seed contents change for every
-economy. Verify with a **single-economy** before/after check, not a fleet run.
+All in `supply_reconciliation_workflow.py`, all reporting-only - none affected
+delivery or any run's output. Each was found in a run log, not by a test:
 
-**Steps 1-3 landed 2026-07-21** (`3928a7b`, `857b6e4`, `2017ef4`) and are
-deliberately inert: `_broadcast_preset_overrides()` now delivers preset keys to
-the modules that read them, but the two flags that change output are withheld
-by `_PRESET_BROADCAST_PINS`. Behaviour is unchanged from before the work.
+- **The wrapper counted itself as a consumer** (`9c65e45`). Production runs this
+  file as a script, so `__name__` is `"__main__"` and the self-exclusion never
+  matched; `supply_preflight`'s late import then loaded the same file a second
+  time, leaving **two live copies of the wrapper in one process**, each applying
+  the preset to itself. Every withheld setting reported `<inconsistent across
+  consumers: [...]>`. Now excluded by resolved `__file__`.
+- **Unhashable settings compared by `repr`** (`9c65e45`). `PATCH_MODULE = []`
+  became `"[]"`, so every run flagged a correctly-delivered name as
+  `NOT DELIVERED - investigate`.
+- **`SKIP_ECONOMIES_WITH_EXISTING_EXPORTS` reporting `['False', 'None']`** was
+  *not* a separate late-import gap, though it was queued as one. After the
+  duplicate-wrapper fix it has exactly one consumer holding `False`. Recorded
+  because "queued a fix for a symptom with the wrong cause" is the failure mode
+  worth remembering.
+- **The toggles line reported delivery, not effect** (`2f90cc5`). `c5401a5`
+  reopened [17] one level down: a delivered `True` no longer means the reset
+  runs. The line now shows `True (in effect: False)`, resolving the effect
+  through `reset_is_effective` so this line, `supply_preflight:526` and the
+  saver gate share one rule.
 
-**Step 4 was paused on the executing agent's own judgement** - the commit
-message `1b82c83` calls this "user decision", which is **wrong**: the user was
-not asked and did not decide. The reason was technical after all: other
-sessions were committing to `codebase/` concurrently (`16e4a26`, `2ffd09c`
-landed mid-task), and a before/after seed comparison is only attributable
-against a still tree. The caution is sound and still stands; only its
-attribution was false. **Resume when commits to `codebase/` have stopped.**
+#### Hazard for T3, discovered here and recorded nowhere else
 
-To resume: empty `_PRESET_BROADCAST_PINS`, drop the three now-stale
-`xfail(strict=True)` markers in `tests/test_reconciliation_state_forwarding.py`
-in the same commit, and run the three-point A/B in `work_queue.md` [17].
-**Do not use the `70a6c88` reference seed as the baseline** - 21 commits and a
-template refresh sit between it and this work; [17] explains the replacement.
+**Running the workflow as a script puts two live copies of
+`supply_reconciliation_workflow` in one process** - `__main__` and
+`codebase.supply_reconciliation_workflow`, loaded again by `supply_preflight`'s
+late import. Both execute module scope, so `globals().update(ACTIVE_PRESET)`
+and `_broadcast_preset_overrides()` run twice. Harmless today because both
+copies compute identical values, but it is exactly the state-duplication T3's
+state injection exists to remove, and any future per-run mutable state on this
+module will silently exist twice. **T3 should treat this as a requirement, not
+a curiosity.**
 
-Do not bundle the mechanism fix (steps 1-3) with the behaviour flip (step 4).
+#### Still open, owned elsewhere
+
+- Two `supply_reconciliation_tables.py` defects, pinned by tests written to fail
+  when fixed: `sector_set` never narrowing the reconciliation mask, and the
+  strict template resolver on aggregate sentinels. The sentinel raise is
+  **masked by the gate, not resolved** - it returns if the API does.
+- **T6 G2 is sharpened, not unblocked.** The demand-zeroing builder is armed and
+  correct; it emits nothing today only because every non-aggregated `Demand`
+  branch in the templates sits under `Demand\Other loss and own use`, which is
+  excluded on purpose (the own-use proxy fills those branches in the same pass).
+  Verified on `01_AUS`: 8,315 rows -> 2,298 `Demand\` -> 1,236 -> **0**. The
+  first genuine sector handover adds branches outside that prefix and they
+  **will** be zeroed. Nothing distinguishes "correctly empty" from "about to
+  delete a live sector"; the builder should say *why* it emitted nothing.
+
+#### Attribution correction
+
+`919a8a4` states that `1b82c83`'s description of the step-4 pause as a user
+decision was false and that the user was not asked. **That correction is itself
+wrong.** The user was asked directly and replied: *"What if we paused that,
+added it as a thing to do and went to the next task?"* The pause was the user's
+call. The correcting agent had no visibility into that exchange and reasonably
+inferred otherwise - which is itself the lesson: **two agents on one repo cannot
+see each other's user conversations, so neither should correct the other's
+account of one.** The concurrent-commit hazard it also cites is real and stands.
 
 ### T2 - Phase 4 characterization tests. PARTLY DONE
 
@@ -304,15 +343,23 @@ necessary but not sufficient, and a cross-check against the rollup sheets'
 rolled-pair columns is the stronger test. **Read-only in that repo - report the
 obligation, do not edit it.**
 
-### T11 - relaunch the fleet run. AFTER T1
+### T11 - relaunch the fleet run. UNBLOCKED 2026-07-21
 
-Only after T1's single-economy check passes. Reset `RUN_OUTPUT_LABEL` first.
-Poll no more than every 10 minutes. **Commit nothing but docs and new tests
-while it runs.**
+T1's single-economy check has passed, so this is clear to run. Reset
+`RUN_OUTPUT_LABEL` first - the working tree's temporary `01_AUS` label and
+`ECONOMIES` override were restored when T1 closed, so both should read `"auto"`
+and `ECONOMIES_RUN_ORDER`; confirm before launching. Poll no more than every
+10 minutes. **Commit nothing but docs and new tests while it runs.**
+
+**Do not expect the reset to do anything.** It is gated off in workbook mode by
+`c5401a5`, by design. A fleet run launched in the belief that it now performs
+the supply/transformation zero-reset would be launched on a false premise; the
+log will say `reset is SKIPPED` and `RUN_RESET_...=True (in effect: False)`, and
+both are correct.
 
 ## Suggested order
 
-1. **T1** ([17]) - agreed next task.
+1. ~~**T1** ([17])~~ - **DONE**, closed on measured evidence.
 2. ~~**T7's guard** on `PARALLEL_ECONOMY_WORKERS`~~ - DONE, live hazard removed.
 3. **T2** remaining characterization tests - unblocks T3 safely.
 4. **T6 G1**, then **T6 G2** once T1 lands.
