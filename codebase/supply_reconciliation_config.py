@@ -307,7 +307,9 @@ LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH = (
     RESULTS_CHECKS_DIR / "transformation_supply_fuel_branch_catalog_probe.csv"
 )
 USE_RESULTS_VERIFICATION_EXPORT_SOURCE = True
-RESULTS_VERIFICATION_EXPORT_PATH = REPO_ROOT / "data" / "full model export.xlsx"
+RESULTS_VERIFICATION_EXPORT_PATH = (
+    REPO_ROOT / "data" / "leap_export_templates" / "leap_export_template 20_USA.xlsx"
+)
 RESULTS_VERIFICATION_EXPORT_SHEET = "Export"
 # AGGREGATED_DEMAND_ID_LOOKUP_PATH removed 2026-07-17: dead since cdb813d routed
 # the aggregated-demand ID lookup per economy. Do not reintroduce a pinned

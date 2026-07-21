@@ -2191,7 +2191,7 @@ def merge_export_ids(
         print(
             f"[WARN] {len(missing)} generated row(s) could not be matched to BranchID/VariableID/"
             "ScenarioID from the export key workbook — these branches are not yet in "
-            "data/full model export.xlsx and will be dropped from the proxy output. "
+            "the canonical USA template and will be dropped from the proxy output. "
             "Refresh the full model export from LEAP to include them.\n"
             f"{preview.to_string(index=False)}"
         )

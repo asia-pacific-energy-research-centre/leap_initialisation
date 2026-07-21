@@ -58,7 +58,7 @@ def test_no_entry_point_defaults_to_the_pinned_export(name, module):
 @pytest.mark.parametrize("name,module", sorted(MODULES.items()))
 def test_pinned_constant_is_only_a_fallback(name, module):
     """The constant must survive as the aggregate/no-template fallback."""
-    assert module.EXPORT_ID_LOOKUP_PATH.name == "full model export.xlsx"
+    assert module.EXPORT_ID_LOOKUP_PATH.name == "leap_export_template 20_USA.xlsx"
 
 
 @pytest.mark.parametrize(

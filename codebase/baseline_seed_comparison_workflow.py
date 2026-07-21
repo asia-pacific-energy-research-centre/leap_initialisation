@@ -48,7 +48,9 @@ DIFFERENCE_CLASSIFICATIONS = {
 }
 SEED_FILE_PATTERN = "leap_import_baseline_seed_*.xlsx"
 ECONOMY_PATTERN = re.compile(r"leap_import_baseline_seed_(\d{2}_[A-Za-z]+)_")
-DEFAULT_TEMPLATE_PATH = REPO_ROOT / "data" / "full model export.xlsx"
+DEFAULT_TEMPLATE_PATH = (
+    REPO_ROOT / "data" / "leap_export_templates" / "leap_export_template 20_USA.xlsx"
+)
 
 
 @dataclass(frozen=True)

@@ -84,7 +84,9 @@ BASELINE_SEED_DIR = (
 )
 WORKBOOKS_DIR = BASELINE_SEED_DIR / "workbooks"
 ARCHIVE_DIR = BASELINE_SEED_DIR / "archive"
-FULL_MODEL_EXPORT_PATH = REPO_ROOT / "data" / "full model export.xlsx"
+FULL_MODEL_EXPORT_PATH = (
+    REPO_ROOT / "data" / "leap_export_templates" / "leap_export_template 20_USA.xlsx"
+)
 
 _ECON_RE = re.compile(r"\d{2}_[A-Z]{2,3}")
 

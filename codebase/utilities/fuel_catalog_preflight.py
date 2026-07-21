@@ -33,7 +33,9 @@ DEFAULT_FUEL_PROBE_PATH = (
     / "checks"
     / "transformation_supply_fuel_branch_catalog_probe.csv"
 )
-DEFAULT_FULL_MODEL_EXPORT_PATH = REPO_ROOT / "data" / "full model export.xlsx"
+DEFAULT_FULL_MODEL_EXPORT_PATH = (
+    REPO_ROOT / "data" / "leap_export_templates" / "leap_export_template 20_USA.xlsx"
+)
 DEFAULT_FULL_MODEL_EXPORT_SHEET = "Export"
 DEFAULT_STALE_DAYS = 7
 MAX_SAMPLE_ITEMS = 8

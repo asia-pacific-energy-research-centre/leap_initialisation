@@ -878,7 +878,7 @@ def _build_source_diagnostics(
                     "ninth_fuel": "",
                     "year": year_value,
                     "value": value,
-                    "suggested_fix": "Refresh data/full model export.xlsx from LEAP so it includes this branch.",
+                    "suggested_fix": "Refresh the canonical USA export template from LEAP so it includes this branch.",
                 }
             )
 

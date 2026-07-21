@@ -18,7 +18,7 @@ SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH = Path(
     getattr(
         workflow_cfg,
         "SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH",
-        REPO_ROOT / "data" / "full model export.xlsx",
+        REPO_ROOT / "data" / "leap_export_templates" / "leap_export_template 20_USA.xlsx",
     )
 )
 SUPPLY_ROOT_CLASSIFICATION_SOURCE_SHEET = str(

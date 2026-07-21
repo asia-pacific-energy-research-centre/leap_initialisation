@@ -182,7 +182,6 @@ ANALYSIS_INPUT_WRITE_MODE = "workbook"
 ANALYSIS_INPUT_FIELD_MAPPING_PATH = REPO_ROOT / "config" / "leap_export_workbook_mappings.xlsx"
 ANALYSIS_INPUT_FIELD_MAPPING_SHEET = "field_mappings"
 ANALYSIS_INPUT_CANONICAL_TEMPLATE_PATHS = [
-    REPO_ROOT / "data" / "full model export.xlsx",
     LEAP_EXPORTS_ROOT,
 ]
 
@@ -310,7 +309,9 @@ SUPPLY_SHEET_NAME = "LEAP"
 SUPPLY_INCLUDE_UNMET_REQUIREMENTS = False
 # Workbook-driven supply root classification (Resources\Primary vs Resources\Secondary).
 # Source of truth for export branch-root selection when generating supply workbooks.
-SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH = REPO_ROOT / "data" / "full model export.xlsx"
+SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH = (
+    REPO_ROOT / "data" / "leap_export_templates" / "leap_export_template 20_USA.xlsx"
+)
 SUPPLY_ROOT_CLASSIFICATION_SOURCE_SHEET = "Export"
 # The refreshed full-model export is the authority for whether a fuel belongs
 # under Resources\Primary or Resources\Secondary.  Missing classifications

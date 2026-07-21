@@ -1341,7 +1341,7 @@ def save_results_linked_single_workbook(
     """
     Write one LEAP-style Export workbook matching the full-model template structure.
 
-    Output format intentionally mirrors `data/full model export.xlsx`:
+    Output format intentionally mirrors the canonical USA export template:
     - single sheet: `Export`
     - preamble row with `Area:` / `Ver:`
     - header columns:
@@ -3940,7 +3940,7 @@ def run_results_linked_transformation_supply_workflow(
             f"[ERROR] {len(_nonzero_missing_id_rows)} rows have BranchID=-1 AND non-zero values.\n"
             f"        LEAP silently skips these on import — feedstock/process shares will\n"
             f"        sum to less than 100%. All outputs above have been saved.\n"
-            f"        Fix: export a fresh 'full model export.xlsx' from LEAP that includes\n"
+            f"        Fix: export a fresh canonical USA template from LEAP that includes\n"
             f"        all active branches, then re-run.\n"
             f"{'='*70}"
         )

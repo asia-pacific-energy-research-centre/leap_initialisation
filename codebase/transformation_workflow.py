@@ -51,7 +51,9 @@ DEFAULT_SCENARIOS = list(workflow_cfg.TRANSFORMATION_WORKFLOW_DEFAULT_SCENARIOS)
 # template yet. Do not pass it as id_lookup_path to "be explicit": that is the
 # `073c489` bypass, which made a routing fix a no-op in production for a day
 # while its tests passed, because they pinned the template too.
-EXPORT_ID_LOOKUP_PATH = REPO_ROOT / "data" / "full model export.xlsx"
+EXPORT_ID_LOOKUP_PATH = (
+    REPO_ROOT / "data" / "leap_export_templates" / "leap_export_template 20_USA.xlsx"
+)
 # Projection allocation behavior is configured in
 # `codebase/transformation_analysis_utils.py`:
 # - `PROJECTION_SIGN_STABLE_MODE`: "all" | "selected" | "off"

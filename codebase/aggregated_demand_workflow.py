@@ -259,7 +259,9 @@ OWN_USE_SECTORS: frozenset[str] = frozenset({"10_01_own_use"})
 TD_LOSSES_SECTORS: frozenset[str] = frozenset({"10_02_transmission_and_distribution_losses"})
 
 # Default source for zeroing: the full model export in data/
-FULL_MODEL_EXPORT_PATH = DATA_DIR / "full model export.xlsx"
+FULL_MODEL_EXPORT_PATH = (
+    DATA_DIR / "leap_export_templates" / "leap_export_template 20_USA.xlsx"
+)
 FULL_MODEL_EXPORT_SHEET = "Export"
 
 
@@ -1525,7 +1527,7 @@ def build_demand_zeroing_rows(
     """
     Build LEAP import rows to zero out all non-share demand branches.
 
-    Reads Demand branch rows from source_path (typically data/full model export.xlsx),
+    Reads Demand branch rows from source_path (typically the canonical USA template),
     excluding:
       - Demand\\All demand aggregated\\... branches (where aggregated demand is written)
       - Share variables listed in DEMAND_SHARE_VARIABLES (Device Share, Sales Share,

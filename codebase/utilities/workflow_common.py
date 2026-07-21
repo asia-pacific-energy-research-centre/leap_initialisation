@@ -795,7 +795,7 @@ def diagnose_missing_canonical_branches(
                 "scenario": scenario,
                 "variable": str(row.get("Variable", "")).strip(),
                 "source_file": Path(export_path).name,
-                "reason": "generated branch not found in canonical export (full model export.xlsx)",
+                "reason": "generated branch not found in canonical USA export template",
             }
         )
     if not rows:
