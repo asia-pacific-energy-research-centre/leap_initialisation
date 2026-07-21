@@ -516,6 +516,64 @@ not a delete. Full inventory, sequenced one-commit tasks, and the acceptance gat
 **Task 0 gates the rest:** confirm `full model export.xlsx` ≡
 `leap_export_template 20_USA.xlsx` before repointing anything.
 
+## [14] Initialisation refactor — Phase 2 configuration standardisation
+
+**Status 2026-07-21 — started, with one safe foundation landed.**
+`70613de` made `supply_workflow.py` take its notebook economy default from
+`workflow_config.py` rather than maintaining a hidden USA-only list. This is
+the target convention, not a request to move modelling rules wholesale into a
+new config format.
+
+### Target convention
+
+- `codebase/configuration/workflow_config.py` owns shared defaults and small
+  notebook-default lists.
+- Each slim workflow wrapper retains a short, clearly labelled editable
+  `NOTEBOOK_*` block whose defaults derive from that central config.
+- Callable functions keep explicit parameters; central config must not become
+  an implicit override of a supplied function argument.
+- Economy-specific numeric/model rules remain where they are until a separate
+  task proves they are configuration rather than behaviour.
+
+### Planned sequence — one commit per script or narrowly coupled pair
+
+1. **`supply_workflow.py` — complete.** `70613de` establishes the pattern and
+   tests that notebook defaults mirror central configuration without preparing
+   source data.
+2. **`transformation_workflow.py`.** Move only notebook scope/scenario/import
+   defaults to the central convention; preserve all transformation analysis
+   flags, mapping choices, and producer arguments. Add an import-level
+   forwarding/default test.
+3. **`electricity_heat_interim_workflow.py`.** Apply the same notebook-default
+   treatment without changing its module definitions or touching
+   `core.ninth_data` at import time. Add a focused configuration test.
+4. **`transfers_workflow.py` review.** It already mostly follows the desired
+   pattern; make a change only if a concrete naming/default inconsistency
+   remains. Do not rewrite `TRANSFER_PROCESS_CONFIG` here.
+5. **`aggregated_demand_workflow.py`,
+   `other_loss_own_use_proxy_workflow.py`, and `refining_workflow.py`** are
+   separate scoped subprojects. Their module-level settings include modelling
+   rules, fallback policy, and/or legacy operational assumptions; do not fold
+   them into the low-risk wrapper standardisation sequence.
+6. **`supply_reconciliation_workflow.py`** retains its distinct preset model.
+   Its notebook scope, pass mode, and output-label handling are a separate
+   design task; do not force it into the seven-wrapper pattern.
+
+### Guardrails and completion criteria
+
+- Do not introduce structured JSON merely to standardise layout. Use it only
+  when genuine economy-specific numeric overrides have been identified.
+- Do not move fuel/sector mappings or modelling lists as part of Phase 2.
+- Each commit must add or adjust a small import/default/argument-forwarding
+  test and must not load production ESTO or 9th data.
+- A workflow's Phase 2 work is complete only when its notebook defaults have
+  one visible source of truth, explicit caller arguments still win, and its
+  focused tests pass.
+
+Phase 1 cache hardening and narrow-loader reuse landed in `56f951a`,
+`3116741`, and `eca34af`. Do not re-open that work unless a workflow needs a
+different cache projection or a measured memory/runtime regression is found.
+
 ## [8] `supply_branch_classification` threading — completed 2026-07-16
 
 Landed in `3756ccb`. `supply_export_builder` now passes the current economy's

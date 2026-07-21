@@ -314,7 +314,11 @@ Remaining work is deliberately narrow:
 
 #### Phase 2 — Config standardisation
 
-Agree and apply a concrete standard across all seven scripts:
+**Status 2026-07-21 — started.** `70613de` applies the first low-risk change
+to `supply_workflow.py`; the detailed script-by-script order and guardrails are
+maintained in `docs/work_queue.md` [14].
+
+Apply this concrete standard across the seven scripts:
 
 - Config dict near the top of each file (or near `if __name__ == "__main__"`)
 - Economy-specific overrides loaded from a structured JSON that is *generated* by a helper script, not hand-edited
