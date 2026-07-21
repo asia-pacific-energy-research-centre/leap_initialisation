@@ -64,6 +64,10 @@ from pathlib import Path
 
 import pytest
 
+from codebase.functions.analysis_input_write_dispatcher import (
+    reset_is_effective as _reset_is_effective,
+)
+
 import codebase.supply_reconciliation_allocation as _sra
 import codebase.supply_reconciliation_config as _config
 import codebase.supply_reconciliation_history as _srh
@@ -520,6 +524,52 @@ def test_values_match_survives_settings_whose_equality_is_not_a_bool():
     left, right = _ArrayLike(), _ArrayLike()
     assert _wrapper._values_match(left, left) is True
     assert _wrapper._values_match(left, right) in (True, False)
+
+
+def test_toggles_line_reports_reset_delivery_and_effect_separately():
+    """The toggles line must report *delivered* and *in effect* as two things.
+
+    ``857b6e4`` closed "wrapper value != consumer value".  ``c5401a5`` then gated
+    the reset on the LEAP import fill, opening "consumer value != what the run
+    does" - so a line reporting delivery alone would say ``True`` on every
+    workbook-mode run whose reset is skipped, which is [17] one level down.
+
+    Asserted on the source because exercising the print needs a full run.  The
+    contract is that the reset's reported value comes from ``_effective_setting``
+    (the consumer's copy, not this wrapper's) and is passed through
+    ``reset_is_effective`` (the shared rule in
+    ``analysis_input_write_dispatcher``), rather than either alone.
+    """
+    source = WRAPPER_PATH.read_text(encoding="utf-8-sig")
+    start = source.index("[INFO] run_with_config toggles:")
+    prologue = source[max(0, start - 1200):start]
+    toggles_line = source[start:source.index("ENABLE_COMPLETION_BEEP", start)]
+
+    assert "reset_is_effective" in prologue, (
+        "the toggles line does not resolve the reset through reset_is_effective; "
+        "it would report a delivered True on runs where the gate skips the reset"
+    )
+    assert "_effective_setting(" in prologue and (
+        "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT" in prologue
+    ), "the reset's reported value must come from the consumers, not this wrapper"
+    assert "in effect:" in toggles_line, (
+        "the toggles line must show the gated outcome alongside the delivered value"
+    )
+
+
+def test_reset_predicate_fails_closed_on_an_ambiguous_effective_value():
+    """A confused consumer state must never report the reset as effective.
+
+    ``_effective_setting`` returns a marker string when consumers disagree.  The
+    shared predicate owns this rule, but the wrapper depends on it: this is the
+    one path where a reporting bug would understate a destructive operation.
+    """
+    marker = "<inconsistent across consumers: ['False', 'True']>"
+    assert _reset_is_effective(marker) is False
+    assert _reset_is_effective(None) is False
+    assert _reset_is_effective(1) is False
+    assert _reset_is_effective(True) in (True, False)  # depends on write mode
+    assert _reset_is_effective(False) is False
 
 
 def test_toggles_line_and_reset_reminder_report_the_same_value():

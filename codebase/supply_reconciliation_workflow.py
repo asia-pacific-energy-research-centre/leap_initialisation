@@ -87,6 +87,7 @@ from codebase.mappings.canonical_mapping import (
 from codebase.functions import supply_data_pipeline, leap_api, patch_baseline_seeds
 from codebase.functions.analysis_input_write_dispatcher import (
     get_analysis_input_write_mode,
+    reset_is_effective,
 )
 from codebase import (
     electricity_heat_interim_workflow,
@@ -1308,12 +1309,19 @@ def _run_with_config_locked() -> dict[str, object]:
         )
     # Preset-controlled toggles are reported from the consumers, not from this
     # wrapper: the wrapper's copy is the request, the consumer's is what runs.
+    # The reset additionally reports whether it will *happen*: since c5401a5 it
+    # is gated on the LEAP import fill, so a delivered True is necessary but not
+    # sufficient, and reporting delivery alone would reopen [17] one level down.
+    _reset_delivered = _effective_setting(
+        "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT"
+    )
+    _reset_effective = reset_is_effective(_reset_delivered)
     print(
         "[INFO] run_with_config toggles: "
         f"ACTIVE_SUPPLY_LINK_METHOD={ACTIVE_SUPPLY_LINK_METHOD}, "
         f"CAPACITY_UNMET_PASS_MODE={_effective_setting('CAPACITY_UNMET_PASS_MODE')}, "
         "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT="
-        f"{_effective_setting('RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT')}, "
+        f"{_reset_delivered} (in effect: {_reset_effective}), "
         "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT="
         f"{_effective_setting('ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT')}, "
         "USE_AGGREGATED_DEMAND_AS_DUMMY="
