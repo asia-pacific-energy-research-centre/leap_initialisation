@@ -524,6 +524,8 @@ not a delete. Full inventory, sequenced one-commit tasks, and the acceptance gat
 the target convention, not a request to move modelling rules wholesale into a
 new config format.
 
+Detailed execution brief: `docs/prompts/phase_2_configuration_standardisation_execution.md`.
+
 ### Target convention
 
 - `codebase/configuration/workflow_config.py` owns shared defaults and small
