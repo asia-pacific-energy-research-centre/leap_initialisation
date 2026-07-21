@@ -572,10 +572,15 @@ Detailed execution brief: `docs/prompts/phase_2_configuration_standardisation_ex
   one visible source of truth, explicit caller arguments still win, and its
   focused tests pass.
 
-## [17] ⚠️ PRIORITY — two preset overrides never reach the code that reads them
+## [17] ✅ SETTLED 2026-07-21 — two preset overrides never reached the code that reads them
 
 **Found 2026-07-21 by `tests/test_reconciliation_state_forwarding.py` (`a279615`),
 verified independently. Not a regression — long-standing.**
+
+> **Follow-up: [[18]](#18-supplytransformation-zeroing-workbook--the-real-fix-17-deferred).**
+> The trade reset is gated off in workbook mode rather than made to work there.
+> The user re-imports into a **populated** LEAP area, so the staleness the reset
+> existed to prevent is a live risk and the gate is a tourniquet, not a cure.
 
 ### Status 2026-07-21 late evening — SETTLED. All five steps done, verified
 
@@ -993,6 +998,77 @@ preset, so delivering the first is sufficient to start producing the workbooks.
 - `_PRESET_BROADCAST_PINS` is not a config knob. It exists solely to keep steps
   1–3 inert; nothing should be added to it, and it should be empty and deleted
   once step 4 lands.
+
+## [18] Supply/transformation zeroing workbook — the real fix [17] deferred
+
+**Opened 2026-07-21, directly out of [17]. Not started.** The trade reset is
+currently **gated off in workbook mode** (`c5401a5`). That gate stops the
+bleeding; it does not solve the problem the reset existed for.
+
+### Why this is needed — confirmed by the user, 2026-07-21
+
+**The user re-imports these workbooks into a populated LEAP area, not a clean
+one.** Stale Import/Export/target values from previous runs therefore survive on
+any branch the current run does not happen to write. That is a real and
+ongoing correctness risk, and it is exactly what the reset was built to prevent.
+
+This question was worth asking before building anything: had the target area
+been rebuilt clean each time (the AUS template's area is named `AUS clean slate
+16_07 v2`, which is what prompted the question), the right answer would have
+been to **delete** the flag for workbook mode rather than build anything. It is
+not. Build it.
+
+### The defect, stated precisely
+
+The reset is the wipe half of a wipe-then-fill pair. In API mode the fill was
+the LEAP import pass. In workbook mode there is no second pass, so the wipe was
+applied to the **in-memory reconciliation table** at
+`supply_results_saver.py:3251` — before `save_year_balance_tables` and
+everything downstream — and nothing refilled it. The effect is not "LEAP is
+zeroed then filled"; it is **"the workbook ships with the values deleted"**:
+1,111,593 PJ of `01_AUS` exports, and +271,919 PJ on the REF 2022 energy
+balance. Measured, not inferred — see [17].
+
+### The demand side already does this correctly — copy it
+
+`build_other_demand_zeroing_workbooks` (`supply_leap_io.py:2256`) emits a
+**separate** artifact, `demand_zeroing_{economy}.xlsx`, imported *before* the
+main workbook. Zeroing happens inside LEAP, through its own file, and the main
+workbook still carries real values. The supply/transformation side has no
+analogue and mutates the shared table instead. **That asymmetry is the actual
+defect.**
+
+### Shape of the fix
+
+1. Emit `supply_transformation_zeroing_{economy}.xlsx` — `Expression="0"` for
+   the in-scope Import/Export/target branches, built from the economy's LEAP
+   export template, the same way the demand builder does.
+2. **Leave `reconciliation_table` and `transformation_process_records`
+   untouched.** No in-place mutation; that is the whole point.
+3. Attach LEAP IDs and resolve the region per economy, as the demand builder
+   does.
+4. Document the import order — zeroing workbook first, then the main workbook.
+   Getting this backwards zeroes the real values, so it needs to be stated
+   where the person doing the import will see it, not only in code.
+5. Re-point `RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT` at the new
+   builder and remove the `reset_is_effective` gate for workbook mode — the
+   flag becomes meaningful in both modes, by different mechanisms.
+
+### Constraints carried over from [17] — these are not optional
+
+- **Seed contents change for every economy.** This needs its own
+  single-economy A/B, post-boundary on both sides, before any fleet run.
+  `01_AUS` has three reference legs already
+  (`SEED_01_AUS_PRESETFLIP_{BEFORE,AFTER,FIXED}_20260721`).
+- **Never bundle the mechanism with the behaviour change.** [17]'s flip passed
+  every static check — clean forwarding report, 60 green tests, an AST-derived
+  blast radius — and still deleted a million PJ. Only running it revealed that.
+- Two `supply_reconciliation_tables.py` defects are pinned by
+  fail-when-fixed tests and are in scope here: `sector_set` never narrowing the
+  reconciliation mask (so the reset's blast radius cannot be scoped by module),
+  and the strict template resolver raising on aggregate sentinels like
+  `00_APEC`. The sentinel raise is **masked by the current gate, not resolved**,
+  and returns the moment the gate does.
 
 ## [16] Initialisation refactor — Phase 3/4/5 roadmap
 
