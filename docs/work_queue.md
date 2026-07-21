@@ -665,7 +665,11 @@ a fleet run (user instruction).
 Options (b) "accept current behaviour" and (c) "re-review reset scope against
 per-economy templates" are closed.
 
-### Sequenced fix (after the fleet run, in this order)
+### Sequenced fix — execution prompt
+
+Full instructions, preconditions and verification plan:
+[prompts/preset_forwarding_fix_execution_prompt.md](prompts/preset_forwarding_fix_execution_prompt.md).
+Summary of the sequence (after the fleet run, in this order):
 
 1. **`codex: deliver preset overrides to extracted modules`** — the mechanism
    fix only, with the two divergent names still pinned to their *current*

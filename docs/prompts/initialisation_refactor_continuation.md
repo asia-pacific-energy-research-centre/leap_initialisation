@@ -9,6 +9,16 @@ on 2026-07-21 to be forgotten. It is the **single index of open threads** from
 that session: what was decided, what is still open, what order to take things
 in, and which findings are recorded nowhere else.
 
+## How to execute from this register
+
+- **T1** has its own prompt:
+  [`preset_forwarding_fix_execution_prompt.md`](preset_forwarding_fix_execution_prompt.md).
+  It is the current priority.
+- **Every other thread** is executed via
+  [`initialisation_refactor_thread_execution_prompt.md`](initialisation_refactor_thread_execution_prompt.md)
+  - one thread per session, with the phase framing and evidence standards it
+  carries.
+
 It is deliberately an index, not a duplicate. Detail lives in:
 
 - `docs/work_queue.md` [16] (roadmap), [17] (the priority defect)
