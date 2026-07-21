@@ -35,6 +35,38 @@ on it.** Launch it in the background and poll its progress at most once every
 the workflow reports its own per-stage progress, so a 10-minute cadence is
 sufficient to notice a stall or failure.
 
+### Launching a run — three traps that have each cost a run
+
+**1. Pin the interpreter explicitly.** A bare `python` or a `nohup python ...`
+resolves through the shell's PATH and can pick up the Windows Store shim
+(`AppData/Local/Microsoft/WindowsApps/python.exe`, a *different* Python with
+*different* pandas/numpy) instead of miniconda. A run launched that way appears
+healthy — it imports, allocates, burns CPU — but its output is not reproducible
+against the toolchain every test and A/B was verified under. Always:
+
+```bash
+"C:/Users/Work/miniconda3/python.exe" codebase/supply_reconciliation_workflow.py
+```
+
+Verify after launching, not just that a process exists but *which* one:
+`Get-CimInstance Win32_Process -Filter "Name LIKE 'python%'"` and read the
+`CommandLine`. Note the process may be named `python3.13.exe`, so
+`Get-Process python` silently matches nothing and makes a live run look dead.
+
+**2. A killed run leaves stale locks that block the next one.** The workflow
+takes one lock per economy under
+`outputs/leap_exports/supply_reconciliation/supporting_files/runtime/economy_locks/`
+and does not clean them up if the process is killed. Each lock is JSON with the
+owning `pid`. Before clearing any, confirm the pid is actually dead — a lock
+whose process is alive means a real run is in flight and must not be disturbed.
+
+**3. `RUN_OUTPUT_LABEL = "auto"` can collide with an existing run.** The
+automatic label is derived from a hash of the economy set, so it is *stable
+across runs*: for the standard 21 economies it always resolves to
+`SEED_21ECON_0E555F_TGT_REF_CA`, which already exists. A second run would write
+into the first one's directory and interleave outputs. For any run whose output
+you intend to keep, set an explicit dated label, and restore `"auto"` afterwards.
+
 ## Prompt docs workflow
 
 - Multi-step agent prompts (plan-first implementation tasks, investigation prompts, prompt packs) live in `docs/prompts/`.
