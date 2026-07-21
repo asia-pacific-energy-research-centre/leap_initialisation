@@ -164,12 +164,22 @@ Scope is **workbook-mode only**. Do not plan or document parallel LEAP API
 writes - the API is decommissioned and locked by
 `tests/test_leap_api_decommissioned.py`.
 
-**Urgent sub-item, do early and independently:** `PARALLEL_ECONOMY_WORKERS`
-already exists (`supply_reconciliation_config.py:1084`) and already drives a
-**`ThreadPoolExecutor`** over economies (`supply_results_saver.py:3526`),
-sharing the mirrored globals. It is safe today only because the default is 0.
-**Add a guard that refuses values > 1** until T3 lands, pointing at [17] and the
-Phase 5 brief. This is a small, safe commit that removes a live foot-gun.
+**Urgent sub-item - DONE.** `PARALLEL_ECONOMY_WORKERS` already existed and
+already drove a **`ThreadPoolExecutor`** over economies, sharing the mirrored
+globals; it was safe only because the default is 0. The guard now lives in
+`supply_results_saver._resolve_parallel_economy_workers`, refusing values > 1
+and pointing at [17] and the Phase 5 brief, pinned by
+`tests/test_parallel_economy_workers_guard.py`. Output-inert: the shipped
+default is 0, so no run changes behaviour.
+
+What the plan got slightly wrong: the guard belongs at the *consumption* point,
+not on the config assignment. The dial is also reachable through
+`_sync_results_saver_overrides` forwarding, so a config-side assert would not
+have caught a wrapper-set value. Two shapes the plan did not mention and the
+tests now pin: a non-`int` value degrades to serial rather than raising, and
+`True` (an `int` in Python) must not read as one worker.
+
+Remove the guard only as part of T7 proper, after T3.
 
 Keep the existing `_run_one_economy` / `_collect_economy_result` seam - it is
 the natural process-pool boundary. Convert the executor; do not rewrite the seam.
@@ -233,7 +243,7 @@ while it runs.**
 ## Suggested order
 
 1. **T1** ([17]) - agreed next task.
-2. **T7's guard** on `PARALLEL_ECONOMY_WORKERS` - tiny, removes a live hazard.
+2. ~~**T7's guard** on `PARALLEL_ECONOMY_WORKERS`~~ - DONE, live hazard removed.
 3. **T2** remaining characterization tests - unblocks T3 safely.
 4. **T6 G1**, then **T6 G2** once T1 lands.
 5. **T4** commits 1-3, 5 (safe anytime; can interleave with anything above).

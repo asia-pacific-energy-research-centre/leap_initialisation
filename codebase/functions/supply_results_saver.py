@@ -287,6 +287,29 @@ from codebase.functions.supply_leap_io import (
 )
 from codebase.functions.leap_excel_io import find_leap_header_row
 
+
+def _resolve_parallel_economy_workers(value) -> int:
+    """Return the effective per-economy worker count, refusing unsafe values.
+
+    The ThreadPoolExecutor below shares this module's star-imported config
+    globals across every worker, so two economies in flight at once would read
+    each other's mirrored state and silently produce wrong seeds.  The dial is
+    safe today only because it defaults to 0.  It stays refused until Phase 4
+    B2/B3 replaces the mirrored globals with explicit state injection - see
+    docs/work_queue.md [17] and docs/prompts/phase_5_feature_improvements_execution.md.
+    """
+    workers = int(value) if isinstance(value, int) and not isinstance(value, bool) else 0
+    if workers > 1:
+        raise RuntimeError(
+            f"PARALLEL_ECONOMY_WORKERS={workers} is not supported. Per-economy "
+            "parallelism shares mirrored module globals and would corrupt results "
+            "with no error. Set it to 0 or 1 until Phase 4 B2/B3 state injection "
+            "lands (docs/work_queue.md [17], "
+            "docs/prompts/phase_5_feature_improvements_execution.md)."
+        )
+    return workers
+
+
 def _resolve_existing_results_supply_export_paths(
     *,
     economies: Iterable[str],
@@ -3523,7 +3546,7 @@ def run_results_linked_transformation_supply_workflow(
         if result["combined"] is not None:
             combined_export_path = result["combined"]
 
-    _n_workers = int(PARALLEL_ECONOMY_WORKERS) if isinstance(PARALLEL_ECONOMY_WORKERS, int) else 0
+    _n_workers = _resolve_parallel_economy_workers(PARALLEL_ECONOMY_WORKERS)
     if _n_workers > 1 and len(economy_list) > 1:
         print(f"[INFO] Running per-economy export generation in parallel (max_workers={_n_workers}).")
         with concurrent.futures.ThreadPoolExecutor(max_workers=_n_workers) as _executor:

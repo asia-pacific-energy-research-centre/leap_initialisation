@@ -1078,9 +1078,12 @@ DETAILED_DEMAND_BRANCHES_ACTIVE: list[str] | None = None
 AGGREGATED_DEMAND_SCENARIO_MULTIPLIERS: dict[str, dict[str, float]] = {}
 
 # Maximum number of economies to export in parallel using ThreadPoolExecutor.
-# 0 or 1 = sequential (safe default). Set to 5 to run 5 economies at once.
-# Each economy writes independent files so partial cancellation loses only
-# in-flight economies; completed ones are already on disk.
+# 0 or 1 = sequential.  Values > 1 are REFUSED at the point of use
+# (supply_results_saver._resolve_parallel_economy_workers): the executor shares
+# this module's star-imported globals across workers, so concurrent economies
+# would read each other's mirrored state and produce wrong seeds silently.
+# Unlocking this needs Phase 4 B2/B3 explicit state injection - see
+# docs/work_queue.md [17] and docs/prompts/phase_5_feature_improvements_execution.md.
 PARALLEL_ECONOMY_WORKERS: int = 0
 
 # When True (and ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT is True), the
