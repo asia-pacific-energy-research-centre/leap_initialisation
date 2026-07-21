@@ -126,10 +126,13 @@ deliberately inert: `_broadcast_preset_overrides()` now delivers preset keys to
 the modules that read them, but the two flags that change output are withheld
 by `_PRESET_BROADCAST_PINS`. Behaviour is unchanged from before the work.
 
-**Step 4 is paused by user decision**, not by anything technical: other
+**Step 4 was paused on the executing agent's own judgement** - the commit
+message `1b82c83` calls this "user decision", which is **wrong**: the user was
+not asked and did not decide. The reason was technical after all: other
 sessions were committing to `codebase/` concurrently (`16e4a26`, `2ffd09c`
 landed mid-task), and a before/after seed comparison is only attributable
-against a still tree. **Resume when commits to `codebase/` have stopped.**
+against a still tree. The caution is sound and still stands; only its
+attribution was false. **Resume when commits to `codebase/` have stopped.**
 
 To resume: empty `_PRESET_BROADCAST_PINS`, drop the three now-stale
 `xfail(strict=True)` markers in `tests/test_reconciliation_state_forwarding.py`
