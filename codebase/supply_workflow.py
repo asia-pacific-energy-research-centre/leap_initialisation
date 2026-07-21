@@ -175,7 +175,7 @@ def run_supply_pipeline(
 #----------------------------------------------------------------------------
 # Simple configuration block for notebook/interactive usage.
 #----------------------------------------------------------------------------
-NOTEBOOK_WORKFLOW_ECONOMIES = ['20_USA'] #list(workflow_cfg.SUPPLY_NOTEBOOK_ECONOMIES)
+NOTEBOOK_WORKFLOW_ECONOMIES = list(workflow_cfg.SUPPLY_NOTEBOOK_ECONOMIES)
 NOTEBOOK_INCLUDE_LEAP_IMPORT = workflow_cfg.SUPPLY_NOTEBOOK_INCLUDE_LEAP_IMPORT
 NOTEBOOK_SCENARIOS = list(workflow_cfg.SUPPLY_NOTEBOOK_SCENARIOS)
 NOTEBOOK_IMPORT_SCENARIOS = [
