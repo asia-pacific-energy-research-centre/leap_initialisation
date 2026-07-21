@@ -151,6 +151,26 @@ def test_supply_classification_does_not_borrow_a_template_for_unknown_economy() 
     )
 
 
+def test_supply_aggregate_preflight_can_use_explicit_shape_reference(tmp_path, monkeypatch) -> None:
+    """Only an explicit preflight override may supply an aggregate root shape."""
+    source = tmp_path / "preflight_reference.xlsx"
+    _write_classification_source(source, ["Resources\\Secondary\\Industrial waste"])
+    monkeypatch.setattr(
+        branch_classification.workflow_cfg,
+        "SUPPLY_PREFLIGHT_AGGREGATE_CLASSIFICATION_SOURCE_PATH",
+        source,
+        raising=False,
+    )
+
+    assert branch_classification.resolve_classification_source_for_economy("00_APEC") == source
+    roots = branch_classification._get_supply_branch_roots_for_entry(
+        "16.02 Industrial waste",
+        {"fuel_label_esto": "16.02 Industrial waste", "fuel_name": "Industrial waste"},
+        source_path=source,
+    )
+    assert roots == [["Resources", "Secondary"]]
+
+
 def _write_classification_source(path, branch_paths) -> None:
     """Write a minimal LEAP-shaped export workbook with a two-row preamble."""
     rows = [

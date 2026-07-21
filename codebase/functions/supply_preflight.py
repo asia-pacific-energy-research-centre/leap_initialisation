@@ -1133,6 +1133,7 @@ def _snapshot_preflight_state() -> dict[str, object]:
         "MINOR_DEMAND_EXPORT_FINAL_YEAR",
         "BASELINE_SEED_VALIDATION_BASE_YEAR",
         "BASELINE_SEED_VALIDATION_FINAL_YEAR",
+        "SUPPLY_PREFLIGHT_AGGREGATE_CLASSIFICATION_SOURCE_PATH",
     ]
     return {
         "globals": {name: globals().get(name) for name in names},
@@ -1284,6 +1285,11 @@ def _apply_preflight_compressed_state(
     # are restored in ``finally`` by _restore_preflight_state.
     workflow_cfg.BASELINE_SEED_VALIDATION_BASE_YEAR = base_year
     workflow_cfg.BASELINE_SEED_VALIDATION_FINAL_YEAR = compressed_year
+    workflow_cfg.SUPPLY_PREFLIGHT_AGGREGATE_CLASSIFICATION_SOURCE_PATH = (
+        RESULTS_VERIFICATION_EXPORT_PATH
+        if mode == "projection" and str(economy).strip().upper() == "00_APEC"
+        else None
+    )
 
     importlib.reload(supply_data_pipeline)
     importlib.reload(aggregated_demand_workflow)

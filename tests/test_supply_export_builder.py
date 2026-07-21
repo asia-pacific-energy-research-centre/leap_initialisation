@@ -44,12 +44,12 @@ def test_build_supply_log_rows_creates_rows_from_tiny_esto_dataset(
     monkeypatch.setattr(
         supply_export_builder,
         "_get_supply_branch_roots_for_entry",
-        lambda fuel_key, fuel_entry: [["Resources", "Primary"]],
+        lambda fuel_key, fuel_entry, source_path=None: [["Resources", "Primary"]],
     )
     monkeypatch.setattr(
         supply_export_builder,
         "_supply_branch_exists_in_export_source",
-        lambda branch_path: True,
+        lambda branch_path, source_path=None: True,
     )
 
     rows = supply_export_builder.build_supply_log_rows(

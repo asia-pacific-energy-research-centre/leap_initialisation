@@ -312,6 +312,7 @@ SUPPLY_INCLUDE_UNMET_REQUIREMENTS = False
 SUPPLY_ROOT_CLASSIFICATION_SOURCE_PATH = (
     REPO_ROOT / "data" / "leap_export_templates" / "leap_export_template 20_USA.xlsx"
 )
+SUPPLY_PREFLIGHT_AGGREGATE_CLASSIFICATION_SOURCE_PATH = None
 SUPPLY_ROOT_CLASSIFICATION_SOURCE_SHEET = "Export"
 # The refreshed full-model export is the authority for whether a fuel belongs
 # under Resources\Primary or Resources\Secondary.  Missing classifications

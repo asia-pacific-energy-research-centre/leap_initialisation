@@ -64,13 +64,41 @@ def resolve_classification_source_for_economy(economy) -> Path | None:
 
     Aggregate sentinels and economies without a template have no area-correct
     Resources tree. Return ``None`` for them so callers use the ESTO-based
-    fallback rather than borrowing another economy's classification.
+    fallback rather than borrowing another economy's classification. The
+    compressed aggregate preflight is the one explicit exception: it may set
+    ``SUPPLY_PREFLIGHT_AGGREGATE_CLASSIFICATION_SOURCE_PATH`` because its
+    synthetic workbook is deliberately validated against that same reference
+    template. This supplies only branch shape, never IDs.
     """
-    if economy is None or leap_export_template_resolver.is_aggregate_economy(economy):
+    if economy is None:
         print(
             "[WARN] No economy-specific supply classification template is available for "
             f"{economy!r}; using legacy ESTO-based classification."
         )
+        return None
+    if leap_export_template_resolver.is_aggregate_economy(economy):
+        preflight_source = getattr(
+            workflow_cfg,
+            "SUPPLY_PREFLIGHT_AGGREGATE_CLASSIFICATION_SOURCE_PATH",
+            None,
+        )
+        if preflight_source is not None:
+            path = _resolve_classification_source_path(preflight_source)
+            if path.exists():
+                print(
+                    "[INFO] Using explicit aggregate-preflight supply classification source: "
+                    f"{path.name}."
+                )
+                return path
+            print(
+                "[WARN] Aggregate-preflight supply classification source does not exist: "
+                f"{path}. Using legacy ESTO-based classification."
+            )
+        else:
+            print(
+                "[WARN] No economy-specific supply classification template is available for "
+                f"{economy!r}; using legacy ESTO-based classification."
+            )
         return None
     try:
         return leap_export_template_resolver.resolve_leap_export_template(economy)
