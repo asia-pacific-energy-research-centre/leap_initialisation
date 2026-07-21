@@ -4,6 +4,8 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+import os
+import tempfile
 
 import pandas as pd
 import pytest
@@ -18,6 +20,7 @@ from codebase.utilities.workflow_utils import (
     _normalize_economy,
     _normalize_year_columns,
     _resolve,
+    clear_csv_cache,
     load_esto_csv,
     load_ninth_outlook_csv,
     _DEFAULT_NINTH_PATH,
@@ -96,6 +99,69 @@ class TestNormalizeYearColumns(unittest.TestCase):
         df = pd.DataFrame()
         result = _normalize_year_columns(df)
         self.assertTrue(result.empty)
+
+
+class TestCsvCache(unittest.TestCase):
+    """Use tiny temporary CSVs so cache behavior is tested without data loads."""
+
+    def setUp(self):
+        clear_csv_cache()
+        self._temporary_directory = tempfile.TemporaryDirectory()
+        self.temporary_path = Path(self._temporary_directory.name)
+
+    def tearDown(self):
+        clear_csv_cache()
+        self._temporary_directory.cleanup()
+
+    @staticmethod
+    def _write_csv(path: Path, value: int) -> None:
+        path.write_text(f"value\n{value}\n", encoding="utf-8")
+
+    def test_explicit_relative_path_resolves_from_repo_root(self):
+        source = _REPO_ROOT / "tests" / "_workflow_utils_cache_test.csv"
+        self.addCleanup(lambda: source.unlink(missing_ok=True))
+        self._write_csv(source, 1)
+
+        loaded = load_esto_csv("tests\\_workflow_utils_cache_test.csv")
+
+        self.assertEqual(loaded.loc[0, "value"], 1)
+
+    def test_unchanged_source_returns_same_cached_object(self):
+        source = self.temporary_path / "source.csv"
+        self._write_csv(source, 1)
+
+        first = load_ninth_outlook_csv(source)
+        second = load_ninth_outlook_csv(source)
+
+        self.assertIs(first, second)
+
+    def test_changed_source_reloads_automatically(self):
+        source = self.temporary_path / "source.csv"
+        self._write_csv(source, 1)
+        first = load_esto_csv(source)
+
+        self._write_csv(source, 22)
+        stat = source.stat()
+        os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
+        second = load_esto_csv(source)
+
+        self.assertIsNot(first, second)
+        self.assertEqual(second.loc[0, "value"], 22)
+
+    def test_targeted_and_full_cache_clear(self):
+        first_source = self.temporary_path / "first.csv"
+        second_source = self.temporary_path / "second.csv"
+        self._write_csv(first_source, 1)
+        self._write_csv(second_source, 2)
+        first = load_esto_csv(first_source)
+        second = load_esto_csv(second_source)
+
+        clear_csv_cache(first_source)
+        self.assertIsNot(first, load_esto_csv(first_source))
+        self.assertIs(second, load_esto_csv(second_source))
+
+        clear_csv_cache()
+        self.assertIsNot(second, load_esto_csv(second_source))
 
 
 _NINTH_MISSING = not _DEFAULT_NINTH_PATH.exists()
