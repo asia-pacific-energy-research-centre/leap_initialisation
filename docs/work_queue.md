@@ -650,19 +650,20 @@ Also found: `TRANSFORMATION_SUPPLY_CACHE_PATH` is **in** the forwarding list but
 defined nowhere in `codebase/`. `_sync_results_saver_overrides` guards each push
 with `if name in globals()`, so a dead entry is a silent no-op.
 
-### The decision this needs before any code change
+### The decision — SETTLED 2026-07-21: the presets are right
 
-**Which side is wrong is a modelling call, not a code call.** The presets say
-`True`; every recent seed was produced the `False` way and reviewed that way.
-Delivering the flags will change seed contents across all economies. Options:
+**Option (a): fix the forwarding so the preset values take effect.** The
+zero-reset and demand zeroing are wanted; the delivered `False` behaviour is the
+defect, not the intent. Confirmed by the user 2026-07-21.
 
-- (a) fix forwarding → reset and demand-zeroing switch on → seeds change;
-- (b) accept current behaviour → change the preset literals to `False` and
-  delete the misleading `# overrides config default` comments;
-- (c) fix forwarding but re-review whether reset scope is still wanted now that
-  per-economy templates are in place ([7]).
+Consequence, accepted deliberately: **seed contents will change for every
+economy.** Stale supply/transformation Import/Export/target values will be
+zeroed before filling, and demand-zeroing workbooks will be produced again.
+Verification is a **single-economy run with a before/after results check**, not
+a fleet run (user instruction).
 
-Do not pick by reading the code — the code cannot say which was intended.
+Options (b) "accept current behaviour" and (c) "re-review reset scope against
+per-economy templates" are closed.
 
 ### Sequenced fix (after the fleet run, in this order)
 
@@ -675,9 +676,13 @@ Do not pick by reading the code — the code cannot say which was intended.
    consumers hold, not what the wrapper holds. This defect was invisible for
    weeks because the log lied.
 3. **`codex: remove the dead TRANSFORMATION_SUPPLY_CACHE_PATH forwarding`**.
-4. **Then, and only after the modelling decision above**, flip the flags in one
-   isolated commit and measure a one-economy before/after seed diff
-   (post-boundary on both sides) to quantify the change.
+4. **Then** (the modelling decision is settled — see above), flip the flags in
+   one isolated commit and measure a **single-economy** before/after seed diff,
+   post-boundary on both sides. Expect real differences; the point is to
+   confirm they are the *intended* ones — supply/transformation Import/Export/
+   target values reset to zero before filling, and demand-zeroing rows present
+   — and nothing else. Only after that check passes should a fleet run be
+   relaunched.
 5. Un-`xfail` the three strict xfails in
    `tests/test_reconciliation_state_forwarding.py` as each is resolved.
 
@@ -973,6 +978,34 @@ carry the same distortion.
   from the outside.
 
 ## Traps that already cost time — recorded so they are not rediscovered
+
+- **Committing code while a long run is in flight can kill the run.** Python
+  imports lazily: a long workflow imports some modules at startup and others
+  only when first needed, **reading the file from disk at that moment**. A
+  commit that lands in between gives the process a *mixed* set of versions.
+  **This killed the 2026-07-21 21-economy fleet run**, 78 minutes in, having
+  produced no seeds:
+
+  - run launched 15:18; `codebase/utilities/workflow_utils.py` imported at
+    startup, from the version without `usecols`;
+  - `eca34af` landed **15:48**, changing both `workflow_utils.py` (adding the
+    `usecols` parameter) and `aggregated_demand_workflow.py` (calling with it);
+  - `aggregated_demand_workflow` was first imported at **16:36**, when demand
+    was needed — so it was read from disk *after* the commit;
+  - new caller + old callee →
+    `TypeError: load_esto_csv() got an unexpected keyword argument 'usecols'`,
+    and the run died.
+
+  Both files were internally consistent at HEAD and at the pre-commit state.
+  Only the *mixture* was broken, so no test would have caught it. The stack
+  trace points at `aggregated_demand_workflow.py:633`, which looks like a code
+  defect and is not one — do not "fix" that line.
+
+  **Rule: while a long run is in flight, commit documentation and new test
+  files only.** Any change to a module the run might still import must wait.
+  If a code commit is unavoidable, expect to relaunch the run. Note that a
+  clean `git status` at launch does not protect you — the hazard is commits
+  landing *during* the run, not uncommitted ones at the start.
 
 - **Never diff raw export output against a finished seed.** The seed writer
   (`prepare_seed_rows_for_write` → `complete_canonical_share_groups`) does
