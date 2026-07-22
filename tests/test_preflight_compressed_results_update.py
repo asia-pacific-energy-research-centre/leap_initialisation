@@ -610,3 +610,55 @@ def test_projection_preflight_reloads_aggregated_demand_workflow(tmp_path, monke
     )
 
     assert observed_final_years == [2023, full_projection_year]
+
+
+# --- Aggregate compressed-projection source routing --------------------------
+
+
+def _run_projection_preflight_with_stubbed_source_builder(monkeypatch) -> list[dict[str, object]]:
+    """Run only projection-preflight orchestration and capture source-builder args."""
+    import codebase.supply_reconciliation_workflow as workflow
+
+    source_builder_calls: list[dict[str, object]] = []
+
+    def _fake_create_sources(**kwargs):
+        source_builder_calls.append(kwargs)
+        return {
+            "esto_path": Path("esto.csv"),
+            "ninth_path": Path("ninth.csv"),
+            "ninth_abs_diagnostics_path": Path("ninth_abs.csv"),
+            "base_year": 2022,
+            "compressed_year": 2023,
+        }
+
+    monkeypatch.setattr(sp, "_create_preflight_compressed_source_files", _fake_create_sources)
+    monkeypatch.setattr(sp, "_snapshot_preflight_state", lambda: {})
+    monkeypatch.setattr(sp, "_restore_preflight_state", lambda state: None)
+    monkeypatch.setattr(sp, "_apply_preflight_compressed_state", lambda **kwargs: [])
+    monkeypatch.setattr(sp, "_restore_config_overrides", lambda snapshot: None)
+    monkeypatch.setattr(workflow, "run_results_linked_transformation_supply_workflow", lambda **kwargs: {})
+
+    sp.run_preflight_compressed_projection(scenario_names=["Reference"])
+    return source_builder_calls
+
+
+def test_projection_preflight_currently_omits_apec_source_filter(monkeypatch) -> None:
+    """Characterize the current mismatch: runner is APEC, source builder is unscoped."""
+    source_builder_calls = _run_projection_preflight_with_stubbed_source_builder(monkeypatch)
+
+    assert len(source_builder_calls) == 1
+    assert "economy_filter" not in source_builder_calls[0]
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Contract pending: 00_APEC compressed projection must select aggregate ESTO/9th "
+        "sources before running the aggregate workflow."
+    ),
+)
+def test_projection_preflight_contract_routes_apec_filter_to_source_builder(monkeypatch) -> None:
+    """Pin the intended routing; remove xfail when the one-argument fix lands."""
+    source_builder_calls = _run_projection_preflight_with_stubbed_source_builder(monkeypatch)
+
+    assert source_builder_calls[0]["economy_filter"] == ["00_APEC"]
