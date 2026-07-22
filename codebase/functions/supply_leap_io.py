@@ -2273,6 +2273,8 @@ def build_other_demand_zeroing_workbooks(
     region: str | None = None,
     source_path: Path | str | None = None,
     source_sheet: str = "Export",
+    excluded_sectors: Iterable[str] | None = None,
+    sector_map: dict[str, list[str]] | None = None,
 ) -> list[Path]:
     """
     Generate a LEAP import workbook that zeros all non-share demand branches.
@@ -2280,6 +2282,9 @@ def build_other_demand_zeroing_workbooks(
     Reads (Branch Path, Variable, Scenario) rows from source_path (defaults to
     RESULTS_VERIFICATION_EXPORT_PATH) and produces a workbook with Expression="0"
     for every row except Demand\\All demand aggregated\\... and share variables.
+    Detailed demand groups whose source sectors are excluded from the aggregate
+    placeholder are also excluded from zeroing, so a ready detailed branch
+    cannot be removed from both sides of the double-count guard.
     Returns a list containing the output path, or empty if nothing was written.
     """
     from codebase.aggregated_demand_workflow import save_demand_zeroing_workbook
@@ -2296,6 +2301,12 @@ def build_other_demand_zeroing_workbooks(
     exclude_prefixes: list[str] = []
     if ZERO_OTHER_DEMAND_EXCLUDE_OWN_USE_PROXY_BRANCHES:
         exclude_prefixes.append(DEMAND_OTHER_LOSS_OWN_USE_BRANCH_PREFIX)
+    if excluded_sectors and sector_map:
+        excluded_sector_set = {str(code) for code in excluded_sectors}
+        for demand_group, source_sectors in sector_map.items():
+            if excluded_sector_set.intersection(map(str, source_sectors)):
+                exclude_prefixes.append(f"Demand\\{demand_group}")
+    exclude_prefixes = list(dict.fromkeys(exclude_prefixes))
 
     paths: list[Path] = []
     for economy in economy_list:

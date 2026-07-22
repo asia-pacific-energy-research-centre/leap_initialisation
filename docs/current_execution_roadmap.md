@@ -84,10 +84,10 @@ Execute the detailed briefs in this order, with their tests and decision gates:
    run-context snapshot, convergence schema/legacy compatibility, and public
    callable smoke tests. The initial forwarding-characterisation checkpoint is
    already complete.
-2. Phase 5 demand safeguards: G1 must route the seed-patch path through
-   active-branch resolution; G2 must ensure demand-zeroing excludes active
-   detailed sectors. G2 becomes mandatory before the first detailed demand
-   sector handover.
+2. Phase 5 demand safeguards: G1 routes the seed-patch path through
+   active-branch resolution, and G2 passes that same resolved sector set to
+   demand zeroing. The next enabled-zeroing run must verify the paired
+   artifacts before the first detailed demand sector handover.
 3. Phase 3 canonical mapping hardening: schema and rollup contracts, retirement
    of the obsolete name-consolidation path, canonical ownership, and deferred
    equivalence evidence. Mapping decisions still owned by `leap_mappings`

@@ -89,3 +89,30 @@ def test_zeroing_writer_resolves_region_per_economy_in_loop(monkeypatch, tmp_pat
     )
 
     assert [region for _, region in seen] == ["United States", "Australia", "China"]
+
+
+def test_zeroing_excludes_detailed_branch_removed_from_aggregate(monkeypatch, tmp_path):
+    """An active detailed branch must not be zeroed after leaving the aggregate."""
+    seen: list[list[str] | None] = []
+
+    def _fake_save_demand_zeroing_workbook(*, exclude_branch_prefixes, **kwargs):
+        seen.append(exclude_branch_prefixes)
+        return tmp_path / "demand_zeroing_20_USA.xlsx"
+
+    monkeypatch.setattr(
+        "codebase.aggregated_demand_workflow.save_demand_zeroing_workbook",
+        _fake_save_demand_zeroing_workbook,
+    )
+    monkeypatch.setattr(
+        supply_leap_io, "_leap_export_template_for_economy", lambda economy: tmp_path / "usa.xlsx"
+    )
+
+    supply_leap_io.build_other_demand_zeroing_workbooks(
+        scenarios=["Reference"],
+        economies=["20_USA"],
+        output_dir=tmp_path,
+        excluded_sectors=["14_industry_sector"],
+        sector_map={"Industry": ["14_industry_sector"]},
+    )
+
+    assert seen == [["Demand\\Other loss and own use", "Demand\\Industry"]]

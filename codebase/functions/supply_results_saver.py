@@ -3733,7 +3733,10 @@ def run_results_linked_transformation_supply_workflow(
     if ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT and USE_AGGREGATED_DEMAND_AS_DUMMY:
         demand_zeroing_paths = build_other_demand_zeroing_workbooks(
             scenarios=export_scenario_list,
+            economies=economy_list,
             output_dir=EXPORT_OUTPUT_DIR,
+            excluded_sectors=_effective_agg_demand_excluded,
+            sector_map=LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
         )
         timer.lap("generate demand zeroing workbooks")
     fuel_branch_catalog_df = _build_transformation_supply_fuel_catalog_df(
