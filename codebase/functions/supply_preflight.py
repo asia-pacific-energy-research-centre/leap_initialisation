@@ -1247,6 +1247,48 @@ def _build_preflight_config_overrides(
     return overrides
 
 
+def _build_preflight_run_context(
+    *,
+    preflight_root: Path,
+    mode: Literal["projection", "results_update"],
+) -> ReconciliationRunContext:
+    """Return the explicit output scope for one compressed preflight.
+
+    Compressed preflight deliberately writes beneath a child of the selected
+    run's output directory, rather than the normal ``runs/<label>`` layout.
+    Constructing this value directly preserves that established layout while
+    allowing the results saver to avoid reading temporarily-mutated path
+    globals.
+    """
+    if mode not in ("projection", "results_update"):
+        raise ValueError(f"Unknown preflight mode: {mode!r}")
+    output_dir = Path(preflight_root)
+    results_runtime_dir = output_dir / "runtime"
+    results_checks_dir = output_dir / "checks"
+    yearly_balance_dir = output_dir / "yearly_balance_tables"
+    return ReconciliationRunContext(
+        capacity_unmet_pass_mode=(
+            "baseline_seed" if mode == "projection" else "results_update"
+        ),
+        # This special child directory is not a normal labelled run, so retain
+        # the historical ``None`` label rather than inventing a second identity.
+        run_output_label=None,
+        output_dir=output_dir,
+        export_output_dir=output_dir / "workbooks",
+        transformation_export_output_dir=output_dir / "workbooks",
+        yearly_balance_dir=yearly_balance_dir,
+        conventional_balance_dir=output_dir / "conventional_balance_tables",
+        capacity_unmet_results_dir=yearly_balance_dir,
+        results_single_file_archive_dir=output_dir / "supporting_files" / "archive",
+        results_checks_dir=results_checks_dir,
+        results_runtime_dir=results_runtime_dir,
+        capacity_unmet_state_path=results_runtime_dir / "capacity_unmet_iterative_state.json",
+        leap_fuel_branch_probe_output_path=(
+            results_checks_dir / "transformation_supply_fuel_branch_catalog_probe.csv"
+        ),
+    )
+
+
 def _apply_preflight_compressed_state(
     *,
     source_files: dict[str, object],
@@ -1421,6 +1463,10 @@ def run_preflight_compressed_projection(
     state = _snapshot_preflight_state()
     broadcast_snapshot: list[tuple[str, str, object]] | None = None
     try:
+        preflight_run_context = _build_preflight_run_context(
+            preflight_root=preflight_root,
+            mode="projection",
+        )
         broadcast_snapshot = _apply_preflight_compressed_state(
             source_files=source_files,
             preflight_root=preflight_root,
@@ -1433,6 +1479,7 @@ def run_preflight_compressed_projection(
             include_leap_import=False,
             import_scenarios=[],
             scrape_leap_results=False,
+            run_context=preflight_run_context,
         )
         result["preflight_compressed_ninth_path"] = source_files["ninth_path"]
         result["preflight_compressed_abs_diagnostics_path"] = source_files["ninth_abs_diagnostics_path"]
@@ -2030,6 +2077,10 @@ def run_preflight_compressed_results_update(
     state = _snapshot_preflight_state()
     broadcast_snapshot: list[tuple[str, str, object]] | None = None
     try:
+        preflight_run_context = _build_preflight_run_context(
+            preflight_root=preflight_root,
+            mode="results_update",
+        )
         broadcast_snapshot = _apply_preflight_compressed_state(
             source_files=source_files,
             preflight_root=preflight_root,
@@ -2048,6 +2099,7 @@ def run_preflight_compressed_results_update(
                 include_leap_import=False,
                 import_scenarios=[],
                 scrape_leap_results=False,
+                run_context=preflight_run_context,
             )
         except Exception as exc:  # noqa: BLE001 — still finalize the deterministic report
             run_error = exc
