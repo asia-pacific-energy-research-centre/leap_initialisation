@@ -222,6 +222,7 @@ from codebase.functions.supply_preflight import (  # noqa: F401
     _snapshot_preflight_state,
     _restore_preflight_state,
     _apply_preflight_compressed_state,
+    full_workflow_test_horizon,
     run_preflight_compressed_projection,
     run_preflight_compressed_results_update,
 )
@@ -1032,6 +1033,11 @@ PREFLIGHT_COMPRESSED_FAIL_FAST = False
 RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE = False
 PREFLIGHT_COMPRESSED_RESULTS_UPDATE_ONLY = False
 PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST = False
+# Iteration-only full-workflow smoke test. When True, the main workflow uses
+# the real selected economy inputs but exports/validates only BASE_YEAR and
+# BASE_YEAR + 1. It restores module state after the run and must never replace
+# the final full-horizon verification. Use a unique RUN_OUTPUT_LABEL.
+TEST_HORIZON_BASE_YEAR_PLUS_ONE = False
 # When True, chokepoints that would otherwise abort the ENTIRE run (all
 # economies, all scenarios) instead print a [WARN] and continue, deferring the
 # failure to a single aggregated error raised only after every economy and
@@ -1346,6 +1352,7 @@ def _run_with_config_locked() -> dict[str, object]:
         f"PREFLIGHT_COMPRESSED_FAIL_FAST={PREFLIGHT_COMPRESSED_FAIL_FAST}, "
         f"RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE={RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE}, "
         f"PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST={PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST}, "
+        f"TEST_HORIZON_BASE_YEAR_PLUS_ONE={TEST_HORIZON_BASE_YEAR_PLUS_ONE}, "
         f"ENABLE_WORKFLOW_TIMING={ENABLE_WORKFLOW_TIMING}, "
         f"WRITE_WORKFLOW_TIMING_CSV={WRITE_WORKFLOW_TIMING_CSV}, "
         f"KEEP_ALL_ZERO_SUPPLY_ROWS={KEEP_ALL_ZERO_SUPPLY_ROWS}, "
@@ -1355,14 +1362,17 @@ def _run_with_config_locked() -> dict[str, object]:
     for _delivery_warning in _preset_delivery_warnings():
         print(f"[WARN] Preset not in effect: {_delivery_warning}")
     try:
-        output = run_results_linked_transformation_supply_workflow(
-            economies=ECONOMIES,
-            scenario_names=SCENARIOS,
-            export_dataset_key=EXPORT_DATASET_KEY,
-            include_leap_import=include_leap_import,
-            import_scenarios=LEAP_IMPORT_SCENARIOS,
-            scrape_leap_results=SCRAPE_LEAP_RESULTS,
-        )
+        with full_workflow_test_horizon(
+            enabled=bool(TEST_HORIZON_BASE_YEAR_PLUS_ONE)
+        ):
+            output = run_results_linked_transformation_supply_workflow(
+                economies=ECONOMIES,
+                scenario_names=SCENARIOS,
+                export_dataset_key=EXPORT_DATASET_KEY,
+                include_leap_import=include_leap_import,
+                import_scenarios=LEAP_IMPORT_SCENARIOS,
+                scrape_leap_results=SCRAPE_LEAP_RESULTS,
+            )
     except Exception:
         if bool(COMPLETION_BEEP_ON_ERROR):
             _emit_completion_beep(success=False)

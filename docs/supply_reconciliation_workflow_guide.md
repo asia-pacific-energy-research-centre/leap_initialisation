@@ -583,11 +583,26 @@ In `supply_reconciliation_workflow.py`:
 | `RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE` | `False` | Run the results-update preflight before the main run |
 | `PREFLIGHT_COMPRESSED_RESULTS_UPDATE_ONLY` | `False` | Stop after the preflights (skip the main run) |
 | `PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST` | `False` | Raise immediately if the results-update preflight fails |
+| `TEST_HORIZON_BASE_YEAR_PLUS_ONE` | `False` | Run the selected real main-workflow scope for `BASE_YEAR` and `BASE_YEAR + 1` only |
 
 Either preflight can be enabled independently, run in preflight-only mode, and be
 configured fail-fast or warning-and-continue. The results-update preflight is off by
 default so it does not lengthen every run; enable it (ideally right before a full
 `results_update`) when you want the balance-export integration check.
+
+### Two-year main-workflow iteration mode
+
+`TEST_HORIZON_BASE_YEAR_PLUS_ONE=True` is a separate, notebook-only iteration aid.
+It runs the selected real economies, scenarios, source files, and normal output
+layout, but temporarily limits supply, transformation, demand, balance-table, and
+baseline-seed validation horizons to `BASE_YEAR` through `BASE_YEAR + 1`. The
+workflow restores its module configuration afterwards, including after an error.
+
+Use a unique `RUN_OUTPUT_LABEL` for this mode and set the toggle back to `False`
+before a normal run. It is useful for quickly catching integration and workbook
+construction failures, but it is **not** a sparse final-year mode and it must never
+replace the final full-horizon verification (including compressed projection
+preflight, which still exercises the `00_APEC` aggregate sentinel path).
 
 ### Output locations
 

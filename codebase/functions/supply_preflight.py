@@ -1309,6 +1309,74 @@ def _apply_preflight_compressed_state(
     return _broadcast_config_overrides(overrides)
 
 
+def _build_test_horizon_overrides(*, base_year: int) -> dict[str, object]:
+    """Return the full-workflow two-year test-horizon overrides.
+
+    This deliberately keeps the real source files, selected economies, output
+    paths, and workflow behaviour intact.  It only shortens every producer and
+    validator to the base year and its first projected year.
+    """
+    test_final_year = int(base_year) + 1
+    return {
+        "FINAL_YEAR": test_final_year,
+        "BALANCE_EXPORT_YEARS": [int(base_year), test_final_year],
+        "DIRECT_DEMAND_BASE_YEAR": int(base_year),
+        "DIRECT_DEMAND_PROJECTION_YEARS": (test_final_year,),
+    }
+
+
+@contextmanager
+def full_workflow_test_horizon(*, enabled: bool):
+    """Temporarily restrict the real full workflow to ``BASE_YEAR + 1``.
+
+    Intended only for notebook iteration.  Unlike compressed preflight this
+    uses the selected real economy inputs and normal output paths.  All module
+    state is restored even when the wrapped workflow raises.  A successful run
+    is a structural smoke test, never a substitute for final full-horizon
+    verification.
+    """
+    if not enabled:
+        yield
+        return
+
+    base_year = int(BASE_YEAR)
+    test_final_year = base_year + 1
+    state = _snapshot_preflight_state()
+    broadcast_snapshot: list[tuple[str, str, object]] | None = None
+    try:
+        # These configuration values are read when the producer modules import.
+        # Reload the same module family as compressed preflight before broadcasting
+        # direct consumer overrides to already-loaded modules.
+        workflow_cfg.ENERGY_SOURCE_PROJECTION_FINAL_YEAR = test_final_year
+        workflow_cfg.GLOBAL_FINAL_YEAR = test_final_year
+        workflow_cfg.TRANSFORMATION_EXPORT_FINAL_YEAR = test_final_year
+        workflow_cfg.MINOR_DEMAND_EXPORT_FINAL_YEAR = test_final_year
+        workflow_cfg.BASELINE_SEED_VALIDATION_BASE_YEAR = base_year
+        workflow_cfg.BASELINE_SEED_VALIDATION_FINAL_YEAR = test_final_year
+
+        importlib.reload(supply_data_pipeline)
+        importlib.reload(aggregated_demand_workflow)
+        importlib.reload(transformation_workflow.core)
+        importlib.reload(transformation_workflow)
+        importlib.reload(transfers_workflow)
+        importlib.reload(electricity_heat_interim_workflow)
+        importlib.reload(other_loss_own_use_proxy_workflow)
+
+        broadcast_snapshot = _broadcast_config_overrides(
+            _build_test_horizon_overrides(base_year=base_year)
+        )
+        print(
+            "[WARN] Full-workflow two-year test horizon is enabled: "
+            f"years={base_year}-{test_final_year}. This is iteration-only and "
+            "does not replace final full-horizon verification."
+        )
+        yield
+    finally:
+        if broadcast_snapshot is not None:
+            _restore_config_overrides(broadcast_snapshot)
+        _restore_preflight_state(state)
+
+
 def run_preflight_compressed_projection(
     *,
     scenario_names: Iterable[str] | None = None,
