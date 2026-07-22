@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Iterable
@@ -38,10 +39,69 @@ from codebase.supply_reconciliation_history import (
 # Mutable runtime globals — written by the pass functions, read by
 # workflow.py's _lookup_runtime_* helpers via module-attribute access.
 # ---------------------------------------------------------------------------
-_CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS: dict[str, float] = {}
-_CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS: dict[str, float] = {}
-_CAPACITY_UNMET_RUNTIME_EXPORT_ADJUSTMENTS: dict[str, float] = {}
-_CAPACITY_UNMET_RUNTIME_PASS_SUMMARY: dict[str, object] | None = None
+@dataclass
+class CapacityUnmetAllocationLedger:
+    """Mutable allocation results belonging to one reconciliation run."""
+
+    capacity_additions: dict[str, float]
+    primary_additions: dict[str, float]
+    export_adjustments: dict[str, float]
+    pass_summary: dict[str, object] | None = None
+
+
+_CAPACITY_UNMET_ALLOCATION_LEDGER = CapacityUnmetAllocationLedger({}, {}, {})
+
+# Legacy module attributes remain as compatibility views until B2 threads the
+# ledger through the pass functions and their callers.
+_CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS = _CAPACITY_UNMET_ALLOCATION_LEDGER.capacity_additions
+_CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS = _CAPACITY_UNMET_ALLOCATION_LEDGER.primary_additions
+_CAPACITY_UNMET_RUNTIME_EXPORT_ADJUSTMENTS = _CAPACITY_UNMET_ALLOCATION_LEDGER.export_adjustments
+_CAPACITY_UNMET_RUNTIME_PASS_SUMMARY = _CAPACITY_UNMET_ALLOCATION_LEDGER.pass_summary
+
+
+def _set_capacity_unmet_allocation_ledger(ledger: CapacityUnmetAllocationLedger) -> None:
+    """Install ``ledger`` and refresh the legacy module-attribute views."""
+    global _CAPACITY_UNMET_ALLOCATION_LEDGER
+    global _CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS
+    global _CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS
+    global _CAPACITY_UNMET_RUNTIME_EXPORT_ADJUSTMENTS
+    global _CAPACITY_UNMET_RUNTIME_PASS_SUMMARY
+    _CAPACITY_UNMET_ALLOCATION_LEDGER = ledger
+    _CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS = ledger.capacity_additions
+    _CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS = ledger.primary_additions
+    _CAPACITY_UNMET_RUNTIME_EXPORT_ADJUSTMENTS = ledger.export_adjustments
+    _CAPACITY_UNMET_RUNTIME_PASS_SUMMARY = ledger.pass_summary
+
+
+def _reset_capacity_unmet_allocation_ledger() -> CapacityUnmetAllocationLedger:
+    """Start a fresh allocation ledger for one results-linked workflow run."""
+    ledger = CapacityUnmetAllocationLedger({}, {}, {})
+    _set_capacity_unmet_allocation_ledger(ledger)
+    return ledger
+
+
+def _set_capacity_unmet_runtime_capacity_additions(values: dict[str, float]) -> None:
+    """Update the capacity-additions ledger field and its legacy view."""
+    _CAPACITY_UNMET_ALLOCATION_LEDGER.capacity_additions = values
+    _set_capacity_unmet_allocation_ledger(_CAPACITY_UNMET_ALLOCATION_LEDGER)
+
+
+def _set_capacity_unmet_runtime_primary_additions(values: dict[str, float]) -> None:
+    """Update the primary-additions ledger field and its legacy view."""
+    _CAPACITY_UNMET_ALLOCATION_LEDGER.primary_additions = values
+    _set_capacity_unmet_allocation_ledger(_CAPACITY_UNMET_ALLOCATION_LEDGER)
+
+
+def _set_capacity_unmet_runtime_export_adjustments(values: dict[str, float]) -> None:
+    """Update the export-adjustments ledger field and its legacy view."""
+    _CAPACITY_UNMET_ALLOCATION_LEDGER.export_adjustments = values
+    _set_capacity_unmet_allocation_ledger(_CAPACITY_UNMET_ALLOCATION_LEDGER)
+
+
+def _set_capacity_unmet_runtime_pass_summary(summary: dict[str, object] | None) -> None:
+    """Update the pass-summary ledger field and its legacy view."""
+    _CAPACITY_UNMET_ALLOCATION_LEDGER.pass_summary = summary
+    _set_capacity_unmet_allocation_ledger(_CAPACITY_UNMET_ALLOCATION_LEDGER)
 
 
 # ---------------------------------------------------------------------------
@@ -743,7 +803,6 @@ def _run_capacity_unmet_iterative_pass(
     run_id: str | None = None,
 ) -> dict[str, object]:
     """Compute one manual unmet-capacity pass and persist cumulative state."""
-    global _CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS
     if reconciliation_table.empty:
         raise ValueError("Cannot run capacity_unmet_iterative with empty reconciliation table.")
 
@@ -1082,7 +1141,7 @@ def _run_capacity_unmet_iterative_pass(
     for key, value in pass_output_additions.items():
         cumulative_output_map[key] = cumulative_output_map.get(key, 0.0) + float(value)
 
-    _CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS = dict(cumulative_capacity_map)
+    _set_capacity_unmet_runtime_capacity_additions(dict(cumulative_capacity_map))
     state["cumulative_capacity_additions"] = cumulative_capacity_map
     state["cumulative_output_additions"] = cumulative_output_map
     state["last_results_signatures"] = signature_map
@@ -1212,9 +1271,6 @@ def _run_capacity_unmet_iterative_balanced_pass(
     run_id: str | None = None,
 ) -> dict[str, object]:
     """Compute one iterative pass using observed imports gaps as unmet proxy."""
-    global _CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS
-    global _CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS
-    global _CAPACITY_UNMET_RUNTIME_EXPORT_ADJUSTMENTS
     if reconciliation_table.empty:
         raise ValueError("Cannot run capacity_unmet_iterative_balanced with empty reconciliation table.")
 
@@ -1745,9 +1801,9 @@ def _run_capacity_unmet_iterative_balanced_pass(
     for key, value in pass_export_adjustments.items():
         cumulative_export_map[key] = cumulative_export_map.get(key, 0.0) + float(value)
 
-    _CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS = dict(cumulative_capacity_map)
-    _CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS = dict(cumulative_primary_map)
-    _CAPACITY_UNMET_RUNTIME_EXPORT_ADJUSTMENTS = dict(cumulative_export_map)
+    _set_capacity_unmet_runtime_capacity_additions(dict(cumulative_capacity_map))
+    _set_capacity_unmet_runtime_primary_additions(dict(cumulative_primary_map))
+    _set_capacity_unmet_runtime_export_adjustments(dict(cumulative_export_map))
     state["cumulative_capacity_additions"] = cumulative_capacity_map
     state["cumulative_output_additions"] = cumulative_output_map
     state["cumulative_primary_additions"] = cumulative_primary_map

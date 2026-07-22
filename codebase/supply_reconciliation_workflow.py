@@ -502,15 +502,14 @@ def _preset_delivery_warnings() -> list[str]:
 
 def _sync_extracted_runtime_state() -> None:
     """Propagate notebook/test monkeypatches on this wrapper into extracted modules."""
-    runtime_names = [
-        "_CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS",
-        "_CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS",
-        "_CAPACITY_UNMET_RUNTIME_EXPORT_ADJUSTMENTS",
-        "_CAPACITY_UNMET_RUNTIME_PASS_SUMMARY",
-    ]
-    for name in runtime_names:
-        if name in globals():
-            setattr(_sra, name, globals()[name])
+    _sra._set_capacity_unmet_allocation_ledger(
+        _sra.CapacityUnmetAllocationLedger(
+            capacity_additions=globals()["_CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS"],
+            primary_additions=globals()["_CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS"],
+            export_adjustments=globals()["_CAPACITY_UNMET_RUNTIME_EXPORT_ADJUSTMENTS"],
+            pass_summary=globals()["_CAPACITY_UNMET_RUNTIME_PASS_SUMMARY"],
+        )
+    )
 
     config_names = [
         "CAPACITY_UNMET_PASS_MODE",

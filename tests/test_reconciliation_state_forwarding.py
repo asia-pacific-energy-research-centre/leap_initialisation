@@ -258,9 +258,9 @@ _WRAPPER_TREE = _parse(WRAPPER_PATH)
 SAVER_OVERRIDE_NAMES = _string_list_assigned_in(
     _function_named(_WRAPPER_TREE, "_sync_results_saver_overrides"), "names"
 )
-SYNC_RUNTIME_NAMES = _string_list_assigned_in(
-    _function_named(_WRAPPER_TREE, "_sync_extracted_runtime_state"), "runtime_names"
-)
+# B2 replaces the wrapper's four-name runtime forwarding list with one
+# allocation-ledger handoff.  The legacy names remain compatibility views.
+SYNC_RUNTIME_NAMES = list(RUNTIME_ACCUMULATORS)
 SYNC_CONFIG_NAMES = _string_list_assigned_in(
     _function_named(_WRAPPER_TREE, "_sync_extracted_runtime_state"), "config_names"
 )
@@ -309,7 +309,9 @@ def test_saver_override_list_is_nonempty_and_unique():
     assert len(set(SAVER_OVERRIDE_NAMES)) == len(SAVER_OVERRIDE_NAMES), (
         "duplicate entries in _sync_results_saver_overrides"
     )
-    assert SYNC_RUNTIME_NAMES == list(RUNTIME_ACCUMULATORS)
+    assert hasattr(_sra, "CapacityUnmetAllocationLedger")
+    sync_source = ast.unparse(_function_named(_WRAPPER_TREE, "_sync_extracted_runtime_state"))
+    assert "_set_capacity_unmet_allocation_ledger" in sync_source
     assert SYNC_CONFIG_NAMES, "_sync_extracted_runtime_state config_names is empty"
 
 

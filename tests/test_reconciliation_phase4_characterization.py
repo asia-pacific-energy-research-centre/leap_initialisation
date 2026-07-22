@@ -216,3 +216,38 @@ def test_patch_baseline_seed_entry_keeps_its_notebook_contract() -> None:
 
 def test_split_modules_remain_importable() -> None:
     assert all(module is not None for module in (allocation, balance_tables, history, results))
+
+
+def test_allocation_ledger_is_the_canonical_runtime_accumulator_container() -> None:
+    """B2 introduction keeps legacy globals as views without changing values."""
+    original = allocation._CAPACITY_UNMET_ALLOCATION_LEDGER
+    capacity = {"01_AUS|Reference|Gas": 1.0}
+    primary = {"01_AUS|Reference|Coal": 2.0}
+    exports = {"01_AUS|Reference|Oil": 3.0}
+    summary = {"pass_count": 1}
+    try:
+        ledger = allocation.CapacityUnmetAllocationLedger(capacity, primary, exports, summary)
+        allocation._set_capacity_unmet_allocation_ledger(ledger)
+
+        assert allocation._CAPACITY_UNMET_ALLOCATION_LEDGER is ledger
+        assert allocation._CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS is capacity
+        assert allocation._CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS is primary
+        assert allocation._CAPACITY_UNMET_RUNTIME_EXPORT_ADJUSTMENTS is exports
+        assert allocation._CAPACITY_UNMET_RUNTIME_PASS_SUMMARY is summary
+    finally:
+        allocation._set_capacity_unmet_allocation_ledger(original)
+
+
+def test_allocation_ledger_reset_and_summary_setter_refresh_legacy_view() -> None:
+    original = allocation._CAPACITY_UNMET_ALLOCATION_LEDGER
+    try:
+        ledger = allocation._reset_capacity_unmet_allocation_ledger()
+        summary = {"pass_count": 2}
+        allocation._set_capacity_unmet_runtime_pass_summary(summary)
+
+        assert allocation._CAPACITY_UNMET_ALLOCATION_LEDGER is ledger
+        assert ledger.pass_summary is summary
+        assert allocation._CAPACITY_UNMET_RUNTIME_PASS_SUMMARY is summary
+        assert allocation._CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS == {}
+    finally:
+        allocation._set_capacity_unmet_allocation_ledger(original)
