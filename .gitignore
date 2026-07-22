@@ -1,4 +1,5 @@
 #manually added gitignore files:
+node_modules/
 # input_data/*
 # intermediate_data/*
 # output/*
