@@ -642,23 +642,9 @@ def _run_projection_preflight_with_stubbed_source_builder(monkeypatch) -> list[d
     return source_builder_calls
 
 
-def test_projection_preflight_currently_omits_apec_source_filter(monkeypatch) -> None:
-    """Characterize the current mismatch: runner is APEC, source builder is unscoped."""
+def test_projection_preflight_contract_routes_apec_filter_to_source_builder(monkeypatch) -> None:
+    """The aggregate projection preflight selects aggregate ESTO/9th sources."""
     source_builder_calls = _run_projection_preflight_with_stubbed_source_builder(monkeypatch)
 
     assert len(source_builder_calls) == 1
-    assert "economy_filter" not in source_builder_calls[0]
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Contract pending: 00_APEC compressed projection must select aggregate ESTO/9th "
-        "sources before running the aggregate workflow."
-    ),
-)
-def test_projection_preflight_contract_routes_apec_filter_to_source_builder(monkeypatch) -> None:
-    """Pin the intended routing; remove xfail when the one-argument fix lands."""
-    source_builder_calls = _run_projection_preflight_with_stubbed_source_builder(monkeypatch)
-
     assert source_builder_calls[0]["economy_filter"] == ["00_APEC"]

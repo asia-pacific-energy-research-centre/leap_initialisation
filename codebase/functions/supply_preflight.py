@@ -1401,6 +1401,7 @@ def run_preflight_compressed_projection(
     source_files = _create_preflight_compressed_source_files(
         output_dir=source_dir,
         scenario_names=scenario_list,
+        economy_filter=["00_APEC"],
     )
     print(
         "[INFO] Compressed ninth projection source written to "
