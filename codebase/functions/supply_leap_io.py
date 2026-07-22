@@ -319,6 +319,8 @@ def apply_transformation_target_overrides_for_scenario(
     process_target_rows: pd.DataFrame,
     reconciliation_table: pd.DataFrame,
     scenario: str,
+    *,
+    allocation_ledger=None,
 ) -> list[dict]:
     """Scale process-level transformation import/export targets for one scenario."""
     if not process_records:
@@ -523,6 +525,7 @@ def apply_transformation_target_overrides_for_scenario(
                 module=module_name,
                 process=process_name,
                 instance=instance,
+                allocation_ledger=allocation_ledger,
             )
             for year, add_value in capacity_additions_by_year.items():
                 if year < BASE_YEAR or year > FINAL_YEAR:
@@ -578,6 +581,7 @@ def save_transformation_exports_with_split_targets(
     filename_template: str = TRANSFORMATION_EXPORT_FILENAME_TEMPLATE,
     full_branch_catalog_df: pd.DataFrame | None = None,
     records_by_scenario_out: dict[str, list[dict]] | None = None,
+    allocation_ledger=None,
 ) -> list[Path]:
     """Save scenario-specific transformation LEAP workbooks with split import/export targets."""
     if not process_records:
@@ -715,6 +719,7 @@ def save_transformation_exports_with_split_targets(
                 economy_targets,
                 reconciliation_table,
                 scenario,
+                allocation_ledger=allocation_ledger,
             )
             transformation_workflow.core.consolidate_transformation_output_rows(
                 scenario_records,
@@ -761,6 +766,7 @@ def save_transfer_exports_with_supply_overrides(
     output_dir: Path | str = TRANSFORMATION_EXPORT_OUTPUT_DIR,
     filename_template: str = transfers_workflow.EXPORT_FILENAME_TEMPLATE,
     full_branch_catalog_df=None,
+    allocation_ledger=None,
 ) -> list[Path]:
     """Save scenario-specific transfer workbooks with supply-linked Process Share overrides."""
     output_path = _resolve(output_dir)
@@ -804,6 +810,7 @@ def save_transfer_exports_with_supply_overrides(
                 empty_target_rows,
                 reconciliation_table,
                 scenario,
+                allocation_ledger=allocation_ledger,
             )
             economy_label = str(economy).strip() or transfers_workflow._infer_primary_economy(scenario_records)
             export_filename = transfers_workflow.format_export_filename(

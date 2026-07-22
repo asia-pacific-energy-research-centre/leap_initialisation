@@ -525,9 +525,15 @@ def _lookup_runtime_capacity_additions_for_record(
     module: str,
     process: str,
     instance: int,
+    allocation_ledger=None,
 ) -> dict[int, float]:
     """Return per-year cumulative exogenous-capacity additions for one process record."""
     import codebase.supply_reconciliation_allocation as _sra  # late import — avoids circular dep
+    capacity_additions = (
+        _sra._CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS
+        if allocation_ledger is None
+        else allocation_ledger.capacity_additions
+    )
     additions_by_year: dict[int, float] = {}
     scenario_token = _state_token(scenario)
     aliases = {scenario_token}
@@ -543,7 +549,7 @@ def _lookup_runtime_capacity_additions_for_record(
                 instance=instance,
                 year=year,
             )
-            value = _sra._CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS.get(key, 0.0)
+            value = capacity_additions.get(key, 0.0)
             if value <= 0.0:
                 continue
             additions_by_year[year] = additions_by_year.get(year, 0.0) + float(value)
@@ -556,9 +562,15 @@ def _lookup_runtime_primary_addition(
     scenario: str,
     esto_product: str,
     year: int,
+    allocation_ledger=None,
 ) -> float:
     """Return cumulative primary-production addition for one product-year."""
     import codebase.supply_reconciliation_allocation as _sra  # late import — avoids circular dep
+    primary_additions = (
+        _sra._CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS
+        if allocation_ledger is None
+        else allocation_ledger.primary_additions
+    )
     scenario_token = _state_token(scenario)
     aliases = {scenario_token}
     if scenario_token in {"current accounts", "current account"}:
@@ -571,7 +583,7 @@ def _lookup_runtime_primary_addition(
             esto_product=esto_product,
             year=year,
         )
-        value += float(_sra._CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS.get(key, 0.0))
+        value += float(primary_additions.get(key, 0.0))
     return max(value, 0.0)
 
 
@@ -747,9 +759,15 @@ def _lookup_runtime_export_adjustment(
     scenario: str,
     esto_product: str,
     year: int,
+    allocation_ledger=None,
 ) -> float:
     """Return cumulative extra exports adjustment for one product-year."""
     import codebase.supply_reconciliation_allocation as _sra  # late import — avoids circular dep
+    export_adjustments = (
+        _sra._CAPACITY_UNMET_RUNTIME_EXPORT_ADJUSTMENTS
+        if allocation_ledger is None
+        else allocation_ledger.export_adjustments
+    )
     scenario_token = _state_token(scenario)
     aliases = {scenario_token}
     if scenario_token in {"current accounts", "current account"}:
@@ -762,5 +780,5 @@ def _lookup_runtime_export_adjustment(
             esto_product=esto_product,
             year=year,
         )
-        value += float(_sra._CAPACITY_UNMET_RUNTIME_EXPORT_ADJUSTMENTS.get(key, 0.0))
+        value += float(export_adjustments.get(key, 0.0))
     return max(value, 0.0)

@@ -3375,7 +3375,18 @@ def run_results_linked_transformation_supply_workflow(
         )
         timer.lap("write legacy sidecar outputs")
 
-    overrides = build_supply_overrides(reconciliation_table)
+    try:
+        overrides = build_supply_overrides(
+            reconciliation_table,
+            allocation_ledger=allocation_ledger,
+        )
+    except TypeError as exc:
+        # Notebook/tests historically monkeypatch this wrapper seam with a
+        # one-argument callable. Keep that public compatibility path while
+        # the built-in producer receives the explicit run-owned ledger.
+        if "allocation_ledger" not in str(exc):
+            raise
+        overrides = build_supply_overrides(reconciliation_table)
     dataset_map, sector_config, code_to_name_mapping, _, _ = assets
     supply_measures = _build_supply_measures_for_trade_mode()
     # Build catalog from static sources (LEAP probe + full-model export) so aux-fuel
@@ -3477,6 +3488,7 @@ def run_results_linked_transformation_supply_workflow(
                 if not pre_run_catalog_df.empty else None
             ),
             records_by_scenario_out=transformation_records_by_scenario,
+            allocation_ledger=allocation_ledger,
         )
         timer.lap(f"generate transformation export workbook ({economy})")
         econ_transfer_paths = save_transfer_exports_with_supply_overrides(
@@ -3489,6 +3501,7 @@ def run_results_linked_transformation_supply_workflow(
                 _catalog_for_economy(pre_run_catalog_df, economy)
                 if not pre_run_catalog_df.empty else None
             ),
+            allocation_ledger=allocation_ledger,
         )
         timer.lap(f"generate transfer export workbook ({economy})")
         econ_dummy: list[Path] = []

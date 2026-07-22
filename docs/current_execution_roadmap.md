@@ -81,10 +81,14 @@ instruction to remove checks or add caching without a measured target.
 Execute the detailed briefs in this order, with their tests and decision gates:
 
 1. Phase 4 B2/B3 explicit injection is the immediate priority. B2's allocation
-   ledger introduction and pass-function threading are complete; finish
-   retiring the compatibility mirror, then make output paths, output label, and
-   pass mode an explicit run context. This is the minimum state-isolation
-   boundary needed before parallel production runs are considered.
+   ledger introduction, pass-function threading, and production export-reader
+   injection are complete: the wrapper no longer mirrors allocation results
+   back after a pass. The allocation module's underscored views remain only as
+   a fallback for legacy direct callers and wrapper monkeypatch compatibility;
+   they are not used by the normal results-saver path. B3 now starts with an
+   explicit run context for output paths, output label, and pass mode. This is
+   the minimum state-isolation boundary needed before parallel production runs
+   are considered.
 2. Add and validate **bounded process-based economy parallelism** immediately
    after that B2/B3 boundary: per-worker configuration snapshots (never source
    file edits while workers run), per-worker timing/convergence artifacts,

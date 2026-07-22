@@ -1662,7 +1662,11 @@ def apply_trade_split_between_transformation_and_supply(
     return merged
 
 
-def build_supply_overrides(reconciliation_table: pd.DataFrame) -> dict[str, dict[str, dict[str, dict[str, dict[int, float]]]]]:
+def build_supply_overrides(
+    reconciliation_table: pd.DataFrame,
+    *,
+    allocation_ledger=None,
+) -> dict[str, dict[str, dict[str, dict[str, dict[int, float]]]]]:
     """Convert the reconciliation table into supply override payloads."""
     overrides: dict[str, dict[str, dict[str, dict[str, dict[int, float]]]]] = {}
     if reconciliation_table.empty:
@@ -1708,6 +1712,7 @@ def build_supply_overrides(reconciliation_table: pd.DataFrame) -> dict[str, dict
                         scenario=scenario,
                         esto_product=product,
                         year=year,
+                        allocation_ledger=allocation_ledger,
                     )
         else:
             # Capacity-constrained mode (and other non-legacy modes) writes zeros
@@ -1724,6 +1729,7 @@ def build_supply_overrides(reconciliation_table: pd.DataFrame) -> dict[str, dict
                     scenario=scenario,
                     esto_product=product,
                     year=year,
+                    allocation_ledger=allocation_ledger,
                 )
             base_production = pd.to_numeric(row.get("constrained_production"), errors="coerce")
             base_production_value = 0.0 if pd.isna(base_production) else max(float(base_production), 0.0)

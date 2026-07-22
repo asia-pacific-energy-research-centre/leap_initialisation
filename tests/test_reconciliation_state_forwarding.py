@@ -9,7 +9,6 @@ outward - three hand-maintained, one derived:
   plus 5 config names onto ``_srt``/``_sra``/``_srh``/``_srs``;
 * ``_sync_results_saver_overrides()`` - a hand-maintained list of ~37 names
   onto ``codebase/functions/supply_results_saver.py``;
-* ``_refresh_extracted_runtime_state()`` - the accumulators back;
 * ``_broadcast_preset_overrides()`` - every key of every ``_PRESET_*`` dict,
   minus ``_PRESET_BROADCAST_PINS``, onto every loaded ``codebase`` module that
   already defines the name.  Derived from the presets rather than listed, so
@@ -635,26 +634,69 @@ def test_preset_broadcast_withholds_a_pinned_name():
 
 
 # ---------------------------------------------------------------------------
-# 3. Round-trip of the runtime accumulators
+# 3. Explicit allocation-ledger reads
 # ---------------------------------------------------------------------------
 
 
-def test_runtime_accumulator_round_trip_preserves_identity():
-    before = {name: getattr(_wrapper, name) for name in RUNTIME_ACCUMULATORS}
-    try:
-        _wrapper._sync_extracted_runtime_state()
-        _wrapper._refresh_extracted_runtime_state()
-        for name in RUNTIME_ACCUMULATORS:
-            assert getattr(_wrapper, name) is before[name], (
-                f"{name} was replaced by the sync/refresh round trip"
-            )
-            assert getattr(_sra, name) is before[name], (
-                f"{name} on supply_reconciliation_allocation is not the wrapper object"
-            )
-    finally:
-        for name, value in before.items():
-            setattr(_wrapper, name, value)
-            setattr(_sra, name, value)
+def test_explicit_ledger_readers_do_not_need_wrapper_reverse_mirror():
+    """Production export builders read the run-owned ledger directly.
+
+    The allocation module retains underscored compatibility views for old
+    callers, but the normal results-saver path no longer needs to copy a pass
+    result back through the workflow wrapper.
+    """
+    from codebase.supply_reconciliation_history import (
+        _capacity_addition_state_key,
+        _lookup_runtime_capacity_additions_for_record,
+        _lookup_runtime_primary_addition,
+        _lookup_runtime_export_adjustment,
+        _output_addition_state_key,
+    )
+
+    year = int(_config.BASE_YEAR)
+    capacity_key = _capacity_addition_state_key(
+        economy="01_AUS",
+        scenario="reference",
+        module="Refineries",
+        process="Refinery",
+        instance=1,
+        year=year,
+    )
+    primary_key = _output_addition_state_key(
+        economy="01_AUS",
+        scenario="reference",
+        esto_product="01_coking_coal",
+        year=year,
+    )
+    ledger = _sra.CapacityUnmetAllocationLedger(
+        capacity_additions={capacity_key: 4.0},
+        primary_additions={primary_key: 3.5},
+        export_adjustments={primary_key: 2.25},
+    )
+
+    assert not hasattr(_wrapper, "_refresh_extracted_runtime_state")
+    assert _lookup_runtime_capacity_additions_for_record(
+        economy="01_AUS",
+        scenario="reference",
+        module="Refineries",
+        process="Refinery",
+        instance=1,
+        allocation_ledger=ledger,
+    ) == {year: 4.0}
+    assert _lookup_runtime_primary_addition(
+        economy="01_AUS",
+        scenario="reference",
+        esto_product="01_coking_coal",
+        year=year,
+        allocation_ledger=ledger,
+    ) == 3.5
+    assert _lookup_runtime_export_adjustment(
+        economy="01_AUS",
+        scenario="reference",
+        esto_product="01_coking_coal",
+        year=year,
+        allocation_ledger=ledger,
+    ) == 2.25
 
 
 def test_wrapper_mutation_reaches_the_allocation_module():
@@ -669,8 +711,7 @@ def test_wrapper_mutation_reaches_the_allocation_module():
             "a wrapper monkeypatch of the pass summary did not reach "
             "supply_reconciliation_allocation"
         )
-        _wrapper._refresh_extracted_runtime_state()
-        assert getattr(_wrapper, name) is sentinel
+        assert _sra._CAPACITY_UNMET_ALLOCATION_LEDGER.pass_summary is sentinel
     finally:
         setattr(_wrapper, name, original_wrapper)
         setattr(_sra, name, original_allocation)

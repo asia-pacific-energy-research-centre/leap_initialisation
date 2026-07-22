@@ -576,22 +576,6 @@ def _sync_results_saver_overrides() -> None:
             setattr(_srs, name, globals()[name])
 
 
-def _refresh_extracted_runtime_state() -> None:
-    """Mirror extracted runtime state back onto this wrapper for legacy readers."""
-    globals()["_CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS"] = (
-        _sra._CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS
-    )
-    globals()["_CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS"] = (
-        _sra._CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS
-    )
-    globals()["_CAPACITY_UNMET_RUNTIME_EXPORT_ADJUSTMENTS"] = (
-        _sra._CAPACITY_UNMET_RUNTIME_EXPORT_ADJUSTMENTS
-    )
-    globals()["_CAPACITY_UNMET_RUNTIME_PASS_SUMMARY"] = (
-        _sra._CAPACITY_UNMET_RUNTIME_PASS_SUMMARY
-    )
-
-
 def build_supply_overrides(reconciliation_table: pd.DataFrame):
     _sync_extracted_runtime_state()
     return _srt.build_supply_overrides(reconciliation_table)
@@ -625,9 +609,7 @@ def _run_capacity_unmet_iterative_pass(**kwargs):
         else _SRA_BUILD_LABEL_TO_ESTO_PRODUCT_LOOKUP
     )
     kwargs.setdefault("resolve_scenario_key", _resolve_reconciliation_scenario_key)
-    result = _sra._run_capacity_unmet_iterative_pass(**kwargs)
-    _refresh_extracted_runtime_state()
-    return result
+    return _sra._run_capacity_unmet_iterative_pass(**kwargs)
 
 
 def _run_capacity_unmet_iterative_balanced_pass(**kwargs):
@@ -646,9 +628,7 @@ def _run_capacity_unmet_iterative_balanced_pass(**kwargs):
         else _SRA_BUILD_LABEL_TO_ESTO_PRODUCT_LOOKUP
     )
     kwargs.setdefault("resolve_scenario_key", _resolve_reconciliation_scenario_key)
-    result = _sra._run_capacity_unmet_iterative_balanced_pass(**kwargs)
-    _refresh_extracted_runtime_state()
-    return result
+    return _sra._run_capacity_unmet_iterative_balanced_pass(**kwargs)
 
 
 def _resolve_balance_demand_workbooks_for_economy(economy: str):
