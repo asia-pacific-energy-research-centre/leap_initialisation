@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pandas as pd
+
 import codebase.supply_reconciliation_config as config
 import codebase.supply_reconciliation_workflow as workflow
 from codebase.functions import supply_results_saver as saver
@@ -16,9 +18,27 @@ def test_results_saver_context_paths_match_legacy_path_view(monkeypatch) -> None
         "SEED_01_AUS_CONTEXT_TEST",
     )
     monkeypatch.setattr(saver, "OUTPUT_DIR", context.output_dir)
+    monkeypatch.setattr(saver, "EXPORT_OUTPUT_DIR", context.export_output_dir)
+    monkeypatch.setattr(
+        saver,
+        "TRANSFORMATION_EXPORT_OUTPUT_DIR",
+        context.transformation_export_output_dir,
+    )
+    monkeypatch.setattr(saver, "YEARLY_BALANCE_DIR", context.yearly_balance_dir)
+    monkeypatch.setattr(saver, "CONVENTIONAL_BALANCE_DIR", context.conventional_balance_dir)
+    monkeypatch.setattr(
+        saver,
+        "RESULTS_SINGLE_FILE_ARCHIVE_DIR",
+        context.results_single_file_archive_dir,
+    )
     monkeypatch.setattr(saver, "RESULTS_RUNTIME_DIR", context.results_runtime_dir)
     monkeypatch.setattr(saver, "RESULTS_CHECKS_DIR", context.results_checks_dir)
     monkeypatch.setattr(saver, "CAPACITY_UNMET_STATE_PATH", context.capacity_unmet_state_path)
+    monkeypatch.setattr(
+        saver,
+        "LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH",
+        context.leap_fuel_branch_probe_output_path,
+    )
 
     legacy_paths = saver._resolve_results_saver_run_paths(None)
     context_paths = saver._resolve_results_saver_run_paths(context)
@@ -28,6 +48,82 @@ def test_results_saver_context_paths_match_legacy_path_view(monkeypatch) -> None
     assert context_paths["runtime_dir"] == context.results_runtime_dir
     assert context_paths["checks_dir"] == context.results_checks_dir
     assert context_paths["state_path"] == context.capacity_unmet_state_path
+    assert context_paths["export_dir"] == context.export_output_dir
+    assert context_paths["transformation_export_dir"] == context.transformation_export_output_dir
+    assert context_paths["yearly_balance_dir"] == context.yearly_balance_dir
+    assert context_paths["conventional_balance_dir"] == context.conventional_balance_dir
+    assert context_paths["archive_dir"] == context.results_single_file_archive_dir
+    assert context_paths["probe_catalog_path"] == context.leap_fuel_branch_probe_output_path
+
+
+def test_results_saver_context_output_families_do_not_follow_legacy_globals(monkeypatch) -> None:
+    """An explicit context keeps every output family in its own run scope."""
+    legacy_context = config.resolve_reconciliation_run_context(
+        "baseline_seed",
+        "SEED_01_AUS_LEGACY_SCOPE",
+    )
+    explicit_context = config.resolve_reconciliation_run_context(
+        "results_update",
+        "SEED_01_AUS_EXPLICIT_SCOPE",
+    )
+    monkeypatch.setattr(saver, "EXPORT_OUTPUT_DIR", legacy_context.export_output_dir)
+    monkeypatch.setattr(
+        saver,
+        "TRANSFORMATION_EXPORT_OUTPUT_DIR",
+        legacy_context.transformation_export_output_dir,
+    )
+    monkeypatch.setattr(saver, "YEARLY_BALANCE_DIR", legacy_context.yearly_balance_dir)
+    monkeypatch.setattr(saver, "CONVENTIONAL_BALANCE_DIR", legacy_context.conventional_balance_dir)
+    monkeypatch.setattr(
+        saver,
+        "RESULTS_SINGLE_FILE_ARCHIVE_DIR",
+        legacy_context.results_single_file_archive_dir,
+    )
+    monkeypatch.setattr(
+        saver,
+        "LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH",
+        legacy_context.leap_fuel_branch_probe_output_path,
+    )
+
+    paths = saver._resolve_results_saver_run_paths(explicit_context)
+
+    assert paths["export_dir"] == explicit_context.export_output_dir
+    assert paths["transformation_export_dir"] == explicit_context.transformation_export_output_dir
+    assert paths["yearly_balance_dir"] == explicit_context.yearly_balance_dir
+    assert paths["conventional_balance_dir"] == explicit_context.conventional_balance_dir
+    assert paths["archive_dir"] == explicit_context.results_single_file_archive_dir
+    assert paths["probe_catalog_path"] == explicit_context.leap_fuel_branch_probe_output_path
+
+
+def test_fuel_catalog_uses_explicit_probe_path_not_global(tmp_path, monkeypatch) -> None:
+    """The saver can carry a run-scoped fuel probe into its catalog."""
+    probe_path = tmp_path / "explicit_probe.csv"
+    pd.DataFrame(
+        [
+            {
+                "catalog_type": "supply",
+                "module_or_root": "Primary",
+                "fuel_group": "",
+                "fuel_name": "Explicit probe fuel",
+                "branch_path": "Resources\\Primary\\Explicit probe fuel",
+            }
+        ]
+    ).to_csv(probe_path, index=False)
+    monkeypatch.setattr(saver, "USE_FULL_MODEL_EXPORT_CATALOG_SOURCE", False)
+    monkeypatch.setattr(
+        saver,
+        "LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH",
+        tmp_path / "legacy_probe.csv",
+    )
+
+    catalog = saver._build_transformation_supply_fuel_catalog_df(
+        transformation_export_paths=[],
+        supply_export_paths=[],
+        include_print_summary=False,
+        probe_catalog_path=probe_path,
+    )
+
+    assert catalog["fuel_name"].tolist() == ["Explicit probe fuel"]
 
 
 def test_workflow_forwards_current_context_to_results_saver(monkeypatch) -> None:

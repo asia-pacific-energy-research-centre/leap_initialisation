@@ -849,6 +849,7 @@ def _build_transformation_supply_fuel_catalog_df(
     transformation_export_paths: Iterable[Path],
     supply_export_paths: Iterable[Path],
     include_print_summary: bool = True,
+    probe_catalog_path: Path | str | None = None,
 ) -> pd.DataFrame:
     """Build the shared LEAP fuel-branch catalog dataframe.
 
@@ -873,7 +874,11 @@ def _build_transformation_supply_fuel_catalog_df(
                 f"[INFO] Added {len(template_catalog_df)} row(s) from shared LEAP template catalog union."
             )
 
-    probe_path = _resolve(LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH)
+    probe_path = _resolve(
+        probe_catalog_path
+        if probe_catalog_path is not None
+        else LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH
+    )
     if probe_path.exists():
         try:
             probe_df = pd.read_csv(probe_path)
@@ -1088,6 +1093,7 @@ def _build_transformation_supply_fuel_catalog(
     transformation_export_paths: Iterable[Path],
     supply_export_paths: Iterable[Path],
     output_dir: Path | str = RESULTS_CHECKS_DIR,
+    probe_catalog_path: Path | str | None = None,
 ) -> Path:
     """Build and save the canonical LEAP fuel-branch catalog.
 
@@ -1102,6 +1108,7 @@ def _build_transformation_supply_fuel_catalog(
         transformation_export_paths=transformation_export_paths,
         supply_export_paths=supply_export_paths,
         include_print_summary=True,
+        probe_catalog_path=probe_catalog_path,
     )
     catalog_df.to_csv(catalog_path, index=False)
     if legacy_catalog_path != catalog_path:
@@ -1361,6 +1368,7 @@ def save_results_linked_single_workbook(
     probe_catalog_path: Path | None,
     leap_import_result: dict[str, object],
     output_dir: Path | str = OUTPUT_DIR,
+    checks_dir: Path | str = RESULTS_CHECKS_DIR,
     file_name: str = RESULTS_SINGLE_FILE_NAME,
     archive_dir: Path | str = RESULTS_SINGLE_FILE_ARCHIVE_DIR,
     archive_min_hours: int | None = None,
@@ -1376,6 +1384,7 @@ def save_results_linked_single_workbook(
       BranchID, VariableID, ScenarioID, RegionID, Branch Path, Variable, Scenario,
       Region, Scale, Units, Per..., Method, <year columns...>
     """
+    checks_root = _resolve(checks_dir)
     _ = (
         reconciliation_table,
         sector_demand_table,
@@ -2507,7 +2516,7 @@ def save_results_linked_single_workbook(
         and not dropped_unmatched_zero_supply_rows.empty
     ):
         dropped_supply_report_path = (
-            _resolve(RESULTS_CHECKS_DIR) / RESULTS_DROPPED_UNMATCHED_ZERO_SUPPLY_ROWS_FILENAME
+            checks_root / RESULTS_DROPPED_UNMATCHED_ZERO_SUPPLY_ROWS_FILENAME
         )
         dropped_supply_report_path.parent.mkdir(parents=True, exist_ok=True)
         _sort_output_frame_for_csv(dropped_unmatched_zero_supply_rows).to_csv(
@@ -2598,7 +2607,7 @@ def save_results_linked_single_workbook(
                 f"  ... plus {len(unresolved_resource_branch_rows) - 30} more unresolved mapping rows"
             )
 
-    unmatched_report_path = _resolve(RESULTS_CHECKS_DIR) / RESULTS_UNMATCHED_ID_REPORT_FILENAME
+    unmatched_report_path = checks_root / RESULTS_UNMATCHED_ID_REPORT_FILENAME
     unmatched_report_path.parent.mkdir(parents=True, exist_ok=True)
     if isinstance(unmatched_id_rows, pd.DataFrame) and not unmatched_id_rows.empty:
         _sort_output_frame_for_csv(unmatched_id_rows).to_csv(unmatched_report_path, index=False)
@@ -2692,7 +2701,7 @@ def save_results_linked_single_workbook(
 
     _write_diagnostic_report(
         metadata_mismatch_rows,
-        _resolve(RESULTS_CHECKS_DIR) / RESULTS_METADATA_MISMATCH_REPORT_FILENAME,
+        checks_root / RESULTS_METADATA_MISMATCH_REPORT_FILENAME,
         header=(
             "\n[WARN] Verification-export metadata mismatches detected "
             "(Scale/Units/Per...)."
@@ -2703,7 +2712,7 @@ def save_results_linked_single_workbook(
     )
 
     unit_review_report_path = (
-        _resolve(RESULTS_CHECKS_DIR)
+        checks_root
         / "supply_reconciliation_unit_review.csv"
     )
     unit_mismatch_rows = (
@@ -2756,7 +2765,7 @@ def save_results_linked_single_workbook(
         "supply_reconciliation_unit_mismatches.csv",
         "supply_reconciliation_template_gigajoule_rows.csv",
     ):
-        obsolete_path = _resolve(RESULTS_CHECKS_DIR) / obsolete_name
+        obsolete_path = checks_root / obsolete_name
         if obsolete_path.exists():
             obsolete_path.unlink()
 
@@ -2776,7 +2785,7 @@ def save_results_linked_single_workbook(
 
     _write_diagnostic_report(
         mapping_config_mismatch_rows,
-        _resolve(RESULTS_CHECKS_DIR) / RESULTS_CONFIG_MAPPING_MISMATCH_REPORT_FILENAME,
+        checks_root / RESULTS_CONFIG_MAPPING_MISMATCH_REPORT_FILENAME,
         header=(
             "\n[WARN] Analysis-input config mapping mismatches detected against "
             "full model export metadata."
@@ -2787,7 +2796,7 @@ def save_results_linked_single_workbook(
     )
 
     config_unmatched_path = (
-        _resolve(RESULTS_CHECKS_DIR)
+        checks_root
         / "supply_reconciliation_config_rows_without_template_match.csv"
     )
     if isinstance(mapping_config_unmatched_rows, pd.DataFrame) and not mapping_config_unmatched_rows.empty:
@@ -2823,15 +2832,27 @@ def _resolve_results_saver_run_paths(
     if run_context is None:
         return {
             "output_dir": Path(OUTPUT_DIR),
+            "export_dir": _resolve(EXPORT_OUTPUT_DIR),
+            "transformation_export_dir": _resolve(TRANSFORMATION_EXPORT_OUTPUT_DIR),
+            "yearly_balance_dir": _resolve(YEARLY_BALANCE_DIR),
+            "conventional_balance_dir": _resolve(CONVENTIONAL_BALANCE_DIR),
+            "archive_dir": _resolve(RESULTS_SINGLE_FILE_ARCHIVE_DIR),
             "runtime_dir": _resolve(RESULTS_RUNTIME_DIR),
             "checks_dir": _resolve(RESULTS_CHECKS_DIR),
             "state_path": _resolve(CAPACITY_UNMET_STATE_PATH),
+            "probe_catalog_path": _resolve(LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH),
         }
     return {
         "output_dir": Path(run_context.output_dir),
+        "export_dir": Path(run_context.export_output_dir),
+        "transformation_export_dir": Path(run_context.transformation_export_output_dir),
+        "yearly_balance_dir": Path(run_context.yearly_balance_dir),
+        "conventional_balance_dir": Path(run_context.conventional_balance_dir),
+        "archive_dir": Path(run_context.results_single_file_archive_dir),
         "runtime_dir": Path(run_context.results_runtime_dir),
         "checks_dir": Path(run_context.results_checks_dir),
         "state_path": Path(run_context.capacity_unmet_state_path),
+        "probe_catalog_path": Path(run_context.leap_fuel_branch_probe_output_path),
     }
 
 
@@ -2848,9 +2869,15 @@ def run_results_linked_transformation_supply_workflow(
     """Build reconciled transformation + supply exports driven by LEAP balance demand results."""
     run_paths = _resolve_results_saver_run_paths(run_context)
     output_dir = run_paths["output_dir"]
+    export_dir = run_paths["export_dir"]
+    transformation_export_dir = run_paths["transformation_export_dir"]
+    yearly_balance_dir = run_paths["yearly_balance_dir"]
+    conventional_balance_dir = run_paths["conventional_balance_dir"]
+    archive_dir = run_paths["archive_dir"]
     runtime_dir = run_paths["runtime_dir"]
     checks_dir = run_paths["checks_dir"]
     state_path = run_paths["state_path"]
+    probe_catalog_path = run_paths["probe_catalog_path"]
     timer = workflow_common.WorkflowTimer("supply_reconciliation", enabled=ENABLE_WORKFLOW_TIMING)
     timing_path = runtime_dir / WORKFLOW_TIMING_FILENAME
     allocation_ledger = _sra._reset_capacity_unmet_allocation_ledger()
@@ -3321,7 +3348,7 @@ def run_results_linked_transformation_supply_workflow(
     balance_paths = save_year_balance_tables(
         reconciliation_table,
         years=BALANCE_EXPORT_YEARS,
-        output_dir=YEARLY_BALANCE_DIR,
+        output_dir=yearly_balance_dir,
         economies=economy_list,
         scenarios=balance_scenario_list,
     )
@@ -3399,7 +3426,7 @@ def run_results_linked_transformation_supply_workflow(
             supply_primary_table,
             assets[4],
             years=BALANCE_EXPORT_YEARS,
-            output_dir=CONVENTIONAL_BALANCE_DIR,
+            output_dir=conventional_balance_dir,
             economies=economy_list,
             scenarios=balance_scenario_list,
         )
@@ -3425,6 +3452,7 @@ def run_results_linked_transformation_supply_workflow(
         transformation_export_paths=[],
         supply_export_paths=[],
         include_print_summary=False,
+        probe_catalog_path=probe_catalog_path,
     )
     # Per-economy export generation — sequential or parallel depending on PARALLEL_ECONOMY_WORKERS.
     # Each economy writes independent files so completed economies survive cancellation.
@@ -3454,16 +3482,16 @@ def run_results_linked_transformation_supply_workflow(
         """Generate all export workbooks for one economy and return collected paths."""
         if SKIP_ECONOMIES_WITH_EXISTING_EXPORTS:
             _skip_combined = next(iter(sorted(
-                _resolve(EXPORT_OUTPUT_DIR).glob(
+                export_dir.glob(
                     f"combined_supply_transformation*{economy}*.xlsx"
                 )
             )), None)
             if _skip_combined is not None and _skip_combined.exists():
                 print(f"[INFO] [{economy}] combined workbook already exists, skipping export generation.")
-                _skip_supply = sorted(_resolve(EXPORT_OUTPUT_DIR).glob(f"supply_leap_imports_{economy}*.xlsx"))
-                _skip_trans = sorted(_resolve(EXPORT_OUTPUT_DIR).glob(f"transformation_leap_imports_{economy}*.xlsx"))
-                _skip_transfer = sorted(_resolve(EXPORT_OUTPUT_DIR).glob(f"transfer_leap_imports_{economy}*.xlsx"))
-                _skip_elec_heat = sorted(_resolve(EXPORT_OUTPUT_DIR).glob(f"electricity_heat_interim_{economy}*.xlsx"))
+                _skip_supply = sorted(export_dir.glob(f"supply_leap_imports_{economy}*.xlsx"))
+                _skip_trans = sorted(export_dir.glob(f"transformation_leap_imports_{economy}*.xlsx"))
+                _skip_transfer = sorted(export_dir.glob(f"transfer_leap_imports_{economy}*.xlsx"))
+                _skip_elec_heat = sorted(export_dir.glob(f"electricity_heat_interim_{economy}*.xlsx"))
                 _skip_proxy_dir = (
                     output_dir
                     / "supporting_files"
@@ -3471,7 +3499,7 @@ def run_results_linked_transformation_supply_workflow(
                     / str(economy)
                 )
                 _skip_proxy = sorted(_skip_proxy_dir.glob(f"other_loss_own_use_proxy_{economy}*.xlsx"))
-                _skip_agg_demand = sorted(_resolve(EXPORT_OUTPUT_DIR).glob(f"aggregated_demand_{economy}*.xlsx"))
+                _skip_agg_demand = sorted(export_dir.glob(f"aggregated_demand_{economy}*.xlsx"))
                 print(f"[INFO] [{economy}] skipped (existing exports reused).")
                 return {
                     "economy": economy,
@@ -3495,7 +3523,7 @@ def run_results_linked_transformation_supply_workflow(
             scenario_names=export_scenario_list,
             base_year=BASE_YEAR,
             final_year=FINAL_YEAR,
-            export_output_dir=EXPORT_OUTPUT_DIR,
+            export_output_dir=export_dir,
             filename_template=EXPORT_FILENAME_TEMPLATE,
             flow_value_overrides_by_economy=overrides,
             supply_measures=supply_measures,
@@ -3511,7 +3539,7 @@ def run_results_linked_transformation_supply_workflow(
             transformation_target_rows,
             econ_process_records,
             scenarios=export_scenario_list,
-            output_dir=TRANSFORMATION_EXPORT_OUTPUT_DIR,
+            output_dir=transformation_export_dir,
             filename_template=TRANSFORMATION_EXPORT_FILENAME_TEMPLATE,
             full_branch_catalog_df=(
                 _catalog_for_economy(pre_run_catalog_df, economy)
@@ -3525,7 +3553,7 @@ def run_results_linked_transformation_supply_workflow(
             reconciliation_table,
             economies=[economy],
             scenarios=export_scenario_list,
-            output_dir=TRANSFORMATION_EXPORT_OUTPUT_DIR,
+            output_dir=transformation_export_dir,
             filename_template=transfers_workflow.EXPORT_FILENAME_TEMPLATE,
             full_branch_catalog_df=(
                 _catalog_for_economy(pre_run_catalog_df, economy)
@@ -3546,14 +3574,14 @@ def run_results_linked_transformation_supply_workflow(
             econ_dummy = build_electricity_heat_interim_workbooks_for_results_supply(
                 economies=[economy],
                 scenarios=export_scenario_list,
-                output_dir=EXPORT_OUTPUT_DIR,
+                output_dir=export_dir,
             )
             timer.lap(f"generate electricity/heat interim workbook ({economy})")
         econ_combined_path = save_combined_supply_transformation_export(
             supply_export_paths=[path for _, path in econ_supply_paths],
             transformation_export_paths=econ_transformation_paths + econ_dummy,
             transfer_export_paths=econ_transfer_paths,
-            output_dir=EXPORT_OUTPUT_DIR,
+            output_dir=export_dir,
             filename_template=COMBINED_EXPORT_FILENAME_TEMPLATE,
             economy_label=economy,
             scenarios=export_scenario_list,
@@ -3587,7 +3615,7 @@ def run_results_linked_transformation_supply_workflow(
                 econ_agg_demand = build_aggregated_demand_workbooks_for_results_supply(
                     economies=[economy],
                     scenarios=export_scenario_list,
-                    output_dir=EXPORT_OUTPUT_DIR,
+                    output_dir=export_dir,
                     excluded_sectors=_effective_agg_demand_excluded,
                     use_sector_branches=bool(AGGREGATED_DEMAND_USE_SECTOR_BRANCHES),
                 )
@@ -3665,7 +3693,7 @@ def run_results_linked_transformation_supply_workflow(
                 for economy in economy_list:
                     supply_scope_paths.extend(
                         sorted(
-                            _resolve(EXPORT_OUTPUT_DIR).glob(
+                            export_dir.glob(
                                 f"supply_leap_imports_{economy}*.xlsx"
                             )
                         )
@@ -3764,7 +3792,7 @@ def run_results_linked_transformation_supply_workflow(
         supply_transformation_zeroing_paths = build_supply_transformation_zeroing_workbooks(
             scenarios=export_scenario_list,
             economies=economy_list,
-            output_dir=EXPORT_OUTPUT_DIR,
+            output_dir=export_dir,
         )
         if supply_transformation_zeroing_paths:
             print(
@@ -3777,7 +3805,7 @@ def run_results_linked_transformation_supply_workflow(
         demand_zeroing_paths = build_other_demand_zeroing_workbooks(
             scenarios=export_scenario_list,
             economies=economy_list,
-            output_dir=EXPORT_OUTPUT_DIR,
+            output_dir=export_dir,
             excluded_sectors=_effective_agg_demand_excluded,
             sector_map=LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
         )
@@ -3786,6 +3814,7 @@ def run_results_linked_transformation_supply_workflow(
         transformation_export_paths=transformation_export_paths,
         supply_export_paths=[path for _, path in export_paths],
         include_print_summary=True,
+        probe_catalog_path=probe_catalog_path,
     )
     timer.lap("build LEAP import fuel catalog")
     fuel_branch_catalog_path: Path | None = None
@@ -3794,8 +3823,9 @@ def run_results_linked_transformation_supply_workflow(
             transformation_export_paths=transformation_export_paths,
             supply_export_paths=[path for _, path in export_paths],
             output_dir=output_dir,
+            probe_catalog_path=probe_catalog_path,
         )
-    probe_catalog_path: Path | None = None
+    probe_catalog_path = probe_catalog_path if probe_catalog_path.exists() else None
     leap_import_result = {
         "supply_imported": [],
         "transformation_imported": [],
@@ -3892,8 +3922,8 @@ def run_results_linked_transformation_supply_workflow(
 
     write_per_economy_combined_workbooks(
         economies=economy_list,
-        supply_workbook_dir=EXPORT_OUTPUT_DIR,
-        aggregated_demand_dir=EXPORT_OUTPUT_DIR,
+        supply_workbook_dir=export_dir,
+        aggregated_demand_dir=export_dir,
         output_dir=output_dir,
         # id_lookup_path is left unset so each economy resolves its own LEAP
         # export template; passing one path here applied a single area's
@@ -3914,7 +3944,7 @@ def run_results_linked_transformation_supply_workflow(
                 supply_export_paths=[path for _, path in export_paths],
                 transformation_export_paths=transformation_export_paths + electricity_heat_interim_paths,
                 transfer_export_paths=transfer_export_paths,
-                output_dir=EXPORT_OUTPUT_DIR,
+                output_dir=export_dir,
                 filename_template=COMBINED_EXPORT_FILENAME_TEMPLATE,
                 economy_label="-".join(economy_list) if economy_list else "economy",
                 scenarios=export_scenario_list,
@@ -3973,8 +4003,9 @@ def run_results_linked_transformation_supply_workflow(
             probe_catalog_path=probe_catalog_path,
             leap_import_result=leap_import_result,
             output_dir=output_dir,
+            checks_dir=checks_dir,
             file_name=resolved_single_file_name,
-            archive_dir=RESULTS_SINGLE_FILE_ARCHIVE_DIR,
+            archive_dir=archive_dir,
             archive_min_hours=RESULTS_SINGLE_FILE_ARCHIVE_MIN_HOURS,
             archive_every_run=RESULTS_SINGLE_FILE_ARCHIVE_EVERY_RUN,
         )
