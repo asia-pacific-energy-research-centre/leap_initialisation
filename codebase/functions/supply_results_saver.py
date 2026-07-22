@@ -285,6 +285,7 @@ from codebase.functions.supply_leap_io import (
     write_per_economy_combined_workbooks,
     run_aggregated_demand_leap_import,
     build_other_demand_zeroing_workbooks,
+    build_supply_transformation_zeroing_workbooks,
     run_other_demand_zeroing_leap_import,
     run_results_linked_leap_import,
 )
@@ -3696,6 +3697,20 @@ def run_results_linked_transformation_supply_workflow(
             )
         except Exception as exc:
             print(f"[WARN] Transformation output conservation diagnostic could not run: {exc}")
+    supply_transformation_zeroing_paths: list[Path] = []
+    if RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT and not reset_is_effective(
+        RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT
+    ):
+        supply_transformation_zeroing_paths = build_supply_transformation_zeroing_workbooks(
+            scenarios=export_scenario_list,
+            economies=economy_list,
+            output_dir=EXPORT_OUTPUT_DIR,
+        )
+        if supply_transformation_zeroing_paths:
+            print(
+                "[INFO] Supply/transformation zeroing workbook(s) written. Import these "
+                "into LEAP before the main supply/transformation workbook(s)."
+            )
     demand_zeroing_paths: list[Path] = []
     if ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT and USE_AGGREGATED_DEMAND_AS_DUMMY:
         demand_zeroing_paths = build_other_demand_zeroing_workbooks(
