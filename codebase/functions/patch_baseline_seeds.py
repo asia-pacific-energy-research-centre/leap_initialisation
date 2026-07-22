@@ -812,6 +812,7 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
     elif module == "aggregated_demand":
         from codebase.aggregated_demand_workflow import (
             save_aggregated_demand_as_leap_workbook,
+            resolve_active_branch_excluded_sectors,
             LEAP_SCENARIOS,
             PROJECTION_DATA_PATH,
             FUEL_MAPPINGS_PATH,
@@ -822,12 +823,19 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
             AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES,
             AGGREGATED_DEMAND_EXCLUDED_SECTORS,
             AGGREGATED_DEMAND_USE_SECTOR_BRANCHES,
+            DETAILED_DEMAND_BRANCHES_ACTIVE,
+            LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
         )
         from codebase.functions import transformation_analysis_utils as _core
         _core.prepare_transformation_assets()
         econ_list = economies or sorted(
             e for e in _core.ninth_data["economy"].unique()
             if not str(e).startswith("00_")
+        )
+        effective_excluded_sectors = resolve_active_branch_excluded_sectors(
+            active_branches=DETAILED_DEMAND_BRANCHES_ACTIVE,
+            sector_map=LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
+            base_excluded=AGGREGATED_DEMAND_EXCLUDED_SECTORS,
         )
         written: list[Path] = []
         for economy in econ_list:
@@ -842,7 +850,7 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
                 data_path=PROJECTION_DATA_PATH,
                 fuel_mappings_path=FUEL_MAPPINGS_PATH,
                 exclude_own_use_td_losses=bool(AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES),
-                excluded_sectors=AGGREGATED_DEMAND_EXCLUDED_SECTORS,
+                excluded_sectors=effective_excluded_sectors,
                 use_sector_branches=bool(AGGREGATED_DEMAND_USE_SECTOR_BRANCHES),
             )
             written.append(out_path)

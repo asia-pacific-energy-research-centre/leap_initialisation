@@ -309,6 +309,11 @@ def test_aggregated_demand_patch_threads_reconciliation_config(monkeypatch, tmp_
         "AGGREGATED_DEMAND_USE_SECTOR_BRANCHES",
         True,
     )
+    monkeypatch.setattr(
+        reconciliation_config,
+        "DETAILED_DEMAND_BRANCHES_ACTIVE",
+        None,
+    )
 
     def fake_save_aggregated_demand_as_leap_workbook(**kwargs):
         captured.update(kwargs)
@@ -331,6 +336,48 @@ def test_aggregated_demand_patch_threads_reconciliation_config(monkeypatch, tmp_
     assert captured["exclude_own_use_td_losses"] is True
     assert captured["excluded_sectors"] == ["15_02_road"]
     assert captured["use_sector_branches"] is True
+
+
+def test_aggregated_demand_patch_excludes_active_detailed_branch_sectors(monkeypatch, tmp_path: Path) -> None:
+    import codebase.aggregated_demand_workflow as aggregated_demand_workflow
+    import codebase.functions.transformation_analysis_utils as transformation_core
+    import codebase.supply_reconciliation_config as reconciliation_config
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(transformation_core, "prepare_transformation_assets", lambda: None)
+    monkeypatch.setattr(
+        transformation_core,
+        "ninth_data",
+        pd.DataFrame({"economy": ["20_USA"]}),
+    )
+    monkeypatch.setattr(patch_baseline_seeds, "WORKBOOKS_DIR", tmp_path)
+    monkeypatch.setattr(
+        reconciliation_config,
+        "AGGREGATED_DEMAND_EXCLUDED_SECTORS",
+        ["15_02_road"],
+    )
+    monkeypatch.setattr(
+        reconciliation_config,
+        "DETAILED_DEMAND_BRANCHES_ACTIVE",
+        ["Industry", "Freight road", "Passenger road"],
+    )
+
+    def fake_save_aggregated_demand_as_leap_workbook(**kwargs):
+        captured.update(kwargs)
+        output_path = Path(kwargs["output_path"])
+        output_path.write_text("placeholder")
+        return output_path
+
+    monkeypatch.setattr(
+        aggregated_demand_workflow,
+        "save_aggregated_demand_as_leap_workbook",
+        fake_save_aggregated_demand_as_leap_workbook,
+    )
+
+    patch_baseline_seeds._run_source_workflow("aggregated_demand", ["20_USA"])
+
+    assert captured["excluded_sectors"] == ["15_02_road", "14_industry_sector"]
 
 
 def test_losses_own_use_patch_generates_exact_fresh_workbook_paths(monkeypatch, tmp_path: Path) -> None:
