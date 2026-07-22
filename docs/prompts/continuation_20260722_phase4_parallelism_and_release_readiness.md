@@ -102,6 +102,49 @@ Only after that succeeds should parallelism be used for a future retained
 full-horizon fleet. Re-measure `supply_results_saver` coupling afterward;
 splitting it is deferred unless evidence requires it.
 
+## Full-horizon output follow-up: clearing stale LEAP values and template readiness
+
+The successful four-real-template full-horizon run is retained at
+`baseline_seed/runs/SEED_4REAL_TEMPLATES_FULL_20260722`. Its zero validation
+findings do not mean every template/import contract is complete. Inspect these
+diagnostics before declaring the outputs fully LEAP-import-ready:
+
+- `supporting_files/checks/supply_reconciliation_unmatched_id_rows.csv`:
+  six `02_BD` rows, covering two absent feedstock branches (Coke oven gas and
+  Other products) across three scenarios.
+- `supporting_files/checks/supply_reconciliation_metadata_mismatches.csv`:
+  six `20_USA` non-specified-own-use Electricity metadata cells (generated
+  Units/Scale disagree with the reference Share/% contract).
+- `supporting_files/checks/supply_reconciliation_config_mapping_mismatches.csv`:
+  91 configuration/reference metadata mismatches (units and `per`).
+
+Build a template-readiness audit from the full-horizon generated output:
+classify every requested-but-absent branch as non-zero required, zero-only
+structural, or intentional suppression. A non-zero requested branch requires
+a real template migration/BranchID; it must never be hidden by a zero row.
+For an always-zero structural branch, decide explicitly whether the branch
+belongs in every intended-identical template or should be an approved
+suppression. Use the same audit to establish the authoritative Units/Scale/
+`per` metadata contract before changing producers or config.
+
+### Important [18] design correction to decide and implement
+
+Current [18] behaviour emits a separate
+`supply_transformation_zeroing_{economy}.xlsx` file with explicit zero rows,
+imported before the main workbook. It does **not** modify the template file,
+but it is a second import artifact rather than explicit zero rows in the
+baseline seed. The user has specified the preferred end state: when a branch
+has no explicitly generated baseline value, the baseline seed itself should
+carry an explicit zero so importing that seed clears an old LEAP-area value.
+
+Treat that as a new output-affecting design/implementation task. Do not simply
+append every conceivable template branch: derive the exact eligible branch
+scope from the per-economy template and preserve all explicitly generated
+values. Prove with an A/B test that generated values are unchanged, previously
+unset eligible branches are explicit zeroes in the baseline seed, and no
+unrelated branch/scenario/year is introduced. Revisit whether the companion
+zeroing workbook remains necessary only after that evidence exists.
+
 ## Product-readiness critical path beyond parallelism
 
 1. In `leap_mappings`, complete M2: connect the pipeline to
