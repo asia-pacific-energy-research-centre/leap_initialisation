@@ -2310,6 +2310,59 @@ def build_other_demand_zeroing_workbooks(
     return paths
 
 
+def build_supply_transformation_zeroing_workbooks(
+    *,
+    scenarios: Iterable[str],
+    economies: Iterable[str] | None = None,
+    output_dir: Path | str = EXPORT_OUTPUT_DIR,
+    source_path: Path | str | None = None,
+    source_sheet: str = "Export",
+) -> list[Path]:
+    """Write separate zeroing imports for stale supply/transformation trade values.
+
+    This is deliberately an artifact builder only.  It never changes the
+    reconciliation table or transformation records; the behaviour switch that
+    emits these files is wired separately after its own measured A/B.
+    """
+    scenario_list = workflow_common.normalize_workflow_scenarios(scenarios, SCENARIOS)
+    economy_list = workflow_common.normalize_economies(economies if economies is not None else ECONOMIES)
+    out_dir = _resolve(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths: list[Path] = []
+    for economy in economy_list:
+        template = Path(source_path) if source_path is not None else _leap_export_template_for_economy(economy)
+        raw = pd.read_excel(template, sheet_name=source_sheet, header=None)
+        header_row = next((index for index, row in raw.iterrows() if "Branch Path" in row.values), None)
+        if header_row is None:
+            raise ValueError(f"LEAP export header not found in {template}")
+        universe = raw.iloc[header_row + 1:].copy()
+        universe.columns = raw.iloc[header_row].tolist()
+        universe = universe.dropna(how="all")
+        paths_col = universe["Branch Path"].fillna("").astype(str).str.strip()
+        variables = universe["Variable"].fillna("").astype(str).str.strip()
+        selected = universe.loc[
+            paths_col.str.startswith(("Resources\\", "Transformation\\"))
+            & variables.isin(("Imports", "Exports", "Import Target", "Export Target"))
+            & universe["Scenario"].fillna("").astype(str).isin(scenario_list)
+        ].copy()
+        if selected.empty:
+            continue
+        selected["Region"] = supply_data_pipeline.get_region_for_economy(economy)
+        selected["Expression"] = "0"
+        columns = ["Branch Path", "Variable", "Scenario", "Region", "Scale", "Units", "Per...", "Expression"]
+        rows = selected.reindex(columns=columns).fillna("")
+        leap_df = add_leap_preamble(prepare_for_leap_sheet_df(rows))
+        viewing_df = add_leap_preamble(prepare_for_viewing_sheet_df(rows, base_year=BASE_YEAR, final_year=FINAL_YEAR))
+        token = workflow_common.format_filename_segment(economy) or "economy"
+        output_path = out_dir / f"supply_transformation_zeroing_{token}.xlsx"
+        with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+            leap_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
+            viewing_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
+        print(f"[INFO] Saved {len(rows)} supply/transformation zeroing rows to {output_path}")
+        paths.append(output_path)
+    return paths
+
+
 def run_other_demand_zeroing_leap_import(
     workbook_paths: Iterable[Path],
     *,
