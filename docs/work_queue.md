@@ -1001,9 +1001,12 @@ preset, so delivering the first is sufficient to start producing the workbooks.
 
 ## [18] Supply/transformation zeroing workbook — the real fix [17] deferred
 
-**Opened 2026-07-21, directly out of [17]. Not started.** The trade reset is
-currently **gated off in workbook mode** (`c5401a5`). That gate stops the
-bleeding; it does not solve the problem the reset existed for.
+**Implemented and verified 2026-07-22** (`9aa268c`, `63de1e8`, `d846955`).
+The current operating policy, verification boundary, and remaining follow-ons
+are consolidated in [current_execution_roadmap.md](current_execution_roadmap.md).
+**Historical context.** The trade reset was originally **gated off in workbook
+mode** (`c5401a5`). That gate stopped the bleeding, but did not solve the
+problem the reset existed for; the separate zeroing workbook is the solution.
 
 ### Why this is needed — confirmed by the user, 2026-07-21
 

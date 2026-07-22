@@ -598,11 +598,14 @@ layout, but temporarily limits supply, transformation, demand, balance-table, an
 baseline-seed validation horizons to `BASE_YEAR` through `BASE_YEAR + 1`. The
 workflow restores its module configuration afterwards, including after an error.
 
-Use a unique `RUN_OUTPUT_LABEL` for this mode and set the toggle back to `False`
-before a normal run. It is useful for quickly catching integration and workbook
-construction failures, but it is **not** a sparse final-year mode and it must never
-replace the final full-horizon verification (including compressed projection
-preflight, which still exercises the `00_APEC` aggregate sentinel path).
+Use a unique `RUN_OUTPUT_LABEL` for this mode. It is useful for quickly catching
+integration and workbook construction failures, but it is **not** a sparse
+final-year mode. Full-horizon runs require explicitly setting the toggle to
+`False` and are reserved for release/assurance checks or useful output
+production; they must retain compressed projection preflight, which exercises
+the `00_APEC` aggregate sentinel path. See
+[current_execution_roadmap.md](current_execution_roadmap.md) for the current
+operating policy.
 
 ### Output locations
 
