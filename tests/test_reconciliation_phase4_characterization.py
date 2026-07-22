@@ -11,25 +11,54 @@ import ast
 import inspect
 from pathlib import Path
 
+import pytest
+
 import codebase.supply_reconciliation_allocation as allocation
 import codebase.supply_reconciliation_balance_tables as balance_tables
+import codebase.supply_reconciliation_config as config
 import codebase.supply_reconciliation_history as history
 import codebase.supply_reconciliation_results as results
 import codebase.supply_reconciliation_workflow as workflow
+from codebase.functions import patch_baseline_seeds
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+RUN_CONTEXT_CONFIG_NAMES = (
+    "CAPACITY_UNMET_PASS_MODE",
+    "RUN_OUTPUT_LABEL",
+    "OUTPUT_DIR",
+    "EXPORT_OUTPUT_DIR",
+    "TRANSFORMATION_EXPORT_OUTPUT_DIR",
+    "YEARLY_BALANCE_DIR",
+    "CONVENTIONAL_BALANCE_DIR",
+    "CAPACITY_UNMET_RESULTS_DIR",
+    "RESULTS_SINGLE_FILE_ARCHIVE_DIR",
+    "RESULTS_CHECKS_DIR",
+    "RESULTS_RUNTIME_DIR",
+    "CAPACITY_UNMET_STATE_PATH",
+    "LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH",
+)
+
+# B3 characterization.  The patch preset deliberately does not select a pass
+# mode: it keeps the config default and bypasses normal run-output labelling.
+# These snapshots pin that contract before the paths become an injected object.
+EXPECTED_PRESET_RUN_CONTEXTS = (
+    ("_PRESET_BASELINE_SEED", "baseline_seed", "SEED_01_AUS_TGT"),
+    ("_PRESET_RESULTS_UPDATE", "results_update", "UPDATE_01_AUS_TGT"),
+    ("_PRESET_PATCH_BASELINE_SEEDS", "results_update", None),
+)
 
 # B1 interface measurement.  These are the five modules produced by the Phase
 # 4 split; the larger supply helper modules are deliberately outside this seam.
 EXPECTED_CONFIG_SURFACES = {
     "supply_reconciliation_allocation.py": {
-        "BASE_YEAR", "CAPACITY_UNMET_ALLOW_SAME_RESULTS_REUSE",
+        "BASE_YEAR", "CAPACITY_UNMET_ALLOW_SAME_RESULTS_REUSE", "ENERGY_SOURCE_CONFIG",
         "CAPACITY_UNMET_IMPORT_SHEETS", "CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS",
         "CAPACITY_UNMET_PIN_EXPORTS_TO_9TH_PROJECTIONS",
         "CAPACITY_UNMET_PRIORITY_BY_PRODUCT", "CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS",
         "CAPACITY_UNMET_RESULTS_DIR", "CAPACITY_UNMET_STATE_PATH",
-        "CAPACITY_UNMET_UNRESOLVED_POSITIVE_POLICY", "FINAL_YEAR",
+        "CAPACITY_UNMET_UNRESOLVED_POSITIVE_POLICY", "FINAL_YEAR", "FULL_MODEL_EXPORT_CATALOG_PATH",
         "RESULTS_CHECKS_DIR", "RESULTS_RUNTIME_DIR", "_ModuleCapRule",
         "_resolve_module_cap_rule",
     },
@@ -108,6 +137,60 @@ def test_convergence_csv_schema_is_exact_and_legacy_reader_is_public() -> None:
     assert callable(history.load_convergence_csv)
 
 
+@pytest.mark.parametrize(
+    ("preset_name", "expected_mode", "expected_label"),
+    EXPECTED_PRESET_RUN_CONTEXTS,
+)
+def test_each_preset_resolves_its_characterized_run_context(
+    monkeypatch: pytest.MonkeyPatch,
+    preset_name: str,
+    expected_mode: str,
+    expected_label: str | None,
+) -> None:
+    """Pin B3's current preset-to-path contract without starting a workflow.
+
+    The test exercises only label/path resolution.  It does not call
+    ``run_with_config()``, acquire an economy lock, or write any output file.
+    ``refresh_output_paths_for_pass_mode`` mutates config globals, so the
+    monkeypatch fixture restores every touched value at test teardown.
+    """
+    preset = getattr(workflow, preset_name)
+    for name in RUN_CONTEXT_CONFIG_NAMES:
+        monkeypatch.setattr(config, name, getattr(config, name))
+
+    # Keep the automatic label deterministic and apply only the few preset
+    # controls that determine a run context.
+    monkeypatch.setattr(workflow, "ECONOMIES", ["01_AUS"])
+    monkeypatch.setattr(workflow, "SCENARIOS", ["Target"])
+    monkeypatch.setattr(workflow, "RUN_MODE", preset.get("RUN_MODE", "full"))
+    monkeypatch.setattr(
+        workflow,
+        "CAPACITY_UNMET_PASS_MODE",
+        preset.get("CAPACITY_UNMET_PASS_MODE", "results_update"),
+    )
+    monkeypatch.setattr(workflow, "RUN_OUTPUT_LABEL", "auto")
+
+    resolved_label = workflow._resolve_run_output_label()
+    refreshed = config.refresh_output_paths_for_pass_mode(
+        workflow.CAPACITY_UNMET_PASS_MODE,
+        resolved_label,
+    )
+
+    assert config.CAPACITY_UNMET_PASS_MODE == expected_mode
+    assert resolved_label == expected_label
+    assert refreshed["RUN_OUTPUT_LABEL"] == expected_label
+    if expected_label is None:
+        assert config.OUTPUT_DIR == config.INTEGRATED_LEAP_EXPORTS_ROOT / expected_mode
+    else:
+        assert config.OUTPUT_DIR == (
+            config.INTEGRATED_LEAP_EXPORTS_ROOT / expected_mode / "runs" / expected_label
+        )
+    assert config.RESULTS_RUNTIME_DIR == config.OUTPUT_DIR / "supporting_files" / "runtime"
+    assert config.CAPACITY_UNMET_STATE_PATH == (
+        config.RESULTS_RUNTIME_DIR / "capacity_unmet_iterative_state.json"
+    )
+
+
 def test_public_workflow_callables_keep_their_notebook_contract() -> None:
     expected = {
         "run_with_config": (),
@@ -119,6 +202,16 @@ def test_public_workflow_callables_keep_their_notebook_contract() -> None:
         function = getattr(workflow, name)
         assert callable(function)
         assert tuple(inspect.signature(function).parameters) == parameter_names
+
+
+def test_patch_baseline_seed_entry_keeps_its_notebook_contract() -> None:
+    """The patch preset delegates to this public entry without a CLI wrapper."""
+    assert callable(patch_baseline_seeds.run_patch)
+    assert tuple(inspect.signature(patch_baseline_seeds.run_patch).parameters) == (
+        "module",
+        "economies",
+        "run_workflow",
+    )
 
 
 def test_split_modules_remain_importable() -> None:
