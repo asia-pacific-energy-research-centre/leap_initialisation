@@ -2887,7 +2887,13 @@ def run_results_linked_transformation_supply_workflow(
         export_scenario_list = expanded
     balance_scenario_list = _filter_balance_scenarios(scenario_list)
     economy_list = workflow_common.normalize_economies(economies or ECONOMIES)
-    timer.set_metadata(economies=economy_list, scenarios=export_scenario_list)
+    timer.set_metadata(
+        economies=economy_list,
+        scenarios=export_scenario_list,
+        year_start=int(BASE_YEAR),
+        year_end=int(FINAL_YEAR),
+        n_years=len(range(int(BASE_YEAR), int(FINAL_YEAR) + 1)),
+    )
     _print_reset_mode_reminder(
         run_economies=economy_list,
         run_scenarios=export_scenario_list,

@@ -137,12 +137,13 @@ Active documentation being developed:
 in a `history/` subfolder next to the main timing CSV. History filenames encode:
 
 ```text
-workflow_stage_timings_YYYYMMDD_HHMMSS_e{n_economies}_s{n_scenarios}_{run_type}_{commit7}.csv
+workflow_stage_timings_YYYYMMDD_HHMMSS_e{n_economies}_s{n_scenarios}_y{year_start}-{year_end}-n{n_years}_{run_type}_{commit7}.csv
 ```
 
 `load_history_summary(path, n_economies=N, n_scenarios=N)` averages history runs:
 
-- Filters by matching economy count, scenario count, and `run_type` (`"full"` vs `"preflight"`)
+- Filters by matching economy count, scenario count, horizon (`year_start`, `year_end`, `n_years`), and `run_type` (`"full"` vs `"preflight"`). Pass the active run's horizon whenever querying history so two-year smoke timings never affect full-horizon expectations.
+- Older history files without the `y...` segment remain readable, but have unknown horizon metadata and do not match an explicit horizon filter.
 - Prefers runs from the current git commit if any exist
 - Removes per-stage outliers via IQR before averaging (requires ≥4 runs per stage)
 - Preflight runs (`preflight_compressed_projection/`) are already isolated in a separate history directory and excluded automatically when querying the full-run history path

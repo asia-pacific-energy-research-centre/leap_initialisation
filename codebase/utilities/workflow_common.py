@@ -115,28 +115,43 @@ def _encode_history_stem(
     n_scenarios: int | None,
     run_type: str,
     commit: str,
+    year_start: int | None,
+    year_end: int | None,
+    n_years: int | None,
 ) -> str:
     stamp = started_at.strftime("%Y%m%d_%H%M%S")
     econ_seg = f"e{n_economies}" if n_economies is not None else "eX"
     scen_seg = f"s{n_scenarios}" if n_scenarios is not None else "sX"
-    return f"{stem}_{stamp}_{econ_seg}_{scen_seg}_{run_type}_{commit}"
+    horizon_seg = (
+        f"y{year_start}-{year_end}-n{n_years}"
+        if year_start is not None and year_end is not None and n_years is not None
+        else "yX"
+    )
+    return f"{stem}_{stamp}_{econ_seg}_{scen_seg}_{horizon_seg}_{run_type}_{commit}"
 
 
 def _parse_history_filename(filename: str) -> dict:
-    """Parse metadata encoded in a history filename."""
+    """Parse metadata encoded in a history filename, including legacy names."""
     stem = filename[:-4] if filename.endswith(".csv") else filename
-    pattern = r"^(.+)_(\d{8})_(\d{6})_(e\d+|eX)_(s\d+|sX)_([^_]+)_([a-f0-9]{7}|nocommit)$"
+    pattern = (
+        r"^(.+)_(\d{8})_(\d{6})_(e\d+|eX)_(s\d+|sX)"
+        r"(?:_(y\d+-\d+-n\d+|yX))?_([^_]+)_([a-f0-9]{7}|nocommit)$"
+    )
     m = re.match(pattern, stem)
     if not m:
         return {}
-    econ_seg, scen_seg = m.group(4), m.group(5)
+    econ_seg, scen_seg, horizon_seg = m.group(4), m.group(5), m.group(6)
+    horizon_match = re.fullmatch(r"y(\d+)-(\d+)-n(\d+)", horizon_seg or "")
     return {
         "base_stem": m.group(1),
         "started_at": f"{m.group(2)}_{m.group(3)}",
         "n_economies": int(econ_seg[1:]) if econ_seg != "eX" else None,
         "n_scenarios": int(scen_seg[1:]) if scen_seg != "sX" else None,
-        "run_type": m.group(6),
-        "commit": m.group(7),
+        "year_start": int(horizon_match.group(1)) if horizon_match else None,
+        "year_end": int(horizon_match.group(2)) if horizon_match else None,
+        "n_years": int(horizon_match.group(3)) if horizon_match else None,
+        "run_type": m.group(7),
+        "commit": m.group(8),
     }
 
 
@@ -170,6 +185,9 @@ class WorkflowTimer:
         self._commit: str = _detect_git_commit(REPO_ROOT)
         self._n_economies: int | None = None
         self._n_scenarios: int | None = None
+        self._year_start: int | None = None
+        self._year_end: int | None = None
+        self._n_years: int | None = None
         self._run_type: str = "full"
 
     def set_metadata(
@@ -178,14 +196,23 @@ class WorkflowTimer:
         economies: list | None = None,
         scenarios: list | None = None,
         run_type: str | None = None,
+        year_start: int | None = None,
+        year_end: int | None = None,
+        n_years: int | None = None,
     ) -> None:
-        """Record economy/scenario counts and run type for history filtering."""
+        """Record run metadata used to keep timing-history baselines comparable."""
         if economies is not None:
             self._n_economies = len(list(economies))
         if scenarios is not None:
             self._n_scenarios = len(list(scenarios))
         if run_type is not None:
             self._run_type = str(run_type)
+        if year_start is not None:
+            self._year_start = int(year_start)
+        if year_end is not None:
+            self._year_end = int(year_end)
+        if n_years is not None:
+            self._n_years = int(n_years)
 
     @property
     def records(self) -> list[dict[str, object]]:
@@ -258,6 +285,7 @@ class WorkflowTimer:
             output_path.stem, self.started_at,
             self._n_economies, self._n_scenarios,
             self._run_type, self._commit,
+            self._year_start, self._year_end, self._n_years,
         )
         history_path = history_dir / f"{history_stem}{output_path.suffix}"
         df.to_csv(history_path, index=False)
@@ -278,12 +306,20 @@ def load_history_summary(
     n_economies: int | None = None,
     n_scenarios: int | None = None,
     run_type: str = "full",
+    year_start: int | None = None,
+    year_end: int | None = None,
+    n_years: int | None = None,
     current_commit: str | None = None,
 ) -> pd.DataFrame | None:
     """
     Average past timing runs from the history folder, with outlier removal.
 
-    Filters to runs matching ``run_type``, ``n_economies``, and ``n_scenarios``.
+    Filters to runs matching ``run_type``, ``n_economies``, ``n_scenarios``,
+    and any supplied horizon fields. Callers that use timing expectations for a
+    workflow run must provide its horizon fields, so short smoke runs cannot
+    influence full-horizon expectations. Legacy filenames remain readable but
+    have unknown horizon metadata and therefore do not match an explicit
+    horizon filter.
     If any history file exists for the current git commit it restricts to those
     runs only, ignoring older commits (so a major refactor starts a fresh baseline).
     Per-stage IQR outlier removal is applied before averaging (needs >=4 runs).
@@ -311,6 +347,12 @@ def load_history_summary(
         if n_economies is not None and meta.get("n_economies") != n_economies:
             continue
         if n_scenarios is not None and meta.get("n_scenarios") != n_scenarios:
+            continue
+        if year_start is not None and meta.get("year_start") != year_start:
+            continue
+        if year_end is not None and meta.get("year_end") != year_end:
+            continue
+        if n_years is not None and meta.get("n_years") != n_years:
             continue
         candidates.append((f, meta))
     if not candidates:
