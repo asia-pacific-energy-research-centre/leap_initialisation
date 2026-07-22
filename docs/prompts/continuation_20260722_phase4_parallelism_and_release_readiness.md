@@ -118,14 +118,21 @@ diagnostics before declaring the outputs fully LEAP-import-ready:
 - `supporting_files/checks/supply_reconciliation_config_mapping_mismatches.csv`:
   91 configuration/reference metadata mismatches (units and `per`).
 
+The 91 configuration/template metadata mismatches are **accepted for this
+workflow**. They will be corrected in the LEAP area/template rather than by
+changing producer configuration or output metadata here. Keep writing and
+reviewing the diagnostic so the required LEAP-area maintenance stays visible,
+but do not turn it into a workflow-fix task.
+
 Build a template-readiness audit from the full-horizon generated output:
 classify every requested-but-absent branch as non-zero required, zero-only
 structural, or intentional suppression. A non-zero requested branch requires
 a real template migration/BranchID; it must never be hidden by a zero row.
 For an always-zero structural branch, decide explicitly whether the branch
 belongs in every intended-identical template or should be an approved
-suppression. Use the same audit to establish the authoritative Units/Scale/
-`per` metadata contract before changing producers or config.
+suppression. Use the same audit to establish the authoritative Units/Scale
+contract for the own-use producer before changing it. The 91 separately
+accepted configuration/template metadata mismatches remain LEAP-area work.
 
 ### Important [18] design correction to decide and implement
 
