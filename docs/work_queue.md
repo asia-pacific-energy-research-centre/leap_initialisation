@@ -1008,6 +1008,21 @@ are consolidated in [current_execution_roadmap.md](current_execution_roadmap.md)
 mode** (`c5401a5`). That gate stopped the bleeding, but did not solve the
 problem the reset existed for; the separate zeroing workbook is the solution.
 
+### Follow-up — aggregate preflight must not emit zeroing workbooks
+
+Observed in the `01_AUS` two-year safeguards smoke run, 2026-07-22: the
+`00_APEC` compressed preflight reaches the supply/transformation zeroing builder
+and expands member-economy templates, producing noisy provisional-template
+warnings and unnecessary work. This is not a useful artifact: `00_APEC` is an
+aggregate check, not a LEAP area for manual workbook import.
+
+- Detect aggregate sentinel economies before template resolution in
+  `build_supply_transformation_zeroing_workbooks()`.
+- Log one explicit skip and return no paths for aggregate scope.
+- Keep real-economy zeroing behavior unchanged.
+- Cover aggregate no-template/no-workbook and real-economy behavior with focused
+  tests, then verify through the next two-year preflight smoke run.
+
 ### Why this is needed — confirmed by the user, 2026-07-21
 
 **The user re-imports these workbooks into a populated LEAP area, not a clean
