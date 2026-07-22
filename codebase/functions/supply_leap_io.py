@@ -613,26 +613,38 @@ def save_transformation_exports_with_split_targets(
     # borrow inert technology measures from a scenario with genuine data.
     records_by_scenario: dict[str, list[dict]] = {}
     targets_by_scenario: dict[str, object] = {}
+    # Reference and Current Accounts both use the Reference projection source.
+    # Building that source reconstructs the full transformation dataset, so do it
+    # once and give each export scenario an independent copy below.  The copies
+    # are important: later share/target processing deliberately mutates records.
+    baseline_by_projection_scenario: dict[str, tuple[list[dict], object]] = {}
     for scenario in scenario_list:
         projection_scenario = _projection_scenario_for_export(scenario)
-        all_scenario_records = process_records
-        all_scenario_targets = process_target_rows
-        try:
-            all_scenario_records = transformation_workflow.collect_transformation_rows(
-                economies=base_economies or None,
-                projection_scenario=projection_scenario,
-            )
-            all_scenario_targets, all_scenario_records = build_transformation_trade_target_rows(
-                economies=base_economies or None,
-                process_records=all_scenario_records,
-            )
-        except Exception as exc:
-            print(
-                f"[WARN] Failed to build scenario-specific transformation baseline for "
-                f"{scenario} (projection={projection_scenario}); falling back to default baseline: {exc}"
-            )
-        records_by_scenario[scenario] = all_scenario_records
-        targets_by_scenario[scenario] = all_scenario_targets
+        cached_baseline = baseline_by_projection_scenario.get(projection_scenario)
+        if cached_baseline is None:
+            all_scenario_records = process_records
+            all_scenario_targets = process_target_rows
+            try:
+                all_scenario_records = transformation_workflow.collect_transformation_rows(
+                    economies=base_economies or None,
+                    projection_scenario=projection_scenario,
+                )
+                all_scenario_targets, all_scenario_records = build_transformation_trade_target_rows(
+                    economies=base_economies or None,
+                    process_records=all_scenario_records,
+                )
+            except Exception as exc:
+                print(
+                    f"[WARN] Failed to build scenario-specific transformation baseline for "
+                    f"{scenario} (projection={projection_scenario}); falling back to default baseline: {exc}"
+                )
+            # Cache both the normal result and the existing fallback.  Retrying
+            # a failed Reference build for Current Accounts only repeats the
+            # same expensive failure path and does not change its fallback.
+            cached_baseline = (all_scenario_records, all_scenario_targets)
+            baseline_by_projection_scenario[projection_scenario] = cached_baseline
+        records_by_scenario[scenario] = copy.deepcopy(cached_baseline[0])
+        targets_by_scenario[scenario] = copy.deepcopy(cached_baseline[1])
 
     transformation_workflow.core.borrow_zero_skeleton_measures(records_by_scenario)
 
