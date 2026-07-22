@@ -716,6 +716,50 @@ def _resolve_run_output_label() -> str | None:
     return requested or None
 
 
+def _apply_worker_snapshot_overrides() -> None:
+    """Apply an explicit per-process run snapshot for bounded parallel workers.
+
+    Set the ``LEAP_WORKER_SNAPSHOT_JSON`` environment variable to a JSON object
+    (or a path to a JSON file containing one) to give this process its own
+    isolated economy/output scope. Recognised keys: ``economies`` (list[str]),
+    ``run_output_label`` (str), ``test_horizon_base_year_plus_one`` (bool).
+    Unset by default, so a normal interactive/notebook run is unaffected.
+
+    This is the *only* supported way to give a subprocess worker its own
+    economy — never edit ``ECONOMIES``/``RUN_OUTPUT_LABEL`` in the source file
+    while other workers may still be running against it. Each worker is a
+    separate OS process (see ``codebase/functions/parallel_economy_runner.py``),
+    so this only ever rebinds this process's own globals; it cannot race with
+    another worker's snapshot.
+    """
+    raw = os.environ.get("LEAP_WORKER_SNAPSHOT_JSON")
+    if not raw:
+        return
+    raw = raw.strip()
+    try:
+        payload = json.loads(raw) if raw.startswith("{") else json.loads(
+            Path(raw).read_text(encoding="utf-8")
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"Could not parse LEAP_WORKER_SNAPSHOT_JSON as JSON or a JSON file path: {exc}"
+        ) from exc
+    applied: dict[str, object] = {}
+    if "economies" in payload:
+        economies = list(payload["economies"])
+        globals()["ECONOMIES"] = economies
+        applied["ECONOMIES"] = economies
+    if "run_output_label" in payload:
+        label = payload["run_output_label"]
+        globals()["RUN_OUTPUT_LABEL"] = label
+        applied["RUN_OUTPUT_LABEL"] = label
+    if "test_horizon_base_year_plus_one" in payload:
+        horizon = bool(payload["test_horizon_base_year_plus_one"])
+        globals()["TEST_HORIZON_BASE_YEAR_PLUS_ONE"] = horizon
+        applied["TEST_HORIZON_BASE_YEAR_PLUS_ONE"] = horizon
+    print(f"[INFO] Worker snapshot applied from LEAP_WORKER_SNAPSHOT_JSON: {applied}")
+
+
 def _refresh_output_paths_for_current_pass_mode() -> None:
     """Apply the selected pass mode to this workflow and all imported consumers."""
     resolved_run_context = _supply_reconciliation_config.resolve_reconciliation_run_context(
@@ -1062,6 +1106,10 @@ THROW_ERROR_AFTER_RUN = True
 # Unpack preset — does not overwrite ECONOMIES/SCENARIOS set above. Presets can
 # override the defaults immediately above, including PREFLIGHT_* toggles.
 globals().update(ACTIVE_PRESET)
+# A bounded process-based worker's explicit snapshot (if any) overrides the
+# preset's ECONOMIES/RUN_OUTPUT_LABEL/test-horizon defaults; see
+# _apply_worker_snapshot_overrides. No-op for a normal notebook run.
+_apply_worker_snapshot_overrides()
 # The update above only rebinds names on this wrapper; deliver them to the
 # modules that actually read them before anything resolves paths or runs.
 _broadcast_preset_overrides()
