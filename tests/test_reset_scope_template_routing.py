@@ -188,3 +188,57 @@ def test_demand_zeroing_resolves_template_per_economy(monkeypatch, tmp_path):
 
     assert [source for _, source in calls] == [templates["20_USA"], templates["12_NZ"]]
     assert [path.name for path in paths] == ["demand_zeroing_20_USA.xlsx", "demand_zeroing_12_NZ.xlsx"]
+
+
+def test_supply_transformation_zeroing_skips_aggregate_before_template_resolution(
+    monkeypatch, tmp_path, capsys,
+):
+    """00_APEC preflight must not inspect member-area templates or write an import."""
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        supply_leap_io,
+        "_leap_export_template_for_economy",
+        lambda economy: calls.append(str(economy)) or tmp_path / "should_not_be_used.xlsx",
+    )
+    monkeypatch.setattr(
+        supply_leap_io.pd,
+        "read_excel",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("template must not be read")),
+    )
+
+    paths = supply_leap_io.build_supply_transformation_zeroing_workbooks(
+        scenarios=["Reference"], economies=["00_APEC"], output_dir=tmp_path / "zeroing",
+    )
+
+    assert paths == []
+    assert calls == []
+    assert not (tmp_path / "zeroing").exists()
+    assert "Skipping supply/transformation zeroing workbook for aggregate economy 00_APEC" in capsys.readouterr().out
+
+
+def test_supply_transformation_zeroing_still_writes_real_economy_workbook(monkeypatch, tmp_path):
+    template = tmp_path / "usa_template.xlsx"
+    calls: list[str] = []
+    raw = pd.DataFrame(
+        [
+            ["LEAP export"],
+            ["Branch Path", "Variable", "Scenario", "Scale", "Units", "Per..."],
+            ["Resources\\Crude oil", "Imports", "Reference", "PJ", "PJ", "Year"],
+        ]
+    )
+
+    monkeypatch.setattr(
+        supply_leap_io,
+        "_leap_export_template_for_economy",
+        lambda economy: calls.append(str(economy)) or template,
+    )
+    monkeypatch.setattr(supply_leap_io.pd, "read_excel", lambda *args, **kwargs: raw)
+
+    paths = supply_leap_io.build_supply_transformation_zeroing_workbooks(
+        scenarios=["Reference"], economies=["20_USA"], output_dir=tmp_path / "zeroing",
+    )
+
+    assert calls == ["20_USA"]
+    assert [path.name for path in paths] == ["supply_transformation_zeroing_20_USA.xlsx"]
+    assert paths[0].exists()

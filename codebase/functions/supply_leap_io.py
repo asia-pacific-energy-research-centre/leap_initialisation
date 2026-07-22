@@ -2327,9 +2327,17 @@ def build_supply_transformation_zeroing_workbooks(
     scenario_list = workflow_common.normalize_workflow_scenarios(scenarios, SCENARIOS)
     economy_list = workflow_common.normalize_economies(economies if economies is not None else ECONOMIES)
     out_dir = _resolve(output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
     for economy in economy_list:
+        # Aggregate preflight spans multiple LEAP areas, so it cannot have one
+        # valid zeroing import workbook.  Skip before template resolution: the
+        # resolver would otherwise fan out to provisional member templates.
+        if leap_export_template_resolver.is_aggregate_economy(economy):
+            print(
+                f"[INFO] Skipping supply/transformation zeroing workbook for aggregate "
+                f"economy {economy}: aggregate preflight has no single LEAP template."
+            )
+            continue
         template = Path(source_path) if source_path is not None else _leap_export_template_for_economy(economy)
         raw = pd.read_excel(template, sheet_name=source_sheet, header=None)
         header_row = next((index for index, row in raw.iterrows() if "Branch Path" in row.values), None)
@@ -2354,6 +2362,7 @@ def build_supply_transformation_zeroing_workbooks(
         leap_df = add_leap_preamble(prepare_for_leap_sheet_df(rows))
         viewing_df = add_leap_preamble(prepare_for_viewing_sheet_df(rows, base_year=BASE_YEAR, final_year=FINAL_YEAR))
         token = workflow_common.format_filename_segment(economy) or "economy"
+        out_dir.mkdir(parents=True, exist_ok=True)
         output_path = out_dir / f"supply_transformation_zeroing_{token}.xlsx"
         with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
             leap_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
