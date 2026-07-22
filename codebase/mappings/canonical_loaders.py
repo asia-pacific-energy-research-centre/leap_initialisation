@@ -41,6 +41,10 @@ SHEET_LEAP_COMBINED_ESTO = "leap_combined_esto"
 SHEET_LEAP_COMBINED_NINTH = "leap_combined_ninth"
 SHEET_NINTH_PAIRS_TO_ESTO_PAIRS = "ninth_pairs_to_esto_pairs"
 SHEET_LEAP_DISPLAY_NAMES = "leap_display_names"
+SHEET_NINTH_FUEL_TO_ESTO_PRODUCT = "ninth fuel to esto product"
+SHEET_LEAP_ROLLUP_RULES = "leap_rollup_rules"
+SHEET_ESTO_ROLLUP_RULES = "esto_rollup_rules"
+SHEET_NINTH_ROLLUP_RULES = "ninth_rollup_rules"
 
 # Required columns per canonical role -----------------------------------------
 LEAP_COMBINED_ESTO_KEYS = ("leap_sector_name_full_path", "raw_leap_fuel_name")
@@ -49,6 +53,31 @@ LEAP_COMBINED_NINTH_TARGETS = ("ninth_sector", "ninth_fuel")
 NINTH_PAIRS_SOURCE = ("ninth_sector", "ninth_fuel")
 NINTH_PAIRS_TARGET = ("esto_flow", "esto_product")
 LEAP_DISPLAY_NAMES_REQUIRED = ("code", "leap_display_name")
+
+# The complete canonical-workbook schema surface consumed by this repository.
+# This is a subset contract: mapping authors may add columns, but a rename of a
+# consumed column must fail at the workbook boundary rather than later in a
+# workflow.
+CANONICAL_SHEET_CONTRACT: dict[str, tuple[str, ...]] = {
+    SHEET_LEAP_COMBINED_ESTO: (*LEAP_COMBINED_ESTO_KEYS, *LEAP_COMBINED_ESTO_TARGETS),
+    SHEET_LEAP_COMBINED_NINTH: (*LEAP_COMBINED_ESTO_KEYS, *LEAP_COMBINED_NINTH_TARGETS),
+    SHEET_NINTH_PAIRS_TO_ESTO_PAIRS: (*NINTH_PAIRS_SOURCE, *NINTH_PAIRS_TARGET),
+    SHEET_LEAP_DISPLAY_NAMES: LEAP_DISPLAY_NAMES_REQUIRED,
+    SHEET_NINTH_FUEL_TO_ESTO_PRODUCT: ("ninth_fuel", "esto_product"),
+    SHEET_LEAP_ROLLUP_RULES: (
+        "rollup_context", "input_leap_sector_name_full_path", "input_raw_leap_fuel_name",
+        "rolled_leap_sector_name_full_path", "rolled_raw_leap_fuel_name",
+        "rollup_group_id", "rollup_reason", "priority", "include", "Note",
+    ),
+    SHEET_ESTO_ROLLUP_RULES: (
+        "rollup_context", "input_esto_flow", "input_esto_product", "rolled_esto_flow",
+        "rolled_esto_product", "rollup_group_id", "rollup_reason", "priority", "include", "Note",
+    ),
+    SHEET_NINTH_ROLLUP_RULES: (
+        "rollup_context", "input_ninth_sector", "input_ninth_fuel", "rolled_ninth_sector",
+        "rolled_ninth_fuel", "rollup_group_id", "rollup_reason", "priority", "include", "Note",
+    ),
+}
 
 # Column marking rows excluded from LEAP entirely. Explicit False excludes the
 # row; blank/NaN or True keep it (blank is the common case and means "not
@@ -168,18 +197,41 @@ def load_canonical_sheet(
     return frame.reset_index(drop=True)
 
 
+def load_canonical_contract_sheet(
+    sheet_name: str,
+    *,
+    workbook: str | Path | None = None,
+    dtype: object | None = None,
+) -> pd.DataFrame:
+    """Load a declared canonical sheet using its repository-owned contract."""
+    try:
+        required_columns = CANONICAL_SHEET_CONTRACT[sheet_name]
+    except KeyError as exc:
+        raise CanonicalMappingError(
+            f"Canonical sheet '{sheet_name}' has no declared initialisation contract."
+        ) from exc
+    return load_canonical_sheet(
+        sheet_name,
+        required_columns,
+        workbook=workbook,
+        apply_active_filter=False,
+        apply_usage_filter=False,
+        dtype=dtype,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Semantic-role loaders
 # ---------------------------------------------------------------------------
 def load_leap_combined_esto(*, workbook: str | Path | None = None) -> pd.DataFrame:
     """(LEAP sector path, raw LEAP fuel) -> (ESTO flow, ESTO product)."""
-    required = list(LEAP_COMBINED_ESTO_KEYS) + list(LEAP_COMBINED_ESTO_TARGETS)
+    required = CANONICAL_SHEET_CONTRACT[SHEET_LEAP_COMBINED_ESTO]
     return load_canonical_sheet(SHEET_LEAP_COMBINED_ESTO, required, workbook=workbook)
 
 
 def load_leap_combined_ninth(*, workbook: str | Path | None = None) -> pd.DataFrame:
     """(LEAP sector path, raw LEAP fuel) -> (9th sector, 9th fuel)."""
-    required = list(LEAP_COMBINED_ESTO_KEYS) + list(LEAP_COMBINED_NINTH_TARGETS)
+    required = CANONICAL_SHEET_CONTRACT[SHEET_LEAP_COMBINED_NINTH]
     return load_canonical_sheet(SHEET_LEAP_COMBINED_NINTH, required, workbook=workbook)
 
 
@@ -191,7 +243,7 @@ def load_ninth_pairs_to_esto_pairs(
     Returns ``(clean_pairs, conflicts)`` where ``conflicts`` lists 9th
     sector/fuel keys that imply more than one ESTO target pair.
     """
-    required = list(NINTH_PAIRS_SOURCE) + list(NINTH_PAIRS_TARGET)
+    required = CANONICAL_SHEET_CONTRACT[SHEET_NINTH_PAIRS_TO_ESTO_PAIRS]
     frame = load_canonical_sheet(SHEET_NINTH_PAIRS_TO_ESTO_PAIRS, required, workbook=workbook)
     conflicts = (
         detect_conflicting_pair_mappings(frame, NINTH_PAIRS_SOURCE, NINTH_PAIRS_TARGET)
@@ -211,7 +263,7 @@ def load_leap_display_names(
     """
     return load_canonical_sheet(
         SHEET_LEAP_DISPLAY_NAMES,
-        LEAP_DISPLAY_NAMES_REQUIRED,
+        CANONICAL_SHEET_CONTRACT[SHEET_LEAP_DISPLAY_NAMES],
         workbook=workbook,
         apply_active_filter=False,
         apply_usage_filter=not include_excluded,
@@ -361,9 +413,15 @@ __all__ = [
     "SHEET_LEAP_COMBINED_NINTH",
     "SHEET_NINTH_PAIRS_TO_ESTO_PAIRS",
     "SHEET_LEAP_DISPLAY_NAMES",
+    "SHEET_NINTH_FUEL_TO_ESTO_PRODUCT",
+    "SHEET_LEAP_ROLLUP_RULES",
+    "SHEET_ESTO_ROLLUP_RULES",
+    "SHEET_NINTH_ROLLUP_RULES",
+    "CANONICAL_SHEET_CONTRACT",
     "apply_active_row_filter",
     "filter_used_in_leap_initialisation",
     "load_canonical_sheet",
+    "load_canonical_contract_sheet",
     "load_leap_combined_esto",
     "load_leap_combined_ninth",
     "load_ninth_pairs_to_esto_pairs",

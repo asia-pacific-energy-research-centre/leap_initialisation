@@ -46,7 +46,10 @@ from codebase.mappings.canonical_mapping import (
     load_fuel_aliases,
     load_sheet_map,
 )
-from codebase.mappings.canonical_loaders import load_leap_display_names
+from codebase.mappings.canonical_loaders import (
+    load_canonical_contract_sheet,
+    load_leap_display_names,
+)
 from codebase.functions import supply_data_pipeline, leap_api, patch_baseline_seeds
 from codebase.functions.analysis_input_write_dispatcher import get_analysis_input_write_mode
 from codebase import (
@@ -574,15 +577,13 @@ def _resolve_demand_esto_pairs_via_rollups(
     # Read rollup sheets directly (never mr.read_rollup_rules, which may save the
     # master workbook — outlook_mappings_master.xlsx must not be modified here).
     def _read_rollup_sheet(sheet_name: str) -> pd.DataFrame:
-        expected = mr.ROLLUP_SHEET_COLUMNS[sheet_name]
-        try:
-            frame = read_config_table(DIRECT_DEMAND_MAPPING_WORKBOOK, sheet_name=sheet_name, dtype=object).fillna("")
-        except Exception:
-            return pd.DataFrame(columns=expected)
-        for column in expected:
-            if column not in frame.columns:
-                frame[column] = ""
-        return frame
+        # A renamed column must fail at this boundary instead of silently
+        # disabling all rollup rules by returning an empty frame.
+        return load_canonical_contract_sheet(
+            sheet_name,
+            workbook=DIRECT_DEMAND_MAPPING_WORKBOOK,
+            dtype=object,
+        ).fillna("")
 
     leap_rules = mr.active_rollup_rules(_read_rollup_sheet("leap_rollup_rules"), "leap_to_esto")
     ninth_rules = mr.active_rollup_rules(_read_rollup_sheet("ninth_rollup_rules"), "ninth_to_esto")
