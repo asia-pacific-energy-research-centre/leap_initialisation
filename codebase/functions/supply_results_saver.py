@@ -2822,7 +2822,7 @@ def run_results_linked_transformation_supply_workflow(
     """Build reconciled transformation + supply exports driven by LEAP balance demand results."""
     timer = workflow_common.WorkflowTimer("supply_reconciliation", enabled=ENABLE_WORKFLOW_TIMING)
     timing_path = _resolve(RESULTS_RUNTIME_DIR) / WORKFLOW_TIMING_FILENAME
-    _sra._reset_capacity_unmet_allocation_ledger()
+    allocation_ledger = _sra._reset_capacity_unmet_allocation_ledger()
     requested_include_leap_import = include_leap_import
     analysis_write_mode = get_analysis_input_write_mode()
     include_leap_import = analysis_write_mode == "api"
@@ -3299,7 +3299,7 @@ def run_results_linked_transformation_supply_workflow(
     timer.lap("write yearly balance tables")
 
     if _use_capacity_unmet_iterative_mode():
-        _sra._set_capacity_unmet_runtime_pass_summary(_sra._run_capacity_unmet_iterative_pass(
+        _sra._run_capacity_unmet_iterative_pass(
             reconciliation_table=reconciliation_table,
             process_records=transformation_process_records,
             economies=economy_list,
@@ -3308,7 +3308,8 @@ def run_results_linked_transformation_supply_workflow(
             results_dir=balance_csv_paths,
             state_path=CAPACITY_UNMET_STATE_PATH,
             allow_same_results_reuse=bool(CAPACITY_UNMET_ALLOW_SAME_RESULTS_REUSE),
-        ))
+            allocation_ledger=allocation_ledger,
+        )
     elif _use_capacity_unmet_iterative_balanced_mode():
         if _is_capacity_unmet_baseline_seed_pass():
             seeded_state = _read_capacity_unmet_state(
@@ -3318,7 +3319,7 @@ def run_results_linked_transformation_supply_workflow(
             seeded_state_path = _write_capacity_unmet_state(
                 seeded_state, state_path=CAPACITY_UNMET_STATE_PATH
             )
-            _sra._set_capacity_unmet_runtime_pass_summary({
+            allocation_ledger.pass_summary = {
                 "timestamp_utc": datetime.now(timezone.utc).isoformat(),
                 "mode": "capacity_unmet_iterative_balanced",
                 "pass_mode": "baseline_seed",
@@ -3332,14 +3333,14 @@ def run_results_linked_transformation_supply_workflow(
                     "Import generated workbook into LEAP, recalculate, refresh results tables, "
                     "set CAPACITY_UNMET_PASS_MODE='results_update', rerun."
                 ),
-            })
+            }
+            _sra._refresh_legacy_allocation_ledger_views(allocation_ledger)
             print(
                 "[CAPACITY_UNMET_ITERATIVE_BALANCED] baseline_seed pass: "
                 "skipping residual allocation and using imports=0 with baseline exports/capacity."
             )
         else:
-            _sra._set_capacity_unmet_runtime_pass_summary(
-                _sra._run_capacity_unmet_iterative_balanced_pass(
+            _sra._run_capacity_unmet_iterative_balanced_pass(
                 reconciliation_table=reconciliation_table,
                 process_records=transformation_process_records,
                 economies=economy_list,
@@ -3348,7 +3349,7 @@ def run_results_linked_transformation_supply_workflow(
                 results_dir=balance_csv_paths,
                 state_path=CAPACITY_UNMET_STATE_PATH,
                 allow_same_results_reuse=bool(CAPACITY_UNMET_ALLOW_SAME_RESULTS_REUSE),
-                )
+                allocation_ledger=allocation_ledger,
             )
     if _use_capacity_unmet_iterative_any_mode():
         timer.lap("capacity unmet handling")
@@ -4077,7 +4078,7 @@ def run_results_linked_transformation_supply_workflow(
         "results_update_closure_csv": results_update_closure_path,
         "source_diagnostics_csv": source_diagnostics_path,
         "leap_import_result": leap_import_result,
-        "capacity_unmet_iterative_summary": _sra._CAPACITY_UNMET_RUNTIME_PASS_SUMMARY,
+        "capacity_unmet_iterative_summary": allocation_ledger.pass_summary,
         "workflow_stage_timings_csv": str(timing_path),
         "row_count": int(len(reconciliation_table)),
     }

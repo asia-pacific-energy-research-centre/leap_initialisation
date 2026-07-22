@@ -507,6 +507,7 @@ def test_capacity_unmet_iterative_allocates_and_persists(monkeypatch: pytest.Mon
     )
     monkeypatch.setattr(workflow, "_build_capacity_process_catalog", lambda records: (process_catalog, []))
     monkeypatch.setattr(workflow, "_build_label_to_esto_product_lookup", lambda: {})
+    allocation_ledger = allocation.CapacityUnmetAllocationLedger({}, {}, {})
     summary = workflow._run_capacity_unmet_iterative_pass(
         reconciliation_table=reconciliation,
         process_records=[{}],
@@ -515,6 +516,7 @@ def test_capacity_unmet_iterative_allocates_and_persists(monkeypatch: pytest.Mon
         results_dir=[balance_csv],
         state_path=state_path,
         allow_same_results_reuse=False,
+        allocation_ledger=allocation_ledger,
     )
     assert summary["allocated_output_total"] == pytest.approx(6.0)
     assert summary["clipped_output_total"] == pytest.approx(0.0)
@@ -527,6 +529,8 @@ def test_capacity_unmet_iterative_allocates_and_persists(monkeypatch: pytest.Mon
     assert convergence["pass_count"] == 1
     assert convergence["gap_at_current_pass"] == pytest.approx(6.0)
     assert convergence["gap_closure_pct"] == pytest.approx(0.0)
+    assert allocation_ledger.pass_summary is summary
+    assert list(allocation_ledger.capacity_additions.values()) == pytest.approx([12.0])
 
 
 def test_capacity_unmet_iterative_writes_convergence_csv(
@@ -613,6 +617,7 @@ def test_capacity_unmet_iterative_balanced_writes_convergence_run_id(
     monkeypatch.setattr(allocation, "RESULTS_RUNTIME_DIR", runtime_dir, raising=False)
     monkeypatch.setattr(workflow, "_build_capacity_process_catalog", lambda records: (process_catalog, []))
     monkeypatch.setattr(workflow, "_build_label_to_esto_product_lookup", lambda: {})
+    allocation_ledger = allocation.CapacityUnmetAllocationLedger({}, {}, {})
 
     summary = workflow._run_capacity_unmet_iterative_balanced_pass(
         reconciliation_table=reconciliation,
@@ -623,6 +628,7 @@ def test_capacity_unmet_iterative_balanced_writes_convergence_run_id(
         state_path=state_path,
         allow_same_results_reuse=False,
         run_id="capacity_unmet_balanced_test_run",
+        allocation_ledger=allocation_ledger,
     )
 
     assert summary["positive_import_gap_total"] == pytest.approx(6.0)
@@ -630,3 +636,5 @@ def test_capacity_unmet_iterative_balanced_writes_convergence_run_id(
     convergence_rows = pd.read_csv(runtime_dir / "capacity_unmet_convergence.csv")
     assert convergence_rows["run_id"].tolist() == ["capacity_unmet_balanced_test_run"]
     assert convergence_rows["gap_at_current_pass"].tolist() == pytest.approx([6.0])
+    assert allocation_ledger.pass_summary is summary
+    assert list(allocation_ledger.capacity_additions.values()) == pytest.approx([12.0])

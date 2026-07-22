@@ -611,6 +611,7 @@ def _collect_observed_trade_from_supply_results(**kwargs):
 
 def _run_capacity_unmet_iterative_pass(**kwargs):
     _sync_extracted_runtime_state()
+    kwargs.setdefault("allocation_ledger", _sra._CAPACITY_UNMET_ALLOCATION_LEDGER)
     process_catalog_func = globals().get("_build_capacity_process_catalog")
     label_lookup_func = globals().get("_build_label_to_esto_product_lookup")
     _sra._build_capacity_process_catalog = (
@@ -631,6 +632,7 @@ def _run_capacity_unmet_iterative_pass(**kwargs):
 
 def _run_capacity_unmet_iterative_balanced_pass(**kwargs):
     _sync_extracted_runtime_state()
+    kwargs.setdefault("allocation_ledger", _sra._CAPACITY_UNMET_ALLOCATION_LEDGER)
     process_catalog_func = globals().get("_build_capacity_process_catalog")
     label_lookup_func = globals().get("_build_label_to_esto_product_lookup")
     _sra._build_capacity_process_catalog = (

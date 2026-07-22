@@ -104,6 +104,23 @@ def _set_capacity_unmet_runtime_pass_summary(summary: dict[str, object] | None) 
     _set_capacity_unmet_allocation_ledger(_CAPACITY_UNMET_ALLOCATION_LEDGER)
 
 
+def _resolve_capacity_unmet_allocation_ledger(
+    allocation_ledger: CapacityUnmetAllocationLedger | None,
+) -> CapacityUnmetAllocationLedger:
+    """Return the caller-owned ledger, preserving the legacy default."""
+    if allocation_ledger is not None:
+        return allocation_ledger
+    return _CAPACITY_UNMET_ALLOCATION_LEDGER
+
+
+def _refresh_legacy_allocation_ledger_views(
+    allocation_ledger: CapacityUnmetAllocationLedger,
+) -> None:
+    """Keep compatibility views current only when the legacy ledger was used."""
+    if allocation_ledger is _CAPACITY_UNMET_ALLOCATION_LEDGER:
+        _set_capacity_unmet_allocation_ledger(allocation_ledger)
+
+
 # ---------------------------------------------------------------------------
 # Convergence tracking
 # ---------------------------------------------------------------------------
@@ -801,8 +818,10 @@ def _run_capacity_unmet_iterative_pass(
     state_path: Path | str = CAPACITY_UNMET_STATE_PATH,
     allow_same_results_reuse: bool = CAPACITY_UNMET_ALLOW_SAME_RESULTS_REUSE,
     run_id: str | None = None,
+    allocation_ledger: CapacityUnmetAllocationLedger | None = None,
 ) -> dict[str, object]:
     """Compute one manual unmet-capacity pass and persist cumulative state."""
+    allocation_ledger = _resolve_capacity_unmet_allocation_ledger(allocation_ledger)
     if reconciliation_table.empty:
         raise ValueError("Cannot run capacity_unmet_iterative with empty reconciliation table.")
 
@@ -1141,7 +1160,8 @@ def _run_capacity_unmet_iterative_pass(
     for key, value in pass_output_additions.items():
         cumulative_output_map[key] = cumulative_output_map.get(key, 0.0) + float(value)
 
-    _set_capacity_unmet_runtime_capacity_additions(dict(cumulative_capacity_map))
+    allocation_ledger.capacity_additions = dict(cumulative_capacity_map)
+    _refresh_legacy_allocation_ledger_views(allocation_ledger)
     state["cumulative_capacity_additions"] = cumulative_capacity_map
     state["cumulative_output_additions"] = cumulative_output_map
     state["last_results_signatures"] = signature_map
@@ -1255,6 +1275,8 @@ def _run_capacity_unmet_iterative_pass(
         "Import workbook into LEAP, recalc, refresh results tables, rerun this workflow."
     )
     print("=" * 96 + "\n")
+    allocation_ledger.pass_summary = pass_summary
+    _refresh_legacy_allocation_ledger_views(allocation_ledger)
     return pass_summary
 
 
@@ -1269,8 +1291,10 @@ def _run_capacity_unmet_iterative_balanced_pass(
     state_path: Path | str = CAPACITY_UNMET_STATE_PATH,
     allow_same_results_reuse: bool = CAPACITY_UNMET_ALLOW_SAME_RESULTS_REUSE,
     run_id: str | None = None,
+    allocation_ledger: CapacityUnmetAllocationLedger | None = None,
 ) -> dict[str, object]:
     """Compute one iterative pass using observed imports gaps as unmet proxy."""
+    allocation_ledger = _resolve_capacity_unmet_allocation_ledger(allocation_ledger)
     if reconciliation_table.empty:
         raise ValueError("Cannot run capacity_unmet_iterative_balanced with empty reconciliation table.")
 
@@ -1801,9 +1825,10 @@ def _run_capacity_unmet_iterative_balanced_pass(
     for key, value in pass_export_adjustments.items():
         cumulative_export_map[key] = cumulative_export_map.get(key, 0.0) + float(value)
 
-    _set_capacity_unmet_runtime_capacity_additions(dict(cumulative_capacity_map))
-    _set_capacity_unmet_runtime_primary_additions(dict(cumulative_primary_map))
-    _set_capacity_unmet_runtime_export_adjustments(dict(cumulative_export_map))
+    allocation_ledger.capacity_additions = dict(cumulative_capacity_map)
+    allocation_ledger.primary_additions = dict(cumulative_primary_map)
+    allocation_ledger.export_adjustments = dict(cumulative_export_map)
+    _refresh_legacy_allocation_ledger_views(allocation_ledger)
     state["cumulative_capacity_additions"] = cumulative_capacity_map
     state["cumulative_output_additions"] = cumulative_output_map
     state["cumulative_primary_additions"] = cumulative_primary_map
@@ -1919,4 +1944,6 @@ def _run_capacity_unmet_iterative_balanced_pass(
         "Import workbook into LEAP, recalc, refresh results tables, rerun this workflow."
     )
     print("=" * 96 + "\n")
+    allocation_ledger.pass_summary = pass_summary
+    _refresh_legacy_allocation_ledger_views(allocation_ledger)
     return pass_summary
