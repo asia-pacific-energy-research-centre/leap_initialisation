@@ -13,6 +13,7 @@ from codebase.supply_reconciliation_config import (
     RESULTS_RUNTIME_DIR,
 )
 from codebase.supply_reconciliation_history import (
+    load_convergence_run_manifest,
     load_convergence_csv,
 )
 from codebase.utilities.workflow_utils import _resolve
@@ -100,6 +101,26 @@ def _filter_convergence_for_run(convergence: pd.DataFrame, run_id: str) -> pd.Da
         return convergence.copy()
     run_values = convergence["run_id"].astype(str).str.strip()
     return convergence[run_values == str(run_id or "").strip()].copy()
+
+
+def _manifest_difference_fields(
+    manifest_a: dict[str, object] | None,
+    manifest_b: dict[str, object] | None,
+) -> list[str]:
+    """Return provenance fields that differ, keeping absent legacy manifests harmless."""
+    if manifest_a is None or manifest_b is None:
+        return []
+    fields = [
+        "commit7",
+        "preset_name",
+        "economies",
+        "scenarios",
+        "mode",
+        "iteration_run_mode",
+        "input_fingerprints",
+        "certified",
+    ]
+    return [field for field in fields if manifest_a.get(field) != manifest_b.get(field)]
 
 
 def _gap_total(pass_summary: dict) -> float:
@@ -358,6 +379,12 @@ def compare_capacity_unmet_runs(
         "unresolved_in_both": sorted(unresolved_a & unresolved_b),
         "mode_mismatch": mode_mismatch,
     }
+    manifest_runtime_dir = convergence_path.parent
+    manifest_a = load_convergence_run_manifest(str(run_id_a), runtime_dir=manifest_runtime_dir)
+    manifest_b = load_convergence_run_manifest(str(run_id_b), runtime_dir=manifest_runtime_dir)
+    summary["manifest_a_found"] = manifest_a is not None
+    summary["manifest_b_found"] = manifest_b is not None
+    summary["manifest_difference_fields"] = _manifest_difference_fields(manifest_a, manifest_b)
 
     if print_summary:
         print(f"[CAPACITY_UNMET_COMPARISON] {run_id_a} -> {run_id_b}")
@@ -367,6 +394,11 @@ def compare_capacity_unmet_runs(
         )
         if mode_mismatch:
             print("  WARNING: runs used different mode / iteration_run_mode values.")
+        if summary["manifest_difference_fields"]:
+            print(
+                "  manifest differences: "
+                + ", ".join(summary["manifest_difference_fields"])
+            )
         print(
             f"  resolved in B={len(summary['resolved_in_b'])}, "
             f"newly unresolved in B={len(summary['newly_unresolved_in_b'])}, "
@@ -379,6 +411,8 @@ def compare_capacity_unmet_runs(
         "end_gap_delta": end_gap_delta,
         "run_a": diag_a,
         "run_b": diag_b,
+        "manifest_a": manifest_a,
+        "manifest_b": manifest_b,
     }
 
 

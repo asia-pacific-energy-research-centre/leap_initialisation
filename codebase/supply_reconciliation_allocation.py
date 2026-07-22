@@ -30,6 +30,8 @@ from codebase.supply_reconciliation_history import (
     _resolve_capacity_unmet_pass_mode,
     _read_capacity_unmet_state,
     _write_capacity_unmet_state,
+    build_convergence_input_fingerprints,
+    write_convergence_run_manifest,
 )
 
 # ---------------------------------------------------------------------------
@@ -49,6 +51,49 @@ _CAPACITY_UNMET_RUNTIME_PASS_SUMMARY: dict[str, object] | None = None
 def _generate_capacity_unmet_run_id() -> str:
     """Return a UTC timestamp run id for one capacity-unmet workflow invocation."""
     return datetime.now(timezone.utc).strftime("capacity_unmet_%Y%m%dT%H%M%S%fZ")
+
+
+def _convergence_manifest_input_paths() -> dict[str, Path | str]:
+    """Return the stable source/template inputs recorded for a convergence pass."""
+    return {
+        "esto_csv": ENERGY_SOURCE_CONFIG.esto_base_table_path,
+        "ninth_csv": ENERGY_SOURCE_CONFIG.ninth_projection_table_path,
+        "export_template": FULL_MODEL_EXPORT_CATALOG_PATH,
+    }
+
+
+def _record_convergence_manifest(
+    *,
+    run_id: str,
+    scenario_pairs: list[tuple[str, str]],
+    mode: str,
+    iteration_run_mode: str,
+    input_paths: dict[str, Path | str],
+    starting_fingerprints: dict[str, dict[str, object]],
+) -> None:
+    """Write provenance and warn/flag it when a source changed during a pass."""
+    try:
+        ending_fingerprints = build_convergence_input_fingerprints(input_paths)
+        certified = starting_fingerprints == ending_fingerprints
+        manifest_path = write_convergence_run_manifest(
+            run_id=run_id,
+            economies=[economy for economy, _ in scenario_pairs],
+            scenarios=[scenario for _, scenario in scenario_pairs],
+            mode=mode,
+            iteration_run_mode=iteration_run_mode,
+            input_paths=input_paths,
+            input_fingerprints=starting_fingerprints,
+            certified=certified,
+        )
+        if not certified:
+            print(
+                "[WARN] Convergence run inputs changed while this pass was in flight. "
+                f"Manifest marked certified=False: {manifest_path}"
+            )
+    except Exception as exc:
+        # Provenance is diagnostic-only; a history write must not invalidate a
+        # completed capacity allocation or change the generated seed.
+        print(f"[WARN] Could not write convergence run manifest: {exc}")
 
 
 def _build_positive_gap_rows(
@@ -758,6 +803,9 @@ def _run_capacity_unmet_iterative_pass(
     if not scenario_pairs:
         raise ValueError("capacity_unmet_iterative mode needs at least one economy/scenario pair.")
 
+    manifest_input_paths = _convergence_manifest_input_paths()
+    manifest_starting_fingerprints = build_convergence_input_fingerprints(manifest_input_paths)
+
     label_to_product = _build_label_to_esto_product_lookup()
     observed_trade, signature_map, unmatched_result_fuels = _collect_observed_trade_from_supply_results(
         scenario_pairs=scenario_pairs,
@@ -1094,6 +1142,14 @@ def _run_capacity_unmet_iterative_pass(
     _delta_history.append(pass_delta)
     state["pass_deltas"] = _delta_history[-50:]
     persisted_path = _write_capacity_unmet_state(state, state_path=state_path)
+    _record_convergence_manifest(
+        run_id=resolved_run_id,
+        scenario_pairs=scenario_pairs,
+        mode=pass_summary["mode"],
+        iteration_run_mode=run_mode,
+        input_paths=manifest_input_paths,
+        starting_fingerprints=manifest_starting_fingerprints,
+    )
 
     print("\n" + "=" * 96)
     print("[CAPACITY_UNMET_ITERATIVE] Pass summary")
@@ -1234,6 +1290,9 @@ def _run_capacity_unmet_iterative_balanced_pass(
             scenario_pairs.append(pair)
     if not scenario_pairs:
         raise ValueError("capacity_unmet_iterative_balanced needs at least one economy/scenario pair.")
+
+    manifest_input_paths = _convergence_manifest_input_paths()
+    manifest_starting_fingerprints = build_convergence_input_fingerprints(manifest_input_paths)
 
     label_to_product = _build_label_to_esto_product_lookup()
     observed_trade, signature_map, unmatched_result_fuels = _collect_observed_trade_from_supply_results(
@@ -1761,6 +1820,14 @@ def _run_capacity_unmet_iterative_balanced_pass(
     _delta_history.append(pass_delta)
     state["pass_deltas"] = _delta_history[-50:]
     persisted_path = _write_capacity_unmet_state(state, state_path=state_path)
+    _record_convergence_manifest(
+        run_id=resolved_run_id,
+        scenario_pairs=scenario_pairs,
+        mode=pass_summary["mode"],
+        iteration_run_mode=run_mode,
+        input_paths=manifest_input_paths,
+        starting_fingerprints=manifest_starting_fingerprints,
+    )
 
     print("\n" + "=" * 96)
     print("[CAPACITY_UNMET_ITERATIVE_BALANCED] Pass summary")

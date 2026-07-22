@@ -14,7 +14,12 @@ from codebase.supply_reconciliation_history import (
     load_convergence_csv,
     remove_convergence_run,
     rollback_last_capacity_unmet_pass,
+    build_convergence_input_fingerprints,
+    compare_convergence_manifest_inputs,
+    load_convergence_run_manifest,
+    prune_convergence_history,
     trim_convergence_csv_to_pass,
+    write_convergence_run_manifest,
 )
 
 _COLUMNS = CONVERGENCE_CSV_COLUMNS
@@ -164,3 +169,61 @@ def test_rollback_also_trims_convergence_csv(tmp_path):
 
     df = pd.read_csv(csv_path)
     assert list(df["pass_count"]) == [1, 2]
+
+
+def test_manifest_round_trip_and_input_drift_are_additive(tmp_path):
+    source = tmp_path / "esto.csv"
+    source.write_text("first", encoding="utf-8")
+    template = tmp_path / "template.xlsx"
+    template.write_text("template", encoding="utf-8")
+    paths = {"esto_csv": source, "export_template": template}
+    fingerprints = build_convergence_input_fingerprints(paths)
+
+    manifest_path = write_convergence_run_manifest(
+        run_id="run_a",
+        economies=["01_AUS"],
+        scenarios=["Target"],
+        mode="capacity_unmet_iterative_balanced",
+        iteration_run_mode="results_update",
+        input_paths=paths,
+        input_fingerprints=fingerprints,
+        runtime_dir=tmp_path,
+    )
+
+    manifest = load_convergence_run_manifest("run_a", runtime_dir=tmp_path)
+    assert manifest_path.exists()
+    assert manifest["economies"] == ["01_AUS"]
+    assert manifest["input_fingerprints"] == fingerprints
+    assert compare_convergence_manifest_inputs("run_a", paths, runtime_dir=tmp_path) == {}
+
+    source.write_text("changed", encoding="utf-8")
+    drift = compare_convergence_manifest_inputs("run_a", paths, runtime_dir=tmp_path)
+    assert set(drift) == {"esto_csv"}
+
+
+def test_prune_convergence_history_defaults_to_dry_run_and_keeps_latest(tmp_path):
+    csv_path = tmp_path / "convergence.csv"
+    _make_csv(csv_path, [1], run_id="run_a")
+    _make_csv(csv_path, [1], run_id="run_b")
+    _make_csv(csv_path, [1], run_id="run_c")
+    paths = {"source": tmp_path / "source.csv"}
+    paths["source"].write_text("source", encoding="utf-8")
+    for run_id in ("run_a", "run_b", "run_c"):
+        write_convergence_run_manifest(
+            run_id=run_id,
+            economies=["01_AUS"], scenarios=["Target"], mode="balanced",
+            iteration_run_mode="results_update", input_paths=paths, runtime_dir=tmp_path,
+        )
+
+    preview = prune_convergence_history(keep_runs=1, csv_path=csv_path, runtime_dir=tmp_path)
+    assert preview["dry_run"] is True
+    assert preview["removed_run_ids"] == ["run_a", "run_b"]
+    assert set(pd.read_csv(csv_path)["run_id"]) == {"run_a", "run_b", "run_c"}
+
+    result = prune_convergence_history(
+        keep_runs=1, csv_path=csv_path, runtime_dir=tmp_path, dry_run=False,
+    )
+    assert result["removed_run_ids"] == ["run_a", "run_b"]
+    assert set(pd.read_csv(csv_path)["run_id"]) == {"run_c"}
+    assert load_convergence_run_manifest("run_a", runtime_dir=tmp_path) is None
+    assert load_convergence_run_manifest("run_c", runtime_dir=tmp_path) is not None

@@ -1009,16 +1009,26 @@ from codebase.functions.capacity_unmet_convergence_diagnostics import (
 
 latest_report = build_capacity_unmet_run_diagnostics()
 
-# Compare the latest two run ids in capacity_unmet_convergence.csv.
-comparison = compare_capacity_unmet_runs()
+# Compare named runs (or omit both ids to compare the latest two).
+comparison = compare_capacity_unmet_runs(
+    run_id_a="capacity_unmet_20260710T010203456789Z",
+    run_id_b="capacity_unmet_20260712T010203456789Z",
+)
 
 # Remove convergence-history rows for a deliberately reverted run.
 from codebase.supply_reconciliation_history import remove_convergence_run
 
 remove_convergence_run(run_id="capacity_unmet_20260710T010203456789Z")
+
+# Always preview retention before allowing it to remove named history runs.
+from codebase.supply_reconciliation_history import prune_convergence_history
+preview = prune_convergence_history(keep_runs=20)
+prune_convergence_history(keep_runs=20, dry_run=False)
 ```
 
-`build_capacity_unmet_run_diagnostics()` prints a short summary and writes `capacity_unmet_run_diagnostics_<run_id>.csv` to the runtime supporting-files folder. The CSV shows per-fuel start/end gap, gap delta, allocation split across primary production, transformation capacity, imports fallback, clipped amount, and whether the fuel remains unresolved. `compare_capacity_unmet_runs()` reports side-by-side gap trajectories, closure and pass-count deltas, unresolved-set differences, and warns when the two runs used different `mode` / `iteration_run_mode` values.
+`build_capacity_unmet_run_diagnostics()` prints a short summary and writes `capacity_unmet_run_diagnostics_<run_id>.csv` to the runtime supporting-files folder. The CSV shows per-fuel start/end gap, gap delta, allocation split across primary production, transformation capacity, imports fallback, clipped amount, and whether the fuel remains unresolved. Each new iterative pass also writes an additive `capacity_unmet_run_manifests/capacity_unmet_run_manifest_<run_id>.json` beside the CSV. It records the commit, run scope, pass modes, and cheap source/template fingerprints; a source change during the pass marks it `certified=false` without aborting the completed allocation. Legacy CSV history remains readable and simply has no manifest.
+
+`compare_capacity_unmet_runs()` reports side-by-side gap trajectories, closure and pass-count deltas, unresolved-set differences, and warns when the two runs used different `mode` / `iteration_run_mode` values. It also reports manifest provenance differences when both selected run ids have manifests. `prune_convergence_history()` is deliberately opt-in and dry-run by default: it retains legacy rows and never removes the latest named run.
 
 **Files:** `codebase/supply_reconciliation_allocation.py`, `codebase/functions/capacity_unmet_convergence_diagnostics.py`, `codebase/supply_reconciliation_history.py`, `outputs/leap_exports/supply_reconciliation/<pass_mode>/supporting_files/runtime/capacity_unmet_convergence.csv`
 
