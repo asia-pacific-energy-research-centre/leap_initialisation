@@ -106,37 +106,22 @@ def test_both_sites_route_through_the_shared_predicate(label):
     )
 
 
-def test_sector_scope_is_still_dead_on_the_reconciliation_mask():
-    """Open defect, pinned so it is not forgotten (work_queue [17], open item 1).
-
-    ``sector_set`` gates only the transformation-records half, so
-    RESET_SCOPE_SECTOR_TITLES silently does nothing to the reconciliation half.
-    Dormant while the reset is gated off, but it is the first knob anyone
-    reaches for if the LEAP API returns. When this is fixed, this test should
-    fail and be inverted.
-    """
+def test_sector_scope_narrows_the_reconciliation_mask():
+    """The reset must apply its module scope to both reset representations."""
     start = TABLES_SRC.index("def reset_supply_and_transformation_import_export_to_zero")
     end = TABLES_SRC.index("reconciliation_zero_columns", start)
     body = TABLES_SRC[start:end]
     mask_lines = [ln for ln in body.splitlines() if "mask &=" in ln]
     assert mask_lines, "reset mask construction not found"
-    assert not any("sector" in ln for ln in mask_lines), (
-        "sector_set now narrows the reconciliation mask - open item 1 in "
-        "docs/work_queue.md [17] is fixed; invert this test"
+    assert any("sector" in ln for ln in mask_lines), (
+        "sector_set must narrow the reconciliation mask as well as process records"
     )
 
 
-def test_aggregate_sentinel_resolver_is_still_strict():
-    """Open defect, pinned (work_queue [17], open item 2 - Finding 2).
-
-    The reset resolves the export template through the strict resolver, which
-    raises on aggregate sentinels like 00_APEC. c5401a5 masks this by not
-    entering the reset in workbook mode; the call site is still wrong and the
-    raise returns with the API. Invert when switched to the _or_fallback sibling.
-    """
+def test_aggregate_sentinel_reset_uses_explicit_fallback_resolver():
+    """Aggregates have no area template, so reset scope must use its fallback."""
     start = TABLES_SRC.index("def reset_supply_and_transformation_import_export_to_zero")
     body = TABLES_SRC[start:start + 6000]
-    assert "resolve_leap_export_template_or_fallback" not in body, (
-        "the reset now uses the fallback resolver - Finding 2 is resolved rather "
-        "than masked; update docs/work_queue.md [17] and invert this test"
+    assert "resolve_leap_export_template_or_fallback" in body, (
+        "aggregate reset scope must route through the explicit fallback resolver"
     )

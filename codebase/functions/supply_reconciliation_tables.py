@@ -1766,7 +1766,9 @@ def reset_supply_and_transformation_import_export_to_zero(
         _configured_reset_module_names,
         _configured_reset_fuel_labels,
     )
-    from codebase.utilities.leap_export_template_resolver import resolve_leap_export_template
+    from codebase.utilities.leap_export_template_resolver import (
+        resolve_leap_export_template_or_fallback,
+    )
 
     if not isinstance(reconciliation_table, pd.DataFrame):
         raise TypeError("reconciliation_table must be a pandas DataFrame")
@@ -1804,7 +1806,10 @@ def reset_supply_and_transformation_import_export_to_zero(
                     [updated_records[index] for index in record_indices] if updated_records is not None else None,
                     economies=[economy], scenarios=scenarios, sector_titles=sector_titles,
                     esto_products=esto_products, years=years,
-                    template_path=resolve_leap_export_template(economy),
+                    template_path=resolve_leap_export_template_or_fallback(
+                        economy,
+                        fallback=RESULTS_VERIFICATION_EXPORT_PATH,
+                    ),
                 )
                 updated_reconciliation.loc[reconciliation_indices, reset_table.columns] = reset_table
                 if updated_records is not None and reset_records is not None:
@@ -1812,7 +1817,10 @@ def reset_supply_and_transformation_import_export_to_zero(
                         updated_records[index] = record
             return updated_reconciliation, updated_records
         if len(unique_economies) == 1:
-            template_path = resolve_leap_export_template(unique_economies[0])
+            template_path = resolve_leap_export_template_or_fallback(
+                unique_economies[0],
+                fallback=RESULTS_VERIFICATION_EXPORT_PATH,
+            )
 
     def _norm_set(values: Iterable[str] | None) -> set[str]:
         if not values:
@@ -1887,6 +1895,8 @@ def reset_supply_and_transformation_import_export_to_zero(
         mask &= updated_reconciliation["economy"].astype(str).str.strip().str.lower().isin(economy_set)
     if scenario_set and "scenario" in updated_reconciliation.columns:
         mask &= updated_reconciliation["scenario"].astype(str).str.strip().str.lower().isin(scenario_set)
+    if sector_set and "sector_title" in updated_reconciliation.columns:
+        mask &= updated_reconciliation["sector_title"].astype(str).str.strip().str.lower().isin(sector_set)
     if product_set and "esto_product" in updated_reconciliation.columns:
         product_values = updated_reconciliation["esto_product"].astype(str).str.strip()
         product_mask = product_values.isin(product_set)

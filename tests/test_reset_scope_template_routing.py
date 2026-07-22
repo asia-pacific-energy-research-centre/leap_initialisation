@@ -41,8 +41,8 @@ def test_multi_economy_reset_uses_each_economys_template_scope(monkeypatch, tmp_
     templates = {"20_USA": usa_template, "12_NZ": nz_template}
 
     monkeypatch.setattr(
-        "codebase.utilities.leap_export_template_resolver.resolve_leap_export_template",
-        lambda economy: templates[str(economy)],
+        "codebase.utilities.leap_export_template_resolver.resolve_leap_export_template_or_fallback",
+        lambda economy, *, fallback: templates[str(economy)],
     )
     monkeypatch.setattr(
         supply_reconciliation_tables,
@@ -78,6 +78,98 @@ def test_multi_economy_reset_uses_each_economys_template_scope(monkeypatch, tmp_
     assert updated_table["adjusted_imports"].tolist() == [0.0, 0.0]
     assert updated_records[0]["output_import_targets"]["USA fuel"][2022] == 0.0
     assert updated_records[1]["output_import_targets"]["NZ fuel"][2022] == 0.0
+
+
+def test_reset_sector_scope_narrows_reconciliation_rows(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        supply_reconciliation_tables,
+        "_build_label_to_esto_product_lookup",
+        lambda: {"Fuel": "Fuel"},
+    )
+    monkeypatch.setattr(
+        supply_preflight,
+        "_configured_reset_module_names",
+        lambda template_path=None: set(),
+    )
+    monkeypatch.setattr(
+        supply_preflight,
+        "_configured_reset_fuel_labels",
+        lambda template_path=None: [],
+    )
+    reconciliation = pd.DataFrame(
+        {
+            "economy": ["20_USA", "20_USA"],
+            "scenario": ["Reference", "Reference"],
+            "sector_title": ["Selected module", "Other module"],
+            "esto_product": ["Fuel", "Fuel"],
+            "year": [2022, 2022],
+            "adjusted_imports": [3.0, 4.0],
+        }
+    )
+
+    updated_table, _ = supply_reconciliation_tables.reset_supply_and_transformation_import_export_to_zero(
+        reconciliation,
+        economies=["20_USA"],
+        sector_titles=["Selected module"],
+        esto_products=["Fuel"],
+        years=[2022],
+        template_path=tmp_path / "scope.xlsx",
+    )
+
+    assert updated_table["adjusted_imports"].tolist() == [0.0, 4.0]
+
+
+def test_aggregate_reset_uses_explicit_fallback_template(monkeypatch, tmp_path):
+    fallback = tmp_path / "aggregate_scope.xlsx"
+    calls: list[tuple[str, Path]] = []
+
+    def _fallback_resolver(economy, *, fallback):
+        calls.append((str(economy), Path(fallback)))
+        return fallback
+
+    monkeypatch.setattr(
+        "codebase.utilities.leap_export_template_resolver.resolve_leap_export_template_or_fallback",
+        _fallback_resolver,
+    )
+    monkeypatch.setattr(
+        supply_reconciliation_tables,
+        "RESULTS_VERIFICATION_EXPORT_PATH",
+        fallback,
+    )
+    monkeypatch.setattr(
+        supply_reconciliation_tables,
+        "_build_label_to_esto_product_lookup",
+        lambda: {"Fuel": "Fuel"},
+    )
+    monkeypatch.setattr(
+        supply_preflight,
+        "_configured_reset_module_names",
+        lambda template_path=None: set(),
+    )
+    monkeypatch.setattr(
+        supply_preflight,
+        "_configured_reset_fuel_labels",
+        lambda template_path=None: [],
+    )
+    reconciliation = pd.DataFrame(
+        {
+            "economy": ["00_APEC"],
+            "scenario": ["Reference"],
+            "esto_product": ["Fuel"],
+            "year": [2022],
+            "adjusted_imports": [3.0],
+        }
+    )
+
+    updated_table, _ = supply_reconciliation_tables.reset_supply_and_transformation_import_export_to_zero(
+        reconciliation,
+        economies=["00_APEC"],
+        esto_products=["Fuel"],
+        years=[2022],
+    )
+
+    assert calls == [("00_APEC", fallback)]
+    assert updated_table["adjusted_imports"].tolist() == [0.0]
 
 
 def test_demand_zeroing_resolves_template_per_economy(monkeypatch, tmp_path):
