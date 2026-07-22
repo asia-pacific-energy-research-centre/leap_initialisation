@@ -583,16 +583,16 @@ In `supply_reconciliation_workflow.py`:
 | `RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE` | `False` | Run the results-update preflight before the main run |
 | `PREFLIGHT_COMPRESSED_RESULTS_UPDATE_ONLY` | `False` | Stop after the preflights (skip the main run) |
 | `PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST` | `False` | Raise immediately if the results-update preflight fails |
-| `TEST_HORIZON_BASE_YEAR_PLUS_ONE` | `False` | Run the selected real main-workflow scope for `BASE_YEAR` and `BASE_YEAR + 1` only |
+| `TEST_HORIZON_BASE_YEAR_PLUS_ONE` | `True` | Standard production/iteration horizon: run the selected real scope for `BASE_YEAR` and `BASE_YEAR + 1` only |
 
 Either preflight can be enabled independently, run in preflight-only mode, and be
 configured fail-fast or warning-and-continue. The results-update preflight is off by
 default so it does not lengthen every run; enable it (ideally right before a full
 `results_update`) when you want the balance-export integration check.
 
-### Two-year main-workflow iteration mode
+### Two-year main-workflow production/iteration mode
 
-`TEST_HORIZON_BASE_YEAR_PLUS_ONE=True` is a separate, notebook-only iteration aid.
+`TEST_HORIZON_BASE_YEAR_PLUS_ONE=True` is the standard notebook production/iteration horizon.
 It runs the selected real economies, scenarios, source files, and normal output
 layout, but temporarily limits supply, transformation, demand, balance-table, and
 baseline-seed validation horizons to `BASE_YEAR` through `BASE_YEAR + 1`. The
