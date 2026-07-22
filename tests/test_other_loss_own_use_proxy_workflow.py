@@ -1883,6 +1883,148 @@ def test_transmission_distribution_target_includes_electricity_and_heat() -> Non
     assert set(target["leap_process_label"]) == {"Transmission and distribution loss"}
 
 
+@pytest.mark.parametrize(
+    "process_key",
+    [
+        "electricity_chp_and_heat_plants",
+        "oil_and_gas_extraction",
+        "nuclear_industry",
+        "gasification_plants_for_biogases",
+        "transmission_and_distribution_losses",
+    ],
+)
+def test_enabled_proxy_process_activity_sources_honor_current_config(process_key: str) -> None:
+    """Characterize the five previously unexercised enabled proxy definitions.
+
+    These compact fixtures include a second row in each source. They pin both
+    configured numerators without asserting modelling values beyond the
+    current configuration contract. Transmission/distribution intentionally
+    accepts both rows: its current activity config has no fuel filter.
+    """
+    cfg = next(item for item in workflow.PROXY_CONFIG if item["process_key"] == process_key)
+    esto_cfg = cfg["activity_sources"]["esto"]
+    ninth_cfg = cfg["activity_sources"]["ninth"]
+    matching_product = next(
+        iter(esto_cfg["include_exact_products"]),
+        "08.01 Natural gas",
+    )
+    matching_sector = list(ninth_cfg["sector_codes"])[0]
+    matching_fuel = next(iter(ninth_cfg["fuels"]), "08_gas")
+    matching_subfuel = next(iter(ninth_cfg["subfuels"]), "08_01_natural_gas")
+    non_matching_product = (
+        list(esto_cfg["exclude_products"])[0]
+        if esto_cfg["exclude_products"]
+        else "99 Not configured"
+    )
+    non_matching_fuel = (
+        list(ninth_cfg["exclude_fuels"])[0]
+        if ninth_cfg["exclude_fuels"]
+        else "99_not_configured"
+    )
+
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "01AUS",
+                "economy_key": "01_AUS",
+                "flows": list(esto_cfg["flows"])[0],
+                "products": matching_product,
+                2022: 10.0,
+            },
+            {
+                "economy": "01AUS",
+                "economy_key": "01_AUS",
+                "flows": list(esto_cfg["flows"])[0],
+                "products": non_matching_product,
+                2022: 99.0,
+            },
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy_key": "01_AUS",
+                "sectors": matching_sector,
+                "sub1sectors": "x", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x",
+                "fuels": matching_fuel, "subfuels": matching_subfuel, 2023: 20.0,
+            },
+            {
+                "economy_key": "01_AUS",
+                "sectors": matching_sector,
+                "sub1sectors": "x", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x",
+                "fuels": non_matching_fuel,
+                "subfuels": non_matching_fuel,
+                2023: 99.0,
+            },
+        ]
+    )
+
+    expected_esto_activity = 10.0 if (
+        esto_cfg["include_exact_products"] or esto_cfg["product_prefixes"] or esto_cfg["exclude_products"]
+    ) else 109.0
+    expected_ninth_activity = 20.0 if (
+        ninth_cfg["fuels"] or ninth_cfg["subfuels"] or ninth_cfg["exclude_fuels"] or ninth_cfg["exclude_subfuels"]
+    ) else 119.0
+
+    assert workflow.build_esto_proxy_activity_series(
+        esto_data=esto, economy="01_AUS", config=cfg, base_year=2022,
+    ) == {2022: expected_esto_activity}
+    assert workflow.build_ninth_proxy_activity_series(
+        ninth_data=ninth, economy="01_AUS", config=cfg, base_year=2022, final_year=2023,
+    ) == {2023: expected_ninth_activity}
+
+
+@pytest.mark.parametrize(
+    "process_key",
+    [
+        "electricity_chp_and_heat_plants",
+        "oil_and_gas_extraction",
+        "nuclear_industry",
+        "gasification_plants_for_biogases",
+        "transmission_and_distribution_losses",
+    ],
+)
+def test_enabled_proxy_process_target_filters_select_configured_own_use_rows(process_key: str) -> None:
+    """Pin target-flow/sector selection for every enabled process lacking fixtures."""
+    cfg = next(item for item in workflow.PROXY_CONFIG if item["process_key"] == process_key)
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "01AUS", "economy_key": "01_AUS",
+                "flows": cfg["target_sources"]["esto"]["flows"][0],
+                "products": "08.01 Natural gas", 2022: -2.0,
+            },
+            {
+                "economy": "01AUS", "economy_key": "01_AUS",
+                "flows": "10.99 Not configured", "products": "08.01 Natural gas", 2022: -99.0,
+            },
+        ]
+    )
+    target_sector = cfg["target_sources"]["ninth"]["sector_codes"][0]
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy_key": "01_AUS", "sectors": target_sector,
+                "sub1sectors": "x", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x",
+                "fuels": "08_gas", "subfuels": "08_01_natural_gas", 2023: -3.0,
+            },
+            {
+                "economy_key": "01_AUS", "sectors": "10_99_not_configured",
+                "sub1sectors": "x", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x",
+                "fuels": "08_gas", "subfuels": "08_01_natural_gas", 2023: -99.0,
+            },
+        ]
+    )
+
+    target = workflow.build_target_energy_long(
+        esto_data=esto, ninth_data=ninth, economy="01_AUS", config=cfg,
+        base_year=2022, final_year=2023, fuel_mapping_lookup={"esto": {}, "ninth": {}},
+    )
+
+    assert target.groupby("source_dataset")["target_energy"].sum().to_dict() == {"esto": 2.0, "ninth": 3.0}
+    assert set(target["process_key"]) == {process_key}
+
+
 def test_fuel_set_verification_flags_missing_activity_fuel() -> None:
     cfg = workflow.make_proxy_config(
         process_key="test",
