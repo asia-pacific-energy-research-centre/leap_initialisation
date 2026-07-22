@@ -694,13 +694,20 @@ def _resolve_run_output_label() -> str | None:
 
 def _refresh_output_paths_for_current_pass_mode() -> None:
     """Apply the selected pass mode to this workflow and all imported consumers."""
-    refreshed_paths = _supply_reconciliation_config.refresh_output_paths_for_pass_mode(
+    resolved_run_context = _supply_reconciliation_config.resolve_reconciliation_run_context(
         CAPACITY_UNMET_PASS_MODE,
         _resolve_run_output_label(),
+    )
+    refreshed_paths = _supply_reconciliation_config.refresh_output_paths_for_pass_mode(
+        resolved_run_context.capacity_unmet_pass_mode,
+        resolved_run_context.run_output_label,
     )
     globals()["CAPACITY_UNMET_PASS_MODE"] = (
         _supply_reconciliation_config.CAPACITY_UNMET_PASS_MODE
     )
+    # B3 introduction: consumers still use their legacy config-name view, but
+    # the resolved value object is now available for explicit threading.
+    globals()["ACTIVE_RUN_CONTEXT"] = resolved_run_context
     globals()["ACTIVE_RUN_OUTPUT_LABEL"] = _supply_reconciliation_config.RUN_OUTPUT_LABEL
     for name, value in refreshed_paths.items():
         globals()[name] = value

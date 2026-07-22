@@ -191,6 +191,39 @@ def test_each_preset_resolves_its_characterized_run_context(
     )
 
 
+def test_run_contexts_are_independent_values_before_legacy_global_refresh() -> None:
+    """B3 may construct two output scopes without mutating config globals."""
+    original_values = {
+        name: getattr(config, name)
+        for name in RUN_CONTEXT_CONFIG_NAMES
+    }
+
+    baseline_context = config.resolve_reconciliation_run_context(
+        "baseline_seed",
+        "SEED_01_AUS_TGT",
+    )
+    update_context = config.resolve_reconciliation_run_context(
+        "results_update",
+        "UPDATE_02_BD_TGT",
+    )
+
+    assert baseline_context.capacity_unmet_pass_mode == "baseline_seed"
+    assert update_context.capacity_unmet_pass_mode == "results_update"
+    assert baseline_context.output_dir != update_context.output_dir
+    assert baseline_context.results_runtime_dir == (
+        baseline_context.output_dir / "supporting_files" / "runtime"
+    )
+    assert update_context.capacity_unmet_state_path == (
+        update_context.results_runtime_dir / "capacity_unmet_iterative_state.json"
+    )
+    assert baseline_context.as_config_overrides()["RUN_OUTPUT_LABEL"] == "SEED_01_AUS_TGT"
+    assert update_context.as_config_overrides()["RUN_OUTPUT_LABEL"] == "UPDATE_02_BD_TGT"
+    assert {
+        name: getattr(config, name)
+        for name in RUN_CONTEXT_CONFIG_NAMES
+    } == original_values
+
+
 def test_public_workflow_callables_keep_their_notebook_contract() -> None:
     expected = {
         "run_with_config": (),

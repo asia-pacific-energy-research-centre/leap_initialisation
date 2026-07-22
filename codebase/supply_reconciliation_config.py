@@ -369,6 +369,105 @@ CAPACITY_UNMET_IMPORT_SHEETS: tuple[str, ...] = ("imports primary", "imports sec
 CAPACITY_UNMET_EXPORT_SHEETS: tuple[str, ...] = ("exports primary", "exports secondary")
 
 
+@dataclasses.dataclass(frozen=True)
+class ReconciliationRunContext:
+    """Resolved output identity for one reconciliation pass.
+
+    This is deliberately a value object.  It lets a caller construct multiple
+    output scopes in one interpreter without rebinding this module's legacy
+    globals.  ``refresh_output_paths_for_pass_mode`` remains below as the
+    backwards-compatible adapter for notebook callers that still use those
+    globals.
+    """
+
+    capacity_unmet_pass_mode: str
+    run_output_label: str | None
+    output_dir: Path
+    export_output_dir: Path
+    transformation_export_output_dir: Path
+    yearly_balance_dir: Path
+    conventional_balance_dir: Path
+    capacity_unmet_results_dir: Path
+    results_single_file_archive_dir: Path
+    results_checks_dir: Path
+    results_runtime_dir: Path
+    capacity_unmet_state_path: Path
+    leap_fuel_branch_probe_output_path: Path
+
+    def as_config_overrides(self) -> dict[str, Path | str | None]:
+        """Return the legacy config-name view used during staged migration."""
+        return {
+            "CAPACITY_UNMET_PASS_MODE": self.capacity_unmet_pass_mode,
+            "RUN_OUTPUT_LABEL": self.run_output_label,
+            "OUTPUT_DIR": self.output_dir,
+            "EXPORT_OUTPUT_DIR": self.export_output_dir,
+            "TRANSFORMATION_EXPORT_OUTPUT_DIR": self.transformation_export_output_dir,
+            "YEARLY_BALANCE_DIR": self.yearly_balance_dir,
+            "CONVENTIONAL_BALANCE_DIR": self.conventional_balance_dir,
+            "CAPACITY_UNMET_RESULTS_DIR": self.capacity_unmet_results_dir,
+            "RESULTS_SINGLE_FILE_ARCHIVE_DIR": self.results_single_file_archive_dir,
+            "RESULTS_CHECKS_DIR": self.results_checks_dir,
+            "RESULTS_RUNTIME_DIR": self.results_runtime_dir,
+            "CAPACITY_UNMET_STATE_PATH": self.capacity_unmet_state_path,
+            "LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH": self.leap_fuel_branch_probe_output_path,
+        }
+
+
+def resolve_reconciliation_run_context(
+    capacity_unmet_pass_mode: str,
+    run_output_label: str | None = None,
+) -> ReconciliationRunContext:
+    """Resolve one pass's paths without changing module-level configuration."""
+    normalized_mode = str(capacity_unmet_pass_mode).strip().lower()
+    normalized_mode = _PASS_MODE_ALIASES.get(normalized_mode, normalized_mode)
+    if normalized_mode not in _PASS_MODE_SUBDIR:
+        raise ValueError(
+            "Invalid CAPACITY_UNMET_PASS_MODE="
+            f"{capacity_unmet_pass_mode!r}. Expected 'baseline_seed' or 'results_update'."
+        )
+
+    label = str(run_output_label or "").strip()
+    safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "_", label).strip("_.") if label else None
+    if label and not safe_label:
+        raise ValueError("RUN_OUTPUT_LABEL must include at least one letter or number.")
+
+    if safe_label:
+        output_dir = (
+            INTEGRATED_LEAP_EXPORTS_ROOT
+            / _PASS_MODE_SUBDIR[normalized_mode]
+            / "runs"
+            / safe_label
+        )
+        yearly_balance_dir = output_dir / "balance_tables" / "yearly_balance_tables"
+        conventional_balance_dir = output_dir / "balance_tables" / "conventional_balance_tables"
+    else:
+        output_dir = INTEGRATED_LEAP_EXPORTS_ROOT / _PASS_MODE_SUBDIR[normalized_mode]
+        yearly_balance_dir = BALANCE_TABLES_ROOT / "supply_reconciliation" / "yearly_balance_tables"
+        conventional_balance_dir = (
+            BALANCE_TABLES_ROOT / "supply_reconciliation" / "conventional_balance_tables"
+        )
+
+    results_runtime_dir = output_dir / "supporting_files" / "runtime"
+    results_checks_dir = output_dir / "supporting_files" / "checks"
+    return ReconciliationRunContext(
+        capacity_unmet_pass_mode=normalized_mode,
+        run_output_label=safe_label,
+        output_dir=output_dir,
+        export_output_dir=output_dir / "workbooks",
+        transformation_export_output_dir=output_dir / "workbooks",
+        yearly_balance_dir=yearly_balance_dir,
+        conventional_balance_dir=conventional_balance_dir,
+        capacity_unmet_results_dir=yearly_balance_dir,
+        results_single_file_archive_dir=output_dir / "supporting_files" / "archive",
+        results_checks_dir=results_checks_dir,
+        results_runtime_dir=results_runtime_dir,
+        capacity_unmet_state_path=results_runtime_dir / "capacity_unmet_iterative_state.json",
+        leap_fuel_branch_probe_output_path=(
+            results_checks_dir / "transformation_supply_fuel_branch_catalog_probe.csv"
+        ),
+    )
+
+
 def refresh_output_paths_for_pass_mode(
     capacity_unmet_pass_mode: str,
     run_output_label: str | None = None,
@@ -378,13 +477,10 @@ def refresh_output_paths_for_pass_mode(
     A nonblank ``run_output_label`` isolates all generated workbooks, balance
     tables, caches, diagnostics, state, and timing history below ``runs/<label>``.
     """
-    normalized_mode = str(capacity_unmet_pass_mode).strip().lower()
-    normalized_mode = _PASS_MODE_ALIASES.get(normalized_mode, normalized_mode)
-    if normalized_mode not in _PASS_MODE_SUBDIR:
-        raise ValueError(
-            "Invalid CAPACITY_UNMET_PASS_MODE="
-            f"{capacity_unmet_pass_mode!r}. Expected 'baseline_seed' or 'results_update'."
-        )
+    run_context = resolve_reconciliation_run_context(
+        capacity_unmet_pass_mode,
+        run_output_label,
+    )
 
     global CAPACITY_UNMET_PASS_MODE, RUN_OUTPUT_LABEL
     global OUTPUT_DIR, EXPORT_OUTPUT_DIR, TRANSFORMATION_EXPORT_OUTPUT_DIR
@@ -392,54 +488,21 @@ def refresh_output_paths_for_pass_mode(
     global RESULTS_SINGLE_FILE_ARCHIVE_DIR, RESULTS_CHECKS_DIR, RESULTS_RUNTIME_DIR
     global CAPACITY_UNMET_STATE_PATH, LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH
 
-    CAPACITY_UNMET_PASS_MODE = normalized_mode
-    label = str(run_output_label or "").strip()
-    if label:
-        safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "_", label).strip("_.")
-        if not safe_label:
-            raise ValueError("RUN_OUTPUT_LABEL must include at least one letter or number.")
-        RUN_OUTPUT_LABEL = safe_label
-        OUTPUT_DIR = (
-            INTEGRATED_LEAP_EXPORTS_ROOT
-            / _PASS_MODE_SUBDIR[normalized_mode]
-            / "runs"
-            / safe_label
-        )
-    else:
-        RUN_OUTPUT_LABEL = None
-        OUTPUT_DIR = INTEGRATED_LEAP_EXPORTS_ROOT / _PASS_MODE_SUBDIR[normalized_mode]
-    if RUN_OUTPUT_LABEL:
-        YEARLY_BALANCE_DIR = OUTPUT_DIR / "balance_tables" / "yearly_balance_tables"
-        CONVENTIONAL_BALANCE_DIR = OUTPUT_DIR / "balance_tables" / "conventional_balance_tables"
-    else:
-        YEARLY_BALANCE_DIR = BALANCE_TABLES_ROOT / "supply_reconciliation" / "yearly_balance_tables"
-        CONVENTIONAL_BALANCE_DIR = (
-            BALANCE_TABLES_ROOT / "supply_reconciliation" / "conventional_balance_tables"
-        )
-    CAPACITY_UNMET_RESULTS_DIR = YEARLY_BALANCE_DIR
-    EXPORT_OUTPUT_DIR = OUTPUT_DIR / "workbooks"
-    TRANSFORMATION_EXPORT_OUTPUT_DIR = EXPORT_OUTPUT_DIR
-    RESULTS_SINGLE_FILE_ARCHIVE_DIR = OUTPUT_DIR / "supporting_files" / "archive"
-    RESULTS_CHECKS_DIR = OUTPUT_DIR / "supporting_files" / "checks"
-    RESULTS_RUNTIME_DIR = OUTPUT_DIR / "supporting_files" / "runtime"
-    CAPACITY_UNMET_STATE_PATH = RESULTS_RUNTIME_DIR / "capacity_unmet_iterative_state.json"
-    LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH = (
-        RESULTS_CHECKS_DIR / "transformation_supply_fuel_branch_catalog_probe.csv"
-    )
-    return {
-        "OUTPUT_DIR": OUTPUT_DIR,
-        "RUN_OUTPUT_LABEL": RUN_OUTPUT_LABEL,
-        "EXPORT_OUTPUT_DIR": EXPORT_OUTPUT_DIR,
-        "TRANSFORMATION_EXPORT_OUTPUT_DIR": TRANSFORMATION_EXPORT_OUTPUT_DIR,
-        "YEARLY_BALANCE_DIR": YEARLY_BALANCE_DIR,
-        "CONVENTIONAL_BALANCE_DIR": CONVENTIONAL_BALANCE_DIR,
-        "CAPACITY_UNMET_RESULTS_DIR": CAPACITY_UNMET_RESULTS_DIR,
-        "RESULTS_SINGLE_FILE_ARCHIVE_DIR": RESULTS_SINGLE_FILE_ARCHIVE_DIR,
-        "RESULTS_CHECKS_DIR": RESULTS_CHECKS_DIR,
-        "RESULTS_RUNTIME_DIR": RESULTS_RUNTIME_DIR,
-        "CAPACITY_UNMET_STATE_PATH": CAPACITY_UNMET_STATE_PATH,
-        "LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH": LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH,
-    }
+    overrides = run_context.as_config_overrides()
+    CAPACITY_UNMET_PASS_MODE = run_context.capacity_unmet_pass_mode
+    RUN_OUTPUT_LABEL = run_context.run_output_label
+    OUTPUT_DIR = run_context.output_dir
+    EXPORT_OUTPUT_DIR = run_context.export_output_dir
+    TRANSFORMATION_EXPORT_OUTPUT_DIR = run_context.transformation_export_output_dir
+    YEARLY_BALANCE_DIR = run_context.yearly_balance_dir
+    CONVENTIONAL_BALANCE_DIR = run_context.conventional_balance_dir
+    CAPACITY_UNMET_RESULTS_DIR = run_context.capacity_unmet_results_dir
+    RESULTS_SINGLE_FILE_ARCHIVE_DIR = run_context.results_single_file_archive_dir
+    RESULTS_CHECKS_DIR = run_context.results_checks_dir
+    RESULTS_RUNTIME_DIR = run_context.results_runtime_dir
+    CAPACITY_UNMET_STATE_PATH = run_context.capacity_unmet_state_path
+    LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH = run_context.leap_fuel_branch_probe_output_path
+    return overrides
 
 # ---------------------------------------------------------------------------
 # Capacity-unmet iterative config — edit these dicts directly.
