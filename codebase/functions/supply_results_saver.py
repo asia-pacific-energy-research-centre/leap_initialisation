@@ -21,6 +21,7 @@ from openpyxl.styles import Font, PatternFill
 
 from codebase.supply_reconciliation_config import *  # noqa: F401,F403
 from codebase.supply_reconciliation_config import (
+    ReconciliationRunContext,
     _ModuleCapRule,
     _resolve_module_cap_rule,
     _use_legacy_trade_split_mode,
@@ -2810,6 +2811,30 @@ def save_results_linked_single_workbook(
 
 
 
+def _resolve_results_saver_run_paths(
+    run_context: ReconciliationRunContext | None,
+) -> dict[str, Path]:
+    """Resolve this runner's paths from an explicit context or legacy globals.
+
+    The optional context is the B3 boundary.  Preflight still applies temporary
+    module overrides directly, so callers without a context retain precisely the
+    established global-path behaviour while that path is migrated separately.
+    """
+    if run_context is None:
+        return {
+            "output_dir": Path(OUTPUT_DIR),
+            "runtime_dir": _resolve(RESULTS_RUNTIME_DIR),
+            "checks_dir": _resolve(RESULTS_CHECKS_DIR),
+            "state_path": _resolve(CAPACITY_UNMET_STATE_PATH),
+        }
+    return {
+        "output_dir": Path(run_context.output_dir),
+        "runtime_dir": Path(run_context.results_runtime_dir),
+        "checks_dir": Path(run_context.results_checks_dir),
+        "state_path": Path(run_context.capacity_unmet_state_path),
+    }
+
+
 def run_results_linked_transformation_supply_workflow(
     economies: Iterable[str] | None = None,
     scenario_names: list[str] | None = None,
@@ -2818,10 +2843,16 @@ def run_results_linked_transformation_supply_workflow(
     import_scenarios: Iterable[str] | str | None = LEAP_IMPORT_SCENARIOS,
     use_direct_leap_results_for_demand: bool | None = None,
     scrape_leap_results: bool | None = None,
+    run_context: ReconciliationRunContext | None = None,
 ) -> dict[str, object]:
     """Build reconciled transformation + supply exports driven by LEAP balance demand results."""
+    run_paths = _resolve_results_saver_run_paths(run_context)
+    output_dir = run_paths["output_dir"]
+    runtime_dir = run_paths["runtime_dir"]
+    checks_dir = run_paths["checks_dir"]
+    state_path = run_paths["state_path"]
     timer = workflow_common.WorkflowTimer("supply_reconciliation", enabled=ENABLE_WORKFLOW_TIMING)
-    timing_path = _resolve(RESULTS_RUNTIME_DIR) / WORKFLOW_TIMING_FILENAME
+    timing_path = runtime_dir / WORKFLOW_TIMING_FILENAME
     allocation_ledger = _sra._reset_capacity_unmet_allocation_ledger()
     requested_include_leap_import = include_leap_import
     analysis_write_mode = get_analysis_input_write_mode()
@@ -2899,7 +2930,7 @@ def run_results_linked_transformation_supply_workflow(
     _bd_cache_hit = False
     if TRANSFORMATION_SUPPLY_CACHE_ENABLED:
         import hashlib as _hashlib, json as _json, pickle as _pickle
-        _bd_cache_dir = _resolve(RESULTS_RUNTIME_DIR) / "balance_demand_cache"
+        _bd_cache_dir = runtime_dir / "balance_demand_cache"
         _bd_cache_dir.mkdir(parents=True, exist_ok=True)
         _leap_results_dir = _resolve(LEAP_RESULTS_TABLES_DIR)
         _leap_results_mtime = max(
@@ -3076,7 +3107,7 @@ def run_results_linked_transformation_supply_workflow(
         )
     balance_demand_conservation_path = write_balance_demand_conservation_diagnostics(
         balance_demand_conservation,
-        _resolve(RESULTS_CHECKS_DIR) / "supply_reconciliation_balance_demand_conservation.csv",
+        checks_dir / "supply_reconciliation_balance_demand_conservation.csv",
     )
     mismatch_count = int(balance_demand_conservation["is_mismatch"].sum())
     print(
@@ -3118,7 +3149,6 @@ def run_results_linked_transformation_supply_workflow(
             resolved_scope_audit=None,
             compressed_projection_years=conservation_compressed_years,
         )
-        checks_dir = _resolve(RESULTS_CHECKS_DIR)
         balance_demand_breakdown_path = write_balance_demand_conservation_table(
             balance_demand_breakdown,
             checks_dir / "supply_reconciliation_balance_demand_conservation_breakdown.csv",
@@ -3136,7 +3166,7 @@ def run_results_linked_transformation_supply_workflow(
     _ts_cache_hit = False
     if TRANSFORMATION_SUPPLY_CACHE_ENABLED:
         import hashlib as _hashlib, json as _json, pickle as _pickle
-        _ts_cache_dir = _resolve(RESULTS_RUNTIME_DIR) / "transform_supply_cache"
+        _ts_cache_dir = runtime_dir / "transform_supply_cache"
         _ts_cache_dir.mkdir(parents=True, exist_ok=True)
         _config_dir = REPO_ROOT / "config"
         _config_mtimes = {
@@ -3240,7 +3270,7 @@ def run_results_linked_transformation_supply_workflow(
             )
             results_update_closure_path = write_supply_diagnostic(
                 results_update_closure,
-                _resolve(RESULTS_CHECKS_DIR)
+                checks_dir
                 / "supply_reconciliation_results_update_closure.csv",
             )
             mismatch_count = int(results_update_closure["is_mismatch"].sum())
@@ -3306,24 +3336,24 @@ def run_results_linked_transformation_supply_workflow(
             scenarios=export_scenario_list,
             resolve_scenario_key=_resolve_reconciliation_scenario_key,
             results_dir=balance_csv_paths,
-            state_path=CAPACITY_UNMET_STATE_PATH,
+            state_path=state_path,
             allow_same_results_reuse=bool(CAPACITY_UNMET_ALLOW_SAME_RESULTS_REUSE),
             allocation_ledger=allocation_ledger,
         )
     elif _use_capacity_unmet_iterative_balanced_mode():
         if _is_capacity_unmet_baseline_seed_pass():
             seeded_state = _read_capacity_unmet_state(
-                state_path=CAPACITY_UNMET_STATE_PATH,
+                state_path=state_path,
                 run_mode="baseline_seed",
             )
             seeded_state_path = _write_capacity_unmet_state(
-                seeded_state, state_path=CAPACITY_UNMET_STATE_PATH
+                seeded_state, state_path=state_path
             )
             allocation_ledger.pass_summary = {
                 "timestamp_utc": datetime.now(timezone.utc).isoformat(),
                 "mode": "capacity_unmet_iterative_balanced",
                 "pass_mode": "baseline_seed",
-                "state_path": str(_resolve(CAPACITY_UNMET_STATE_PATH)),
+                "state_path": str(state_path),
                 "state_seeded_path": str(seeded_state_path),
                 "seed_action": (
                     "Baseline-only first pass: wrote imports=0 with baseline exports+capacity "
@@ -3347,19 +3377,19 @@ def run_results_linked_transformation_supply_workflow(
                 scenarios=balance_scenario_list,
                 resolve_scenario_key=_resolve_reconciliation_scenario_key,
                 results_dir=balance_csv_paths,
-                state_path=CAPACITY_UNMET_STATE_PATH,
+                state_path=state_path,
                 allow_same_results_reuse=bool(CAPACITY_UNMET_ALLOW_SAME_RESULTS_REUSE),
                 allocation_ledger=allocation_ledger,
             )
     if _use_capacity_unmet_iterative_any_mode():
         timer.lap("capacity unmet handling")
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     balance_demand_issue_path: Path | None = None
     reconciliation_path: Path | None = None
     conventional_balance_paths: list[Path] = []
     if RESULTS_WRITE_LEGACY_SIDECAR_FILES:
-        reconciliation_path = OUTPUT_DIR / RECONCILIATION_FILENAME
+        reconciliation_path = output_dir / RECONCILIATION_FILENAME
         reconciliation_table.to_csv(reconciliation_path, index=False)
         print(f"Saved reconciliation table to {reconciliation_path}")
         conventional_balance_paths = save_conventional_balance_tables(
@@ -3435,7 +3465,7 @@ def run_results_linked_transformation_supply_workflow(
                 _skip_transfer = sorted(_resolve(EXPORT_OUTPUT_DIR).glob(f"transfer_leap_imports_{economy}*.xlsx"))
                 _skip_elec_heat = sorted(_resolve(EXPORT_OUTPUT_DIR).glob(f"electricity_heat_interim_{economy}*.xlsx"))
                 _skip_proxy_dir = (
-                    _resolve(OUTPUT_DIR)
+                    output_dir
                     / "supporting_files"
                     / "other_loss_own_use_proxy"
                     / str(economy)
@@ -3541,7 +3571,7 @@ def run_results_linked_transformation_supply_workflow(
                 leap_balance_workbook_path=OTHER_LOSS_OWN_USE_LEAP_BALANCE_WORKBOOK_PATH,
                 leap_balance_scenario=OTHER_LOSS_OWN_USE_LEAP_BALANCE_SCENARIO,
                 leap_balance_date_id=OTHER_LOSS_OWN_USE_LEAP_BALANCE_DATE_ID,
-                output_root=OUTPUT_DIR / "supporting_files" / "other_loss_own_use_proxy",
+                output_root=output_dir / "supporting_files" / "other_loss_own_use_proxy",
             )
             timer.lap(f"generate other loss/own-use proxy workbook ({economy})")
         econ_agg_demand: list[Path] = []
@@ -3657,17 +3687,17 @@ def run_results_linked_transformation_supply_workflow(
             )
             baseline_supply_preservation_path = write_supply_diagnostic(
                 baseline_supply_preservation,
-                _resolve(RESULTS_CHECKS_DIR)
+                checks_dir
                 / "supply_reconciliation_baseline_supply_source_preservation.csv",
             )
             baseline_supply_preservation_breakdown_path = write_supply_diagnostic(
                 supply_breakdown,
-                _resolve(RESULTS_CHECKS_DIR)
+                checks_dir
                 / "supply_reconciliation_baseline_supply_source_preservation_breakdown.csv",
             )
             baseline_supply_preservation_lineage_path = write_supply_diagnostic(
                 supply_lineage,
-                _resolve(RESULTS_CHECKS_DIR)
+                checks_dir
                 / "supply_reconciliation_baseline_supply_source_preservation_lineage.csv",
             )
             mismatch_count = int(baseline_supply_preservation["is_mismatch"].sum())
@@ -3706,17 +3736,17 @@ def run_results_linked_transformation_supply_workflow(
             )
             transformation_output_conservation_path = write_supply_diagnostic(
                 transformation_totals,
-                _resolve(RESULTS_CHECKS_DIR)
+                checks_dir
                 / "supply_reconciliation_transformation_output_conservation.csv",
             )
             transformation_output_conservation_breakdown_path = write_supply_diagnostic(
                 transformation_breakdown,
-                _resolve(RESULTS_CHECKS_DIR)
+                checks_dir
                 / "supply_reconciliation_transformation_output_conservation_breakdown.csv",
             )
             transformation_output_conservation_lineage_path = write_supply_diagnostic(
                 transformation_lineage,
-                _resolve(RESULTS_CHECKS_DIR)
+                checks_dir
                 / "supply_reconciliation_transformation_output_conservation_lineage.csv",
             )
             mismatch_count = int(transformation_totals["is_mismatch"].sum())
@@ -3763,7 +3793,7 @@ def run_results_linked_transformation_supply_workflow(
         fuel_branch_catalog_path = _build_transformation_supply_fuel_catalog(
             transformation_export_paths=transformation_export_paths,
             supply_export_paths=[path for _, path in export_paths],
-            output_dir=OUTPUT_DIR,
+            output_dir=output_dir,
         )
     probe_catalog_path: Path | None = None
     leap_import_result = {
@@ -3864,7 +3894,7 @@ def run_results_linked_transformation_supply_workflow(
         economies=economy_list,
         supply_workbook_dir=EXPORT_OUTPUT_DIR,
         aggregated_demand_dir=EXPORT_OUTPUT_DIR,
-        output_dir=OUTPUT_DIR,
+        output_dir=output_dir,
         # id_lookup_path is left unset so each economy resolves its own LEAP
         # export template; passing one path here applied a single area's
         # BranchIDs to every economy.
@@ -3942,7 +3972,7 @@ def run_results_linked_transformation_supply_workflow(
             aggregated_demand_workbook_paths=aggregated_demand_workbook_paths,
             probe_catalog_path=probe_catalog_path,
             leap_import_result=leap_import_result,
-            output_dir=OUTPUT_DIR,
+            output_dir=output_dir,
             file_name=resolved_single_file_name,
             archive_dir=RESULTS_SINGLE_FILE_ARCHIVE_DIR,
             archive_min_hours=RESULTS_SINGLE_FILE_ARCHIVE_MIN_HOURS,
@@ -3950,7 +3980,7 @@ def run_results_linked_transformation_supply_workflow(
         )
         timer.lap("write consolidated run workbook")
 
-    balance_matching_diagnostics_path = _resolve(RESULTS_CHECKS_DIR) / RESULTS_BALANCE_MATCHING_DIAGNOSTICS_FILENAME
+    balance_matching_diagnostics_path = checks_dir / RESULTS_BALANCE_MATCHING_DIAGNOSTICS_FILENAME
     balance_matching_diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
     _sort_output_frame_for_csv(
         balance_matching_diagnostics,
@@ -3961,7 +3991,7 @@ def run_results_linked_transformation_supply_workflow(
     actionable_balance_demand_issues = pd.DataFrame()
     counts_text = ""
     if not balance_demand_issues.empty:
-        balance_demand_issue_path = _resolve(RESULTS_CHECKS_DIR) / RESULTS_BALANCE_DEMAND_ISSUES_FILENAME
+        balance_demand_issue_path = checks_dir / RESULTS_BALANCE_DEMAND_ISSUES_FILENAME
         balance_demand_issue_path.parent.mkdir(parents=True, exist_ok=True)
         _sort_output_frame_for_csv(
             balance_demand_issues,
@@ -4105,6 +4135,7 @@ def run_results_linked_supply_workflow(
     import_scenarios: Iterable[str] | str | None = LEAP_IMPORT_SCENARIOS,
     use_direct_leap_results_for_demand: bool | None = None,
     scrape_leap_results: bool | None = None,
+    run_context: ReconciliationRunContext | None = None,
 ) -> dict[str, object]:
     """Backward-compatible alias for the transformation+supply runner."""
     return run_results_linked_transformation_supply_workflow(
@@ -4115,5 +4146,6 @@ def run_results_linked_supply_workflow(
         import_scenarios=import_scenarios,
         use_direct_leap_results_for_demand=use_direct_leap_results_for_demand,
         scrape_leap_results=scrape_leap_results,
+        run_context=run_context,
     )
 

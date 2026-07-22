@@ -646,13 +646,37 @@ def _resolve_balance_demand_workbooks_for_economy(economy: str):
     )
 
 
+def _active_run_context_for_results_saver():
+    """Return the active context only while it still matches legacy path globals.
+
+    Compressed preflight temporarily overrides path globals directly.  Passing a
+    stale normal-run context into the saver in that case would defeat its
+    isolated preflight routing, so it deliberately falls back to its legacy
+    path view until preflight receives its own explicit context.
+    """
+    run_context = globals().get("ACTIVE_RUN_CONTEXT")
+    if run_context is None:
+        return None
+    expected_paths = {
+        "OUTPUT_DIR": run_context.output_dir,
+        "RESULTS_RUNTIME_DIR": run_context.results_runtime_dir,
+        "RESULTS_CHECKS_DIR": run_context.results_checks_dir,
+        "CAPACITY_UNMET_STATE_PATH": run_context.capacity_unmet_state_path,
+    }
+    if all(Path(globals()[name]) == Path(value) for name, value in expected_paths.items()):
+        return run_context
+    return None
+
+
 def run_results_linked_transformation_supply_workflow(*args, **kwargs):
     _sync_results_saver_overrides()
+    kwargs.setdefault("run_context", _active_run_context_for_results_saver())
     return _srs.run_results_linked_transformation_supply_workflow(*args, **kwargs)
 
 
 def run_results_linked_supply_workflow(*args, **kwargs):
     _sync_results_saver_overrides()
+    kwargs.setdefault("run_context", _active_run_context_for_results_saver())
     return _srs.run_results_linked_supply_workflow(*args, **kwargs)
 
 
