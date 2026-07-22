@@ -80,14 +80,17 @@ instruction to remove checks or add caching without a measured target.
 
 Execute the detailed briefs in this order, with their tests and decision gates:
 
-1. Finish Phase 4 T2 characterization coverage: config-surface snapshot,
-   run-context snapshot, convergence schema/legacy compatibility, and public
-   callable smoke tests. The initial forwarding-characterisation checkpoint is
-   already complete.
-2. Phase 5 demand safeguards: G1 routes the seed-patch path through
-   active-branch resolution, and G2 passes that same resolved sector set to
-   demand zeroing. The next enabled-zeroing run must verify the paired
-   artifacts before the first detailed demand sector handover.
+1. Phase 4 B2/B3 explicit injection is the immediate priority. B2's allocation
+   ledger introduction and pass-function threading are complete; finish
+   retiring the compatibility mirror, then make output paths, output label, and
+   pass mode an explicit run context. This is the minimum state-isolation
+   boundary needed before parallel production runs are considered.
+2. Add and validate **bounded process-based economy parallelism** immediately
+   after that B2/B3 boundary: per-worker configuration snapshots (never source
+   file edits while workers run), per-worker timing/convergence artifacts,
+   deterministic parent merge, and an opt-in pool defaulting to one worker.
+   First prove it with a controlled two-economy smoke test; do not use shared
+   interpreter/thread parallelism.
 3. Phase 3 canonical mapping hardening: schema and rollup contracts, retirement
    of the obsolete name-consolidation path, canonical ownership, and deferred
    equivalence evidence. Mapping decisions still owned by `leap_mappings`
@@ -95,14 +98,14 @@ Execute the detailed briefs in this order, with their tests and decision gates:
 4. Phase 5A convergence history: additive per-run manifests and fingerprints,
    explicit run-id comparison, opt-in dry-run retention, and input-change
    certification. Never auto-delete history.
-5. Phase 4 B2/B3 explicit injection: replace shared mutable allocation and
-   run-path globals, then remove star imports one module at a time. Re-measure
-   `supply_results_saver` coupling before deciding any further split.
-6. Own-use proxy assurance: add fixtures for the five currently untested
+5. Own-use proxy assurance: add fixtures for the five currently untested
    enabled processes. This is a coverage/model review, not a rewrite.
-7. Only then design process-based per-economy parallelism: per-worker timing
-   and convergence artifacts, deterministic parent merge, and an opt-in pool
-   defaulting to one worker.
+
+Completed on 2026-07-22: Phase 4 characterization coverage, G1/G2 demand
+safeguards and their two-year AUS verification, the canonical mapping schema
+contracts, convergence manifests, and own-use proxy fixtures. These remain
+covered by their focused tests; they are not gates ahead of the parallelism
+boundary above.
 
 The authoritative detailed execution material remains:
 
