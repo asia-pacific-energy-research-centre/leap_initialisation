@@ -3401,6 +3401,7 @@ def run_results_linked_transformation_supply_workflow(
         sector_map=LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
         base_excluded=AGGREGATED_DEMAND_EXCLUDED_SECTORS,
     )
+    timer.lap("prepare LEAP import workbook generation")
 
     def _run_one_economy(economy: str) -> dict:
         """Generate all export workbooks for one economy and return collected paths."""
@@ -3453,6 +3454,7 @@ def run_results_linked_transformation_supply_workflow(
             supply_measures=supply_measures,
             keep_all_zero_rows=bool(KEEP_ALL_ZERO_SUPPLY_ROWS),
         )
+        timer.lap(f"generate supply export workbook ({economy})")
         econ_process_records = [
             r for r in transformation_process_records
             if str(r.get("economy") or "").strip() == economy
@@ -3470,6 +3472,7 @@ def run_results_linked_transformation_supply_workflow(
             ),
             records_by_scenario_out=transformation_records_by_scenario,
         )
+        timer.lap(f"generate transformation export workbook ({economy})")
         econ_transfer_paths = save_transfer_exports_with_supply_overrides(
             reconciliation_table,
             economies=[economy],
@@ -3481,6 +3484,7 @@ def run_results_linked_transformation_supply_workflow(
                 if not pre_run_catalog_df.empty else None
             ),
         )
+        timer.lap(f"generate transfer export workbook ({economy})")
         econ_dummy: list[Path] = []
         if RUN_ELECTRICITY_HEAT_INTERIM:
             interim_records = electricity_heat_interim_workflow.build_electricity_heat_interim_rows(
@@ -3495,6 +3499,7 @@ def run_results_linked_transformation_supply_workflow(
                 scenarios=export_scenario_list,
                 output_dir=EXPORT_OUTPUT_DIR,
             )
+            timer.lap(f"generate electricity/heat interim workbook ({economy})")
         econ_combined_path = save_combined_supply_transformation_export(
             supply_export_paths=[path for _, path in econ_supply_paths],
             transformation_export_paths=econ_transformation_paths + econ_dummy,
@@ -3504,6 +3509,7 @@ def run_results_linked_transformation_supply_workflow(
             economy_label=economy,
             scenarios=export_scenario_list,
         )
+        timer.lap(f"merge and write supply/transformation workbook ({economy})")
         econ_other_loss: list[Path] = []
         if RUN_OTHER_LOSS_OWN_USE_PROXY:
             econ_other_loss = build_other_loss_own_use_proxy_workbooks_for_results_supply(
@@ -3518,6 +3524,7 @@ def run_results_linked_transformation_supply_workflow(
                 leap_balance_date_id=OTHER_LOSS_OWN_USE_LEAP_BALANCE_DATE_ID,
                 output_root=OUTPUT_DIR / "supporting_files" / "other_loss_own_use_proxy",
             )
+            timer.lap(f"generate other loss/own-use proxy workbook ({economy})")
         econ_agg_demand: list[Path] = []
         if WRITE_AGGREGATED_DEMAND_WORKBOOK and USE_AGGREGATED_DEMAND_AS_DUMMY:
             # The combined supply/transformation workbook for this economy is
@@ -3535,6 +3542,7 @@ def run_results_linked_transformation_supply_workflow(
                     excluded_sectors=_effective_agg_demand_excluded,
                     use_sector_branches=bool(AGGREGATED_DEMAND_USE_SECTOR_BRANCHES),
                 )
+                timer.lap(f"generate aggregated-demand workbook ({economy})")
             except Exception as _agg_exc:
                 print(
                     f"[WARN] [{economy}] aggregated-demand workbook failed to build; "
@@ -3592,6 +3600,8 @@ def run_results_linked_transformation_supply_workflow(
                 print(f"[ERROR] Economy {economy}: export failed — {_econ_exc!r}. Continuing to next economy.")
                 _tb.print_exc()
                 _economy_export_errors.append((economy, _econ_exc))
+
+    timer.lap("complete per-economy LEAP import workbook generation")
 
     if _economy_export_errors:
         _failed_labels = ", ".join(econ for econ, _ in _economy_export_errors)
@@ -3697,6 +3707,7 @@ def run_results_linked_transformation_supply_workflow(
             )
         except Exception as exc:
             print(f"[WARN] Transformation output conservation diagnostic could not run: {exc}")
+    timer.lap("write baseline export conservation diagnostics")
     supply_transformation_zeroing_paths: list[Path] = []
     if RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT and not reset_is_effective(
         RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT
@@ -3711,18 +3722,20 @@ def run_results_linked_transformation_supply_workflow(
                 "[INFO] Supply/transformation zeroing workbook(s) written. Import these "
                 "into LEAP before the main supply/transformation workbook(s)."
             )
+        timer.lap("generate supply/transformation zeroing workbooks")
     demand_zeroing_paths: list[Path] = []
     if ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT and USE_AGGREGATED_DEMAND_AS_DUMMY:
         demand_zeroing_paths = build_other_demand_zeroing_workbooks(
             scenarios=export_scenario_list,
             output_dir=EXPORT_OUTPUT_DIR,
         )
+        timer.lap("generate demand zeroing workbooks")
     fuel_branch_catalog_df = _build_transformation_supply_fuel_catalog_df(
         transformation_export_paths=transformation_export_paths,
         supply_export_paths=[path for _, path in export_paths],
         include_print_summary=True,
     )
-    timer.lap("generate LEAP import workbooks")
+    timer.lap("build LEAP import fuel catalog")
     fuel_branch_catalog_path: Path | None = None
     if RESULTS_WRITE_LEGACY_SIDECAR_FILES:
         fuel_branch_catalog_path = _build_transformation_supply_fuel_catalog(
