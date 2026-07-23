@@ -81,8 +81,12 @@ same branch/fuel combinations.
 economy against its own template. Until that is implemented, either exclude
 non-USA rows from the USA-pinned check or label them explicitly as
 cross-economy verification limitations; never report them as LEAP alignment
-fixes. Add a regression test using the 02_BD Coke-oven-gas and Gas-works
-`Other products` rows before the next retained full-horizon run.
+fixes. Add a regression test using the known-good 02_BD
+`Demand\\All demand aggregated\\Activity Level` control row (BranchID `2336`,
+VariableID `2027`, scenarios Current Accounts/Reference/Target) before the next
+retained full-horizon run. Do not use the six Coke-oven/Gas-works rows as the
+fixture; those template entries are known to be incorrectly set and are being
+reviewed separately.
 
 Single source of truth for *what is left, in what order, and what blocks what*
 across the supply-reconciliation / baseline-seed work. Cross-references the
