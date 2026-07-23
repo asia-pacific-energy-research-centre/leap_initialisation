@@ -252,10 +252,13 @@ is a distinct, still-live file, untouched. Two new tests in
 evidence write-up) still not attempted - it depends on commit 4's real-run
 evidence, which was deferred.
 
-**Still open: D3.4** (who owns rollup-rule reading - recommend a frozen
-column contract here), **D3.5** (equivalence tolerance - proposed: key sets
-exactly equal, totals within 1e-6 relative). Both need only confirmation, not
-new evidence.
+**D3.4 parked 2026-07-23** - the user is working a similar rollup-rule-reading
+question inside `leap_mappings` itself; defer this repo's frozen-column-
+contract decision to that follow-up rather than deciding it in isolation here.
+
+**D3.5 confirmed 2026-07-23**: key sets exactly equal, totals within 1e-6
+relative. Not yet exercised - still depends on commit 4's real-run evidence,
+which stays blocked on T10.
 
 ### T5 - Phase 5A convergence and run history. ✅ DONE, reconfirmed 2026-07-23
 
@@ -297,14 +300,39 @@ Kept below for the original problem statement.
   zeroing workbooks are produced at all until [17] is fixed.
   Fix shape: one resolved list feeds both halves, plus a test that no branch is
   both dropped from the placeholder and zeroed.
-- **5B.3** - record individual branch contributions inside the aggregate file,
-  on a separate sheet. The LEAP import sheet must not gain rows or columns.
+- **5B.3 - ✅ DONE 2026-07-23.** `save_aggregated_demand_as_leap_workbook` takes
+  a new opt-in `write_contributions` parameter (default `False` - additive
+  only, no existing caller's output changes). When `True` and `demand` is
+  built internally (not caller-supplied), it captures the existing
+  `build_aggregated_demand_all_scenarios(..., return_provenance=True)`
+  provenance (already built for `TestBuildAggregatedDemand*`/dummy-demand
+  paths, just not wired to the workbook writer before now) and writes it to a
+  new **"Contributions"** sheet alongside `LEAP`/`FOR_VIEWING`. The LEAP
+  import sheet gains no rows or columns. Contributions are tracked at
+  fuel/scenario/year granularity only (no sector split - the underlying
+  provenance rows don't carry a `sector` column even in sector-branch mode).
+  4 new tests in `TestContributionsSheet`
+  (`tests/test_aggregated_demand_workflow.py`).
+- **5B.4 - ✅ DONE 2026-07-23.** `_warn_contributions_do_not_reconcile` groups
+  both the aggregate `demand` and the `Contributions` rows by
+  (leap_fuel_name, scenario, year) and prints a `[WARN]` if any key's summed
+  `allocated_value` diverges from the aggregate `value` by more than the
+  confirmed 1e-6 relative tolerance (D3.5's tolerance, reused here since it's
+  the same reconciliation shape). Tested both the reconciled and the
+  deliberately-mismatched case.
+- **Not yet turned on for any real run** - `write_contributions` stays
+  `False` at both production call sites
+  (`supply_leap_io.build_aggregated_demand_workbooks_for_results_supply`,
+  `patch_baseline_seeds`'s `aggregated_demand` branch) until the user
+  confirms enabling it (it changes the workbook file's bytes, which could
+  affect any byte-for-byte equivalence check even though it does not change
+  the LEAP-relevant sheets).
 - **Cache measurement** before touching the selective-column loader: cold/warm
   runtime, peak RSS, distinct `usecols` sets, invalidation after refresh.
 
-**Open: D5B.3** (contributions on a separate sheet - recommended) and
-**D5B.4** (contributions must reconcile exactly to the aggregate - recommend
-yes, asserted in a test).
+**D5B.3 confirmed 2026-07-23**: separate sheet, same workbook - implemented
+as above. **D5B.4 confirmed 2026-07-23**: yes, reconciliation asserted by
+test - implemented as above.
 
 ### T7 - Phase 5C per-economy parallelism. ✅ CORE SAFETY BOUNDARY DONE 2026-07-23 — architecture differs from this thread's original plan, read before resuming
 
@@ -486,13 +514,13 @@ both are correct.
 | Ref | Question | Recommendation |
 |---|---|---|
 | D3.3 | Retire `master_config.xlsx` / `leap_mappings.xlsx` from `config/`? | Move to `config/legacy/`, do not delete yet |
-| D3.4 | Who owns rollup-rule reading? | Frozen column contract + test in this repo |
-| D3.5 | Equivalence tolerance | Key sets exactly equal; totals within 1e-6 relative |
+| D3.4 | Who owns rollup-rule reading? | **Parked 2026-07-23** - decide alongside the similar `leap_mappings`-side question |
+| D3.5 | Equivalence tolerance | **Confirmed 2026-07-23**: key sets exactly equal; totals within 1e-6 relative |
 | D4.3 | Split `supply_results_saver.py`? | Defer until after B2/B3, then re-measure |
 | D4.5 | Keep the <500 LOC orchestrator target? | Drop it - LOC was never the defect |
 | D5A.1 | Manifest vs wider convergence CSV | Manifest |
-| D5B.3 | Contributions: separate sheet or sidecar? | Separate sheet in the same workbook |
-| D5B.4 | Must contributions reconcile to the aggregate? | Yes, asserted by test |
+| D5B.3 | Contributions: separate sheet or sidecar? | **Confirmed and implemented 2026-07-23**: separate sheet, same workbook |
+| D5B.4 | Must contributions reconcile to the aggregate? | **Confirmed and implemented 2026-07-23**: yes, asserted by test |
 | D5C.2 | Worker-count default | 1, opt-in, from measured RSS |
 | T10 | Is `IS_LEAP_ROLLUP_NAME` complete? | Mapping owner to answer |
 
