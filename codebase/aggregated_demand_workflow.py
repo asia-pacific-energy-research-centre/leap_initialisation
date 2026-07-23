@@ -595,7 +595,12 @@ def _load_demand_csv(
     use_cols = [c for c in [*stable_cols, *year_cols] if c in header.columns]
     # Keep this narrow read cached across the three scenario builds. Copy before
     # normalising/filtering because the shared loader returns its cached frame.
-    df = load_ninth_outlook_csv(path, usecols=use_cols).copy()
+    # A single real economy scopes the read itself (chunked, economy-filtered -
+    # see workflow_utils.load_ninth_outlook_csv) so this call never holds the
+    # other ~20 economies' rows in memory; an aggregate sentinel still needs
+    # every economy, so it is not scoped.
+    economies_filter = (economy,) if economy and not _is_aggregate_economy(economy) else None
+    df = load_ninth_outlook_csv(path, usecols=use_cols, economies=economies_filter).copy()
     for col in [
         "economy", "scenarios", "sectors", "sub1sectors", "sub2sectors",
         "sub3sectors", "sub4sectors", "fuels", "subfuels",
@@ -630,7 +635,12 @@ def _load_esto_base_csv(
     use_cols = [c for c in [*stable_cols, *year_cols] if c in header.columns]
     # Keep this narrow read cached across the three scenario builds. Copy before
     # normalising/filtering because the shared loader returns its cached frame.
-    df = load_esto_csv(path, usecols=use_cols).copy()
+    # Scoped to one economy where possible (see _load_demand_csv above) - the
+    # loader normalizes the ESTO CSV's compact economy form ("01AUS") against
+    # the canonical form passed here, so this is correct despite the two
+    # source files disagreeing on economy-code form.
+    economies_filter = (economy,) if economy and not _is_aggregate_economy(economy) else None
+    df = load_esto_csv(path, usecols=use_cols, economies=economies_filter).copy()
     for col in ["economy", "flows", "products"]:
         df[col] = df[col].astype(str).str.strip()
     df["economy"] = df["economy"].map(_normalize_esto_economy)

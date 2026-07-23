@@ -736,10 +736,18 @@ PROXY_CONFIG = [
 ]
 
 
-def load_esto_data(path: Path | str = ESTO_DATA_PATH) -> pd.DataFrame:
+def load_esto_data(path: Path | str = ESTO_DATA_PATH, *, economy: str | None = None) -> pd.DataFrame:
+    """Load the ESTO base table.
+
+    ``economy``, when given, scopes the read to that one economy (chunked,
+    filtered - see ``workflow_utils.load_esto_csv``) instead of holding every
+    economy's rows in memory. Omit it (the default) for callers that
+    genuinely need every economy, e.g. an aggregate/00_APEC preflight that
+    sums member economies afterwards.
+    """
     # The shared loader returns a cached frame; this workflow adds columns and
     # filters rows, so it must work on its own copy.
-    df = load_esto_csv(path).copy()
+    df = load_esto_csv(path, economies=(economy,) if economy else None).copy()
     df = _normalize_year_columns(df)
     df["economy_key"] = df["economy"].apply(_normalize_economy)
     if "is_subtotal" in df.columns:
@@ -755,10 +763,16 @@ def load_esto_data(path: Path | str = ESTO_DATA_PATH) -> pd.DataFrame:
     return df
 
 
-def load_ninth_data(path: Path | str = NINTH_DATA_PATH) -> pd.DataFrame:
+def load_ninth_data(path: Path | str = NINTH_DATA_PATH, *, economy: str | None = None) -> pd.DataFrame:
+    """Load the 9th Outlook merged energy table.
+
+    ``economy``, when given, scopes the read to that one economy instead of
+    holding every economy's rows in memory (see ``load_esto_data``'s
+    docstring - same rationale).
+    """
     # The shared loader returns a cached frame; this workflow adds columns and
     # filters rows, so it must work on its own copy.
-    df = load_ninth_outlook_csv(path).copy()
+    df = load_ninth_outlook_csv(path, economies=(economy,) if economy else None).copy()
     df = _normalize_year_columns(df)
     if "economy" in df.columns:
         df["economy_key"] = df["economy"].apply(_normalize_economy)
@@ -1386,12 +1400,16 @@ def assemble_proxy_workbook(
     )
     output_scope = _normalize_output_fuel_scope(output_fuel_scope)
     region = region or _resolve_export_region(economy)
-    esto_data = load_esto_data()
-    ninth_data = load_ninth_data()
     is_aggregate, aggregate_label, _ = workflow_common.resolve_aggregate_economy(
         [economy],
         aggregate_label=economy,
     )
+    # A real single economy scopes both loads to just its own rows; an
+    # aggregate sentinel (e.g. 00_APEC) still needs every member economy to
+    # sum afterwards below, so it is not scoped.
+    scope_economy = economy if not is_aggregate else None
+    esto_data = load_esto_data(economy=scope_economy)
+    ninth_data = load_ninth_data(economy=scope_economy)
     if is_aggregate:
         esto_data = _append_aggregate_economy_rows(
             esto_data,
