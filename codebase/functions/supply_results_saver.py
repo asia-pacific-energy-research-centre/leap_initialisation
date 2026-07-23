@@ -1225,6 +1225,120 @@ def _write_diagnostic_report(
     return True
 
 
+def filter_actionable_mapping_config_mismatches(
+    rows: pd.DataFrame,
+    *,
+    excluded_variables: Iterable[str] = MAPPING_CONFIG_MISMATCH_NON_OWNED_VARIABLES,
+) -> pd.DataFrame:
+    """Drop rows that are not genuine template-matching issues.
+
+    [19] (``docs/work_queue.md``): a config-mapping-mismatch row with an empty
+    ``reference_values`` (``issue == "reference_value_missing"``) means the
+    reference template imposes no value for that field at all, so a
+    difference cannot be a mismatch - the workflow is not being contradicted
+    by anything. A row for a variable this workflow does not set itself
+    (``excluded_variables``, e.g. ``Endogenous Capacity``) is not owned by
+    this workflow either. Neither belongs in an "actionable issues" view.
+    This never touches the raw detailed CSV, which callers should keep
+    writing unfiltered for debugging.
+    """
+    if not isinstance(rows, pd.DataFrame) or rows.empty:
+        return rows if isinstance(rows, pd.DataFrame) else pd.DataFrame()
+    mask = ~rows.get("issue", pd.Series(dtype=object)).eq("reference_value_missing")
+    excluded = {str(v).strip().lower() for v in excluded_variables if str(v).strip()}
+    if excluded and "variable" in rows.columns:
+        mask &= ~rows["variable"].astype(str).str.strip().str.lower().isin(excluded)
+    return rows.loc[mask].copy()
+
+
+_TEMPLATE_MATCHING_SUMMARY_COLUMNS = (
+    "source_check",
+    "branch_path",
+    "variable",
+    "scenario",
+    "region",
+    "field",
+    "value",
+    "reference_value",
+    "issue",
+)
+
+
+def build_template_matching_summary(
+    *,
+    unmatched_id_rows: pd.DataFrame,
+    metadata_mismatch_rows: pd.DataFrame,
+    mapping_config_mismatch_rows: pd.DataFrame,
+) -> pd.DataFrame:
+    """Consolidate actionable template-matching diagnostics with provenance.
+
+    [19]: concatenates the actionable rows from the three separate
+    template-matching checks (unmatched verification-export IDs, verification
+    metadata mismatches, and config/template mapping mismatches - the last
+    filtered through :func:`filter_actionable_mapping_config_mismatches`)
+    into one normalized frame. Every row keeps a ``source_check`` column
+    naming which detailed CSV it came from, so it can always be traced back.
+    Detailed source files are untouched by this function; it only reads them.
+    """
+    frames: list[pd.DataFrame] = []
+
+    if isinstance(unmatched_id_rows, pd.DataFrame) and not unmatched_id_rows.empty:
+        frames.append(
+            pd.DataFrame(
+                {
+                    "source_check": "unmatched_id",
+                    "branch_path": unmatched_id_rows.get("Branch Path", ""),
+                    "variable": unmatched_id_rows.get("Variable", ""),
+                    "scenario": unmatched_id_rows.get("Scenario", ""),
+                    "region": unmatched_id_rows.get("Region", ""),
+                    "field": "",
+                    "value": "",
+                    "reference_value": "",
+                    "issue": unmatched_id_rows.get("reason", ""),
+                }
+            )
+        )
+
+    if isinstance(metadata_mismatch_rows, pd.DataFrame) and not metadata_mismatch_rows.empty:
+        frames.append(
+            pd.DataFrame(
+                {
+                    "source_check": "metadata_mismatch",
+                    "branch_path": metadata_mismatch_rows.get("Branch Path", ""),
+                    "variable": metadata_mismatch_rows.get("Variable", ""),
+                    "scenario": metadata_mismatch_rows.get("Scenario", ""),
+                    "region": metadata_mismatch_rows.get("Region", ""),
+                    "field": metadata_mismatch_rows.get("column", ""),
+                    "value": metadata_mismatch_rows.get("generated_value", ""),
+                    "reference_value": metadata_mismatch_rows.get("reference_value", ""),
+                    "issue": "metadata_mismatch",
+                }
+            )
+        )
+
+    actionable_mapping = filter_actionable_mapping_config_mismatches(mapping_config_mismatch_rows)
+    if isinstance(actionable_mapping, pd.DataFrame) and not actionable_mapping.empty:
+        frames.append(
+            pd.DataFrame(
+                {
+                    "source_check": "config_mapping_mismatch",
+                    "branch_path": actionable_mapping.get("branch_path", ""),
+                    "variable": actionable_mapping.get("variable", ""),
+                    "scenario": "",
+                    "region": "",
+                    "field": actionable_mapping.get("field", ""),
+                    "value": actionable_mapping.get("config_value", ""),
+                    "reference_value": actionable_mapping.get("reference_values", ""),
+                    "issue": actionable_mapping.get("issue", ""),
+                }
+            )
+        )
+
+    if not frames:
+        return pd.DataFrame(columns=_TEMPLATE_MATCHING_SUMMARY_COLUMNS)
+    return pd.concat(frames, ignore_index=True)[list(_TEMPLATE_MATCHING_SUMMARY_COLUMNS)]
+
+
 def _resolve_ids_and_filter_unmatched_export_rows(
     df: pd.DataFrame,
     source_data: pd.DataFrame,
@@ -2811,6 +2925,38 @@ def save_results_linked_single_workbook(
         )
     elif config_unmatched_path.exists():
         config_unmatched_path.unlink()
+
+    def _format_summary_row(row: pd.Series) -> str:
+        return (
+            "source='{src}' | branch='{bp}' | variable='{var}' | field='{fld}' | "
+            "value='{val}' | reference='{ref}' | issue='{issue}'".format(
+                src=str(row.get("source_check") or "").strip(),
+                bp=str(row.get("branch_path") or "").strip(),
+                var=str(row.get("variable") or "").strip(),
+                fld=str(row.get("field") or "").strip(),
+                val=str(row.get("value") or "").strip(),
+                ref=str(row.get("reference_value") or "").strip(),
+                issue=str(row.get("issue") or "").strip(),
+            )
+        )
+
+    template_matching_summary_rows = build_template_matching_summary(
+        unmatched_id_rows=unmatched_id_rows,
+        metadata_mismatch_rows=metadata_mismatch_rows,
+        mapping_config_mismatch_rows=mapping_config_mismatch_rows,
+    )
+    _write_diagnostic_report(
+        template_matching_summary_rows,
+        checks_root / RESULTS_TEMPLATE_MATCHING_SUMMARY_FILENAME,
+        header=(
+            "\n[INFO] Consolidated template-matching summary: actionable rows "
+            "from the unmatched-ID, metadata-mismatch, and config-mapping-"
+            "mismatch checks (see docs/work_queue.md [19])."
+        ),
+        count_label="Actionable template-matching issues",
+        row_formatter=_format_summary_row,
+        more_label="more actionable template-matching issues",
+    )
 
     print(
         "[INFO] Saved single-file results workbook in full-model Export structure to "

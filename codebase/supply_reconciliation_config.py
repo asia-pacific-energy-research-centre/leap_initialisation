@@ -294,6 +294,12 @@ COMPLETION_BEEP_PAUSE_SECONDS = 0.12
 RESULTS_UNMATCHED_ID_REPORT_FILENAME = "supply_reconciliation_unmatched_id_rows.csv"
 RESULTS_METADATA_MISMATCH_REPORT_FILENAME = "supply_reconciliation_metadata_mismatches.csv"
 RESULTS_CONFIG_MAPPING_MISMATCH_REPORT_FILENAME = "supply_reconciliation_config_mapping_mismatches.csv"
+RESULTS_TEMPLATE_MATCHING_SUMMARY_FILENAME = "supply_reconciliation_template_matching_summary.csv"
+# [19]: config-mapping-mismatch variables this workflow does not set itself, so
+# a unit/value difference against the reference template is not a genuine
+# template issue. Named and extensible rather than hard-coded to one run's
+# findings; add to this set as further non-owned variables are confirmed.
+MAPPING_CONFIG_MISMATCH_NON_OWNED_VARIABLES = frozenset({"Endogenous Capacity"})
 RESULTS_BALANCE_DEMAND_ISSUES_FILENAME = "supply_reconciliation_balance_demand_issues.csv"
 RESULTS_BALANCE_MATCHING_DIAGNOSTICS_FILENAME = "supply_reconciliation_balance_matching_diagnostics.csv"
 RESULTS_SOURCE_DIAGNOSTICS_FILENAME = "supply_reconciliation_source_diagnostics.csv"
