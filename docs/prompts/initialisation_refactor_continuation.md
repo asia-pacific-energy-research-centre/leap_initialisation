@@ -375,7 +375,7 @@ Optional, low priority: split `assemble_proxy_workbook` (356 lines/43 branches).
 **Not established:** that the proxy's *numbers* are right. That is a modelling
 review, separate from both of the above.
 
-### T9 - documentation corrections. PARTLY DONE 2026-07-23
+### T9 - documentation corrections. ✅ DONE 2026-07-23
 
 `AGENTS.md`'s "Planned workflow improvements" section corrected (`5ee4357`):
 a stale-content banner plus corrected LOC table, Phase 3/4/5 subsections, and
@@ -387,10 +387,12 @@ numbers that will go stale again). `supply_reconciliation_workflow.py` is
 older estimate was written — it grows commit to commit, don't hand-copy this
 number either; re-measure with `wc -l` before citing it).
 
-**Still open**: `docs/supply_reconciliation_workflow_guide.md` "Planned
-improvements" (cites ~637 LOC) and `docs/canonical_mapping_migration_notes.md`
-(still describes C5 as BLOCKED when electricity/heat interim reads are now
-canonical) were not touched this session.
+The remaining two also done: `docs/supply_reconciliation_workflow_guide.md`
+"Planned improvements" LOC corrected (`f5a2d8e`), and
+`docs/canonical_mapping_migration_notes.md`'s stale C5-BLOCKED claim and the
+`unified_name_lookup.py` "correct as-is" claim both corrected in place
+(`81b5b31`), historical entries kept below each correction rather than
+deleted.
 
 ### T10 - question for the mapping owner (leap_mappings). OPEN
 
