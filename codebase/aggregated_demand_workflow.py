@@ -1317,6 +1317,35 @@ def _build_id_lookups(
     return branch_to_id, variable_to_id, scenario_to_id
 
 
+CONTRIBUTIONS_RELATIVE_TOLERANCE = 1e-6
+
+
+def _warn_contributions_do_not_reconcile(
+    demand: pd.DataFrame,
+    contributions: pd.DataFrame,
+    tolerance: float = CONTRIBUTIONS_RELATIVE_TOLERANCE,
+) -> None:
+    """
+    Print a WARN if the Contributions sheet does not sum back to the aggregate
+    demand totals it is meant to explain (D5B.4). Contributions are tracked at
+    fuel/scenario/year granularity only (no sector split), so both sides are
+    grouped at that level regardless of use_sector_branches.
+    """
+    key_cols = ["leap_fuel_name", "scenario", "year"]
+    demand_totals = demand.groupby(key_cols, as_index=False)["value"].sum(min_count=1)
+    contribution_totals = contributions.groupby(key_cols, as_index=False)["allocated_value"].sum(min_count=1)
+    merged = demand_totals.merge(contribution_totals, on=key_cols, how="outer").fillna(0.0)
+    denom = merged["value"].abs().clip(lower=1e-9)
+    relative_diff = (merged["value"] - merged["allocated_value"]).abs() / denom
+    bad = merged[relative_diff > tolerance]
+    if not bad.empty:
+        print(
+            f"[WARN] aggregated demand: {len(bad)} (fuel, scenario, year) key(s) where "
+            f"Contributions sheet does not reconcile to the aggregate within "
+            f"{tolerance:.0e} relative tolerance. Sample:\n{bad.head(5)}"
+        )
+
+
 def save_aggregated_demand_as_leap_workbook(
     economy: str,
     output_path: Path,
@@ -1334,6 +1363,7 @@ def save_aggregated_demand_as_leap_workbook(
     use_sector_branches: bool = False,
     demand: pd.DataFrame | None = None,
     apply_first_projection_year_bridge: bool = APPLY_FIRST_PROJECTION_YEAR_BRIDGE_DEFAULT,
+    write_contributions: bool = False,
 ) -> Path | None:
     """
     Build aggregated demand and save as a LEAP-importable workbook (LEAP + FOR_VIEWING sheets).
@@ -1341,6 +1371,14 @@ def save_aggregated_demand_as_leap_workbook(
     Writes Demand\\All demand aggregated\\{fuel_name} rows with Variable=Total Energy
     and Expression as a scalar (Current Accounts) or Data(...) series (other scenarios).
     Returns the output path, or None if there was nothing to write.
+
+    When write_contributions is True and demand is built internally (demand=None),
+    a third "Contributions" sheet is added recording each source ESTO/NINTH row that
+    was allocated into an aggregated (leap_fuel_name, scenario, year) total, so the
+    aggregate figure can be traced back to its individual branch contributions
+    (Phase 5B D5B.3/D5B.4). Not written when demand is passed in directly, since no
+    provenance is available for a caller-supplied DataFrame. This sheet is additional
+    to, and never modifies, the LEAP import sheet.
 
     When exclude_own_use_td_losses=True, own-use and T&D losses sectors are excluded
     from the demand sum so the aggregated total does not double-count amounts that the
@@ -1362,8 +1400,9 @@ def save_aggregated_demand_as_leap_workbook(
     """
     use_scenarios = scenarios if scenarios is not None else list(LEAP_SCENARIOS)
     region = region or _resolve_export_region(economy)
+    contributions: pd.DataFrame | None = None
     if demand is None:
-        demand = build_aggregated_demand_all_scenarios(
+        built = build_aggregated_demand_all_scenarios(
             economy=economy,
             scenarios=use_scenarios,
             base_year=base_year,
@@ -1374,8 +1413,10 @@ def save_aggregated_demand_as_leap_workbook(
             exclude_own_use_td_losses=exclude_own_use_td_losses,
             excluded_sectors=excluded_sectors,
             use_sector_branches=use_sector_branches,
+            return_provenance=write_contributions,
             apply_first_projection_year_bridge=apply_first_projection_year_bridge,
         )
+        demand, contributions = built if write_contributions else (built, None)
     if demand.empty:
         print("[INFO] save_aggregated_demand_as_leap_workbook: no demand data — workbook not written.")
         return None
@@ -1502,11 +1543,20 @@ def save_aggregated_demand_as_leap_workbook(
         model_name=model_name or "",
     )
 
+    contributions_df = None
+    if contributions is not None and not contributions.empty:
+        contributions_df = contributions.sort_values(
+            ["scenario", "leap_fuel_name", "year", "source_sector_or_flow"]
+        ).reset_index(drop=True)
+        _warn_contributions_do_not_reconcile(demand, contributions_df)
+
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         leap_df.to_excel(writer, sheet_name="LEAP", index=False, header=False)
         viewing_df.to_excel(writer, sheet_name="FOR_VIEWING", index=False, header=False)
+        if contributions_df is not None:
+            contributions_df.to_excel(writer, sheet_name="Contributions", index=False)
 
     print(f"[INFO] Saved {len(rows)} aggregated demand rows to {output_path}")
     try:

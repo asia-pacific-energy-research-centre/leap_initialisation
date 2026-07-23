@@ -970,3 +970,99 @@ class TestReconciliationAccountingLogic:
         )
         # All three cases produce the same road exclusion
         assert excl_freight == excl_passenger == excl_both
+
+
+class TestContributionsSheet:
+    """D5B.3/D5B.4: an opt-in Contributions sheet recording per-branch provenance
+    behind each aggregated (fuel, scenario, year) total, and a reconciliation
+    check that it sums back exactly to the aggregate it explains."""
+
+    def _demand_and_contributions(self):
+        demand = pd.DataFrame(
+            [
+                {"economy": "20_USA", "scenario": "Reference", "leap_fuel_name": "Electricity", "year": 2022, "value": 10.0},
+                {"economy": "20_USA", "scenario": "Reference", "leap_fuel_name": "Electricity", "year": 2023, "value": 12.0},
+            ]
+        )
+        contributions = pd.DataFrame(
+            [
+                {
+                    "economy": "20_USA", "scenario": "Reference", "year": 2022,
+                    "source_system": "NINTH", "source_sector_or_flow": "14_industry_sector",
+                    "source_fuel_or_product": "electricity", "leap_fuel_name": "Electricity",
+                    "allocation_method": "direct", "allocation_share": 0.6, "allocated_value": 6.0,
+                },
+                {
+                    "economy": "20_USA", "scenario": "Reference", "year": 2022,
+                    "source_system": "NINTH", "source_sector_or_flow": "16_01_buildings",
+                    "source_fuel_or_product": "electricity", "leap_fuel_name": "Electricity",
+                    "allocation_method": "direct", "allocation_share": 0.4, "allocated_value": 4.0,
+                },
+                {
+                    "economy": "20_USA", "scenario": "Reference", "year": 2023,
+                    "source_system": "NINTH", "source_sector_or_flow": "14_industry_sector",
+                    "source_fuel_or_product": "electricity", "leap_fuel_name": "Electricity",
+                    "allocation_method": "direct", "allocation_share": 1.0, "allocated_value": 12.0,
+                },
+            ]
+        )
+        return demand, contributions
+
+    def test_reconciled_contributions_produce_no_warning(self, capsys):
+        demand, contributions = self._demand_and_contributions()
+        aggregated_demand_workflow._warn_contributions_do_not_reconcile(demand, contributions)
+        assert "WARN" not in capsys.readouterr().out
+
+    def test_mismatched_contributions_warn(self, capsys):
+        demand, contributions = self._demand_and_contributions()
+        contributions.loc[0, "allocated_value"] = 6.5  # 2022 total now 10.5, not 10.0
+        aggregated_demand_workflow._warn_contributions_do_not_reconcile(demand, contributions)
+        assert "WARN" in capsys.readouterr().out
+
+    def test_save_workbook_writes_contributions_sheet_when_opted_in(self, tmp_path, monkeypatch):
+        demand, contributions = self._demand_and_contributions()
+
+        def _fake_build_all_scenarios(*args, return_provenance=False, **kwargs):
+            if return_provenance:
+                return demand.copy(), contributions.copy()
+            return demand.copy()
+
+        monkeypatch.setattr(
+            aggregated_demand_workflow,
+            "build_aggregated_demand_all_scenarios",
+            _fake_build_all_scenarios,
+        )
+        out_path = tmp_path / "aggregated_demand_20_USA.xlsx"
+        result = aggregated_demand_workflow.save_aggregated_demand_as_leap_workbook(
+            economy="20_USA",
+            output_path=out_path,
+            id_lookup_path=None,
+            write_contributions=True,
+        )
+        assert result == out_path
+        written = pd.read_excel(out_path, sheet_name="Contributions")
+        assert set(written["source_sector_or_flow"]) == {"14_industry_sector", "16_01_buildings"}
+        assert written["allocated_value"].sum() == pytest.approx(22.0)
+
+    def test_save_workbook_omits_contributions_sheet_by_default(self, tmp_path, monkeypatch):
+        demand, contributions = self._demand_and_contributions()
+
+        def _fake_build_all_scenarios(*args, return_provenance=False, **kwargs):
+            if return_provenance:
+                return demand.copy(), contributions.copy()
+            return demand.copy()
+
+        monkeypatch.setattr(
+            aggregated_demand_workflow,
+            "build_aggregated_demand_all_scenarios",
+            _fake_build_all_scenarios,
+        )
+        out_path = tmp_path / "aggregated_demand_20_USA.xlsx"
+        aggregated_demand_workflow.save_aggregated_demand_as_leap_workbook(
+            economy="20_USA",
+            output_path=out_path,
+            id_lookup_path=None,
+        )
+        import openpyxl
+        sheet_names = openpyxl.load_workbook(out_path, read_only=True).sheetnames
+        assert "Contributions" not in sheet_names
