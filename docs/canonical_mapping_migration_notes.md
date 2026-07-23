@@ -93,7 +93,23 @@ only its ninth->esto pairs pointer (#1) is legacy.
 - `test_refining_capacity_policy.py` passes; derivation + pair resolution
   verified (e.g. Crude oil -> 06_01_crude_oil -> 06.01 Crude oil).
 
-### C5 — electricity/heat interim: BLOCKED, documented (no behaviour change)
+### C5 — electricity/heat interim: ✅ RESOLVED 2026-07-23, no longer blocked
+
+**Stale as originally written below — corrected via
+`docs/prompts/phase_3_canonical_mapping_migration_execution.md`'s
+"Current-state evidence" (verified 2026-07-21, reconfirmed by direct code
+read 2026-07-23).** `electricity_heat_interim_workflow.py` now reads
+canonical for both reads this section originally found blocked:
+`_load_esto_product_to_ninth_fuel` uses
+`load_canonical_sheet("ninth fuel to esto product", ...)`
+(`electricity_heat_interim_workflow.py:257-265`) and
+`_load_power_interim_display_name_map` uses
+`build_code_to_display_name(include_excluded=True)` (`:351-363`). Neither
+imports `master_config` reads any more. The original investigation below is
+kept as a historical record of why the gap existed and what it would have
+cost to migrate naively; it does not describe current behaviour.
+
+**Original entry (BLOCKED, documented, no behaviour change) — historical, not current:**
 Investigated migrating `electricity_heat_interim_workflow.py` off master_config.
 Two legacy reads; both cannot be safely migrated yet because the canonical
 workbook is missing rows the current logic depends on. Left as-is with an
@@ -126,8 +142,10 @@ in-code NOTE pointing here. **Evidence:**
   files if the canonical sheet is absent. Supply, transformation and transfers
   (shared foundation) therefore already label via `leap_display_names`.
 - other loss/own use now labels via canonical `raw_leap_fuel_name` (C3);
-  refining renames leaves to canonical ESTO product codes (C4). Only the
-  electricity/heat interim map remains legacy (C5, blocked).
+  refining renames leaves to canonical ESTO product codes (C4). Electricity/
+  heat interim also now labels canonically (C5, resolved 2026-07-23) — no
+  workflow in this table reads the legacy `sector_fuel_code_to_name` table
+  any more.
 - Minor future cleanup: the two `load_code_to_name_mapping` copies duplicate the
   `build_code_to_display_name` logic now in `canonical_loaders`; could be
   de-duplicated later, but left as-is to avoid behaviour churn.
@@ -148,7 +166,7 @@ any remaining legacy/exceptional logic.
 | Other loss/own use (`other_loss_own_use_proxy_workflow`) | `leap_combined_esto`, `leap_combined_ninth` (C3) | `load_leap_combined_esto/ninth` | esto_product / ninth_fuel -> LEAP fuel | proxy activity (unchanged) | canonical `raw_leap_fuel_name`, unambiguous only | ambiguous fuels -> mechanical cleanup (recorded) |
 | Refining (`refining_workflow` / `transformation_fuel_remap`) | `leap_combined_ninth`, `ninth_pairs_to_esto_pairs` (C4) | `load_leap_combined_ninth` | source LEAP fuel -> 9th fuel -> esto_product | branch relabel (unchanged) | ESTO product code as branch leaf | optional `refining_fuel_mapping.csv` override if present |
 | Aggregated demand (`aggregated_demand_workflow`) | still reads `read_config_table` redirects | no | — | — | — | NOT migrated this pass — see below |
-| Electricity/heat interim | canonical `ninth fuel to esto product` + legacy master_config (C5) | no | esto_product/ninth_fuel | — | legacy `sector_fuel_code_to_name` | BLOCKED: canonical missing ~193 labels + 6 aggregates |
+| Electricity/heat interim | canonical `ninth fuel to esto product` + `leap_display_names` (C5, resolved 2026-07-23) | `build_code_to_display_name` | esto_product/ninth_fuel | — | canonical `leap_display_names` (`include_excluded=True`) | — |
 | Preflight (`supply_preflight`) | inherits above (compressed) | inherits | inherits | inherits | inherits | exercises future-only mappings |
 
 ## C7 — follow-up files reviewed (aggregated demand / template extractor / name lookup)
@@ -171,12 +189,23 @@ comments remained:
   because the file also carries unrelated **pre-existing uncommitted changes**;
   the stale "config/leap_mappings.xlsx" comment can be cleaned up in a dedicated
   commit later.
-- `unified_name_lookup.py` — deliberately a multi-source name *consolidator*
-  (legacy proposed sheets + canonical `leap_combined_*` + master_config), with
-  conflict detection. Only consumer of its consolidation API is a scrapbook
-  (`fill_apec_ninth_fuels_template.py`); its `load_active_mapping_sheet` export is
-  called by aggregated demand with canonical paths. Correct as-is; not on the
-  reconciliation hot path. No change.
+- `unified_name_lookup.py` — **stale as originally written below; the
+  consolidation API described here was retired 2026-07-23** (Phase 3 D3.1,
+  `fb4ee59`). It read a `matches_original_product_flow_name` column that no
+  longer exists in the canonical workbook, so `_is_genuine_override` always
+  returned `False` and every authored override was silently discarded — not
+  "correct as-is". `load_source_records`, `build_unified_name_lookup`,
+  `resolve_name`, and their supporting helpers are deleted;
+  `load_active_mapping_sheet` (the only function with a live caller,
+  `aggregated_demand_workflow.py`) is unchanged and unaffected, since it
+  never read the missing column.
+  **Original entry, historical:** deliberately a multi-source name
+  *consolidator* (legacy proposed sheets + canonical `leap_combined_*` +
+  master_config), with conflict detection. Only consumer of its
+  consolidation API is a scrapbook (`fill_apec_ninth_fuels_template.py`);
+  its `load_active_mapping_sheet` export is called by aggregated demand with
+  canonical paths. Correct as-is; not on the reconciliation hot path. No
+  change.
 
 - `read_config_table` legacy filename->master_config redirects remain in place
   (used by non-mapping config tables too); not removed to avoid broad breakage.
@@ -210,8 +239,13 @@ alternative mapping:
 
 ## Open questions / issues for review
 
-- **[BLOCKER C5] To finish the electricity/heat interim migration, the canonical
-  `leap_mappings` workbook must be extended** (via the leap_mappings maintenance
+- **[BLOCKER C5] ✅ RESOLVED 2026-07-23 — see the C5 section above.**
+  `electricity_heat_interim_workflow.py` now reads canonical for both the
+  esto/ninth relationship and the display-name map (`build_code_to_display_name`,
+  as the historical note below anticipated). Kept below as the historical
+  record of what the blocker was and how it was intended to close.
+  To finish the electricity/heat interim migration, the canonical
+  `leap_mappings` workbook must be extended (via the leap_mappings maintenance
   workflow, not from here):
   - add the 6 missing aggregate esto->9th rows above to a canonical relationship
     sheet (or confirm the parent-code fallback should use canonical aggregates);
