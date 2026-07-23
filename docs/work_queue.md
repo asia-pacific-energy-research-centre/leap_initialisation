@@ -1008,7 +1008,7 @@ are consolidated in [current_execution_roadmap.md](current_execution_roadmap.md)
 mode** (`c5401a5`). That gate stopped the bleeding, but did not solve the
 problem the reset existed for; the separate zeroing workbook is the solution.
 
-### Follow-up — aggregate preflight must not emit zeroing workbooks
+### Follow-up — aggregate preflight must not emit zeroing workbooks ✅ Fixed `f2bed6e`
 
 Observed in the `01_AUS` two-year safeguards smoke run, 2026-07-22: the
 `00_APEC` compressed preflight reaches the supply/transformation zeroing builder
@@ -1016,12 +1016,18 @@ and expands member-economy templates, producing noisy provisional-template
 warnings and unnecessary work. This is not a useful artifact: `00_APEC` is an
 aggregate check, not a LEAP area for manual workbook import.
 
-- Detect aggregate sentinel economies before template resolution in
-  `build_supply_transformation_zeroing_workbooks()`.
-- Log one explicit skip and return no paths for aggregate scope.
-- Keep real-economy zeroing behavior unchanged.
-- Cover aggregate no-template/no-workbook and real-economy behavior with focused
-  tests, then verify through the next two-year preflight smoke run.
+`build_supply_transformation_zeroing_workbooks()` now detects an aggregate
+sentinel economy via `leap_export_template_resolver.is_aggregate_economy`
+before template resolution, logs one explicit skip, and returns no path for
+that economy — real-economy behavior is unchanged. Covered by
+`tests/test_reset_scope_template_routing.py::test_supply_transformation_zeroing_skips_aggregate_before_template_resolution`
+(7 tests in that file pass, confirmed 2026-07-23). **Live-run verification
+found in the existing overnight log**, no fresh run needed: the four-real-
+template full-horizon run (`outputs/logs/supply_reconciliation_console_20260722_234442_4real_full.log:3408`)
+printed exactly the expected skip line for `00_APEC` and wrote zeroing
+workbooks only for the four real economies (`12_NZ`, `01_AUS`, `20_USA`,
+`02_BD`) — no `supply_transformation_zeroing_00_APEC.xlsx` and no
+provisional-template warning.
 
 ### Why this is needed — confirmed by the user, 2026-07-21
 
