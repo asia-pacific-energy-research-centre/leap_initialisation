@@ -103,10 +103,25 @@ def _normalize_economy(value: object) -> str:
     --------
     "01AUS"  → "01_AUS"
     "20usa"  → "20_USA"
+    "12NZ"   → "12_NZ"   (2-letter suffix - see bug note below)
     "01_AUS" → "01_AUS"  (already canonical)
+
+    Bug fixed 2026-07-23: the length guard was ``>= 5``, which silently
+    skipped normalization for every real 2-digit + 2-letter economy code
+    (4 characters total) - "02BD", "12NZ", "14PE", "18CT", "21VN" all passed
+    through unchanged instead of becoming "02_BD" etc. This was latent for a
+    long time because most callers used the full, unfiltered multi-economy
+    table regardless of whether "economy_key" was correctly canonical; it
+    became an active data-loss bug the moment anything filtered rows by the
+    normalized value and expected canonical-form input to match - exactly
+    what workflow_utils.load_ninth_outlook_csv/load_esto_csv's new
+    economies= filter does (2026-07-23), which is how this was caught: two of
+    three economies in a real concurrency test failed with "No proxy detail
+    rows were generated" because their entire ESTO/9th data silently
+    filtered to zero rows.
     """
     text = str(value or "").strip().upper()
-    if len(text) >= 5 and text[:2].isdigit() and text[2] != "_":
+    if len(text) >= 4 and text[:2].isdigit() and text[2] != "_":
         return f"{text[:2]}_{text[2:]}"
     return text
 

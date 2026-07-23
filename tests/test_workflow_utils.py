@@ -74,6 +74,33 @@ class TestNormalizeEconomy(unittest.TestCase):
         result = _normalize_economy("01")
         self.assertIsInstance(result, str)
 
+    def test_two_letter_suffix_economies_get_underscore(self):
+        """Regression test, 2026-07-23: the length guard used to require
+        >= 5 characters, which silently skipped every real economy whose
+        compact form is only 4 characters (2-digit code + 2-letter suffix).
+        Caught when workflow_utils.load_esto_csv/load_ninth_outlook_csv's
+        new economies= filter returned zero rows for these economies -
+        their real ESTO/9th data was there, but the un-normalized raw
+        "12NZ" never matched a caller's canonical "12_NZ" filter."""
+        self.assertEqual(_normalize_economy("02BD"), "02_BD")
+        self.assertEqual(_normalize_economy("12NZ"), "12_NZ")
+        self.assertEqual(_normalize_economy("14PE"), "14_PE")
+        self.assertEqual(_normalize_economy("18CT"), "18_CT")
+        self.assertEqual(_normalize_economy("21VN"), "21_VN")
+
+    def test_all_21_real_economy_codes_normalize_to_canonical_form(self):
+        raw_to_canonical = {
+            "01AUS": "01_AUS", "02BD": "02_BD", "03CDA": "03_CDA",
+            "04CHL": "04_CHL", "05PRC": "05_PRC", "06HKC": "06_HKC",
+            "07INA": "07_INA", "08JPN": "08_JPN", "09ROK": "09_ROK",
+            "10MAS": "10_MAS", "11MEX": "11_MEX", "12NZ": "12_NZ",
+            "13PNG": "13_PNG", "14PE": "14_PE", "15PHL": "15_PHL",
+            "16RUS": "16_RUS", "17SGP": "17_SGP", "18CT": "18_CT",
+            "19THA": "19_THA", "20USA": "20_USA", "21VN": "21_VN",
+        }
+        for raw, canonical in raw_to_canonical.items():
+            self.assertEqual(_normalize_economy(raw), canonical, msg=raw)
+
 
 class TestNormalizeYearColumns(unittest.TestCase):
     def test_string_years_become_ints(self):
