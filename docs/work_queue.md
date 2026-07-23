@@ -1527,12 +1527,13 @@ carry the same distortion.
   — **stale test**. It monkeypatches `apply_matt_subtotal_mapping`, which now
   only exists under `archive/` and `scrapbook/`. Verified failing at HEAD
   independently of any current work. Either update or delete the test.
-- `tests/test_leap_export_template_resolver.py::test_read_area_from_real_usa_template`
-  — **added to this list 2026-07-21**, having been found by the [17] full-suite
-  run and mistaken for a regression until checked. Confirmed failing at
-  `2713a51`, before any [17] work. Not diagnosed; it asserts on an area string
-  read from the real USA template, so today's template refresh is the first
-  place to look.
+- ~~`tests/test_leap_export_template_resolver.py::test_read_area_from_real_usa_template`~~
+  — **fixed 2026-07-23** (`ac1a79f`). Diagnosed at last: the assertion was
+  pinned to the real USA template's area name string ("USA clean slate
+  15_07"), and the user re-exported that template today under a new area
+  name ("USA clean slate 23_07") as part of updating the real per-economy
+  templates. Updated the assertion to match; not a code defect, just a
+  stale fixture string.
 - `tests/test_supply_transformation_export_projection_cache.py::test_transformation_exports_reuse_reference_projection_for_current_accounts`
   — **added to this list 2026-07-23**, found in a full-suite run unrelated to
   the work that surfaced it (an aggregated-demand-workflow change touching
