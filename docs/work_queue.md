@@ -1231,7 +1231,7 @@ file until the run finishes and the label is restored to `"auto"`.** Each brief
 ends with an explicit "safe now vs must wait" table; follow it rather than
 inferring.
 
-### Priority — T4 commit 4 (exclude rollup labels from display-name resolution) — UNBLOCKED 2026-07-23
+### Priority — T4 commit 4 (exclude rollup labels from display-name resolution) — ✅ Implemented 2026-07-23 (`9c5f16b`), O5 evidence still pending
 
 **Corrected 2026-07-23, twice-verified.** This subsection originally (as of
 `4561a14`) reported commit 4 as blocked on T10 and repeated a "3/21 clean,
@@ -1256,23 +1256,27 @@ T4/T10 for the full correction.
 `rolled_raw_leap_fuel_name` (fuel), recursing where a matched component is
 itself a rollup.
 
-**Remaining gates before this can land, in order:**
+**Implemented 2026-07-23 (`9c5f16b`), landed alone per gate 2 below** (checked
+gate 1 first: `supply_reconciliation_workflow.py` was not touched by this
+commit, and `RUN_OUTPUT_LABEL=="auto"` confirmed no run was in flight).
+`filter_leap_rollup_names()` in `codebase/mappings/canonical_loaders.py`
+drops `IS_LEAP_ROLLUP_NAME=True` rows inside `load_canonical_sheet()`,
+bundled under the same `apply_usage_filter`/`include_excluded` toggle as the
+existing `USED_IN_LEAP_INITIALISATION` filter (deliberately, not
+unconditional — see the T4 write-up in
+`initialisation_refactor_continuation.md` for why `electricity_heat_interim_workflow.py`
+needs that). `resolve_rollup_components()` recursively expands a rollup name
+via `leap_rollup_rules`; `is_rollup_label()`/`assert_not_rollup_label()`
+cross-check the rule sheet directly rather than trusting the flag alone. 26
+new tests, including the required rollup-of-rollup recursive case.
 
-1. **Fleet-run boundary respected.** Check whether a run is in flight and
-   which files it currently locks (see "Fleet-run boundary" above) before
-   touching `codebase/supply_reconciliation_workflow.py` or anything else
-   commit 4 needs.
-2. **Never bundle.** Commit 4 is the one **output-affecting** commit in the
-   T4 sequence — land it alone, never combined with a schema/contract/
-   retirement commit, so a regression is attributable to exactly one change.
-3. **Real single-economy A/B, post-boundary, before any fleet run** — same
-   discipline [17]/[18] required: a change that passes every static check
-   can still be wrong only a real run reveals (measured, not theoretical —
-   that is what happened to [17]'s preset flip).
+**Remaining gate before T4 can fully close:**
+
 4. **O5 equivalence evidence** (`phase_3_canonical_mapping_migration_execution.md`
    O5) recorded against the confirmed D3.5 tolerance — branch-row key sets
    exactly equal, totals within 1e-6 relative — before commit 6 (the
-   evidence write-up) can close out T4.
+   evidence write-up) can close out T4. This needs a real single-economy A/B
+   (gate 3) — **needs the user's go-ahead before running it.**
 
 ### Decisions awaiting a human
 

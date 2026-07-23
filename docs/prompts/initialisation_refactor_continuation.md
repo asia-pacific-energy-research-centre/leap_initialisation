@@ -206,7 +206,7 @@ still deferred per its own recommendation.
 
 **Unblocked T7 (parallelism) — see below, also done.**
 
-### T4 - Phase 3 canonical mapping. COMMITS 1-3 DONE 2026-07-23
+### T4 - Phase 3 canonical mapping. COMMITS 1-4 DONE 2026-07-23
 
 Decided: **D3.1 retire** the `unified_name_lookup` consolidation API;
 **D3.2 exclude** `IS_LEAP_ROLLUP_NAME` rows from display-name resolution, with
@@ -232,20 +232,36 @@ failure hit (`test_supply_assets.py::test_prepare_supply_assets_maps_names_aggre
 reproduces identically with the change stashed and was already on the
 known-pre-existing-failures list in `docs/work_queue.md`.
 
-**Commit 4 UNBLOCKED 2026-07-23 — the earlier "BLOCKED on T10" call was based
-on a wrong-column join bug, not a real gap.** The 2026-07-23 diagnostic that
-found "10/21 flagged codes have no matching rollup-rule row" was joining
-`leap_display_names.code` against `rolled_*` columns that, for
-`leap_rollup_rules`, actually hold clean display-name text (`"Power"`,
-`"Transfers"`, ...), not code-style text. Re-joined correctly on
-`leap_display_name` (see T10 below): **21/21 flagged codes match cleanly.**
-No mapping-owner decision is needed to unblock this — see T10 for the full
-correction and the exact join to use. Commit 4 is still
-**output-affecting and must not be bundled with another change**, and still
-needs the O5 real-run equivalence evidence collected before it lands (see
-`phase_3_canonical_mapping_migration_execution.md`); it is queued in
-`docs/work_queue.md` [16] as a priority item pending the current fleet run
-finishing and `supply_reconciliation_workflow.py` being free to edit again.
+**Commit 4 was blocked, then unblocked, then implemented — all 2026-07-23.**
+The earlier "BLOCKED on T10" call was based on a wrong-column join bug, not a
+real gap: the 2026-07-23 diagnostic that found "10/21 flagged codes have no
+matching rollup-rule row" was joining `leap_display_names.code` against
+`rolled_*` columns that, for `leap_rollup_rules`, actually hold clean
+display-name text (`"Power"`, `"Transfers"`, ...), not code-style text.
+Re-joined correctly on `leap_display_name` (see T10 below): **21/21 flagged
+codes match cleanly.** No mapping-owner decision was needed.
+
+**Implemented in `9c5f16b`** (`codebase/mappings/canonical_loaders.py`):
+`filter_leap_rollup_names()` drops `IS_LEAP_ROLLUP_NAME=True` rows inside
+`load_canonical_sheet()`, bundled under the same `apply_usage_filter`/
+`include_excluded` toggle as the existing `USED_IN_LEAP_INITIALISATION`
+filter (deliberately, not unconditional — `electricity_heat_interim_workflow.py`'s
+own `_load_power_interim_display_name_map()` already calls
+`build_code_to_display_name(include_excluded=True)` specifically so its
+`POWER_INTERIM_NEVER_OUTPUT_LABELS` guard can resolve aggregate labels by
+name and suppress them; an unconditional filter would have broken that).
+`resolve_rollup_components()` recursively expands a rollup name into its
+real components via `leap_rollup_rules`, recursing through rollup-of-rollup
+cases; `is_rollup_label()`/`assert_not_rollup_label()` cross-check against
+the rule sheet directly (T10's stronger test) rather than trusting the flag
+alone. 26 new tests, including the required rollup-of-rollup recursive case
+and the unflagged-rollup cross-check case.
+
+**Still output-affecting and NOT yet run against real data.** The O5
+equivalence gate (`phase_3_canonical_mapping_migration_execution.md`) needs
+a real single-economy A/B (key sets exact, totals within 1e-6 relative per
+D3.5) before this is verified — needs the user's go-ahead first. Commit 6
+(the evidence write-up) is still pending that run.
 
 **D3.3 decided and commit 5 done 2026-07-23** (`527bf9d`), confirmed with the
 user: `config/master_config.xlsx` and `config/leap_mappings.xlsx` moved to
