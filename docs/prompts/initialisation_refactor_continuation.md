@@ -233,15 +233,22 @@ reproduces identically with the change stashed and was already on the
 known-pre-existing-failures list in `docs/work_queue.md`.
 
 **Commit 4 NOT attempted — output-affecting, needs a quiet tree and the O5
-equivalence evidence; do not start it without re-reading the brief's safety
-boundaries first.** Commit 5 (needs D3.3) and commit 6 (needs the fleet-run
-equivalence evidence) also not attempted.
+equivalence evidence; user explicitly deferred it 2026-07-23. Do not start it
+without re-reading the brief's safety boundaries first.**
 
-**Still open: D3.3** (retire `config/master_config.xlsx` and
-`config/leap_mappings.xlsx` - recommend move to `config/legacy/`), **D3.4**
-(who owns rollup-rule reading - recommend a frozen column contract here),
-**D3.5** (equivalence tolerance - proposed: key sets exactly equal, totals
-within 1e-6 relative).
+**D3.3 decided and commit 5 done 2026-07-23** (`527bf9d`), confirmed with the
+user: `config/master_config.xlsx` and `config/leap_mappings.xlsx` moved to
+`config/legacy/`. Verified before moving that no live code path opens either
+by hardcoded path (one stale comment fixed); `config/backup_leap_mappings.xlsx`
+is a distinct, still-live file, untouched. Two new tests in
+`tests/test_canonical_only_mapping_sources.py`. Commit 6 (equivalence
+evidence write-up) still not attempted - it depends on commit 4's real-run
+evidence, which was deferred.
+
+**Still open: D3.4** (who owns rollup-rule reading - recommend a frozen
+column contract here), **D3.5** (equivalence tolerance - proposed: key sets
+exactly equal, totals within 1e-6 relative). Both need only confirmation, not
+new evidence.
 
 ### T5 - Phase 5A convergence and run history. ✅ DONE, reconfirmed 2026-07-23
 
