@@ -232,9 +232,16 @@ failure hit (`test_supply_assets.py::test_prepare_supply_assets_maps_names_aggre
 reproduces identically with the change stashed and was already on the
 known-pre-existing-failures list in `docs/work_queue.md`.
 
-**Commit 4 NOT attempted — output-affecting, needs a quiet tree and the O5
-equivalence evidence; user explicitly deferred it 2026-07-23. Do not start it
-without re-reading the brief's safety boundaries first.**
+**Commit 4 BLOCKED on T10, not merely deferred — researched 2026-07-23.**
+Investigated implementing it directly; found the join between a rollup-
+flagged `code` and its components is unreliable (10 of 21 flagged codes have
+no matching row in any rollup-rule sheet at all — see T10 below for the full
+breakdown). A naive recursive-expansion implementation would silently
+under-resolve roughly half the flagged codes, which is exactly the failure
+mode D3.2 warned about. User decided 2026-07-23 to raise this to the mapping
+owner (T10) before implementing, rather than build a narrower version
+covering only the 3 directly-resolvable codes. **Do not implement commit 4
+until T10 is answered.**
 
 **D3.3 decided and commit 5 done 2026-07-23** (`527bf9d`), confirmed with the
 user: `config/master_config.xlsx` and `config/leap_mappings.xlsx` moved to
@@ -394,13 +401,47 @@ The remaining two also done: `docs/supply_reconciliation_workflow_guide.md`
 (`81b5b31`), historical entries kept below each correction rather than
 deleted.
 
-### T10 - question for the mapping owner (leap_mappings). OPEN
+### T10 - question for the mapping owner (leap_mappings). OPEN, now with a concrete answer to the diagnostic half
 
 Is `IS_LEAP_ROLLUP_NAME` set on **every** rollup label in `leap_display_names`,
 or only on those noticed so far? If incomplete, T4 commit 4's filter is
 necessary but not sufficient, and a cross-check against the rollup sheets'
 rolled-pair columns is the stronger test. **Read-only in that repo - report the
 obligation, do not edit it.**
+
+**Measured 2026-07-23** (blocks T4 commit 4 - user decided 2026-07-23 to raise
+this before implementing rather than build a narrower/partial version):
+of the 21 rows with `IS_LEAP_ROLLUP_NAME=True` in `leap_display_names`
+(21 True / 490 False / 94 blank of 605 rows total), matched against
+`input_*`/`rolled_*` columns across all three rollup-rule sheets
+(`leap_rollup_rules`, `esto_rollup_rules`, `ninth_rollup_rules`):
+
+- **3/21** match cleanly on the `rolled_*` side (code is the aggregate;
+  `input_*` rows on the matching group give its real-LEAP components) - the
+  mechanism D3.2 assumed.
+- **5/21** match only on the `input_*` side of some *other* rule - they are
+  themselves a component of a further rollup, and no rule row defines *their
+  own* components (e.g. `09.08 Coal transformation` feeds up into
+  `09 Total transformation sector`, which has no `rolled_*` row of its own -
+  it only appears as `parent_flow_label` elsewhere).
+- **10/21** have **zero match anywhere** in any rollup-rule sheet:
+  `15.02 Road`, `12`/`13 Total final ... consumption` (two of these are
+  self-documented in `leap_display_names.Note` as `"Not represented in LEAP"`
+  - deliberately component-less), `09 Total transformation sector`,
+  `08 Transfers`, `15 Transport sector`, and their `ninth_sector` typed
+  counterparts. These read as structural hierarchy parents referenced only
+  via `parent_flow_label`, not as rows with their own `input_*` components.
+
+**The question for the mapping owner, sharpened**: for the 8 unmatched codes
+that are *not* self-documented as "Not represented in LEAP" (the transport/
+road/transfers/transformation-sector totals), is that omission intentional
+(they are genuinely structural-only and should never be expanded to LEAP
+branch components), or is `leap_rollup_rules`/`esto_rollup_rules`/
+`ninth_rollup_rules` missing rows for them? A naive implementation cannot
+tell these apart from the data alone - it needs the mapping owner's answer.
+All 21 flagged codes are `code_type` `esto_flow` or `ninth_sector`; none are
+`leap_sector`/`leap_fuel` typed, for what that is worth to the owner's own
+model of the flag.
 
 ### T11 - relaunch the fleet run. UNBLOCKED 2026-07-21
 
