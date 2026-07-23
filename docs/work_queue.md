@@ -1307,8 +1307,12 @@ prefix, and is never told the excluded sectors. So declaring a sector active
 would drop it from the placeholder *and* zero its detailed branches: silent
 energy loss, reachable from a full run, not just from a patch. Latent only
 because `DETAILED_DEMAND_BRANCHES_ACTIVE` is `None` today — **the first
-handed-over demand sector triggers it.** See the Phase 5 brief G1/G2; final
-testing of G2 is blocked on [17]. Still open: D5A.1, D5C.2.
+handed-over demand sector triggers it.** See the Phase 5 brief G1/G2.
+**G1 and G2 are both DONE** — corrected 2026-07-23, this entry was stale:
+[17] closed 2026-07-21 and `current_execution_roadmap.md`'s 2026-07-22
+"Completed" line already recorded G1/G2 done with their two-year AUS
+verification; `initialisation_refactor_continuation.md`'s T6 section says
+the same. Still open: D5A.1, D5C.2.
 
 ## [15] Modelling-configuration scoped reviews
 

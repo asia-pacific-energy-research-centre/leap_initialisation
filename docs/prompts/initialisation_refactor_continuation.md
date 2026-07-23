@@ -181,14 +181,19 @@ inferred otherwise - which is itself the lesson: **two agents on one repo cannot
 see each other's user conversations, so neither should correct the other's
 account of one.** The concurrent-commit hazard it also cites is real and stands.
 
-### T2 - Phase 4 characterization tests. PARTLY DONE
+### T2 - Phase 4 characterization tests. ✅ DONE, reconfirmed 2026-07-23
 
-- Commit 1 **done** (`a279615`): forwarding-completeness test, 53 passed +
-  3 strict xfails pinning the [17] defect.
-- **Still to do:** config-surface snapshot per star-importing module;
-  run-context snapshot per preset; convergence CSV schema pin; public-callable
-  smoke tests. All test-only and safe at any time.
-- Un-`xfail` the three strict xfails as T1 resolves them.
+Re-checked this session (register said "PARTLY DONE" - stale, all of the
+"still to do" list already exists): `tests/test_reconciliation_phase4_characterization.py`
+has `test_split_module_config_surfaces_match_characterized_snapshot`
+(config-surface snapshot), `test_each_preset_resolves_its_characterized_run_context`
+(run-context snapshot per preset), `test_convergence_csv_schema_is_exact_and_legacy_reader_is_public`
+(convergence CSV schema pin), and `test_public_workflow_callables_keep_their_notebook_contract`
+/ `test_patch_baseline_seed_entry_keeps_its_notebook_contract` (public-callable
+smoke tests) - all 11 tests in that file pass. `tests/test_reconciliation_state_forwarding.py`
+(from commit 1, `a279615`) has zero `xfail` markers left - the three strict
+xfails pinning the [17] defect were un-xfailed as T1 closed, per this
+entry's own instruction.
 
 ### T3 - Phase 4 state injection (B2 + B3). ✅ DONE 2026-07-22
 
@@ -513,8 +518,8 @@ both are correct.
 
 1. ~~**T1** ([17])~~ - **DONE**, closed on measured evidence.
 2. ~~**T7's guard** on `PARALLEL_ECONOMY_WORKERS`~~ - DONE, live hazard removed.
-3. **T2** remaining characterization tests - status not re-confirmed this
-   session; check before assuming done.
+3. ~~**T2** remaining characterization tests~~ - **DONE**, reconfirmed
+   2026-07-23 (see T2 above).
 4. ~~**T6 G1**, then **T6 G2**~~ - **DONE** 2026-07-22.
 5. **T4** commits 1-3, 5 (safe anytime; can interleave with anything above) -
    **still open**, not touched this session.
