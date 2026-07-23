@@ -226,18 +226,21 @@ Commits 1-3 and 5 are safe alongside anything. Commit 4 needs a quiet tree.
 **D3.5** (equivalence tolerance - proposed: key sets exactly equal, totals
 within 1e-6 relative).
 
-### T5 - Phase 5A convergence and run history. NOT STARTED, self-contained
+### T5 - Phase 5A convergence and run history. ✅ DONE, reconfirmed 2026-07-23
 
 Four commits: run manifest beside convergence history; compare runs by explicit
 run id; opt-in pruning (`dry_run=True` default, never auto-delete); flag runs
 whose inputs changed mid-run.
 
-**Open: D5A.1** - sidecar manifest vs widening `capacity_unmet_convergence.csv`.
-Recommendation: **manifest** (purely additive, cannot break existing readers,
-and old runs would otherwise carry blank columns). D5A.2-4 have recommendations
-in the Phase 5 brief and need only confirmation.
-
-Safe at any time; touches only history/diagnostics modules.
+Reconfirmed by direct test inspection this session (not just trusting the
+roadmap's "completed 2026-07-22" line): `tests/test_convergence_csv_cleanup.py`
+has `test_manifest_round_trip_and_input_drift_are_additive` and
+`test_prune_convergence_history_defaults_to_dry_run_and_keeps_latest`, plus
+run-id-scoped trim/remove tests; `dry_run`/manifest logic lives in
+`codebase/functions/capacity_unmet_convergence_diagnostics.py`,
+`codebase/supply_reconciliation_allocation.py`, and
+`codebase/supply_reconciliation_history.py`. **D5A.1 resolved as recommended:
+manifest, not a widened CSV.** D5A.2-4 not individually re-verified.
 
 ### T6 - Phase 5B aggregated demand. PARTLY BLOCKED
 
@@ -325,18 +328,23 @@ matching this thread's own recommendation. Choosing a safe default >1 for a
 real fleet run still needs the measured-peak-RSS exercise this thread called
 for; not done.
 
-### T8 - own-use proxy. RE-SCOPED, no structural work
+### T8 - own-use proxy. ✅ FIXTURES DONE, reconfirmed 2026-07-23
 
 D4.4 resolved by inspection: the module is healthy (19 uniform declarative
 `PROXY_CONFIG` entries; only 3 oversized functions; 1 TODO in 4,113 lines).
 `AGENTS.md`'s "internally tangled, rewrite may be cleaner" is obsolete.
 
-**The real gap is coverage shape**, recorded in the scoped review: five
-*enabled* processes are not named in the tests at all -
+**The coverage gap is closed.** Original gap, recorded in the scoped review:
+five *enabled* processes were not named in the tests at all -
 `electricity_chp_and_heat_plants`, `oil_and_gas_extraction`,
 `nuclear_industry`, `gasification_plants_for_biogases`,
 `transmission_and_distribution_losses` - while three of the four most-tested
-processes are *disabled*. Build fixtures for those five, largest-volume first.
+processes were *disabled*. Reconfirmed by direct test inspection this
+session (not just trusting the roadmap's "completed" line):
+`tests/test_other_loss_own_use_proxy_workflow.py` now has
+`test_enabled_proxy_process_activity_sources_honor_current_config` and
+`test_enabled_proxy_process_target_filters_select_configured_own_use_rows`,
+both parametrized over exactly those five processes.
 
 Optional, low priority: split `assemble_proxy_workbook` (356 lines/43 branches).
 
@@ -396,13 +404,10 @@ both are correct.
    **still open**, not touched this session.
 6. ~~**T3** state injection~~ - **DONE** 2026-07-22; D4.3 (split
    `supply_results_saver.py`) remains deferred.
-7. **T5** whenever convenient - fully self-contained. **Still open** - status
-   not re-confirmed this session despite `docs/current_execution_roadmap.md`
-   listing "convergence manifests" as completed 2026-07-22; reconcile before
-   assuming D5A.2-4 are also settled.
-8. **T8** fixtures when the proxy next matters. **Still open** - same caveat:
-   the roadmap's "own-use proxy fixtures" completion note needs reconciling
-   against T8's five-untested-process list before assuming it is closed.
+7. ~~**T5**~~ - **DONE**, reconfirmed 2026-07-23 by direct test inspection
+   (see T5 above). D5A.2-4 not individually re-verified.
+8. ~~**T8** fixtures~~ - **DONE**, reconfirmed 2026-07-23 by direct test
+   inspection (see T8 above).
 9. ~~**T7** proper~~ - **CORE SAFETY BOUNDARY DONE** 2026-07-23, via a
    different architecture than this thread sketched (see T7 above). The
    deterministic-parent-merge piece is still open.
