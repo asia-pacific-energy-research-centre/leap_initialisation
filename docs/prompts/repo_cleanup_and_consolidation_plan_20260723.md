@@ -54,9 +54,40 @@ chat transcript). Highlights, highest confidence first:
    `scrapbook/`, already-excluded holding areas): `buildings_technology_mapping.py`,
    `minor_demand_utils.py`, `detailed_balance_from_esto.py`,
    `leap_transformation_losses_own_use.py`, `ninth_to_esto_mapping_coverage.py`.
+
+   **Resolved 2026-07-23 (81119c0)**: 4 of the 5 were genuinely dead and are
+   now deleted — `buildings_technology_mapping.py`, `detailed_balance_from_esto.py`,
+   `leap_transformation_losses_own_use.py`, `ninth_to_esto_mapping_coverage.py`.
+   Backed up to `leap_cleanup_backups_20260723/dead_code_files.zip` first.
+   `minor_demand_utils.py` was **NOT actually dead** — restored via
+   `git checkout --`. The grep-based "no importer in codebase/tests/docs"
+   check missed that `tests/test_minor_demand_workflow.py` directly imports
+   `codebase.archive.minor_demand_workflow`, which in turn imports
+   `minor_demand_utils`. A full pytest collection run (not just grep) is what
+   caught this — it surfaced as a hard collection error (`ModuleNotFoundError`),
+   not a silent behavior change. **Lesson: "archive/old_workflows importer only"
+   is not sufficient evidence of dead code if any test file directly exercises
+   the archived module — always run the full test suite after a dead-code
+   deletion batch, before committing, not just a grep sweep.**
 2. **A whole dead subpackage**: 10 of 12 files in
    `codebase/utilities/leap_results_dashboard_v2/` — only `config_loader.py`/
    `reference_loader.py` are genuinely live.
+
+   **Resolved 2026-07-23**: this one was **also NOT actually dead** — all 10
+   files were restored via `git checkout --` after deleting them broke real
+   imports (59 pytest collection errors). The chain: `codebase/__init__.py`
+   → `leap_series_comparison.py` → `codebase.scrapbook.utilities` →
+   `esto_reference_loader.py` → triggers `leap_results_dashboard_v2/__init__.py`,
+   which directly imports `from .models import DashboardV2Settings` and 3
+   other of the "dead" files at package-load time. The grep-based "no external
+   importer of the exported functions" check missed this because it looked for
+   callers of the functions, not for the package's own `__init__.py`
+   re-export/import chain. **Lesson: before deleting files inside any
+   subpackage, check that subpackage's own `__init__.py` for direct imports of
+   those files — a function having no external callers doesn't mean the
+   module has no importers.** The originally-prepared
+   `dead_code_dashboard_v2_subpackage.zip` backup was deleted since nothing
+   was actually removed.
 3. **~19 dead functions** in `leap_results_dashboard_balance.py` (module itself
    stays live for its path constants; the functions don't).
 4. **Dead mini-subsystems in live files**: a whole unused "transport export
