@@ -1231,44 +1231,45 @@ file until the run finishes and the label is restored to `"auto"`.** Each brief
 ends with an explicit "safe now vs must wait" table; follow it rather than
 inferring.
 
-### Priority — T4 commit 4 (exclude rollup labels from display-name resolution)
+### Priority — T4 commit 4 (exclude rollup labels from display-name resolution) — UNBLOCKED 2026-07-23
 
-**Blocked on T10 (the mapping owner), not merely deferred — researched
-2026-07-23.** See
+**Corrected 2026-07-23, twice-verified.** This subsection originally (as of
+`4561a14`) reported commit 4 as blocked on T10 and repeated a "3/21 clean,
+5/21 partial, 10/21 unmatched" diagnostic. **That diagnostic was a
+wrong-column join bug, not a real gap**, per `bfed011` on the
+`claude/leap-rollup-name-flag-b85d02` branch — independently re-verified
+against the live `outlook_mappings_master.xlsx` before merging that
+correction in (`b1ab074`): `leap_rollup_rules.rolled_leap_sector_name_full_path`
+/ `rolled_raw_leap_fuel_name` hold clean display-name text (`"Power"`,
+`"Coal transformation"`, `"Transfers"`, ...), not code-style text — they
+match `leap_display_names.leap_display_name`, not `.code`. Rejoined on the
+right column: **21/21 flagged codes match cleanly**, including all 8
+previously-reported "structural-parent" misses.
+
+**T10 is closed — no leap_mappings/mapping-owner decision is needed to
+proceed.** See
 [prompts/initialisation_refactor_continuation.md](prompts/initialisation_refactor_continuation.md)
-T4/T10 for the full write-up; summarized here so [16] carries the current
-state rather than the 2026-07-21 "planned" snapshot above.
+T4/T10 for the full correction.
 
-**The correct join, once T10 is answered:** for each `code` flagged
-`IS_LEAP_ROLLUP_NAME=True` in `leap_display_names`, resolve its real-LEAP
-components by matching it on the `rolled_*` side of a row in
-`leap_rollup_rules` / `esto_rollup_rules` / `ninth_rollup_rules`, then take
-that row's `input_*` columns as the components — recursively, since a
-component can itself be a rollup. Measured against the real sheets: only
-3 of the 21 flagged codes resolve this way; 5 more resolve only as an
-`input_*` member of some *other* rule (they are themselves a rollup
-component, with no `rolled_*` row of their own); the remaining 10 have no
-matching row anywhere and read as structural hierarchy parents referenced
-only via `parent_flow_label`. A naive implementation cannot tell "10
-genuinely component-less" from "10 missing rule rows" apart from the data
-alone — that is exactly the question posed to the mapping owner in T10.
+**Correct join for the implementation:** `leap_display_names.leap_display_name`
+== `leap_rollup_rules.rolled_leap_sector_name_full_path` (sector) /
+`rolled_raw_leap_fuel_name` (fuel), recursing where a matched component is
+itself a rollup.
 
 **Remaining gates before this can land, in order:**
 
-1. **T10 answered.** Do not implement a partial version covering only the
-   3 cleanly-resolvable codes — the user explicitly rejected that shortcut
-   2026-07-23 in favor of asking the mapping owner first.
-2. **Fleet-run boundary respected.** Check whether a run is in flight and
+1. **Fleet-run boundary respected.** Check whether a run is in flight and
    which files it currently locks (see "Fleet-run boundary" above) before
-   touching anything commit 4 needs.
-3. **Never bundle.** Commit 4 is the one **output-affecting** commit in the
+   touching `codebase/supply_reconciliation_workflow.py` or anything else
+   commit 4 needs.
+2. **Never bundle.** Commit 4 is the one **output-affecting** commit in the
    T4 sequence — land it alone, never combined with a schema/contract/
    retirement commit, so a regression is attributable to exactly one change.
-4. **Real single-economy A/B, post-boundary, before any fleet run** — same
+3. **Real single-economy A/B, post-boundary, before any fleet run** — same
    discipline [17]/[18] required: a change that passes every static check
    can still be wrong only a real run reveals (measured, not theoretical —
    that is what happened to [17]'s preset flip).
-5. **O5 equivalence evidence** (`phase_3_canonical_mapping_migration_execution.md`
+4. **O5 equivalence evidence** (`phase_3_canonical_mapping_migration_execution.md`
    O5) recorded against the confirmed D3.5 tolerance — branch-row key sets
    exactly equal, totals within 1e-6 relative — before commit 6 (the
    evidence write-up) can close out T4.
@@ -1282,23 +1283,6 @@ display-name resolution, because **no rollup ever appears in LEAP** — its
 components do, recursively where a component is itself a rollup. Details in the
 Phase 3 brief. Still open: D3.3–D3.5.
 
-**PRIORITY — T4 commit 4 (exclude `IS_LEAP_ROLLUP_NAME` rows, recursive
-component expansion) is unblocked 2026-07-23**, see
-`prompts/initialisation_refactor_continuation.md` T10/T4 for the full
-correction: the prior "10/21 flagged codes have no matching rollup-rule row"
-finding was a wrong-column join bug (joined `code` instead of
-`leap_display_name` against `leap_rollup_rules`'s `rolled_*` columns, which
-hold clean display-name text, not code-style text). Rejoined correctly,
-21/21 match. The mapping-owner question originally raised as T10 is
-withdrawn — no leap_mappings decision is needed to proceed. **Do not start
-this while the fleet run holds `codebase/supply_reconciliation_workflow.py`
-(see Fleet-run boundary above), and never bundle it with another change —
-it is output-affecting and still needs the O5 real-run equivalence evidence
-(3 economies, key-set + totals comparison) before it can be called done.**
-Correct join for the implementation: `leap_display_names.leap_display_name`
-== `leap_rollup_rules.rolled_leap_sector_name_full_path` (sector) /
-`rolled_raw_leap_fuel_name` (fuel), recursing where a matched component is
-itself a rollup.
 Phase 4: **D4.1 decided 2026-07-21 — take the explicit-injection path** (B2
 allocation ledger + B3 run context are in scope). Reinforced by [17] and by
 `PARALLEL_ECONOMY_WORKERS` already driving a `ThreadPoolExecutor` over the

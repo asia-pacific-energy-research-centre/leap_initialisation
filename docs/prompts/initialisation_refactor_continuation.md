@@ -261,8 +261,9 @@ question inside `leap_mappings` itself; defer this repo's frozen-column-
 contract decision to that follow-up rather than deciding it in isolation here.
 
 **D3.5 confirmed 2026-07-23**: key sets exactly equal, totals within 1e-6
-relative. Not yet exercised - still depends on commit 4's real-run evidence,
-which stays blocked on T10.
+relative. Not yet exercised - still depends on commit 4's real-run (O5)
+evidence, which is now unblocked (T10 closed - see T10 below) but still
+gated on the fleet-run boundary, no-bundling, and a real single-economy A/B.
 
 ### T5 - Phase 5A convergence and run history. ✅ DONE, reconfirmed 2026-07-23
 
@@ -510,7 +511,8 @@ both are correct.
 9. ~~**T7** proper~~ - **CORE SAFETY BOUNDARY DONE** 2026-07-23, via a
    different architecture than this thread sketched (see T7 above). The
    deterministic-parent-merge piece is still open.
-10. **T9** incrementally; **T10** whenever the mapping owner is available;
+10. **T9** incrementally; **T10 closed 2026-07-23** (no mapping-owner answer
+    needed - the diagnostic was a wrong-column join bug, see T10 below);
     **T11** already run at least twice since this register was written
     (four-real-template full run 2026-07-22, plus this session's
     verification runs) - re-check `docs/work_queue.md` before assuming T11
@@ -529,6 +531,6 @@ both are correct.
 | D5B.3 | Contributions: separate sheet or sidecar? | **Confirmed and implemented 2026-07-23**: separate sheet, same workbook |
 | D5B.4 | Must contributions reconcile to the aggregate? | **Confirmed and implemented 2026-07-23**: yes, asserted by test |
 | D5C.2 | Worker-count default | 1, opt-in, from measured RSS |
-| T10 | Is `IS_LEAP_ROLLUP_NAME` complete? | Mapping owner to answer |
+| T10 | Is `IS_LEAP_ROLLUP_NAME` complete? | **Closed 2026-07-23**: diagnostic was a wrong-column join bug, not a real gap; 21/21 flagged codes match once joined on `leap_display_name`. No mapping-owner answer needed |
 
 None of these block T1.
