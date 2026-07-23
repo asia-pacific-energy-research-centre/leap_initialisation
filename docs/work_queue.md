@@ -67,6 +67,23 @@ Evidence from `SEED_4REAL_TEMPLATES_FULL_20260722`:
 
 Do not weaken seed validation or silently delete the detailed files.
 
+### Priority follow-up — make template verification economy-specific
+
+The six `02_BD` unmatched-ID rows from the four-real-template run are a
+verification-scope false positive, not missing Brunei branches. The combined
+verification step loaded the USA template
+(`data/leap_export_templates/leap_export_template 20_USA.xlsx`) and attempted
+to match all four economies against it; the rows exist in
+`leap_export_template 02_BD.xlsx` but the USA template does not contain those
+same branch/fuel combinations.
+
+**Priority:** change the consolidated verification to resolve and compare each
+economy against its own template. Until that is implemented, either exclude
+non-USA rows from the USA-pinned check or label them explicitly as
+cross-economy verification limitations; never report them as LEAP alignment
+fixes. Add a regression test using the 02_BD Coke-oven-gas and Gas-works
+`Other products` rows before the next retained full-horizon run.
+
 Single source of truth for *what is left, in what order, and what blocks what*
 across the supply-reconciliation / baseline-seed work. Cross-references the
 detail rather than duplicating it.
