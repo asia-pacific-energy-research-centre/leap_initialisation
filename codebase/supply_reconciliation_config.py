@@ -1098,6 +1098,17 @@ AGGREGATED_DEMAND_EXCLUDED_SECTORS: list[str] | None = None
 # PRESET-CONTROLLED DEFAULT: both active presets replace this value.
 AGGREGATED_DEMAND_USE_SECTOR_BRANCHES: bool = False
 
+# TEMPORARY - enabled 2026-07-23 at the user's request to inspect the new
+# "Contributions" sheet (T6 5B.3/5B.4, aggregated_demand_workflow.py) after
+# the next run. Adds a "Contributions" sheet to aggregated_demand_*.xlsx
+# workbooks tracing each aggregated (fuel, scenario, year) total back to its
+# source ESTO/NINTH rows. Diagnostics-only - it does NOT touch the LEAP/
+# FOR_VIEWING sheets or any LEAP-importable value, only adds a new sheet.
+# TO REVERT: set this back to False (or delete the line - False is also the
+# hardcoded default in save_aggregated_demand_as_leap_workbook). No other
+# change is needed; nothing else reads this flag.
+AGGREGATED_DEMAND_WRITE_CONTRIBUTIONS: bool = True
+
 # Maps LEAP demand branch group names to the ESTO sector/sub1sector codes they
 # represent in the 9th Outlook / ESTO source data.  When a group is listed in
 # DETAILED_DEMAND_BRANCHES_ACTIVE the corresponding ESTO sectors are excluded from

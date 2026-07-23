@@ -1387,6 +1387,7 @@ def build_aggregated_demand_workbooks_for_results_supply(
             id_lookup_path=_leap_export_template_for_economy(economy),
             excluded_sectors=excluded_sectors,
             use_sector_branches=use_sector_branches,
+            write_contributions=bool(AGGREGATED_DEMAND_WRITE_CONTRIBUTIONS),
         )
         if result is not None:
             paths.append(result)

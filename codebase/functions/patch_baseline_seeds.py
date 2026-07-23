@@ -823,6 +823,7 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
             AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES,
             AGGREGATED_DEMAND_EXCLUDED_SECTORS,
             AGGREGATED_DEMAND_USE_SECTOR_BRANCHES,
+            AGGREGATED_DEMAND_WRITE_CONTRIBUTIONS,
             DETAILED_DEMAND_BRANCHES_ACTIVE,
             LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
         )
@@ -852,6 +853,7 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
                 exclude_own_use_td_losses=bool(AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES),
                 excluded_sectors=effective_excluded_sectors,
                 use_sector_branches=bool(AGGREGATED_DEMAND_USE_SECTOR_BRANCHES),
+                write_contributions=bool(AGGREGATED_DEMAND_WRITE_CONTRIBUTIONS),
             )
             written.append(out_path)
         return written
