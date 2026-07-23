@@ -179,6 +179,11 @@ def run_economies_in_parallel(
     results: list[EconomyWorkerResult] = []
     peak_aggregate_rss_bytes = 0
     peak_concurrent_workers = 0
+    # Captured before any worker launches: headroom must be judged against
+    # what was actually free beforehand (other running applications included),
+    # not the machine's total RAM - a post-run snapshot is too late, since
+    # workers have already freed their memory by the time it's taken.
+    pre_run_system = get_system_resource_snapshot() if record_resource_diagnostics else None
 
     def _launch(snapshot: EconomyWorkerSnapshot) -> None:
         stdout_log = log_dir / f"parallel_worker_{snapshot.economy}.log"
@@ -266,6 +271,7 @@ def run_economies_in_parallel(
             results=results,
             peak_aggregate_rss_bytes=peak_aggregate_rss_bytes,
             peak_concurrent_workers=peak_concurrent_workers,
+            pre_run_system=pre_run_system,
         )
 
     return results
@@ -278,23 +284,28 @@ def _write_resource_diagnostics(
     results: Sequence[EconomyWorkerResult],
     peak_aggregate_rss_bytes: int,
     peak_concurrent_workers: int,
+    pre_run_system,
 ) -> None:
     """Write the machine spec plus measured peak memory for this run to ``path``.
 
     Portable by design: run this on a different machine and diff the two
     JSON files to see whether a worker count that was safe here is likely
-    safe there, instead of assuming it transfers.
+    safe there, instead of assuming it transfers. Headroom is judged against
+    ``pre_run_system`` (captured before any worker launched) rather than
+    total RAM, since other applications already running on the machine are
+    exactly what makes one machine's safe worker count different from
+    another's.
     """
-    system = get_system_resource_snapshot()
+    system = pre_run_system if pre_run_system is not None else get_system_resource_snapshot()
+    headroom_bytes = system.available_ram_bytes - peak_aggregate_rss_bytes
     payload = {
-        "system": system.to_dict(),
+        "system_before_run": system.to_dict(),
         "max_workers_configured": max_workers,
         "peak_concurrent_workers_observed": peak_concurrent_workers,
         "peak_aggregate_rss_bytes": peak_aggregate_rss_bytes,
         "peak_aggregate_rss_gb": round(peak_aggregate_rss_bytes / (1024 ** 3), 2),
-        "available_ram_headroom_gb_at_peak": round(
-            (system.total_ram_bytes - peak_aggregate_rss_bytes) / (1024 ** 3), 2
-        ),
+        "available_ram_headroom_gb_at_peak": round(headroom_bytes / (1024 ** 3), 2),
+        "peak_exceeded_pre_run_available_ram": headroom_bytes < 0,
         "per_worker": [
             {
                 "economy": r.economy,
