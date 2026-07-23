@@ -1,5 +1,52 @@
 # Remaining work queue
 
+## [19] Consolidate and filter template-matching diagnostics
+
+**Status: follow-up recorded 2026-07-23 from the four-real-template full run.**
+
+The end-of-run checks currently write several useful but separate CSVs under a
+run's `supporting_files/checks` directory. Keep those detailed source files,
+but add a final consolidated template-matching report that concatenates the
+actionable rows from the unmatched verification-ID, verification-metadata, and
+configuration/template-mapping checks. Each consolidated row must retain its
+source check/category so it can be traced back to the detailed file.
+
+For `supply_reconciliation_config_mapping_mismatches.csv`, apply two explicit,
+extensible filters before counting or presenting actionable issues:
+
+- exclude rows whose `reference_values` is empty; no reference value means the
+  workflow is not imposing that field on the template, so a unit/value
+  difference is not an issue;
+- exclude variables that are not set by this workflow, beginning with
+  `Endogenous Capacity`. Keep this as a named configurable exclusion list so
+  additional non-owned variables can be added as they are identified.
+
+The reviewed run copy also has a `Useful` column. Treat that column as the
+human-review annotation for this diagnostic: retain it in the detailed file,
+use it to audit the initial classification, and promote repeatable `FALSE`
+patterns into the explicit `reference_values`/non-owned-variable rules rather
+than hard-coding a one-off run result. In the saved 91-row artifact, 53 rows
+were marked `TRUE` and 38 `FALSE`; `Endogenous Capacity` accounts for nine of
+the rows and is the first confirmed non-owned-variable exclusion.
+
+Preserve the raw unfiltered diagnostic for debugging, but do not present these
+no-reference or non-owned-variable rows as template issues. Add focused tests
+proving that a no-reference row and an excluded variable are filtered while a
+populated-reference, workflow-owned row is retained, and that the consolidated
+report preserves source/category provenance. Re-check the four-real-template
+run counts after implementation.
+
+Evidence from `SEED_4REAL_TEMPLATES_FULL_20260722`:
+
+- `supporting_files/checks/supply_reconciliation_unmatched_id_rows.csv` — six
+  `02_BD` Coke-oven-gas feedstock-share rows absent from the verification export;
+- `supporting_files/checks/supply_reconciliation_metadata_mismatches.csv` —
+  six USA non-specified-own-use Electricity activity-level metadata rows; and
+- `supporting_files/checks/supply_reconciliation_config_mapping_mismatches.csv`
+  — 91 rows before applying these filters.
+
+Do not weaken seed validation or silently delete the detailed files.
+
 Single source of truth for *what is left, in what order, and what blocks what*
 across the supply-reconciliation / baseline-seed work. Cross-references the
 detail rather than duplicating it.
