@@ -1634,6 +1634,33 @@ carry the same distortion.
   aligned with ESTO/9th, and synthetic APEC preflight sources are generated
   only for the APEC path.
 
+## Repo hygiene — worktrees and branches (persistent, revisit each session)
+
+**Keep `.claude/worktrees/` limited to master plus only currently-active work.**
+Recorded 2026-07-23 after two concurrent sessions' worktrees briefly
+diverged on the same T4/T10 finding (see the T4 commit 4 write-up above and
+`initialisation_refactor_continuation.md` T4/T10) — stale worktrees left
+around after their branch is merged are exactly what makes that kind of
+contradiction likely to happen again and go unnoticed longer.
+
+- Before starting new work, run `git worktree list` and `git branch -a -vv`.
+  A worktree whose branch is already merged into `master` (or a branch with
+  no unmerged commits and no active session) is a candidate to remove
+  (`git worktree remove <path>`) and its branch to delete
+  (`git branch -d <branch>`) — confirm with the user first, per this
+  project's standing rule on destructive git operations.
+- **`main` (both the local remote-tracking ref and `origin/main`) is
+  essentially empty** — `origin/main` is just the repo's original "Initial
+  commit"; all real history lives on `master`/`origin/master`
+  (`origin/master` is 60+ commits behind local `master` as of 2026-07-23,
+  which is its own separate follow-up: push `master` to `origin/master` when
+  convenient, and only touch `main` on explicit instruction — dropping a
+  branch, even an empty one, is a destructive/visible action this project's
+  standing rules require confirming first).
+- Do not treat this as a one-time cleanup; re-check it each session that
+  spawns or resumes worktree-based work, since new stale worktrees accumulate
+  the same way the b85d02 one did.
+
 ## Related documents
 
 - [check_registry.md](check_registry.md) — every pre-export check, five families, rules A/B/C, hotspots.
