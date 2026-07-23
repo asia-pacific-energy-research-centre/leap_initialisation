@@ -232,16 +232,20 @@ failure hit (`test_supply_assets.py::test_prepare_supply_assets_maps_names_aggre
 reproduces identically with the change stashed and was already on the
 known-pre-existing-failures list in `docs/work_queue.md`.
 
-**Commit 4 BLOCKED on T10, not merely deferred — researched 2026-07-23.**
-Investigated implementing it directly; found the join between a rollup-
-flagged `code` and its components is unreliable (10 of 21 flagged codes have
-no matching row in any rollup-rule sheet at all — see T10 below for the full
-breakdown). A naive recursive-expansion implementation would silently
-under-resolve roughly half the flagged codes, which is exactly the failure
-mode D3.2 warned about. User decided 2026-07-23 to raise this to the mapping
-owner (T10) before implementing, rather than build a narrower version
-covering only the 3 directly-resolvable codes. **Do not implement commit 4
-until T10 is answered.**
+**Commit 4 UNBLOCKED 2026-07-23 — the earlier "BLOCKED on T10" call was based
+on a wrong-column join bug, not a real gap.** The 2026-07-23 diagnostic that
+found "10/21 flagged codes have no matching rollup-rule row" was joining
+`leap_display_names.code` against `rolled_*` columns that, for
+`leap_rollup_rules`, actually hold clean display-name text (`"Power"`,
+`"Transfers"`, ...), not code-style text. Re-joined correctly on
+`leap_display_name` (see T10 below): **21/21 flagged codes match cleanly.**
+No mapping-owner decision is needed to unblock this — see T10 for the full
+correction and the exact join to use. Commit 4 is still
+**output-affecting and must not be bundled with another change**, and still
+needs the O5 real-run equivalence evidence collected before it lands (see
+`phase_3_canonical_mapping_migration_execution.md`); it is queued in
+`docs/work_queue.md` [16] as a priority item pending the current fleet run
+finishing and `supply_reconciliation_workflow.py` being free to edit again.
 
 **D3.3 decided and commit 5 done 2026-07-23** (`527bf9d`), confirmed with the
 user: `config/master_config.xlsx` and `config/leap_mappings.xlsx` moved to
@@ -401,7 +405,7 @@ The remaining two also done: `docs/supply_reconciliation_workflow_guide.md`
 (`81b5b31`), historical entries kept below each correction rather than
 deleted.
 
-### T10 - question for the mapping owner (leap_mappings). OPEN, now with a concrete answer to the diagnostic half
+### T10 - question for the mapping owner (leap_mappings). CLOSED 2026-07-23 - diagnostic was wrong, not the flag
 
 Is `IS_LEAP_ROLLUP_NAME` set on **every** rollup label in `leap_display_names`,
 or only on those noticed so far? If incomplete, T4 commit 4's filter is
@@ -409,39 +413,42 @@ necessary but not sufficient, and a cross-check against the rollup sheets'
 rolled-pair columns is the stronger test. **Read-only in that repo - report the
 obligation, do not edit it.**
 
-**Measured 2026-07-23** (blocks T4 commit 4 - user decided 2026-07-23 to raise
-this before implementing rather than build a narrower/partial version):
-of the 21 rows with `IS_LEAP_ROLLUP_NAME=True` in `leap_display_names`
-(21 True / 490 False / 94 blank of 605 rows total), matched against
-`input_*`/`rolled_*` columns across all three rollup-rule sheets
-(`leap_rollup_rules`, `esto_rollup_rules`, `ninth_rollup_rules`):
+**Superseded 2026-07-23 - the 2026-07-23 "10/21 unmatched" measurement below
+was a wrong-column join bug, not a real gap in the flag.** The join compared
+`leap_display_names.code` (an ESTO/9th-style code string, e.g.
+`"09 Total transformation sector"`) against `rolled_*` columns across all
+three rollup-rule sheets. That is the right key for `esto_rollup_rules`
+(`rolled_esto_flow`/`rolled_esto_product`) and `ninth_rollup_rules`
+(`rolled_ninth_sector`/`rolled_ninth_fuel`), which hold code-style text. But
+`leap_rollup_rules.rolled_leap_sector_name_full_path`/`rolled_raw_leap_fuel_name`
+hold **clean display-name text** (`"Power"`, `"Road"`, `"Transfers"`,
+`"Total transformation - no transfers"`), matching
+`leap_display_names.leap_display_name`, not `code`. (The live
+`IS_LEAP_ROLLUP_NAME` Excel formula already gets this right - it points at
+column C, `leap_display_name`.)
 
-- **3/21** match cleanly on the `rolled_*` side (code is the aggregate;
-  `input_*` rows on the matching group give its real-LEAP components) - the
-  mechanism D3.2 assumed.
-- **5/21** match only on the `input_*` side of some *other* rule - they are
-  themselves a component of a further rollup, and no rule row defines *their
-  own* components (e.g. `09.08 Coal transformation` feeds up into
-  `09 Total transformation sector`, which has no `rolled_*` row of its own -
-  it only appears as `parent_flow_label` elsewhere).
-- **10/21** have **zero match anywhere** in any rollup-rule sheet:
-  `15.02 Road`, `12`/`13 Total final ... consumption` (two of these are
-  self-documented in `leap_display_names.Note` as `"Not represented in LEAP"`
-  - deliberately component-less), `09 Total transformation sector`,
-  `08 Transfers`, `15 Transport sector`, and their `ninth_sector` typed
-  counterparts. These read as structural hierarchy parents referenced only
-  via `parent_flow_label`, not as rows with their own `input_*` components.
+Re-run 2026-07-23 joining `leap_display_name` against
+`leap_rollup_rules.rolled_leap_sector_name_full_path`/`rolled_raw_leap_fuel_name`
+(per-row check against the live `outlook_mappings_master.xlsx`): **21/21**
+flagged rows match cleanly, including all 8 "structural-parent" codes
+previously reported as unmatched (`09 Total transformation sector`,
+`08 Transfers`, `15 Transport sector`, `15.02 Road`, `12`/`13 Total final
+... consumption`, and their `ninth_sector` counterparts). None of them are
+actually missing rule rows - they were being checked against the wrong pair
+of columns.
 
-**The question for the mapping owner, sharpened**: for the 8 unmatched codes
-that are *not* self-documented as "Not represented in LEAP" (the transport/
-road/transfers/transformation-sector totals), is that omission intentional
-(they are genuinely structural-only and should never be expanded to LEAP
-branch components), or is `leap_rollup_rules`/`esto_rollup_rules`/
-`ninth_rollup_rules` missing rows for them? A naive implementation cannot
-tell these apart from the data alone - it needs the mapping owner's answer.
-All 21 flagged codes are `code_type` `esto_flow` or `ninth_sector`; none are
-`leap_sector`/`leap_fuel` typed, for what that is worth to the owner's own
-model of the flag.
+**Net effect: T10's diagnostic half is answered - the known 21 flags are
+100% consistent with the rollup sheets once joined correctly.** This does
+**not** confirm completeness (whether other rollup labels exist in
+`leap_display_names` that are *not* flagged `True` at all - that is a
+separate question, and `"16.01-16.02 Buildings"` is a known example of a
+mismatch found by the `leap_mappings` side, see `sync_leap_rollup_flags.py`
+work there). It does mean **T4 commit 4 is unblocked** - the correct
+join for the code-side check is:
+`leap_display_names.leap_display_name` ==
+`leap_rollup_rules.rolled_leap_sector_name_full_path` (sector) /
+`rolled_raw_leap_fuel_name` (fuel), not a per-`code_type` join against
+`esto_rollup_rules`/`ninth_rollup_rules`.
 
 ### T11 - relaunch the fleet run. UNBLOCKED 2026-07-21
 

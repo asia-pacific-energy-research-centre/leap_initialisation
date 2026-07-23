@@ -1225,9 +1225,25 @@ consolidation API rather than repair it (the workbook no longer expresses the
 override rule it encodes), and exclude `IS_LEAP_ROLLUP_NAME` rows from
 display-name resolution, because **no rollup ever appears in LEAP** — its
 components do, recursively where a component is itself a rollup. Details in the
-Phase 3 brief. Still open: D3.3–D3.5, plus one question back to the mapping
-owner (is `IS_LEAP_ROLLUP_NAME` set on every rollup label, or only those noticed
-so far?).
+Phase 3 brief. Still open: D3.3–D3.5.
+
+**PRIORITY — T4 commit 4 (exclude `IS_LEAP_ROLLUP_NAME` rows, recursive
+component expansion) is unblocked 2026-07-23**, see
+`prompts/initialisation_refactor_continuation.md` T10/T4 for the full
+correction: the prior "10/21 flagged codes have no matching rollup-rule row"
+finding was a wrong-column join bug (joined `code` instead of
+`leap_display_name` against `leap_rollup_rules`'s `rolled_*` columns, which
+hold clean display-name text, not code-style text). Rejoined correctly,
+21/21 match. The mapping-owner question originally raised as T10 is
+withdrawn — no leap_mappings decision is needed to proceed. **Do not start
+this while the fleet run holds `codebase/supply_reconciliation_workflow.py`
+(see Fleet-run boundary above), and never bundle it with another change —
+it is output-affecting and still needs the O5 real-run equivalence evidence
+(3 economies, key-set + totals comparison) before it can be called done.**
+Correct join for the implementation: `leap_display_names.leap_display_name`
+== `leap_rollup_rules.rolled_leap_sector_name_full_path` (sector) /
+`rolled_raw_leap_fuel_name` (fuel), recursing where a matched component is
+itself a rollup.
 Phase 4: **D4.1 decided 2026-07-21 — take the explicit-injection path** (B2
 allocation ledger + B3 run context are in scope). Reinforced by [17] and by
 `PARALLEL_ECONOMY_WORKERS` already driving a `ThreadPoolExecutor` over the
