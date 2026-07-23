@@ -1218,6 +1218,48 @@ file until the run finishes and the label is restored to `"auto"`.** Each brief
 ends with an explicit "safe now vs must wait" table; follow it rather than
 inferring.
 
+### Priority — T4 commit 4 (exclude rollup labels from display-name resolution)
+
+**Blocked on T10 (the mapping owner), not merely deferred — researched
+2026-07-23.** See
+[prompts/initialisation_refactor_continuation.md](prompts/initialisation_refactor_continuation.md)
+T4/T10 for the full write-up; summarized here so [16] carries the current
+state rather than the 2026-07-21 "planned" snapshot above.
+
+**The correct join, once T10 is answered:** for each `code` flagged
+`IS_LEAP_ROLLUP_NAME=True` in `leap_display_names`, resolve its real-LEAP
+components by matching it on the `rolled_*` side of a row in
+`leap_rollup_rules` / `esto_rollup_rules` / `ninth_rollup_rules`, then take
+that row's `input_*` columns as the components — recursively, since a
+component can itself be a rollup. Measured against the real sheets: only
+3 of the 21 flagged codes resolve this way; 5 more resolve only as an
+`input_*` member of some *other* rule (they are themselves a rollup
+component, with no `rolled_*` row of their own); the remaining 10 have no
+matching row anywhere and read as structural hierarchy parents referenced
+only via `parent_flow_label`. A naive implementation cannot tell "10
+genuinely component-less" from "10 missing rule rows" apart from the data
+alone — that is exactly the question posed to the mapping owner in T10.
+
+**Remaining gates before this can land, in order:**
+
+1. **T10 answered.** Do not implement a partial version covering only the
+   3 cleanly-resolvable codes — the user explicitly rejected that shortcut
+   2026-07-23 in favor of asking the mapping owner first.
+2. **Fleet-run boundary respected.** Check whether a run is in flight and
+   which files it currently locks (see "Fleet-run boundary" above) before
+   touching anything commit 4 needs.
+3. **Never bundle.** Commit 4 is the one **output-affecting** commit in the
+   T4 sequence — land it alone, never combined with a schema/contract/
+   retirement commit, so a regression is attributable to exactly one change.
+4. **Real single-economy A/B, post-boundary, before any fleet run** — same
+   discipline [17]/[18] required: a change that passes every static check
+   can still be wrong only a real run reveals (measured, not theoretical —
+   that is what happened to [17]'s preset flip).
+5. **O5 equivalence evidence** (`phase_3_canonical_mapping_migration_execution.md`
+   O5) recorded against the confirmed D3.5 tolerance — branch-row key sets
+   exactly equal, totals within 1e-6 relative — before commit 6 (the
+   evidence write-up) can close out T4.
+
 ### Decisions awaiting a human
 
 Phase 3: **D3.1 and D3.2 decided 2026-07-21** — retire the `unified_name_lookup`
@@ -1470,6 +1512,16 @@ carry the same distortion.
   `2713a51`, before any [17] work. Not diagnosed; it asserts on an area string
   read from the real USA template, so today's template refresh is the first
   place to look.
+- `tests/test_supply_transformation_export_projection_cache.py::test_transformation_exports_reuse_reference_projection_for_current_accounts`
+  — **added to this list 2026-07-23**, found in a full-suite run unrelated to
+  the work that surfaced it (an aggregated-demand-workflow change touching
+  only `aggregated_demand_workflow.py` and its own test file). Cause: the
+  test's `fake_apply` monkeypatch fixture at line 40 has a stale signature
+  — `apply_transformation_target_overrides_for_scenario` now takes an
+  `allocation_ledger` keyword (Phase 4 D4.1's explicit-injection allocation
+  ledger), the fixture doesn't accept it, and the call raises `TypeError`.
+  Not diagnosed further; fixture needs an `allocation_ledger=None` parameter
+  to match.
 - ~~`tests/test_module_attribute_contracts.py::test_no_bare_name_misattribution[codebase.functions.supply_leap_io]`~~
   — **cleared.** Was failing mid-flight while the export-template work was
   uncommitted; passes at `6bda122` (39/39). Left here only to stop it being
