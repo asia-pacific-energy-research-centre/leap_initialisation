@@ -190,18 +190,21 @@ account of one.** The concurrent-commit hazard it also cites is real and stands.
   smoke tests. All test-only and safe at any time.
 - Un-`xfail` the three strict xfails as T1 resolves them.
 
-### T3 - Phase 4 state injection (B2 + B3). NOT STARTED
+### T3 - Phase 4 state injection (B2 + B3). ✅ DONE 2026-07-22
 
-D4.1 decided: **explicit injection** (option (a)). B2 = capacity-unmet
-allocation ledger; B3 = run context for output paths. Two-step pattern each
-(introduce alongside, then thread through, then delete the mirror). Then remove
-star imports one module per commit. **Then re-decide D4.3**
-(`supply_results_saver.py`, 4,024 LOC) with fresh coupling numbers.
+B2 (capacity-unmet allocation ledger, threaded through both passes, reverse
+wrapper mirror removed): `3bf0e43`, `6ebb3c3`, `f571945`. B3 (immutable
+`ReconciliationRunContext`, results-saver path injection, remaining output
+family injection, preflight context injection): `50ae012`, `d557dab`,
+`4a7e4ce`, `cf13e04`. Verified via focused suites (90 + 91 + 113/5-skip + 24 +
+68/5-skip tests, see `docs/prompts/continuation_20260722_phase4_parallelism_and_release_readiness.md`)
+plus a final G2 two-year AUS run. Star-import removal was **not** done as
+part of this — the modules still each hold their own `import *` copy of
+config; that remains the underlying reason `PARALLEL_ECONOMY_WORKERS > 1`
+stays rejected in-process (see T7). D4.3 (split `supply_results_saver.py`) is
+still deferred per its own recommendation.
 
-Prefer routing through `_broadcast_config_overrides` (walks `sys.modules`,
-cannot go stale) over extending the 37-name hand list.
-
-**Blocks T7 (parallelism).** Do T2 first.
+**Unblocked T7 (parallelism) — see below, also done.**
 
 ### T4 - Phase 3 canonical mapping. NOT STARTED
 
@@ -243,7 +246,9 @@ Safe at any time; touches only history/diagnostics modules.
 `_infer_active_demand_branch_groups`. 5B.2 (pre-generate subsets) is
 **dropped**.
 
-What remains:
+**G1 and G2 are DONE, per `docs/current_execution_roadmap.md`'s 2026-07-22
+"Completed" line** (their own two-year AUS verification recorded there).
+Kept below for the original problem statement.
 
 - **G1** - the `aggregated_demand` seed patch passes only the manual exclusion
   list and never calls the resolver, so a patch cannot express "Industry just
@@ -267,13 +272,13 @@ What remains:
 **D5B.4** (contributions must reconcile exactly to the aggregate - recommend
 yes, asserted in a test).
 
-### T7 - Phase 5C per-economy parallelism. BLOCKED on T3
+### T7 - Phase 5C per-economy parallelism. ✅ CORE SAFETY BOUNDARY DONE 2026-07-23 — architecture differs from this thread's original plan, read before resuming
 
 Scope is **workbook-mode only**. Do not plan or document parallel LEAP API
 writes - the API is decommissioned and locked by
 `tests/test_leap_api_decommissioned.py`.
 
-**Urgent sub-item - DONE.** `PARALLEL_ECONOMY_WORKERS` already existed and
+**Urgent sub-item - DONE (2026-07-21).** `PARALLEL_ECONOMY_WORKERS` already existed and
 already drove a **`ThreadPoolExecutor`** over economies, sharing the mirrored
 globals; it was safe only because the default is 0. The guard now lives in
 `supply_results_saver._resolve_parallel_economy_workers`, refusing values > 1
@@ -281,21 +286,44 @@ and pointing at [17] and the Phase 5 brief, pinned by
 `tests/test_parallel_economy_workers_guard.py`. Output-inert: the shipped
 default is 0, so no run changes behaviour.
 
-What the plan got slightly wrong: the guard belongs at the *consumption* point,
-not on the config assignment. The dial is also reachable through
-`_sync_results_saver_overrides` forwarding, so a config-side assert would not
-have caught a wrapper-set value. Two shapes the plan did not mention and the
-tests now pin: a non-`int` value degrades to serial rather than raising, and
-`True` (an `int` in Python) must not read as one worker.
+**What actually got built, 2026-07-23 (`9aab65b`) — NOT what this thread
+sketched.** This thread's plan was to convert the *in-process*
+`_run_one_economy` / `_collect_economy_result` seam inside
+`supply_results_saver`'s per-economy export step from a `ThreadPoolExecutor`
+to a process pool, keeping one big workflow run that fans out export
+generation across economies. **That was not done, and the guard above still
+correctly rejects it** — the star-import sharing problem it protects against
+is still live (T3 did not remove star imports).
 
-Remove the guard only as part of T7 proper, after T3.
+Instead, a separate **outer-loop orchestrator** was built:
+`codebase/functions/parallel_economy_runner.py` launches one *entire*
+`supply_reconciliation_workflow.py` process per economy (each does its own
+full setup/data-load/preflight, not just export generation), driven by an
+explicit `LEAP_WORKER_SNAPSHOT_JSON` env-var snapshot
+(`supply_reconciliation_workflow._apply_worker_snapshot_overrides`) rather
+than by editing the source file. Bounded by `max_workers` (default 1).
+Verified: sequential equivalence (one `01_AUS` two-year run through the new
+path matched the established baseline byte-for-byte) and a controlled
+two-economy concurrent smoke test (`01_AUS` + `12_NZ`, zero cross-
+contamination, identical output under concurrency). Full evidence:
+`docs/current_execution_roadmap.md` item 2.
 
-Keep the existing `_run_one_economy` / `_collect_economy_result` seam - it is
-the natural process-pool boundary. Convert the executor; do not rewrite the seam.
+**Trade-off to weigh before using this for a full fleet run**: this design
+re-does the shared setup/data-loading cost (ESTO/9th CSV load, ~275 MB per
+worker per this thread's own note) once per worker process, rather than
+loading it once and fanning out only export generation as the original T7
+sketch intended. For a small controlled batch (2-4 economies) this is fine
+and is what was verified; for a 21-economy fleet run the *original* T7 design
+(shared-load, process-pool-per-export-step) would be more memory/IO-
+efficient if it is ever built. **Still missing either way**: a deterministic
+parent merge of multiple economies' outputs into one consolidated artifact —
+today each worker's outputs stand alone under its own `run_output_label`.
 
-**Open: D5C.2** - worker-count default. Recommendation: **1 (serial), opt-in,
-chosen from measured peak RSS**, never CPU count (the 9th CSV is ~275 MB per
-worker, and this machine also runs LEAP).
+**Open: D5C.2** - worker-count default. **Settled by construction**:
+`max_workers` defaults to **1** in `run_economies_in_parallel`, opt-in only,
+matching this thread's own recommendation. Choosing a safe default >1 for a
+real fleet run still needs the measured-peak-RSS exercise this thread called
+for; not done.
 
 ### T8 - own-use proxy. RE-SCOPED, no structural work
 
@@ -361,15 +389,28 @@ both are correct.
 
 1. ~~**T1** ([17])~~ - **DONE**, closed on measured evidence.
 2. ~~**T7's guard** on `PARALLEL_ECONOMY_WORKERS`~~ - DONE, live hazard removed.
-3. **T2** remaining characterization tests - unblocks T3 safely.
-4. **T6 G1**, then **T6 G2** once T1 lands.
-5. **T4** commits 1-3, 5 (safe anytime; can interleave with anything above).
-6. **T3** state injection, then re-decide D4.3.
-7. **T5** whenever convenient - fully self-contained.
-8. **T8** fixtures when the proxy next matters.
-9. **T7** proper, after T3.
+3. **T2** remaining characterization tests - status not re-confirmed this
+   session; check before assuming done.
+4. ~~**T6 G1**, then **T6 G2**~~ - **DONE** 2026-07-22.
+5. **T4** commits 1-3, 5 (safe anytime; can interleave with anything above) -
+   **still open**, not touched this session.
+6. ~~**T3** state injection~~ - **DONE** 2026-07-22; D4.3 (split
+   `supply_results_saver.py`) remains deferred.
+7. **T5** whenever convenient - fully self-contained. **Still open** - status
+   not re-confirmed this session despite `docs/current_execution_roadmap.md`
+   listing "convergence manifests" as completed 2026-07-22; reconcile before
+   assuming D5A.2-4 are also settled.
+8. **T8** fixtures when the proxy next matters. **Still open** - same caveat:
+   the roadmap's "own-use proxy fixtures" completion note needs reconciling
+   against T8's five-untested-process list before assuming it is closed.
+9. ~~**T7** proper~~ - **CORE SAFETY BOUNDARY DONE** 2026-07-23, via a
+   different architecture than this thread sketched (see T7 above). The
+   deterministic-parent-merge piece is still open.
 10. **T9** incrementally; **T10** whenever the mapping owner is available;
-    **T11** after T1.
+    **T11** already run at least twice since this register was written
+    (four-real-template full run 2026-07-22, plus this session's
+    verification runs) - re-check `docs/work_queue.md` before assuming T11
+    itself still means "the 21-economy fleet".
 
 ## Decisions still needed from the user
 
