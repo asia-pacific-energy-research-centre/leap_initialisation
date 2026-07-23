@@ -206,7 +206,7 @@ still deferred per its own recommendation.
 
 **Unblocked T7 (parallelism) — see below, also done.**
 
-### T4 - Phase 3 canonical mapping. NOT STARTED
+### T4 - Phase 3 canonical mapping. COMMITS 1-3 DONE 2026-07-23
 
 Decided: **D3.1 retire** the `unified_name_lookup` consolidation API;
 **D3.2 exclude** `IS_LEAP_ROLLUP_NAME` rows from display-name resolution, with
@@ -218,7 +218,24 @@ sheets; (3) retire the consolidation API; (4) exclude rollup labels
 **[output-affecting, never bundle]**; (5) move legacy workbooks to
 `config/legacy/`; (6) record equivalence evidence.
 
-Commits 1-3 and 5 are safe alongside anything. Commit 4 needs a quiet tree.
+**Commits 1 and 2 were already done by an earlier, undated session** —
+`CANONICAL_SHEET_CONTRACT` in `codebase/mappings/canonical_loaders.py`
+already declares all seven consumed sheets including the three rollup
+sheets' full column sets, and `tests/test_canonical_schema_contract.py` (24
+tests) already covers both the schema-pin and rollup-schema-break cases.
+Found, not built, 2026-07-23. **Commit 3 done 2026-07-23** (`fb4ee59`):
+`codebase/functions/unified_name_lookup.py` reduced to only
+`load_active_mapping_sheet`; confirmed via grep that no other module or test
+imported the retired names. Full suite run (737 passed, 11 skipped, 3
+xfailed) turned up no new failure attributable to this change — the one
+failure hit (`test_supply_assets.py::test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup`)
+reproduces identically with the change stashed and was already on the
+known-pre-existing-failures list in `docs/work_queue.md`.
+
+**Commit 4 NOT attempted — output-affecting, needs a quiet tree and the O5
+equivalence evidence; do not start it without re-reading the brief's safety
+boundaries first.** Commit 5 (needs D3.3) and commit 6 (needs the fleet-run
+equivalence evidence) also not attempted.
 
 **Still open: D3.3** (retire `config/master_config.xlsx` and
 `config/leap_mappings.xlsx` - recommend move to `config/legacy/`), **D3.4**
