@@ -13,6 +13,7 @@ dependencies = [
     "pandas",
     "openpyxl",
     "matplotlib",
+    "psutil",
     "pywin32 ; platform_system == 'Windows'",
 ]
 

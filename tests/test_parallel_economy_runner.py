@@ -146,3 +146,94 @@ def test_run_economies_in_parallel_rejects_zero_workers(tmp_path) -> None:
 
 def test_run_economies_in_parallel_empty_snapshots_returns_empty(tmp_path) -> None:
     assert runner.run_economies_in_parallel([], log_directory=tmp_path / "logs") == []
+
+
+# ---------------------------------------------------------------------------
+# Resource diagnostics: peak RSS per worker + a portable machine-spec file,
+# so a worker-count decision measured here can be checked on another PC.
+# ---------------------------------------------------------------------------
+
+_SLOW_FAKE_WORKER_SCRIPT = textwrap.dedent(
+    """
+    import json
+    import os
+    import time
+
+    payload = json.loads(os.environ["LEAP_WORKER_SNAPSHOT_JSON"])
+    economy = payload["economies"][0]
+    # Hold onto some real memory for long enough that at least one poll tick
+    # samples this process before it exits.
+    _hold = bytearray(20 * 1024 * 1024)  # 20MB
+    print(f"worker for {economy} saw label={payload.get('run_output_label')}")
+    time.sleep(0.3)
+    """
+)
+
+
+def test_run_economies_in_parallel_records_peak_rss_per_worker(tmp_path, monkeypatch) -> None:
+    fake_script = tmp_path / "slow_fake_worker.py"
+    fake_script.write_text(_SLOW_FAKE_WORKER_SCRIPT, encoding="utf-8")
+    monkeypatch.setattr(runner, "WORKFLOW_SCRIPT_PATH", fake_script)
+
+    snapshots = runner.build_worker_snapshots(["01_AUS"], base_run_output_label="RSS")
+    results = runner.run_economies_in_parallel(
+        snapshots,
+        max_workers=1,
+        log_directory=tmp_path / "logs",
+        python_executable=sys.executable,
+        poll_interval_seconds=0.05,
+    )
+
+    assert len(results) == 1
+    assert results[0].succeeded
+    assert results[0].peak_rss_bytes is not None
+    assert results[0].peak_rss_bytes > 0
+
+
+def test_run_economies_in_parallel_writes_resource_diagnostics_file(tmp_path, monkeypatch) -> None:
+    fake_script = tmp_path / "slow_fake_worker.py"
+    fake_script.write_text(_SLOW_FAKE_WORKER_SCRIPT, encoding="utf-8")
+    monkeypatch.setattr(runner, "WORKFLOW_SCRIPT_PATH", fake_script)
+
+    log_dir = tmp_path / "logs"
+    snapshots = runner.build_worker_snapshots(
+        ["01_AUS", "12_NZ"], base_run_output_label="RSS"
+    )
+    runner.run_economies_in_parallel(
+        snapshots,
+        max_workers=2,
+        log_directory=log_dir,
+        python_executable=sys.executable,
+        poll_interval_seconds=0.05,
+    )
+
+    diagnostics_path = log_dir / "concurrency_resource_diagnostics.json"
+    assert diagnostics_path.exists()
+    payload = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    assert payload["max_workers_configured"] == 2
+    assert payload["system"]["logical_cpu_count"] > 0
+    assert payload["system"]["total_ram_gb"] > 0
+    assert payload["peak_aggregate_rss_bytes"] > 0
+    assert {entry["economy"] for entry in payload["per_worker"]} == {"01_AUS", "12_NZ"}
+    for entry in payload["per_worker"]:
+        assert entry["peak_rss_bytes"] > 0
+
+
+def test_run_economies_in_parallel_skips_diagnostics_when_disabled(tmp_path, monkeypatch) -> None:
+    fake_script = tmp_path / "fake_worker.py"
+    fake_script.write_text(_FAKE_WORKER_SCRIPT, encoding="utf-8")
+    monkeypatch.setattr(runner, "WORKFLOW_SCRIPT_PATH", fake_script)
+
+    log_dir = tmp_path / "logs"
+    snapshots = runner.build_worker_snapshots(["01_AUS"], base_run_output_label="RSS")
+    results = runner.run_economies_in_parallel(
+        snapshots,
+        max_workers=1,
+        log_directory=log_dir,
+        python_executable=sys.executable,
+        poll_interval_seconds=0.05,
+        record_resource_diagnostics=False,
+    )
+
+    assert results[0].peak_rss_bytes is None
+    assert not (log_dir / "concurrency_resource_diagnostics.json").exists()

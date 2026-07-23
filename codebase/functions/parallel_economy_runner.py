@@ -40,6 +40,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
 
+from codebase.utilities.system_resources import (
+    get_system_resource_snapshot,
+    process_rss_bytes,
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_SCRIPT_PATH = REPO_ROOT / "codebase" / "supply_reconciliation_workflow.py"
 
@@ -70,6 +75,9 @@ class EconomyWorkerResult:
     stderr_log: Path
     started_at: float
     ended_at: float
+    # This worker process's own peak resident memory over its lifetime, or
+    # None if it was never sampled (e.g. it exited between poll ticks).
+    peak_rss_bytes: int | None = None
 
     @property
     def succeeded(self) -> bool:
@@ -124,6 +132,7 @@ class _RunningWorker:
     started_at: float
     _stdout_fh: object = field(repr=False)
     _stderr_fh: object = field(repr=False)
+    peak_rss_bytes: int | None = None
 
 
 def run_economies_in_parallel(
@@ -134,6 +143,7 @@ def run_economies_in_parallel(
     python_executable: str | None = None,
     extra_env: dict[str, str] | None = None,
     poll_interval_seconds: float = 2.0,
+    record_resource_diagnostics: bool = True,
 ) -> list[EconomyWorkerResult]:
     """Launch one OS process per economy snapshot, bounded to ``max_workers`` concurrent.
 
@@ -144,6 +154,16 @@ def run_economies_in_parallel(
     workers. Returns one :class:`EconomyWorkerResult` per snapshot, in
     completion order (not launch order) once every worker has terminated;
     this function blocks until all workers finish.
+
+    When ``record_resource_diagnostics`` is True (default), each worker's
+    resident memory (Working Set on Windows) is sampled at every poll tick
+    via ``psutil`` and the per-worker peak is attached to its
+    :class:`EconomyWorkerResult`. This machine's CPU/RAM and the observed
+    peak *aggregate* concurrent memory across all workers (the number that
+    actually determines whether a given ``max_workers`` is safe) are written
+    to ``log_directory/concurrency_resource_diagnostics.json`` - the point is
+    to let a worker-count decision measured on one machine be checked or
+    re-derived on another, rather than assumed to transfer as-is.
     """
     if max_workers < 1:
         raise ValueError("max_workers must be >= 1")
@@ -157,6 +177,8 @@ def run_economies_in_parallel(
     pending = list(snapshots)
     running: dict[str, _RunningWorker] = {}
     results: list[EconomyWorkerResult] = []
+    peak_aggregate_rss_bytes = 0
+    peak_concurrent_workers = 0
 
     def _launch(snapshot: EconomyWorkerSnapshot) -> None:
         stdout_log = log_dir / f"parallel_worker_{snapshot.economy}.log"
@@ -189,6 +211,21 @@ def run_economies_in_parallel(
             while pending and len(running) < max_workers:
                 _launch(pending.pop(0))
 
+            if record_resource_diagnostics and running:
+                tick_total = 0
+                tick_sampled = 0
+                for worker in running.values():
+                    sample = process_rss_bytes(worker.process.pid)
+                    if sample is None:
+                        continue
+                    tick_sampled += 1
+                    tick_total += sample
+                    if worker.peak_rss_bytes is None or sample > worker.peak_rss_bytes:
+                        worker.peak_rss_bytes = sample
+                if tick_sampled:
+                    peak_aggregate_rss_bytes = max(peak_aggregate_rss_bytes, tick_total)
+                    peak_concurrent_workers = max(peak_concurrent_workers, tick_sampled)
+
             finished = [
                 economy for economy, worker in running.items()
                 if worker.process.poll() is not None
@@ -206,6 +243,7 @@ def run_economies_in_parallel(
                         stderr_log=worker.stderr_log,
                         started_at=worker.started_at,
                         ended_at=time.time(),
+                        peak_rss_bytes=worker.peak_rss_bytes,
                     )
                 )
             if running:
@@ -221,4 +259,55 @@ def run_economies_in_parallel(
                 worker._stderr_fh.close()
         raise
 
+    if record_resource_diagnostics:
+        _write_resource_diagnostics(
+            log_dir / "concurrency_resource_diagnostics.json",
+            max_workers=max_workers,
+            results=results,
+            peak_aggregate_rss_bytes=peak_aggregate_rss_bytes,
+            peak_concurrent_workers=peak_concurrent_workers,
+        )
+
     return results
+
+
+def _write_resource_diagnostics(
+    path: Path,
+    *,
+    max_workers: int,
+    results: Sequence[EconomyWorkerResult],
+    peak_aggregate_rss_bytes: int,
+    peak_concurrent_workers: int,
+) -> None:
+    """Write the machine spec plus measured peak memory for this run to ``path``.
+
+    Portable by design: run this on a different machine and diff the two
+    JSON files to see whether a worker count that was safe here is likely
+    safe there, instead of assuming it transfers.
+    """
+    system = get_system_resource_snapshot()
+    payload = {
+        "system": system.to_dict(),
+        "max_workers_configured": max_workers,
+        "peak_concurrent_workers_observed": peak_concurrent_workers,
+        "peak_aggregate_rss_bytes": peak_aggregate_rss_bytes,
+        "peak_aggregate_rss_gb": round(peak_aggregate_rss_bytes / (1024 ** 3), 2),
+        "available_ram_headroom_gb_at_peak": round(
+            (system.total_ram_bytes - peak_aggregate_rss_bytes) / (1024 ** 3), 2
+        ),
+        "per_worker": [
+            {
+                "economy": r.economy,
+                "peak_rss_bytes": r.peak_rss_bytes,
+                "peak_rss_gb": (
+                    round(r.peak_rss_bytes / (1024 ** 3), 2)
+                    if r.peak_rss_bytes is not None
+                    else None
+                ),
+                "duration_seconds": round(r.duration_seconds, 1),
+                "succeeded": r.succeeded,
+            }
+            for r in results
+        ],
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
