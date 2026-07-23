@@ -326,24 +326,50 @@ workflow instead.
 
 Core items are mirrored in `docs/supply_reconciliation_workflow_guide.md` — keep in sync.
 
+**⚠️ This section is materially stale (dated June 2026) and several claims
+below are wrong.** Corrected 2026-07-23 with measured numbers (T9,
+`docs/prompts/initialisation_refactor_continuation.md`); the remaining
+narrative below this banner (Phase 3/4/5 descriptions especially) has NOT
+been rewritten and should not be trusted without cross-checking
+`docs/work_queue.md` [16] and `docs/current_execution_roadmap.md`, which are
+the authoritative current-state documents:
+
+- **`supply_reconciliation_workflow.py` is 1,494 LOC, not 13,628.** The
+  Phase 4 monolith split already landed (`supply_reconciliation_config.py`,
+  `supply_reconciliation_allocation.py`, `supply_reconciliation_history.py`,
+  plus `codebase/functions/supply_results_saver.py` and
+  `codebase/functions/supply_preflight.py` also carry material chunks of the
+  former monolith). Phase 4's remaining work is explicit state injection
+  (B2/B3 — **done** 2026-07-22) and per-economy parallelism (**core safety
+  boundary done** 2026-07-23) — see `docs/current_execution_roadmap.md`.
+- **`other_loss_own_use_proxy_workflow.py` is 1,770 LOC, not 2,923**, and the
+  "internally tangled, rewrite may be cleaner" exception below is retired —
+  see T8 in `docs/prompts/initialisation_refactor_continuation.md`. It is 19
+  uniform declarative `PROXY_CONFIG` entries with only 3 oversized functions.
+- **Phase 3 (`outlook_mappings_master.xlsx`) is not blocked on M2 — M2 is
+  done.** All three `leap_mappings` pipeline scripts read the canonical
+  workbook; this repo's runtime reads are already canonical (C1-C7).
+  Remaining Phase 3 work here is schema-contract hardening and retiring the
+  obsolete `unified_name_lookup` consolidation path (T4, still open).
+- **"Mapping file inconsistency" below is stale** for the same reason — the
+  canonical workbook is connected, not orphaned.
+
 ### Approach: refactor, not rewrite
 
-Do not rewrite from scratch. The `codebase/functions/` directory (transformation analysis, supply pipeline, LEAP API, Excel I/O) is well-written and heavily reused — preserve it. The problem is the workflow scripts on top: they duplicate shared infrastructure and the main reconciliation script is a 13,628-LOC monolith. A phased refactor is lower risk and faster.
+Do not rewrite from scratch. The `codebase/functions/` directory (transformation analysis, supply pipeline, LEAP API, Excel I/O) is well-written and heavily reused — preserve it. The problem is the workflow scripts on top: they duplicate shared infrastructure. **The "13,628-LOC monolith" framing below is stale — see the banner above.**
 
-Exception: `other_loss_own_use_proxy_workflow.py` (2,923 LOC) is so internally tangled that rewriting it from scratch — keeping the existing output format as a contract — may be cleaner than refactoring in place.
+### Current state — table below is STALE (June 2026); see banner above for corrected LOC on the two most consequential rows
 
-### Current state (from codebase review, June 2026)
-
-| Script | LOC | Config style | Key quality issues |
+| Script | LOC (June 2026 claim) | Config style | Key quality issues |
 |---|---|---|---|
 | `aggregated_demand_workflow.py` | 1,212 | Top-level dicts | Hardcoded mapping paths, magic numbers, large helper dicts |
 | `electricity_heat_interim_workflow.py` | 1,258 | Top-level dicts | Global caches, label magic strings, large frozensets |
-| `other_loss_own_use_proxy_workflow.py` | 2,923 | Top-level large dicts | 2,900-line monolith; 300-line fuel lists; complex fallback logic |
+| `other_loss_own_use_proxy_workflow.py` | 2,923 (now 1,770 — retired exception, see banner) | Top-level large dicts | 2,900-line monolith; 300-line fuel lists; complex fallback logic |
 | `refining_workflow.py` | 535 | Top-level constants | Hardcoded economy/paths, sparse docs |
 | `supply_workflow.py` | 197 | Minimal (delegation) | Clean wrapper — good template for others |
 | `transformation_workflow.py` | 730 | Top-level flags | Tight coupling to core flags |
 | `transfers_workflow.py` | 1,802 | Top-level nested dicts | 1,000+ LOC hardcoded config dict, manual copy-paste maintenance |
-| `supply_reconciliation_workflow.py` | 13,628 | External JSON + inline | Extreme monolith; dynamic config; global state; no convergence tracking |
+| `supply_reconciliation_workflow.py` | 13,628 (now 1,494 — split landed, see banner) | External JSON + inline | Extreme monolith claim is stale; state-injection and parallelism work is tracked in `docs/current_execution_roadmap.md` instead |
 
 #### Duplication across all scripts
 
@@ -393,28 +419,52 @@ Apply this concrete standard across the seven scripts:
 
 For `supply_reconciliation_workflow.py` specifically: move cap sentinels (`CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS`, `CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS`, and related helpers) inline rather than in the external JSON. The external JSON should only hold economy-specific numeric values, not the structural config.
 
-#### Phase 3 — Connect to `outlook_mappings_master.xlsx`
+#### Phase 3 — Connect to `outlook_mappings_master.xlsx` — ✅ M2 DONE, hardening still open
 
-This is a dependency on the mapping pipeline blocker (see mapping pipeline tasks). Until M2 is done, the workflow scripts remain on the old workbooks. Once M2 is done, update mapping file reads in all seven scripts to use `outlook_mappings_master.xlsx` and validate the expected sheets and columns before processing begins (currently failures occur deep in processing with no upfront check).
+**Stale as written.** M2 is done: all three `leap_mappings` pipeline scripts
+read `outlook_mappings_master.xlsx`, and this repo's runtime reads are
+already canonical. Remaining Phase 3 work is schema-contract hardening and
+retiring the obsolete `unified_name_lookup` consolidation path — see T4 in
+`docs/prompts/initialisation_refactor_continuation.md` (not started as of
+2026-07-23).
 
-#### Phase 4 — Break up the monoliths
+#### Phase 4 — Break up the monoliths — ✅ split landed; state injection done; parallelism core boundary done
 
-Split `supply_reconciliation_workflow.py` (13,628 LOC) into:
+**Stale as written.** The split already landed:
+`supply_reconciliation_config.py`, `supply_reconciliation_allocation.py`,
+`supply_reconciliation_history.py`, and `codebase/functions/supply_results_saver.py`
+/ `supply_preflight.py` exist and `supply_reconciliation_workflow.py` is down
+to 1,494 LOC. B2/B3 explicit state injection landed 2026-07-22. Bounded
+process-based per-economy parallelism (`codebase/functions/parallel_economy_runner.py`)
+landed and was verified 2026-07-23 — see `docs/current_execution_roadmap.md`
+item 2. The own-use proxy rewrite-from-scratch idea is retired (T8: the
+module is healthy, 1,770 LOC, coverage gap closed).
 
-- `supply_reconciliation_config.py` — config loading and sentinel definitions
-- `supply_reconciliation_allocation.py` — the `capacity_unmet_iterative_balanced` algorithm
-- `supply_reconciliation_history.py` — run history, convergence tracking, run removal
-- `supply_reconciliation_workflow.py` — slim orchestrator (target: <500 LOC)
+#### Phase 5 — Feature improvements — convergence/run-history done; demand-aggregation partial; parallelism done differently than sketched here
 
-Consider rewriting `other_loss_own_use_proxy_workflow.py` from scratch using its current output format as the contract.
+**Stale as written; corrected 2026-07-23:**
 
-#### Phase 5 — Feature improvements
-
-Once the codebase is clean enough to work in confidently:
-
-- **Convergence diagnostics and run history** — capacity-unmet convergence rows now carry run ids, per-run diagnostics can print/write per-fuel allocation and unresolved-gap summaries, latest-two comparisons are available, and `remove_convergence_run()` removes rows for a deliberately reverted run. Files: `codebase/functions/capacity_unmet_convergence_diagnostics.py`, `codebase/supply_reconciliation_history.py`, `outputs/leap_exports/supply_reconciliation/supporting_files/runtime/`
-- **All demand aggregated output improvements** — per-sector filename IDs; pre-generate all unique demand branch subset combinations; record individual branch contributions within the aggregated output file. Files: `codebase/aggregated_demand_workflow.py`
-- **Per-economy parallelism** — the reconciliation loop is currently single-economy sequential; the scripts are independent per economy and can run in parallel with minimal changes.
+- **Convergence diagnostics and run history** — ✅ done (additive manifests,
+  explicit run-id comparison, opt-in dry-run pruning). Files:
+  `codebase/functions/capacity_unmet_convergence_diagnostics.py`,
+  `codebase/supply_reconciliation_history.py`,
+  `outputs/leap_exports/supply_reconciliation/supporting_files/runtime/`.
+- **All demand aggregated output improvements** — per-sector filename IDs and
+  any-order active-branch resolution are done; pre-generating every subset
+  combination was deliberately dropped as the wrong shape (resolve on
+  demand instead); recording individual branch contributions is still open.
+  Files: `codebase/aggregated_demand_workflow.py`. See T6 in
+  `docs/prompts/initialisation_refactor_continuation.md`.
+- **Per-economy parallelism** — "minimal changes" was wrong; the reconciliation
+  loop shared mutable module-level config globals (`import *` mirrors) that
+  made naive threading unsafe, guarded by
+  `supply_results_saver._resolve_parallel_economy_workers`. The safe
+  boundary is now built as a bounded, process-based (not thread-based)
+  outer-loop orchestrator — `codebase/functions/parallel_economy_runner.py` —
+  verified 2026-07-23 (sequential equivalence + a two-economy concurrent
+  smoke test, zero cross-contamination). A deterministic parent merge across
+  more than one economy's output into a single consolidated artifact is
+  still open.
 
 ### Additional improvements identified in the codebase review
 
@@ -442,7 +492,12 @@ Work through in this sequence. Items marked *(depends on X)* must wait for X to 
 
 **Mapping pipeline (`leap_mappings`) — do first:**
 
-1. **M2** — Connect pipeline to `outlook_mappings_master.xlsx` + apply rollup rules at Stage 1 *(critical blocker — nothing downstream produces real data until done)*
+**⚠️ M2 is DONE** (per `docs/work_queue.md` [16], confirmed 2026-07-21): all
+three `leap_mappings` pipeline scripts read `outlook_mappings_master.xlsx`.
+The items below that depend on M2 are unblocked; re-check their own status
+in `leap_mappings` before assuming they are still pending too.
+
+1. **M2** — Connect pipeline to `outlook_mappings_master.xlsx` + apply rollup rules at Stage 1 *(✅ done — was the critical blocker)*
 2. **M1** — Create `outlook_mapping_maintenance_workflow.py` *(depends on M2 to verify its output)*
 3. **M6** — Define subtotal↔non-subtotal mismatch rules *(design decision; implement result in M1)*
 4. **M3** — Build hierarchical tree structure CSV + recursive validation *(callable from M1 once built)*
