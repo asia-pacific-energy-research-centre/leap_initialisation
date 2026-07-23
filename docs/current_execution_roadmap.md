@@ -108,9 +108,18 @@ Execute the detailed briefs in this order, with their tests and decision gates:
    (each seed's `Region` column held only its own economy), and `01_AUS`'s
    concurrent output identical (0 diffs) to its sequential run. A
    deterministic parent merge across more than one economy's outputs into a
-   single consolidated artifact is **not yet built** — today each worker's
-   outputs stand alone under its own label; that remains open before this is
-   used for an unattended multi-economy fleet run.
+   single consolidated artifact is **partly built, 2026-07-23** (`5064325`):
+   `codebase/functions/parallel_economy_merge.py` merges the consolidated
+   baseline-seed validation findings/issue-groups CSVs across workers
+   (deterministic order, failed workers skipped rather than read as clean).
+   **Deliberately not covered**: merging the single-file combined workbook
+   that a sequential multi-economy run also produces — reconstructing its
+   exact preamble/header/column layout from N independent workers is a
+   separate, higher-risk task (a malformed structure is a silent defect) and
+   needs its own build-and-diff verification pass before attempting. Each
+   worker's own per-economy seed workbook is already correct standalone and
+   needs no merging. This remains open before the parallel path is used for
+   an unattended multi-economy fleet run that also wants one combined file.
 3. Phase 3 canonical mapping hardening: schema and rollup contracts, retirement
    of the obsolete name-consolidation path, canonical ownership, and deferred
    equivalence evidence. Mapping decisions still owned by `leap_mappings`
