@@ -1,8 +1,28 @@
 # Remaining work queue
 
-## [19] Consolidate and filter template-matching diagnostics
+## [19] Consolidate and filter template-matching diagnostics — ✅ Implemented and verified 2026-07-23 (`9be92bf`)
 
 **Status: follow-up recorded 2026-07-23 from the four-real-template full run.**
+
+`filter_actionable_mapping_config_mismatches()` and
+`build_template_matching_summary()` in
+`codebase/functions/supply_results_saver.py`, wired into
+`save_results_linked_single_workbook`, write
+`supply_reconciliation_template_matching_summary.csv` alongside the existing
+detailed CSVs (unchanged, still unfiltered). 8 new tests
+(`tests/test_template_matching_summary.py`).
+
+**Re-checked against the real evidence CSV rather than a fresh run** (the
+CSV already carries the human `Useful` TRUE/FALSE review column, so no
+21-economy-run repeat was needed): loaded
+`SEED_4REAL_TEMPLATES_FULL_20260722/supporting_files/checks/supply_reconciliation_config_mapping_mismatches.csv`
+(91 rows, `Useful`: 53 True / 38 False) and ran the new filter directly
+against it. **Exact row-for-row match**: the filter's 53 surviving rows are
+precisely the 53 rows marked `Useful=True` by the human reviewer — 0 rows in
+either set that aren't in the other. Confirms `reference_value_missing` (29
+rows) plus `Endogenous Capacity` (9 rows) fully explain the 38 rows the
+reviewer marked not useful, with no unaccounted-for `FALSE` rows requiring a
+new rule.
 
 The end-of-run checks currently write several useful but separate CSVs under a
 run's `supporting_files/checks` directory. Keep those detailed source files,
