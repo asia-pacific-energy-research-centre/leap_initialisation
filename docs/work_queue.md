@@ -67,9 +67,25 @@ Evidence from `SEED_4REAL_TEMPLATES_FULL_20260722`:
 
 Do not weaken seed validation or silently delete the detailed files.
 
-### Priority follow-up — make template verification economy-specific
+### Priority follow-up — make template verification economy-specific — ✅ Implemented 2026-07-23 (`68de3f4`)
 
-The six `02_BD` unmatched-ID rows from the four-real-template run are a
+`_resolve_ids_and_filter_unmatched_export_rows_per_economy`
+(`codebase/functions/supply_results_saver.py`) groups the combined export by
+`Region`, resolves each region's own economy's LEAP export template via
+`leap_export_template_resolver.resolve_leap_export_template_or_fallback`, and
+runs the existing single-reference ID-resolution logic per group instead of
+against one USA-pinned reference. A region with no known economy (aggregate
+sentinel, unrecognised label) or a template-resolution failure falls back to
+the pinned USA reference for those rows only. `save_results_linked_single_workbook`
+now calls this instead of the single-reference resolver. 5 new tests in
+`tests/test_id_matching_consolidation.py`, including a regression test that
+characterizes the bug and a fix test proving each economy's own template is
+used. **Diagnostics-only** — affects `unmatched_id_rows.csv`/the template-
+matching summary, not any LEAP-importable value — but **not yet exercised
+against a real run**; needs a go-ahead before use in one.
+
+**Original problem, for context:** the six `02_BD` unmatched-ID rows from the
+four-real-template run are a
 verification-scope false positive, not missing Brunei branches. The combined
 verification step loaded the USA template
 (`data/leap_export_templates/leap_export_template 20_USA.xlsx`) and attempted
@@ -77,16 +93,13 @@ to match all four economies against it; the rows exist in
 `leap_export_template 02_BD.xlsx` but the USA template does not contain those
 same branch/fuel combinations.
 
-**Priority:** change the consolidated verification to resolve and compare each
-economy against its own template. Until that is implemented, either exclude
-non-USA rows from the USA-pinned check or label them explicitly as
-cross-economy verification limitations; never report them as LEAP alignment
-fixes. Add a regression test using the known-good 02_BD
-`Demand\\All demand aggregated\\Activity Level` control row (BranchID `2336`,
-VariableID `2027`, scenarios Current Accounts/Reference/Target) before the next
-retained full-horizon run. Do not use the six Coke-oven/Gas-works rows as the
-fixture; those template entries are known to be incorrectly set and are being
-reviewed separately.
+**Done above.** The synthetic unit-test fixture stands in for the known-good
+02_BD `Demand\\All demand aggregated\\Activity Level` control row (BranchID
+`2336`, VariableID `2027`, scenarios Current Accounts/Reference/Target); the
+real control row still needs exercising against a real run before the next
+retained full-horizon run, and the six Coke-oven/Gas-works rows remain
+off-limits as a fixture — those template entries are known to be incorrectly
+set and are being reviewed separately.
 
 Single source of truth for *what is left, in what order, and what blocks what*
 across the supply-reconciliation / baseline-seed work. Cross-references the
