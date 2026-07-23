@@ -531,11 +531,12 @@ class TemplateBalanceExtractor:
                     if pair not in self._balance_code_pair_to_esto[key]:
                         self._balance_code_pair_to_esto[key].append(pair)
 
-        # New LEAP balance mapping workbook shape:
-        # config/leap_mappings.xlsx contains proposed one-dimensional and
-        # pair-level LEAP label mappings rather than the older optional sheet
-        # names above. Use exact pair mappings first, then feed the one-
-        # dimensional sheets into the existing name->code/name->ESTO lookups.
+        # New LEAP balance mapping workbook shape (mapping_pairs_path, now the
+        # retired config/legacy/leap_mappings.xlsx or its canonical
+        # replacement): contains proposed one-dimensional and pair-level LEAP
+        # label mappings rather than the older optional sheet names above. Use
+        # exact pair mappings first, then feed the one-dimensional sheets into
+        # the existing name->code/name->ESTO lookups.
         if not self.explicit_pair_mappings_only:
             try:
                 sector_ninth = self._read_mapping_pairs_table("sector_ninth_final_proposed", dtype=str).fillna("")

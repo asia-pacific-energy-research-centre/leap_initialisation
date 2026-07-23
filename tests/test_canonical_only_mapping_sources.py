@@ -109,3 +109,33 @@ def test_python_runtime_has_no_master_config_workbook_path() -> None:
         if "config/master_config.xlsx" in compact:
             offenders.append(str(path.relative_to(REPO_ROOT)))
     assert offenders == []
+
+
+def test_legacy_mapping_workbooks_moved_to_config_legacy() -> None:
+    """D3.3: the retired workbooks live under config/legacy/, not config/."""
+    assert not (REPO_ROOT / "config" / "master_config.xlsx").exists()
+    assert not (REPO_ROOT / "config" / "leap_mappings.xlsx").exists()
+    assert (REPO_ROOT / "config" / "legacy" / "master_config.xlsx").exists()
+    assert (REPO_ROOT / "config" / "legacy" / "leap_mappings.xlsx").exists()
+
+
+def test_python_runtime_never_opens_leap_mappings_xlsx_by_hardcoded_path() -> None:
+    """No live module should construct a path to the old top-level location.
+
+    ``codebase/utilities/master_config.py`` itself references the filename
+    ``"leap_mappings.xlsx"`` deliberately - it is a name-matching key in the
+    compatibility redirect table, never a path opened on disk - so it is
+    excluded here rather than made to avoid the string.
+    """
+    excluded_modules = {"mapping_code", "archive", "scrapbook", "old_workflows"}
+    offenders: list[str] = []
+    for path in (REPO_ROOT / "codebase").rglob("*.py"):
+        if excluded_modules & set(path.parts):
+            continue
+        if path.name == "master_config.py":
+            continue
+        text = path.read_text(encoding="utf-8-sig")
+        compact = text.replace("\\", "/").lower()
+        if "config/leap_mappings.xlsx" in compact:
+            offenders.append(str(path.relative_to(REPO_ROOT)))
+    assert offenders == []
