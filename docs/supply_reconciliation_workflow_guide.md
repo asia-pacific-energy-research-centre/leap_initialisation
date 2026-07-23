@@ -972,7 +972,7 @@ Code improvements planned for this workflow and its supporting scripts. Mirrored
 
 ### ~~Move config into the workflow file; extract functions to a functions folder~~ COMPLETE
 
-Caps and override settings (`CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS`, `CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS`, and related sentinels) are now defined in `codebase/supply_reconciliation_config.py` (Python, not JSON). Supporting functions have been extracted to modules in `codebase/functions/` and `codebase/`, reducing `supply_reconciliation_workflow.py` from 13,794 LOC to ~637 LOC (imports and notebook config block only). See Phase 4 of the refactor for details.
+Caps and override settings (`CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS`, `CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS`, and related sentinels) are now defined in `codebase/supply_reconciliation_config.py` (Python, not JSON). Supporting functions have been extracted to modules in `codebase/functions/` and `codebase/`, reducing `supply_reconciliation_workflow.py` from 13,794 LOC to 1,494 LOC as of 2026-07-23 (`wc -l`; grows commit to commit as Phase 4 B2/B3 state injection and per-economy parallelism work landed on top of the split — re-measure rather than trusting this number long-term). See Phase 4 of the refactor for details, and `docs/current_execution_roadmap.md`/`docs/work_queue.md` for current status.
 
 ### Shared workflow utilities — partially complete
 
