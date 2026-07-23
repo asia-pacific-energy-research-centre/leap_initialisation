@@ -15,6 +15,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+import codebase.utilities.workflow_utils as workflow_utils
 from codebase.utilities.workflow_utils import (
     REPO_ROOT,
     _normalize_economy,
@@ -230,3 +231,138 @@ class TestLoadEstoCsv(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestEconomyScopedCsvFilter(unittest.TestCase):
+    """economies= reads in chunks and never materializes the full table.
+
+    2026-07-23: added because per-economy parallel worker processes (and any
+    single-economy run in general) previously held the entire multi-economy
+    source table in memory even though they only ever use one economy's rows.
+    """
+
+    def setUp(self):
+        clear_csv_cache()
+        self._original_chunksize = workflow_utils._ECONOMY_FILTER_CHUNKSIZE
+        # Force multiple chunks over a tiny test file so chunk-boundary
+        # behaviour is actually exercised, not just a single-pass read.
+        workflow_utils._ECONOMY_FILTER_CHUNKSIZE = 2
+        self._temporary_directory = tempfile.TemporaryDirectory()
+        self.temporary_path = Path(self._temporary_directory.name)
+
+    def tearDown(self):
+        clear_csv_cache()
+        workflow_utils._ECONOMY_FILTER_CHUNKSIZE = self._original_chunksize
+        self._temporary_directory.cleanup()
+
+    def _write_canonical_form_csv(self, path: Path) -> None:
+        # Mirrors the 9th Outlook CSV's raw form: "economy" already
+        # underscored.
+        path.write_text(
+            "economy,value\n"
+            "01_AUS,1\n"
+            "02_BD,2\n"
+            "01_AUS,3\n"
+            "05_PRC,4\n"
+            "02_BD,5\n",
+            encoding="utf-8",
+        )
+
+    def _write_compact_form_csv(self, path: Path) -> None:
+        # Mirrors the ESTO base-table CSV's raw form: "economy" compact,
+        # no underscore.
+        path.write_text(
+            "economy,value\n"
+            "01AUS,1\n"
+            "02BD,2\n"
+            "01AUS,3\n"
+            "05PRC,4\n",
+            encoding="utf-8",
+        )
+
+    def test_filters_to_requested_economies_canonical_source(self):
+        source = self.temporary_path / "ninth.csv"
+        self._write_canonical_form_csv(source)
+
+        result = load_ninth_outlook_csv(source, economies=["01_AUS"])
+
+        self.assertEqual(sorted(result["value"].tolist()), [1, 3])
+        self.assertTrue((result["economy"] == "01_AUS").all())
+
+    def test_filters_to_requested_economies_compact_source(self):
+        """The ESTO CSV's raw economy values are compact ("01AUS"); a caller
+        passing the canonical form ("01_AUS") must still match."""
+        source = self.temporary_path / "esto.csv"
+        self._write_compact_form_csv(source)
+
+        result = load_esto_csv(source, economies=["01_AUS"])
+
+        self.assertEqual(sorted(result["value"].tolist()), [1, 3])
+
+    def test_multiple_economies_and_no_match_cases(self):
+        source = self.temporary_path / "ninth.csv"
+        self._write_canonical_form_csv(source)
+
+        multi = load_ninth_outlook_csv(source, economies=["01_AUS", "05_PRC"])
+        self.assertEqual(sorted(multi["value"].tolist()), [1, 3, 4])
+
+        none_matched = load_ninth_outlook_csv(source, economies=["99_NOPE"])
+        self.assertTrue(none_matched.empty)
+        self.assertEqual(list(none_matched.columns), ["economy", "value"])
+
+    def test_economy_scoped_read_is_cached_by_exact_scope(self):
+        source = self.temporary_path / "ninth.csv"
+        self._write_canonical_form_csv(source)
+
+        first = load_ninth_outlook_csv(source, economies=["01_AUS"])
+        second = load_ninth_outlook_csv(source, economies=["01_AUS"])
+        different_scope = load_ninth_outlook_csv(source, economies=["02_BD"])
+
+        self.assertIs(first, second)
+        self.assertIsNot(first, different_scope)
+
+    def test_economy_scoped_cache_reloads_on_source_change(self):
+        source = self.temporary_path / "ninth.csv"
+        self._write_canonical_form_csv(source)
+        first = load_ninth_outlook_csv(source, economies=["01_AUS"])
+
+        source.write_text("economy,value\n01_AUS,999\n", encoding="utf-8")
+        stat = source.stat()
+        os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
+        second = load_ninth_outlook_csv(source, economies=["01_AUS"])
+
+        self.assertIsNot(first, second)
+        self.assertEqual(second["value"].tolist(), [999])
+
+    def test_full_table_and_economy_scoped_caches_are_independent(self):
+        source = self.temporary_path / "ninth.csv"
+        self._write_canonical_form_csv(source)
+
+        full = load_ninth_outlook_csv(source)
+        scoped = load_ninth_outlook_csv(source, economies=["01_AUS"])
+
+        self.assertEqual(len(full), 5)
+        self.assertEqual(len(scoped), 2)
+        self.assertIsNot(full, scoped)
+
+    def test_clear_csv_cache_clears_economy_scoped_entries_too(self):
+        source = self.temporary_path / "ninth.csv"
+        self._write_canonical_form_csv(source)
+        scoped = load_ninth_outlook_csv(source, economies=["01_AUS"])
+
+        clear_csv_cache(source)
+
+        self.assertIsNot(scoped, load_ninth_outlook_csv(source, economies=["01_AUS"]))
+
+    def test_economy_filter_respects_explicit_usecols(self):
+        source = self.temporary_path / "ninth.csv"
+        source.write_text(
+            "economy,value,extra\n01_AUS,1,x\n02_BD,2,y\n", encoding="utf-8"
+        )
+
+        result = load_ninth_outlook_csv(source, usecols=["value"], economies=["01_AUS"])
+
+        # "economy" is pulled in automatically to make filtering possible,
+        # even though the caller only asked for "value".
+        self.assertEqual(sorted(result.columns.tolist()), ["economy", "value"])
+        self.assertEqual(result["value"].tolist(), [1])
