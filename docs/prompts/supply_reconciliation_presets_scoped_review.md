@@ -129,7 +129,20 @@ already in production). What's still missing for Design Goal 1: no preset
 no commit hash — the doc's "printable and persisted... including preset name...
 template/data fingerprints, and commit hash" is not met.
 
-### 3. Confirmed gap: `_PRESET_PATCH_BASELINE_SEEDS` does not pin the pass mode it depends on
+### 3. Confirmed gap: `_PRESET_PATCH_BASELINE_SEEDS` does not pin the pass mode it depends on — ✅ Fixed 2026-07-23 (`5d20099`)
+
+`CAPACITY_UNMET_PASS_MODE: "baseline_seed"` and
+`OTHER_LOSS_OWN_USE_PROXY_STAGE: "first"` added to
+`_PRESET_PATCH_BASELINE_SEEDS` (`supply_reconciliation_workflow.py`),
+matching `_PRESET_BASELINE_SEED`'s own values, per this finding's first
+recommended option. 2 new tests in `tests/test_reconciliation_state_forwarding.py`
+(one pinning the values, one characterizing the bug directly via
+`_resolve_other_loss_own_use_proxy_activity_source_mode`); one existing test
+in `tests/test_reconciliation_phase4_characterization.py` updated — it had
+pinned the old gap ("results_update") as an intentional contract in its own
+comment, which was itself part of what this finding corrected.
+
+**Original finding, for context:**
 
 `CAPACITY_UNMET_PASS_MODE` and `OTHER_LOSS_OWN_USE_PROXY_STAGE` are preset keys
 in the other two dicts but are absent from `_PRESET_PATCH_BASELINE_SEEDS`
