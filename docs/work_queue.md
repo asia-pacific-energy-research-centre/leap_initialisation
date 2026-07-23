@@ -1664,6 +1664,16 @@ contradiction likely to happen again and go unnoticed longer.
 - Do not treat this as a one-time cleanup; re-check it each session that
   spawns or resumes worktree-based work, since new stale worktrees accumulate
   the same way the b85d02 one did.
+- **Keep every active worktree's tree clean and committed as work lands, not
+  just at session end.** Commit (docs-only or code, per the one-issue-per-
+  commit convention already in force) as soon as a work-queue item completes
+  or a major checkpoint in this queue is reached, rather than letting commits
+  pile up uncommitted in a worktree. An uncommitted worktree is exactly the
+  state that made the T4/T10 divergence above harder to catch — a clean,
+  committed worktree is diffable and mergeable at any moment; a dirty one
+  is not. This applies per-worktree: each active worktree commits its own
+  completed checkpoints on its own branch, it does not wait for a shared
+  merge point.
 
 ## Related documents
 
