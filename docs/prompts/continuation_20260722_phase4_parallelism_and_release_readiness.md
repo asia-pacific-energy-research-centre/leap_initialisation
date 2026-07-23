@@ -1,6 +1,14 @@
 # Continuation prompt — Phase 4, safe parallelism, and release readiness
 
-Status: active handoff created 2026-07-22. Read this file first, then
+Status: active handoff created 2026-07-22. **Update 2026-07-23:** the
+"Immediate engineering priority" section below (bounded process-based
+parallelism) is landed and verified — see
+[current_execution_roadmap.md](../current_execution_roadmap.md) item 2 for
+the commit and evidence. Not yet built: a deterministic parent merge across
+multiple economies' outputs into one consolidated fleet artifact. The
+remaining sections of this prompt (full-horizon zero-fill follow-up, the [18]
+design correction, and the product-readiness critical path) are still open;
+do not archive this file until those are addressed too. Read this file first, then
 `docs/current_execution_roadmap.md`, `docs/work_queue.md`, and the detailed
 Phase 4 brief before editing code.
 

@@ -89,12 +89,28 @@ Execute the detailed briefs in this order, with their tests and decision gates:
    explicit run context for output paths, output label, and pass mode. This is
    the minimum state-isolation boundary needed before parallel production runs
    are considered.
-2. Add and validate **bounded process-based economy parallelism** immediately
-   after that B2/B3 boundary: per-worker configuration snapshots (never source
-   file edits while workers run), per-worker timing/convergence artifacts,
-   deterministic parent merge, and an opt-in pool defaulting to one worker.
-   First prove it with a controlled two-economy smoke test; do not use shared
-   interpreter/thread parallelism.
+2. ✅ **Bounded process-based economy parallelism — landed and verified
+   2026-07-23** (`9aab65b`). `supply_reconciliation_workflow._apply_worker_snapshot_overrides`
+   reads an explicit per-process snapshot (economy, run label, test horizon)
+   from `LEAP_WORKER_SNAPSHOT_JSON`, applied before the preset broadcast; a
+   no-op when unset. `codebase/functions/parallel_economy_runner.py` launches
+   one OS process per economy (never threads), bounded by `max_workers`
+   (default 1), each with its own `run_output_label` — which reuses the
+   existing `ReconciliationRunContext` path resolution to isolate every
+   per-run artifact family (output dir, runtime dir, checks dir, iterative
+   state, timing/convergence CSVs) without a new scoping mechanism. Verified:
+   (a) sequential equivalence — one `01_AUS` two-year run through the new
+   subprocess path matched the established `SEED_01_AUS_TWOYEAR_AGGSOURCE_20260722`
+   baseline byte-for-byte (3,432 rows, 0 cell diffs, keyed on
+   BranchID/VariableID/ScenarioID/RegionID); (b) a controlled two-economy
+   concurrent smoke test (`01_AUS` + `12_NZ`, `max_workers=2`, two-year
+   horizon) completed with both workers succeeding, zero cross-contamination
+   (each seed's `Region` column held only its own economy), and `01_AUS`'s
+   concurrent output identical (0 diffs) to its sequential run. A
+   deterministic parent merge across more than one economy's outputs into a
+   single consolidated artifact is **not yet built** — today each worker's
+   outputs stand alone under its own label; that remains open before this is
+   used for an unattended multi-economy fleet run.
 3. Phase 3 canonical mapping hardening: schema and rollup contracts, retirement
    of the obsolete name-consolidation path, canonical ownership, and deferred
    equivalence evidence. Mapping decisions still owned by `leap_mappings`
