@@ -26,19 +26,27 @@ def _clear_warning_state():
     reset_provisional_template_warnings()
 
 
-def _write_template(root, economy, *, area="Some area"):
+def _write_template_named(root, filename, *, area="Some area", columns=None):
     root.mkdir(parents=True, exist_ok=True)
-    path = root / f"leap_export_template {economy}.xlsx"
+    path = root / filename
+    header_row = columns if columns is not None else [
+        "BranchID", "VariableID", "ScenarioID", "RegionID",
+        "Branch Path", "Variable", "Scenario", "Region",
+    ]
     preamble = pd.DataFrame(
         [
             [None, None, None, None, "Area:", area, "Ver:", 2],
             [None] * 8,
-            ["BranchID", "VariableID", "ScenarioID", "RegionID", "Branch Path", "Variable", "Scenario", "Region"],
+            header_row,
         ]
     )
     with pd.ExcelWriter(path) as writer:
         preamble.to_excel(writer, sheet_name="Export", header=False, index=False)
     return path
+
+
+def _write_template(root, economy, *, area="Some area"):
+    return _write_template_named(root, f"leap_export_template {economy}.xlsx", area=area)
 
 
 def test_resolves_template_for_economy(tmp_path):
@@ -164,9 +172,12 @@ def test_find_shared_template_areas_empty_when_areas_distinct(tmp_path):
 
 
 def test_read_area_from_real_usa_template():
+    # Pinned to whatever area name the real, live template currently carries -
+    # re-check this string whenever the real USA template is re-exported
+    # (last updated 2026-07-23, area "USA clean slate 23_07").
     path = resolve_leap_export_template("20_USA")
 
-    assert read_leap_export_template_area(path) == "USA clean slate 15_07"
+    assert read_leap_export_template_area(path) == "USA clean slate 23_07"
 
 
 def test_provisional_template_resolves_and_reports_economy_without_marker(tmp_path):
@@ -279,3 +290,91 @@ def test_finalized_economies_resolve_to_a_non_provisional_template():
     assert not still_provisional, (
         f"Expected a real export for {still_provisional}, but resolved a COMP_GEN copy."
     )
+
+
+# ---------------------------------------------------------------------------
+# 2026-07-23: matching loosened to "COMP_GEN marker + economy letter code
+# as a token", with no fixed filename shape required, plus a column-contract
+# check on whatever file is chosen.
+# ---------------------------------------------------------------------------
+
+def test_resolves_with_no_numeric_prefix_and_extra_description_text(tmp_path):
+    expected = _write_template_named(tmp_path, "MAS export updated 2026-07-23 v2.xlsx")
+
+    resolved = find_leap_export_template("10_MAS", templates_root=tmp_path)
+
+    assert resolved.path == expected
+    assert resolved.economy == "10_MAS"
+    assert resolved.is_provisional is False
+
+
+def test_resolves_bare_letter_code_request_too(tmp_path):
+    expected = _write_template_named(tmp_path, "leap_export_template MAS.xlsx")
+
+    resolved = find_leap_export_template("MAS", templates_root=tmp_path)
+
+    assert resolved.path == expected
+
+
+def test_comp_gen_marker_detected_regardless_of_separator(tmp_path):
+    for filename in [
+        "leap_export_template 09_ROK_COMP_GEN.xlsx",
+        "ROK COMP GEN 2026-05-01.xlsx",
+        "ROK_COMPGEN.xlsx",
+    ]:
+        path = _write_template_named(tmp_path, filename)
+        assert is_provisional_template(path) is True
+
+
+def test_short_letter_code_does_not_false_match_inside_unrelated_word(tmp_path):
+    # "CT" (18_CT) must not match "OCTOBER" or "REPORT" - only an exact token.
+    _write_template_named(tmp_path, "october_report_notes.xlsx")
+
+    with pytest.raises(FileNotFoundError):
+        find_leap_export_template("18_CT", templates_root=tmp_path)
+
+
+def test_multiple_final_matches_for_same_economy_raise(tmp_path):
+    _write_template_named(tmp_path, "leap_export_template 10_MAS.xlsx")
+    _write_template_named(tmp_path, "MAS_export_v2.xlsx")
+
+    with pytest.raises(ValueError, match="Multiple final"):
+        find_leap_export_template("10_MAS", templates_root=tmp_path)
+
+
+def test_multiple_provisional_matches_pick_most_recently_modified(tmp_path):
+    import os
+    import time
+
+    older = _write_template_named(tmp_path, "MAS_COMP_GEN_old.xlsx")
+    time.sleep(0.05)
+    newer = _write_template_named(tmp_path, "MAS_COMP_GEN_new.xlsx")
+    # Make the mtime difference unambiguous regardless of filesystem timestamp
+    # resolution.
+    now = time.time()
+    os.utime(older, (now - 100, now - 100))
+    os.utime(newer, (now, now))
+
+    resolved = find_leap_export_template("10_MAS", templates_root=tmp_path)
+
+    assert resolved.path == newer
+    assert resolved.is_provisional is True
+
+
+def test_missing_required_column_raises_a_named_error(tmp_path):
+    bad = _write_template_named(
+        tmp_path,
+        "leap_export_template 10_MAS.xlsx",
+        columns=["BranchID", "VariableID", "Branch Path", "Variable"],  # missing several
+    )
+
+    with pytest.raises(ValueError, match="missing required column"):
+        find_leap_export_template("10_MAS", templates_root=tmp_path)
+
+
+def test_valid_columns_pass_the_contract_check(tmp_path):
+    expected = _write_template_named(tmp_path, "leap_export_template 10_MAS.xlsx")
+
+    resolved = find_leap_export_template("10_MAS", templates_root=tmp_path)
+
+    assert resolved.path == expected

@@ -21,14 +21,13 @@ DEFAULT_LEAP_EXPORT_TEMPLATES_ROOT = REPO_ROOT / "data" / "leap_export_templates
 
 LEAP_EXPORT_TEMPLATE_SHEET = "Export"
 
-# data/leap_export_templates/leap_export_template 20_USA.xlsx
+# data/leap_export_templates/leap_export_template 20_USA.xlsx (example only -
+# 2026-07-23: matching no longer requires this exact filename shape; see
+# _filename_tokens/_economy_letter_code below).
 LEAP_EXPORT_TEMPLATE_FILENAME_TEMPLATE = "leap_export_template {economy}.xlsx"
-LEAP_EXPORT_TEMPLATE_FILENAME_PATTERN = re.compile(
-    r"^leap_export_template (?P<economy>[^.]+)\.xlsx$",
-    re.IGNORECASE,
-)
 
-# A `_COMP_GEN` suffix marks a computer-generated template: it was derived from
+# A `COMP_GEN` marker (in any separator form - "_COMP_GEN", "COMP GEN",
+# "COMPGEN", ...) flags a computer-generated template: it was derived from
 # another economy's area rather than exported from its own, so its BranchID /
 # VariableID / ScenarioID / RegionID values are not known to be that economy's.
 # Usable, but every use must say so.
@@ -38,8 +37,31 @@ PROVISIONAL_TEMPLATE_MARKER = "COMP_GEN"
 # template can carry their IDs.
 AGGREGATE_ECONOMY_SENTINELS = frozenset({"00_APEC", "ALL_ECONOMIES", "ALL"})
 
+# The 21 APEC member economies this pipeline models, in canonical "NN_XXX"
+# form. Hardcoded here deliberately - this is a leaf module with no other
+# codebase imports (see resolve_leap_export_template_or_fallback's docstring)
+# - purely so a template file can be found by its economy's letter code alone
+# ("MAS") without the numeric prefix appearing in the filename at all.
+KNOWN_ECONOMIES: tuple[str, ...] = (
+    "01_AUS", "02_BD", "03_CDA", "04_CHL", "05_PRC", "06_HKC", "07_INA",
+    "08_JPN", "09_ROK", "10_MAS", "11_MEX", "12_NZ", "13_PNG", "14_PE",
+    "15_PHL", "16_RUS", "17_SGP", "18_CT", "19_THA", "20_USA", "21_VN",
+)
+
+# The Export-sheet columns every real LEAP export carries. Checked whenever a
+# template is resolved (2026-07-23) so a file that merely matches an economy's
+# letter code by name, but is not actually a real LEAP export (wrong file,
+# corrupted save, etc.), is caught here rather than failing confusingly deep
+# inside a consumer.
+REQUIRED_TEMPLATE_COLUMNS: tuple[str, ...] = (
+    "BranchID", "VariableID", "ScenarioID", "RegionID",
+    "Branch Path", "Variable", "Scenario", "Region",
+)
+
 # One warning per economy per process; these resolve inside per-economy loops.
 _PROVISIONAL_USE_WARNED: set[str] = set()
+
+_FILENAME_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+")
 
 
 @dataclass(frozen=True)
@@ -79,19 +101,53 @@ def is_aggregate_economy(economy: object) -> bool:
         return False
 
 
-def _split_provisional_marker(economy_token: str) -> tuple[str, bool]:
-    """Split a filename economy token into its economy and provisional flag."""
-    token = normalize_template_economy(economy_token)
-    suffix = f"_{PROVISIONAL_TEMPLATE_MARKER}"
-    if token.endswith(suffix):
-        return token[: -len(suffix)], True
-    return token, False
+def _economy_letter_code(economy: object) -> str:
+    """Return the letter-code portion of a canonical economy string.
+
+    "10_MAS" -> "MAS"; "01_AUS" -> "AUS". A bare letter code passed directly
+    (no underscore) is returned unchanged, so callers already using just the
+    letter code still work.
+    """
+    text = normalize_template_economy(economy)
+    return text.split("_", 1)[1] if "_" in text else text
+
+
+def _filename_tokens(name: str) -> list[str]:
+    """Uppercase alphanumeric tokens from a filename, ignoring its extension.
+
+    The whole point: the filename may otherwise be written any way (dates,
+    extra description text, no numeric economy prefix, ...) - only the
+    presence of the right tokens is checked, not any fixed shape.
+    """
+    return [tok.upper() for tok in _FILENAME_TOKEN_PATTERN.findall(Path(name).stem)]
+
+
+def _filename_is_provisional(tokens: list[str]) -> bool:
+    """True when a COMP_GEN marker appears in the tokens, in any separator form."""
+    if "COMPGEN" in tokens:
+        return True
+    return any(tokens[i] == "COMP" and tokens[i + 1] == "GEN" for i in range(len(tokens) - 1))
+
+
+def _filename_matches_economy(tokens: list[str], letter_code: str) -> bool:
+    """True when ``letter_code`` appears as its own token in the filename.
+
+    An exact-token match, not a raw substring search, so a short 2-letter
+    code ("CT", "PE", "BD", "NZ", "VN") cannot false-match inside an
+    unrelated word or a date fragment.
+    """
+    return letter_code in tokens
 
 
 def iter_leap_export_templates(
     templates_root: Path | str = DEFAULT_LEAP_EXPORT_TEMPLATES_ROOT,
 ) -> list[LeapExportTemplate]:
-    """Return every export template present under templates_root."""
+    """Return every export template present under templates_root.
+
+    Matched against ``KNOWN_ECONOMIES`` by letter code (see
+    ``_filename_matches_economy``) - the numeric prefix, dates, and any other
+    filename text are not required to follow any fixed pattern.
+    """
     root = _resolve_path(templates_root)
     if not root.exists():
         return []
@@ -99,19 +155,19 @@ def iter_leap_export_templates(
     for path in sorted(root.glob("*.xlsx")):
         if path.name.startswith("~$"):
             continue
-        match = LEAP_EXPORT_TEMPLATE_FILENAME_PATTERN.match(path.name)
-        if not match:
+        tokens = _filename_tokens(path.name)
+        if not tokens:
             continue
-        economy, is_provisional = _split_provisional_marker(match.group("economy"))
-        if not economy:
-            continue
-        found.append(
-            LeapExportTemplate(
-                path=path,
-                economy=economy,
-                is_provisional=is_provisional,
-            )
-        )
+        is_provisional = _filename_is_provisional(tokens)
+        for economy in KNOWN_ECONOMIES:
+            if _filename_matches_economy(tokens, _economy_letter_code(economy)):
+                found.append(
+                    LeapExportTemplate(
+                        path=path,
+                        economy=economy,
+                        is_provisional=is_provisional,
+                    )
+                )
     return found
 
 
@@ -130,12 +186,49 @@ def available_template_economies(
     )
 
 
+def _validate_template_columns(
+    path: Path,
+    *,
+    sheet_name: str = LEAP_EXPORT_TEMPLATE_SHEET,
+) -> None:
+    """Raise if the template's Export sheet is missing a required ID/key column.
+
+    A filename match only proves the file's *name* mentions the right
+    economy - not that its contents are a real LEAP export. This is the
+    check that catches the rest: wrong file, corrupted save, wrong sheet
+    layout, etc.
+    """
+    try:
+        header = pd.read_excel(path, sheet_name=sheet_name, header=2, nrows=0)
+    except Exception as exc:
+        raise ValueError(
+            f"Could not read the '{sheet_name}' sheet (header row 3) from LEAP export "
+            f"template {path}: {exc}"
+        ) from exc
+    missing = [column for column in REQUIRED_TEMPLATE_COLUMNS if column not in header.columns]
+    if missing:
+        raise ValueError(
+            f"LEAP export template {path} is missing required column(s) {missing} in its "
+            f"'{sheet_name}' sheet (header row 3). Its filename matched the requested "
+            "economy, but its contents do not look like a real LEAP export - check it "
+            "was saved correctly (Area view export, not some other sheet or file)."
+        )
+
+
 def find_leap_export_template(
     economy: object,
     *,
     templates_root: Path | str = DEFAULT_LEAP_EXPORT_TEMPLATES_ROOT,
 ) -> LeapExportTemplate:
-    """Return the export template for one economy, preferring a final over a provisional one."""
+    """Return the export template for one economy, preferring a final over a provisional one.
+
+    Matches by the economy's letter code (e.g. "MAS" for "10_MAS") appearing
+    as its own token anywhere in the filename - the rest of the filename
+    (numeric prefix, dates, description text, ...) may be written any way. A
+    `COMP_GEN` token (any separator form) marks a provisional template. The
+    Export sheet of the chosen file is validated against
+    `REQUIRED_TEMPLATE_COLUMNS` before it is returned.
+    """
     economy_text = normalize_template_economy(economy)
     root = _resolve_path(templates_root)
 
@@ -146,29 +239,48 @@ def find_leap_export_template(
             "member economy instead."
         )
 
-    matches = [
-        template
-        for template in iter_leap_export_templates(root)
-        if template.economy == economy_text
-    ]
-    # A finalized export supersedes the generated placeholder it replaces.
-    for template in matches:
-        if not template.is_provisional:
-            return template
-    if matches:
-        return matches[0]
+    letter_code = _economy_letter_code(economy_text)
+    final_matches: list[Path] = []
+    provisional_matches: list[Path] = []
+    for path in sorted(root.glob("*.xlsx")) if root.exists() else []:
+        if path.name.startswith("~$"):
+            continue
+        tokens = _filename_tokens(path.name)
+        if not _filename_matches_economy(tokens, letter_code):
+            continue
+        (provisional_matches if _filename_is_provisional(tokens) else final_matches).append(path)
 
-    available = available_template_economies(root)
-    available_text = ", ".join(available) if available else "(none)"
-    expected = root / LEAP_EXPORT_TEMPLATE_FILENAME_TEMPLATE.format(economy=economy_text)
-    raise FileNotFoundError(
-        f"No LEAP export template for economy {economy_text!r}.\n"
-        f"  Expected: {expected}\n"
-        f"  Available: {available_text}\n"
-        f"  Fix: export the Analysis view for {economy_text} from its LEAP area and save it "
-        f"at the expected path. Do not copy another economy's template — its BranchIDs "
-        f"belong to a different area."
-    )
+    if len(final_matches) > 1:
+        raise ValueError(
+            f"Multiple final (non-provisional) LEAP export templates match economy "
+            f"{economy_text!r}: {[p.name for p in final_matches]}. Remove or rename all "
+            "but the correct one - refusing to guess which is authoritative."
+        )
+    if final_matches:
+        chosen, is_provisional = final_matches[0], False
+    elif provisional_matches:
+        # Multiple provisional candidates are lower-stakes than multiple final
+        # ones (neither is authoritative anyway); take the most recently
+        # modified rather than refuse, since a provisional file is expected
+        # to get superseded/regenerated over time.
+        chosen = max(provisional_matches, key=lambda p: p.stat().st_mtime)
+        is_provisional = True
+    else:
+        available = available_template_economies(root)
+        available_text = ", ".join(available) if available else "(none)"
+        raise FileNotFoundError(
+            f"No LEAP export template for economy {economy_text!r}.\n"
+            f"  Looked for: any .xlsx file under {root} whose name contains the token "
+            f"{letter_code!r}.\n"
+            f"  Available: {available_text}\n"
+            f"  Fix: export the Analysis view for {economy_text} from its LEAP area and "
+            f"save it under {root}, with {letter_code!r} somewhere in the filename. Do "
+            f"not copy another economy's template — its BranchIDs belong to a different "
+            f"area."
+        )
+
+    _validate_template_columns(chosen)
+    return LeapExportTemplate(path=chosen, economy=economy_text, is_provisional=is_provisional)
 
 
 def resolve_leap_export_template(
@@ -240,11 +352,7 @@ def reset_provisional_template_warnings() -> None:
 
 def is_provisional_template(path: Path | str) -> bool:
     """Return True when a template path is a provisional (COMP_GEN) workbook."""
-    match = LEAP_EXPORT_TEMPLATE_FILENAME_PATTERN.match(Path(path).name)
-    if not match:
-        return False
-    _, is_provisional = _split_provisional_marker(match.group("economy"))
-    return is_provisional
+    return _filename_is_provisional(_filename_tokens(Path(path).name))
 
 
 def provisional_template_economies(
