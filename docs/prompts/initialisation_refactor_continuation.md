@@ -351,25 +351,22 @@ Optional, low priority: split `assemble_proxy_workbook` (356 lines/43 branches).
 **Not established:** that the proxy's *numbers* are right. That is a modelling
 review, separate from both of the above.
 
-### T9 - documentation corrections. NOT STARTED
+### T9 - documentation corrections. PARTLY DONE 2026-07-23
 
-`AGENTS.md` "Planned workflow improvements" is materially stale and actively
-misleads scoping:
+`AGENTS.md`'s "Planned workflow improvements" section corrected (`5ee4357`):
+a stale-content banner plus corrected LOC table, Phase 3/4/5 subsections, and
+the M2-blocker note in "Redevelopment readiness", each pointing at the
+authoritative current docs rather than re-narrating them (LOC drifts as work
+continues, so a banner-and-pointer approach ages better than hand-copying
+numbers that will go stale again). `supply_reconciliation_workflow.py` is
+1,494 LOC as of 2026-07-23 (was 1,253 on 2026-07-21 when this register's
+older estimate was written — it grows commit to commit, don't hand-copy this
+number either; re-measure with `wc -l` before citing it).
 
-- the LOC table (claims `supply_reconciliation_workflow.py` is 13,628 LOC; it is
-  1,253) and the own-use figure (2,923; it is 1,770);
-- Phase 3 (claims M2 blocks it; M2 is done and the migration landed);
-- Phase 4 (claims the split is pending; it landed);
-- Phase 5 (claims parallelism needs "minimal changes"; it does not);
-- "Mapping file inconsistency" bullets (all three claims are out of date).
-
-Also: `docs/supply_reconciliation_workflow_guide.md` "Planned improvements"
-cites ~637 LOC for a file that is now 1,253, and
-`docs/canonical_mapping_migration_notes.md` still describes C5 as BLOCKED when
-the electricity/heat interim reads are now canonical.
-
-Do these as each phase completes, not as one sweep, so the corrections carry
-measured numbers rather than guesses.
+**Still open**: `docs/supply_reconciliation_workflow_guide.md` "Planned
+improvements" (cites ~637 LOC) and `docs/canonical_mapping_migration_notes.md`
+(still describes C5 as BLOCKED when electricity/heat interim reads are now
+canonical) were not touched this session.
 
 ### T10 - question for the mapping owner (leap_mappings). OPEN
 
