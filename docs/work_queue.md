@@ -1231,7 +1231,7 @@ file until the run finishes and the label is restored to `"auto"`.** Each brief
 ends with an explicit "safe now vs must wait" table; follow it rather than
 inferring.
 
-### Priority — T4 commit 4 (exclude rollup labels from display-name resolution) — ✅ Implemented 2026-07-23 (`9c5f16b`), O5 evidence still pending
+### T4 (exclude rollup labels from display-name resolution) — ✅ FULLY DONE 2026-07-23, including O5 evidence
 
 **Corrected 2026-07-23, twice-verified.** This subsection originally (as of
 `4561a14`) reported commit 4 as blocked on T10 and repeated a "3/21 clean,
@@ -1270,13 +1270,18 @@ via `leap_rollup_rules`; `is_rollup_label()`/`assert_not_rollup_label()`
 cross-check the rule sheet directly rather than trusting the flag alone. 26
 new tests, including the required rollup-of-rollup recursive case.
 
-**Remaining gate before T4 can fully close:**
-
-4. **O5 equivalence evidence** (`phase_3_canonical_mapping_migration_execution.md`
-   O5) recorded against the confirmed D3.5 tolerance — branch-row key sets
-   exactly equal, totals within 1e-6 relative — before commit 6 (the
-   evidence write-up) can close out T4. This needs a real single-economy A/B
-   (gate 3) — **needs the user's go-ahead before running it.**
+**Gate 4 (O5 evidence) done 2026-07-23, closing out T4.** Real single-economy
+A/B, `01_AUS`, two-year horizon, current templates/data: current HEAD vs
+`canonical_loaders.py` temporarily reverted to pre-`9c5f16b` (code restored
+immediately after via `git checkout --`, tree confirmed clean before
+continuing). Result: key sets exactly equal (2523/2523 rows, 0 unique to
+either side) and totals exactly equal (relative diff `0.0`, not just within
+the 1e-6 bound) — **no regression for this economy.** Caveat recorded in
+`initialisation_refactor_continuation.md`'s T4 section: `01_AUS` apparently
+never exercised the rollup-exclusion branch in the first place (no rows
+appeared/disappeared between the two runs), so this proves no-regression,
+not an independently-confirmed positive effect — a stronger claim would need
+a case that actually hits a rollup-flagged label, not attempted here.
 
 ### Decisions awaiting a human
 

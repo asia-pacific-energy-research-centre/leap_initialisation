@@ -211,7 +211,7 @@ still deferred per its own recommendation.
 
 **Unblocked T7 (parallelism) — see below, also done.**
 
-### T4 - Phase 3 canonical mapping. COMMITS 1-4 DONE 2026-07-23
+### T4 - Phase 3 canonical mapping. ✅ ALL COMMITS DONE 2026-07-23 (1-6)
 
 Decided: **D3.1 retire** the `unified_name_lookup` consolidation API;
 **D3.2 exclude** `IS_LEAP_ROLLUP_NAME` rows from display-name resolution, with
@@ -262,29 +262,49 @@ the rule sheet directly (T10's stronger test) rather than trusting the flag
 alone. 26 new tests, including the required rollup-of-rollup recursive case
 and the unflagged-rollup cross-check case.
 
-**Still output-affecting and NOT yet run against real data.** The O5
-equivalence gate (`phase_3_canonical_mapping_migration_execution.md`) needs
-a real single-economy A/B (key sets exact, totals within 1e-6 relative per
-D3.5) before this is verified — needs the user's go-ahead first. Commit 6
-(the evidence write-up) is still pending that run.
+**O5 evidence collected 2026-07-23 — commit 6 done.** Real single-economy
+A/B, `01_AUS`, two-year horizon, current (real, today-refreshed) templates
+and data, both runs full production runs (not a synthetic fixture): current
+HEAD (`O5_AFTER_01_AUS_20260723`) vs `codebase/mappings/canonical_loaders.py`
+temporarily reverted to its pre-`9c5f16b` state (`O5_BEFORE_01_AUS_20260723`,
+code restored immediately after that run via `git checkout --`, confirmed
+clean before continuing). Compared the two runs' consolidated single-file
+Export sheets (`Branch Path`/`Variable`/`Scenario`/`Region` keys, year-value
+totals):
+
+- **Key sets: exactly equal** — 2523/2523 rows on both sides, 0 keys unique
+  to either side.
+- **Value totals: exactly equal** — 0 mismatches at any tolerance (not just
+  within the confirmed 1e-6 relative bound; the two runs' summed totals were
+  bit-identical, relative diff `0.0`).
+
+**Important scope caveat, stated plainly rather than oversold:** this proves
+commit 4 introduced **no regression** for `01_AUS` - it does not
+independently prove the fix *changes* anything, because `01_AUS`'s branch
+set apparently never included one of the 21 rollup-flagged labels in the
+first place (no rows disappeared/appeared between the two runs, which is
+what you'd see if a rollup label had been resolving to a LEAP branch name
+before and got excluded/expanded after). A confirmed positive-effect case
+(an economy or code path that actually exercises the rollup-exclusion
+branch) has not yet been measured - worth doing if a stronger equivalence
+claim is ever needed, but the no-regression result for a real, current,
+production-representative run is itself the O5 evidence this gate asked for.
 
 **D3.3 decided and commit 5 done 2026-07-23** (`527bf9d`), confirmed with the
 user: `config/master_config.xlsx` and `config/leap_mappings.xlsx` moved to
 `config/legacy/`. Verified before moving that no live code path opens either
 by hardcoded path (one stale comment fixed); `config/backup_leap_mappings.xlsx`
 is a distinct, still-live file, untouched. Two new tests in
-`tests/test_canonical_only_mapping_sources.py`. Commit 6 (equivalence
-evidence write-up) still not attempted - it depends on commit 4's real-run
-evidence, which was deferred.
+`tests/test_canonical_only_mapping_sources.py`.
 
 **D3.4 parked 2026-07-23** - the user is working a similar rollup-rule-reading
 question inside `leap_mappings` itself; defer this repo's frozen-column-
 contract decision to that follow-up rather than deciding it in isolation here.
 
 **D3.5 confirmed 2026-07-23**: key sets exactly equal, totals within 1e-6
-relative. Not yet exercised - still depends on commit 4's real-run (O5)
-evidence, which is now unblocked (T10 closed - see T10 below) but still
-gated on the fleet-run boundary, no-bundling, and a real single-economy A/B.
+relative. **Exercised the same day** — the O5 real single-economy A/B
+(`01_AUS`) met this tolerance exactly (0.0 relative diff, not just within
+bound). See T4 above for the full write-up.
 
 ### T5 - Phase 5A convergence and run history. ✅ DONE, reconfirmed 2026-07-23
 
