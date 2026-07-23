@@ -1183,7 +1183,36 @@ def build_proxy_activity_series_with_fallback(
             "fallback_esto_activity_flows": "; ".join(str(item) for item in fallback_esto.get("flows", [])),
         }
 
+    _warn_if_no_fallback_tier_for_zero_activity(process_key, economy)
     return series, None
+
+
+# Warn once per (process_key, economy) rather than leave a genuinely
+# unresolved all-zero activity series silent. Fallback-tier coverage is
+# asymmetric today (2026-07-23 own-use proxy scoped review, finding 1): only
+# 2 of 12 esto_ninth-mode processes have a configured tier in
+# ESTO_NINTH_ACTIVITY_FALLBACKS, and two processes documented as carrying
+# "large own-use/loss volumes" - nonspecified_own_uses and
+# transmission_and_distribution_losses - have none at all in either mode.
+# This does not decide what the fallback should be (a modelling judgment,
+# not this repo's to make unilaterally); it only makes today's silent zero
+# visible so it can get noticed rather than pass unremarked.
+_NO_FALLBACK_TIER_WARNED: set[tuple[str, str]] = set()
+
+
+def _warn_if_no_fallback_tier_for_zero_activity(process_key: str, economy: str) -> None:
+    key = (process_key, _normalize_economy(economy))
+    if key in _NO_FALLBACK_TIER_WARNED:
+        return
+    _NO_FALLBACK_TIER_WARNED.add(key)
+    if ESTO_NINTH_ACTIVITY_FALLBACKS.get(process_key):
+        return  # a tier is configured; it was tried and still came up empty
+    print(
+        f"[WARN] other_loss_own_use proxy: {process_key!r} activity is all-zero for "
+        f"{economy!r} and has no configured tier in ESTO_NINTH_ACTIVITY_FALLBACKS. "
+        "This process has no safety net if its configured ESTO/9th source is empty "
+        "for this economy - confirm this is expected."
+    )
 
 
 def _backfill_base_year_activity_from_projection(

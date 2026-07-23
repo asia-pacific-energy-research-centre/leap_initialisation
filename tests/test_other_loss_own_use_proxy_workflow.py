@@ -2343,6 +2343,82 @@ def test_fallback_returns_configured_series_when_no_tier_has_values(monkeypatch)
     assert all(value == 0.0 for value in series.values())
 
 
+# ---------------------------------------------------------------------------
+# 2026-07-23 own-use proxy scoped review, finding 1: fallback-tier coverage
+# is asymmetric - only 2 of 12 esto_ninth-mode processes have any tier
+# configured. Warn (don't silently pass) when an all-zero activity series has
+# no fallback tier to even try.
+# ---------------------------------------------------------------------------
+
+def test_warns_when_process_has_no_fallback_tier_configured_at_all(monkeypatch, capsys) -> None:
+    import codebase.functions.other_loss_own_use_proxy_utils as utils
+
+    utils._NO_FALLBACK_TIER_WARNED.clear()
+    monkeypatch.delitem(utils.ESTO_NINTH_ACTIVITY_FALLBACKS, "nonspecified_own_uses", raising=False)
+    monkeypatch.setattr(
+        utils, "build_proxy_activity_series",
+        lambda **_kwargs: {2022: 0.0, 2023: 0.0},
+    )
+    config = {
+        "process_key": "nonspecified_own_uses",
+        "process_label": "Non-specified own uses",
+        "activity_sources": {"esto": {"flows": []}, "ninth": {"sector_codes": []}},
+    }
+
+    series, info = utils.build_proxy_activity_series_with_fallback(
+        esto_data=None, ninth_data=None, economy="01_AUS",
+        config=config, base_year=2022, final_year=2024,
+    )
+
+    assert info is None
+    assert all(value == 0.0 for value in series.values())
+    out = capsys.readouterr().out
+    assert "'nonspecified_own_uses'" in out
+    assert "no configured tier" in out
+
+
+def test_does_not_warn_when_a_fallback_tier_is_configured_even_if_all_dead(monkeypatch, capsys) -> None:
+    utils, config = _fallback_selection_harness(
+        monkeypatch,
+        {"dead": {2022: 0.0, 2023: 0.0}},
+    )
+    utils._NO_FALLBACK_TIER_WARNED.clear()
+
+    utils.build_proxy_activity_series_with_fallback(
+        esto_data=None, ninth_data=None, economy="01_AUS",
+        config=config, base_year=2022, final_year=2024,
+    )
+
+    assert "no configured tier" not in capsys.readouterr().out
+
+
+def test_no_fallback_tier_warning_fires_once_per_process_and_economy(monkeypatch, capsys) -> None:
+    import codebase.functions.other_loss_own_use_proxy_utils as utils
+
+    utils._NO_FALLBACK_TIER_WARNED.clear()
+    monkeypatch.delitem(utils.ESTO_NINTH_ACTIVITY_FALLBACKS, "transmission_and_distribution_losses", raising=False)
+    monkeypatch.setattr(
+        utils, "build_proxy_activity_series",
+        lambda **_kwargs: {2022: 0.0, 2023: 0.0},
+    )
+    config = {
+        "process_key": "transmission_and_distribution_losses",
+        "process_label": "T&D losses",
+        "activity_sources": {"esto": {"flows": []}, "ninth": {"sector_codes": []}},
+    }
+
+    utils.build_proxy_activity_series_with_fallback(
+        esto_data=None, ninth_data=None, economy="01_AUS",
+        config=config, base_year=2022, final_year=2024,
+    )
+    utils.build_proxy_activity_series_with_fallback(
+        esto_data=None, ninth_data=None, economy="01_AUS",
+        config=config, base_year=2022, final_year=2024,
+    )
+
+    assert capsys.readouterr().out.count("no configured tier") == 1
+
+
 def test_liquefaction_chain_includes_combined_gas_trade_tier() -> None:
     from codebase.functions.other_loss_own_use_proxy_utils import (
         ESTO_NINTH_ACTIVITY_FALLBACKS,
