@@ -888,7 +888,10 @@ _PRESET_BASELINE_SEED = {
 
     # --- Demand source ---
     # When True, use ESTO/ninth aggregated demand (aggregated_demand_workflow)
-    # instead of LEAP balance exports. Only works for single-economy runs.
+    # instead of LEAP balance exports. Stale note removed 2026-07-23 (presets
+    # scoped review finding 4): load_results_demand_table already handles the
+    # multi-economy case explicitly (supply_reconciliation_tables.py:734-828),
+    # building each economy separately with no cross-economy aggregation.
     "USE_AGGREGATED_DEMAND_AS_DUMMY": True,  # overrides config default
     # Optional list of 9th-edition sector or sub1sector codes to omit from the
     # aggregated demand sum.  None means no extra exclusions.
