@@ -986,6 +986,19 @@ _PRESET_PATCH_BASELINE_SEEDS = {
     # supply/transformation workflow entirely and just patches existing
     # leap_import_baseline_seed_* files via patch_baseline_seeds.run_patch().
     "RUN_MODE": "patch_baseline_seeds",
+    # Patching targets baseline-seed files specifically, so these two must match
+    # _PRESET_BASELINE_SEED's own values, not whatever CAPACITY_UNMET_PASS_MODE/
+    # OTHER_LOSS_OWN_USE_PROXY_STAGE happen to be left at (config default, or
+    # leftover state from a prior preset run in the same session/kernel). Without
+    # this, patch_baseline_seeds.py's "losses_own_use" branch resolves
+    # OTHER_LOSS_OWN_USE_PROXY_STAGE="auto" against whatever
+    # CAPACITY_UNMET_PASS_MODE currently is, and can silently pick the
+    # results_update (second-stage/LEAP-balance) own-use activity source while
+    # patching baseline-seed files that need the baseline_seed (first-stage/
+    # ESTO-ninth) source instead - found in the 2026-07-23 presets scoped review
+    # (docs/prompts/supply_reconciliation_presets_scoped_review.md, finding 3).
+    "CAPACITY_UNMET_PASS_MODE": "baseline_seed",  # overrides config default
+    "OTHER_LOSS_OWN_USE_PROXY_STAGE": "first",  # overrides config default
     # Module name(s) from patch_baseline_seeds.MODULE_REGISTRY.  Accepts a single
     # string or a list to patch multiple modules in sequence, e.g.:
     #   "oil_refineries" | ["aggregated_demand", "power_interim"]

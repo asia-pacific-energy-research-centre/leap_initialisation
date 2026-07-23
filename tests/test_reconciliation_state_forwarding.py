@@ -715,3 +715,59 @@ def test_wrapper_mutation_reaches_the_allocation_module():
     finally:
         setattr(_wrapper, name, original_wrapper)
         setattr(_sra, name, original_allocation)
+
+
+# ---------------------------------------------------------------------------
+# _PRESET_PATCH_BASELINE_SEEDS pins its own pass mode/proxy stage
+# (2026-07-23 presets scoped review, finding 3; docs/work_queue.md, T4-
+# adjacent housekeeping). Before this fix the patch preset left both names
+# unset, so patching baseline-seed files could silently resolve the
+# results-update (second-stage/LEAP-balance) own-use activity source instead
+# of the baseline-seed (first-stage/ESTO-ninth) one the target files need.
+# ---------------------------------------------------------------------------
+
+def test_patch_baseline_seeds_preset_pins_baseline_seed_pass_mode_and_stage():
+    preset = _wrapper._PRESET_PATCH_BASELINE_SEEDS
+    assert preset["CAPACITY_UNMET_PASS_MODE"] == "baseline_seed"
+    assert preset["OTHER_LOSS_OWN_USE_PROXY_STAGE"] == "first"
+    # Must match _PRESET_BASELINE_SEED exactly - the patch preset is patching
+    # baseline-seed files, so it needs the same pass-mode semantics, not a
+    # value that happens to agree today but could drift independently later.
+    baseline = _wrapper._PRESET_BASELINE_SEED
+    assert preset["CAPACITY_UNMET_PASS_MODE"] == baseline["CAPACITY_UNMET_PASS_MODE"]
+    assert preset["OTHER_LOSS_OWN_USE_PROXY_STAGE"] == baseline["OTHER_LOSS_OWN_USE_PROXY_STAGE"]
+
+
+def test_patch_baseline_seeds_preset_resolves_first_stage_activity_source_regardless_of_leftover_state():
+    """Characterizes the bug directly: a fresh interpreter or a prior
+    results_update-preset run leaves CAPACITY_UNMET_PASS_MODE="results_update".
+    Without the fix, resolving the patch preset's own-use proxy stage against
+    that leftover state silently returns "leap_balance" (wrong for a
+    baseline-seed patch). With the fix, the preset's own explicit
+    CAPACITY_UNMET_PASS_MODE overrides whatever is currently in effect.
+    """
+    from codebase.functions.supply_leap_io import (
+        _resolve_other_loss_own_use_proxy_activity_source_mode,
+    )
+
+    preset = _wrapper._PRESET_PATCH_BASELINE_SEEDS
+    leftover_results_update_state = "results_update"
+
+    # The bug this preset fix closes: patch_baseline_seeds.py's own call passes
+    # OTHER_LOSS_OWN_USE_PROXY_STAGE from the (now-pinned) preset directly, so
+    # this must resolve to esto_ninth even when some *other*, unrelated global
+    # happens to say "results_update".
+    resolved = _resolve_other_loss_own_use_proxy_activity_source_mode(
+        proxy_stage=preset["OTHER_LOSS_OWN_USE_PROXY_STAGE"],
+        iteration_run_mode=leftover_results_update_state,
+    )
+    assert resolved == "esto_ninth"
+
+    # Characterize what the old, gap-having preset would have produced: stage
+    # left at "auto" (the config default when the preset never sets it) falls
+    # through to whatever CAPACITY_UNMET_PASS_MODE currently is.
+    old_gap_resolved = _resolve_other_loss_own_use_proxy_activity_source_mode(
+        proxy_stage="auto",
+        iteration_run_mode=leftover_results_update_state,
+    )
+    assert old_gap_resolved == "leap_balance"

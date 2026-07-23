@@ -40,13 +40,17 @@ RUN_CONTEXT_CONFIG_NAMES = (
     "LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH",
 )
 
-# B3 characterization.  The patch preset deliberately does not select a pass
-# mode: it keeps the config default and bypasses normal run-output labelling.
+# B3 characterization.  The patch preset now pins CAPACITY_UNMET_PASS_MODE to
+# "baseline_seed" explicitly (2026-07-23 presets scoped review, finding 3 -
+# it used to leave the name unset and silently inherit whatever the config
+# default or a prior preset run left behind). It still bypasses normal
+# run-output labelling (RUN_MODE=="patch_baseline_seeds" short-circuits
+# _automatic_run_output_label() to None regardless of pass mode).
 # These snapshots pin that contract before the paths become an injected object.
 EXPECTED_PRESET_RUN_CONTEXTS = (
     ("_PRESET_BASELINE_SEED", "baseline_seed", "SEED_01_AUS_TGT"),
     ("_PRESET_RESULTS_UPDATE", "results_update", "UPDATE_01_AUS_TGT"),
-    ("_PRESET_PATCH_BASELINE_SEEDS", "results_update", None),
+    ("_PRESET_PATCH_BASELINE_SEEDS", "baseline_seed", None),
 )
 
 # B1 interface measurement.  These are the five modules produced by the Phase
