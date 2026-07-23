@@ -638,3 +638,67 @@ def test_capacity_unmet_iterative_balanced_writes_convergence_run_id(
     assert convergence_rows["gap_at_current_pass"].tolist() == pytest.approx([6.0])
     assert allocation_ledger.pass_summary is summary
     assert list(allocation_ledger.capacity_additions.values()) == pytest.approx([12.0])
+
+
+# ---------------------------------------------------------------------------
+# Capacity-unmet caps are currently only configured for "20_USA"
+# (CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS/..._PRODUCTION_UPPER_LIMITS);
+# every other economy silently resolves as unconstrained. Warn once per
+# economy rather than leave that silent (2026-07-23 presets scoped review).
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _reset_caps_missing_economy_warned_cache():
+    allocation._CAPS_MISSING_ECONOMY_WARNED.clear()
+    yield
+    allocation._CAPS_MISSING_ECONOMY_WARNED.clear()
+
+
+def test_warns_for_economy_with_no_configured_caps(monkeypatch, capsys):
+    monkeypatch.setattr(
+        allocation, "CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS", {"20_USA": {}}, raising=False
+    )
+    monkeypatch.setattr(
+        allocation, "CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS", {"20_USA": {}}, raising=False
+    )
+    allocation._warn_if_no_capacity_unmet_caps_configured("01_AUS")
+    out = capsys.readouterr().out
+    assert "No CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS" in out
+    assert "'01_AUS'" in out
+
+
+def test_does_not_warn_for_economy_with_configured_caps(monkeypatch, capsys):
+    monkeypatch.setattr(
+        allocation, "CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS", {"20_USA": {}}, raising=False
+    )
+    monkeypatch.setattr(
+        allocation, "CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS", {}, raising=False
+    )
+    allocation._warn_if_no_capacity_unmet_caps_configured("20_USA")
+    assert capsys.readouterr().out == ""
+
+
+def test_does_not_warn_twice_for_the_same_economy(monkeypatch, capsys):
+    monkeypatch.setattr(
+        allocation, "CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS", {"20_USA": {}}, raising=False
+    )
+    monkeypatch.setattr(
+        allocation, "CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS", {}, raising=False
+    )
+    allocation._warn_if_no_capacity_unmet_caps_configured("05_PRC")
+    allocation._warn_if_no_capacity_unmet_caps_configured("05_PRC")
+    assert capsys.readouterr().out.count("No CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS") == 1
+
+
+def test_lookup_module_capacity_upper_limit_warns_for_unconfigured_economy(monkeypatch, capsys):
+    monkeypatch.setattr(
+        allocation, "CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS", {"20_USA": {}}, raising=False
+    )
+    monkeypatch.setattr(
+        allocation, "CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS", {}, raising=False
+    )
+    result = allocation._lookup_module_capacity_upper_limit(
+        economy="01_AUS", scenario="Reference", module="Coke ovens"
+    )
+    assert result is None
+    assert "No CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS" in capsys.readouterr().out

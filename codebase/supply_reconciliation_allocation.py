@@ -362,6 +362,49 @@ def _is_production_only_product(esto_product: str) -> bool:
 # Cap / limit lookup helpers
 # ---------------------------------------------------------------------------
 
+# Warn (once per economy per process) rather than silently letting every
+# module/product resolve as unconstrained. CAPACITY_UNMET_MODULE_CAPACITY_
+# UPPER_LIMITS/..._PRODUCTION_UPPER_LIMITS currently only have a "20_USA"
+# entry (2026-07-23 presets scoped review) - for any other economy, every
+# lookup below falls through to None, which _resolve_module_cap_rule treats
+# as "no cap". That is silent today; this makes it visible for any economy
+# that is not USA, since a real capacity-unmet pass for that economy is
+# running fully unconstrained rather than reflecting a deliberate decision.
+_CAPS_MISSING_ECONOMY_WARNED: set[str] = set()
+
+
+def _economy_has_any_capacity_unmet_caps(economy: str) -> bool:
+    token = _state_token(economy)
+    for root in (CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS, CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS):
+        if not isinstance(root, dict):
+            continue
+        if str(economy) in root:
+            return True
+        if any(
+            _state_token(key) == token
+            for key, value in root.items()
+            if isinstance(value, dict)
+        ):
+            return True
+    return False
+
+
+def _warn_if_no_capacity_unmet_caps_configured(economy: str) -> None:
+    if economy in _CAPS_MISSING_ECONOMY_WARNED:
+        return
+    _CAPS_MISSING_ECONOMY_WARNED.add(economy)
+    if _economy_has_any_capacity_unmet_caps(economy):
+        return
+    print(
+        f"[WARN] No CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS or "
+        f"..._PRODUCTION_UPPER_LIMITS entry exists for economy {economy!r}. "
+        "Every transformation module and production cap for this economy "
+        "resolves as unconstrained (unlimited) this pass - these caps are "
+        "currently only configured for '20_USA'. Confirm this is intended "
+        "before treating this economy's capacity-unmet results as final."
+    )
+
+
 def _lookup_module_capacity_upper_limit(
     *,
     economy: str,
@@ -369,6 +412,7 @@ def _lookup_module_capacity_upper_limit(
     module: str,
 ) -> _ModuleCapRule | float | None:
     """Return raw cap rule or float for a module; caller resolves sentinels via _resolve_module_cap_rule."""
+    _warn_if_no_capacity_unmet_caps_configured(economy)
     root = CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS
     if not isinstance(root, dict):
         return None
@@ -430,6 +474,7 @@ def _lookup_production_upper_limit(
     When a sentinel is used, ``baseline_production`` (the current constrained
     production for this economy/product/year) is used as the reference level.
     """
+    _warn_if_no_capacity_unmet_caps_configured(economy)
     root = CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS
     if not isinstance(root, dict):
         return None
