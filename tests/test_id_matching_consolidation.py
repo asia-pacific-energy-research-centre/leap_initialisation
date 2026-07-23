@@ -303,6 +303,169 @@ def test_saver_source_missing_required_columns_reason() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Results saver: per-economy template verification (economy-specific fix,
+# work_queue.md "Priority follow-up - make template verification
+# economy-specific"). The known-good regression fixture per that doc is the
+# real 02_BD "Demand\All demand aggregated\Activity Level" control row
+# (BranchID 2336, VariableID 2027); reproduced synthetically here since these
+# tests must not depend on real data files.
+# ---------------------------------------------------------------------------
+
+def _per_economy_resolver():
+    from codebase.functions.supply_results_saver import (
+        _resolve_ids_and_filter_unmatched_export_rows_per_economy,
+    )
+
+    return _resolve_ids_and_filter_unmatched_export_rows_per_economy
+
+
+def test_pinned_reference_alone_misses_a_real_non_pinned_economy_branch() -> None:
+    # Characterizes the bug: a branch/fuel combination that exists only in
+    # 02_BD's own template (BranchID 2336) is reported unmatched when compared
+    # against a USA-only pinned reference.
+    resolve = _saver_resolver()
+    usa_pinned_reference = pd.DataFrame(
+        [_template_row("Resources\\Primary\\Gas", "Imports", region="United States")]
+    )
+    bd_row = pd.DataFrame(
+        [
+            _seed_row(
+                "Demand\\All demand aggregated\\Activity Level",
+                "Activity Level",
+                region="Brunei Darussalam",
+                years={"2022": 7.5},
+            )
+        ]
+    )
+
+    out, unmatched = resolve(bd_row, source_data=usa_pinned_reference, source_path=Path("usa.xlsx"))
+
+    assert int(out["BranchID"].iloc[0]) == -1
+    assert unmatched["reason"].tolist() == ["no_verification_export_id_match"]
+
+
+def test_per_economy_resolver_uses_each_rows_own_template(monkeypatch) -> None:
+    import codebase.functions.supply_results_saver as supply_results_saver
+
+    resolve = _per_economy_resolver()
+
+    usa_pinned_reference = pd.DataFrame(
+        [_template_row("Resources\\Primary\\Gas", "Imports", region="United States")]
+    )
+    aus_template = pd.DataFrame(
+        [
+            _template_row(
+                "Demand\\Industry\\Electricity",
+                "Activity Level",
+                branch_id=111,
+                variable_id=222,
+                region="Australia",
+            )
+        ]
+    )
+    bd_template = pd.DataFrame(
+        [
+            _template_row(
+                "Demand\\All demand aggregated\\Activity Level",
+                "Activity Level",
+                branch_id=2336,
+                variable_id=2027,
+                region="Brunei Darussalam",
+            )
+        ]
+    )
+    templates_by_economy = {"01_AUS": (Path("aus.xlsx"), aus_template), "02_BD": (Path("bd.xlsx"), bd_template)}
+
+    def fake_resolve_template(economy_code, *, fallback, **_kwargs):
+        if economy_code in templates_by_economy:
+            return templates_by_economy[economy_code][0]
+        return fallback
+
+    def fake_read_sheet(path, sheet_name):
+        for resolved_path, template_df in templates_by_economy.values():
+            if Path(path) == resolved_path:
+                return pd.DataFrame(), template_df, []
+        raise AssertionError(f"unexpected template read: {path}")
+
+    monkeypatch.setattr(
+        supply_results_saver.leap_export_template_resolver,
+        "resolve_leap_export_template_or_fallback",
+        fake_resolve_template,
+    )
+    monkeypatch.setattr(supply_results_saver, "_read_workbook_sheet_with_header_detection", fake_read_sheet)
+
+    df = pd.DataFrame(
+        [
+            _seed_row(
+                "Demand\\Industry\\Electricity", "Activity Level",
+                region="Australia", years={"2022": 5.0},
+            ),
+            _seed_row(
+                "Demand\\All demand aggregated\\Activity Level", "Activity Level",
+                region="Brunei Darussalam", years={"2022": 7.5},
+            ),
+        ]
+    )
+
+    out, unmatched = resolve(
+        df, fallback_source_data=usa_pinned_reference, fallback_source_path=Path("usa.xlsx")
+    )
+
+    assert unmatched.empty
+    aus_row = out[out["Region"] == "Australia"].iloc[0]
+    bd_row = out[out["Region"] == "Brunei Darussalam"].iloc[0]
+    assert (int(aus_row["BranchID"]), int(aus_row["VariableID"])) == (111, 222)
+    assert (int(bd_row["BranchID"]), int(bd_row["VariableID"])) == (2336, 2027)
+
+
+def test_per_economy_resolver_falls_back_for_unrecognised_region() -> None:
+    resolve = _per_economy_resolver()
+    usa_pinned_reference = pd.DataFrame(
+        [_template_row("Resources\\Primary\\Gas", "Imports", region="United States")]
+    )
+    df = pd.DataFrame(
+        [_seed_row("Resources\\Primary\\Gas", "Imports", region="Somewhere Unmapped", years={"2022": 1.0})]
+    )
+
+    out, unmatched = resolve(
+        df, fallback_source_data=usa_pinned_reference, fallback_source_path=Path("usa.xlsx")
+    )
+
+    # Falls back to the pinned reference (matches on Branch/Variable, not Region).
+    assert int(out["BranchID"].iloc[0]) == 100
+    assert unmatched.empty
+
+
+def test_per_economy_resolver_falls_back_when_template_resolution_raises(monkeypatch) -> None:
+    import codebase.functions.supply_results_saver as supply_results_saver
+
+    resolve = _per_economy_resolver()
+    usa_pinned_reference = pd.DataFrame(
+        [_template_row("Resources\\Primary\\Gas", "Imports", region="United States")]
+    )
+
+    def fake_resolve_template(economy_code, *, fallback, **_kwargs):
+        raise FileNotFoundError("no template for economy")
+
+    monkeypatch.setattr(
+        supply_results_saver.leap_export_template_resolver,
+        "resolve_leap_export_template_or_fallback",
+        fake_resolve_template,
+    )
+
+    df = pd.DataFrame(
+        [_seed_row("Resources\\Primary\\Gas", "Imports", region="Australia", years={"2022": 1.0})]
+    )
+
+    out, unmatched = resolve(
+        df, fallback_source_data=usa_pinned_reference, fallback_source_path=Path("usa.xlsx")
+    )
+
+    assert int(out["BranchID"].iloc[0]) == 100
+    assert unmatched.empty
+
+
+# ---------------------------------------------------------------------------
 # Source diagnostics consumer contract (C)
 # ---------------------------------------------------------------------------
 

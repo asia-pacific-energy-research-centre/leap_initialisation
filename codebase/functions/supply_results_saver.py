@@ -1458,6 +1458,107 @@ def _resolve_ids_and_filter_unmatched_export_rows(
     return out, unmatched
 
 
+def _economy_for_region_label(region_value: object) -> str | None:
+    """Reverse ``APEC_ECONOMY_REGION_MAP``: LEAP region label -> economy code.
+
+    Returns None for a label with no known economy (e.g. an aggregate area or
+    an unrecognised region), so callers can fall back explicitly rather than
+    guess.
+    """
+    from codebase.functions.supply_export_builder import APEC_ECONOMY_REGION_MAP
+
+    normalized = str(region_value or "").strip()
+    if not normalized:
+        return None
+    for economy_code, label in APEC_ECONOMY_REGION_MAP.items():
+        if label == normalized:
+            return economy_code
+    return None
+
+
+def _resolve_ids_and_filter_unmatched_export_rows_per_economy(
+    df: pd.DataFrame,
+    fallback_source_data: pd.DataFrame,
+    fallback_source_path: Path,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Resolve IDs against each row's own economy template, not one pinned reference.
+
+    The combined verification workbook spans every economy in the run, but
+    ``fallback_source_data``/``fallback_source_path`` is one pinned reference
+    (deliberately USA — see ``_load_results_verification_data``). Comparing
+    every economy's rows against a single other economy's template produces
+    false-positive "unmatched ID" rows for any real branch/fuel combination
+    that exists in the row's own template but not the pinned one (e.g. the six
+    ``02_BD`` Coke-oven-gas/Gas-works rows in the four-real-template run —
+    those branches exist in Brunei's template, just not in USA's).
+
+    Groups ``df`` by ``Region``, resolves each group's own economy's LEAP
+    export template via
+    ``leap_export_template_resolver.resolve_leap_export_template_or_fallback``
+    (the same per-economy contract ``aggregated_demand_workflow`` and the
+    standalone export modules already use), and delegates the existing
+    single-reference logic to each group. A region with no known economy
+    (an aggregate sentinel, or an unrecognised label) falls back to
+    ``fallback_source_data``/``fallback_source_path`` for its rows only,
+    preserving prior behaviour there rather than guessing.
+    """
+    if "Region" not in df.columns or df.empty:
+        return _resolve_ids_and_filter_unmatched_export_rows(
+            df, fallback_source_data, fallback_source_path
+        )
+
+    template_cache: dict[str, tuple[pd.DataFrame, Path]] = {}
+
+    def _source_for_region(region_value: str) -> tuple[pd.DataFrame, Path]:
+        economy_code = _economy_for_region_label(region_value)
+        if economy_code is None:
+            return fallback_source_data, fallback_source_path
+        if economy_code in template_cache:
+            return template_cache[economy_code]
+        try:
+            resolved_path = leap_export_template_resolver.resolve_leap_export_template_or_fallback(
+                economy_code, fallback=fallback_source_path,
+            )
+            if Path(resolved_path) == Path(fallback_source_path):
+                resolved = (fallback_source_data, fallback_source_path)
+            else:
+                _, template_data, _ = _read_workbook_sheet_with_header_detection(
+                    resolved_path, RESULTS_VERIFICATION_EXPORT_SHEET,
+                )
+                resolved = (template_data, resolved_path)
+        except Exception as exc:
+            print(
+                f"[WARN] Per-economy template verification: failed to resolve/read the "
+                f"{economy_code} template for region {region_value!r}; falling back to "
+                f"the pinned reference for these rows. {exc}"
+            )
+            resolved = (fallback_source_data, fallback_source_path)
+        template_cache[economy_code] = resolved
+        return resolved
+
+    region_values = df["Region"].fillna("").astype(str)
+    resolved_parts: list[pd.DataFrame] = []
+    unmatched_parts: list[pd.DataFrame] = []
+    for region_value, group in df.groupby(region_values, sort=False):
+        group_source_data, group_source_path = _source_for_region(region_value)
+        group_resolved, group_unmatched = _resolve_ids_and_filter_unmatched_export_rows(
+            group.reset_index(drop=True), group_source_data, group_source_path,
+        )
+        resolved_parts.append(group_resolved)
+        if not group_unmatched.empty:
+            unmatched_parts.append(group_unmatched)
+
+    resolved = (
+        pd.concat(resolved_parts, ignore_index=True) if resolved_parts else df.copy()
+    )
+    unmatched = (
+        pd.concat(unmatched_parts, ignore_index=True).drop_duplicates().reset_index(drop=True)
+        if unmatched_parts
+        else pd.DataFrame(columns=["Branch Path", "Variable", "Scenario", "Region", "reason"])
+    )
+    return resolved, unmatched
+
+
 def save_results_linked_single_workbook(
     *,
     reconciliation_table: pd.DataFrame,
@@ -2496,10 +2597,10 @@ def save_results_linked_single_workbook(
         export_df,
         source_data=verification_data,
     )
-    export_df, unmatched_id_rows = _resolve_ids_and_filter_unmatched_export_rows(
+    export_df, unmatched_id_rows = _resolve_ids_and_filter_unmatched_export_rows_per_economy(
         export_df,
-        source_data=verification_data,
-        source_path=verification_path,
+        fallback_source_data=verification_data,
+        fallback_source_path=verification_path,
     )
     nonzero_missing_id_rows: pd.DataFrame = pd.DataFrame()
     mapping_table = _load_field_mapping_table_for_validation()
