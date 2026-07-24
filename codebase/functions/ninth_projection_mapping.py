@@ -8,6 +8,14 @@ import pandas as pd
 from codebase.utilities.master_config import config_table_exists, read_config_table
 
 DEFAULT_SCENARIO = "reference"
+COAL_PARENT_ESTO_FLOW = "09.08 Coal transformation"
+COAL_CHILD_ESTO_FLOWS = (
+    "09.08.01 Coke ovens",
+    "09.08.02 Blast furnaces",
+    "09.08.03 Patent fuel plants",
+    "09.08.04 BKB/PB plants",
+    "09.08.05 Liquefaction (coal to oil)",
+)
 NINTH_SECTOR_COLS = [
     "sub4sectors",
     "sub3sectors",
@@ -127,6 +135,86 @@ def build_esto_base_year_values(
     return grouped
 
 
+def build_economy_specific_child_flow_profiles(
+    esto_df: pd.DataFrame,
+    base_year: int,
+    parent_flow: str = COAL_PARENT_ESTO_FLOW,
+    child_flows: Sequence[str] = COAL_CHILD_ESTO_FLOWS,
+) -> pd.DataFrame:
+    """Build current-run child-flow profiles for an aggregate ESTO flow.
+
+    Profiles are derived from the ESTO dataframe supplied to the current run;
+    no ratios are persisted in the mapping workbook.  A profile row represents
+    one economy/product/child-flow cell and retains its signed base-year value
+    so later allocation can distinguish simultaneous inputs and outputs.
+
+    The parent flow is accepted as an explicit argument to keep this helper
+    reusable, but is currently used for identification/provenance only.  The
+    returned rows contain child-flow observations that can replace parent-flow
+    mapping targets during an economy-specific projection allocation.
+    """
+    if esto_df is None or esto_df.empty:
+        return pd.DataFrame(
+            columns=[
+                "economy_key",
+                "esto_product",
+                "child_flow",
+                "base_value",
+                "base_value_abs",
+                "profile_parent_flow",
+            ]
+        )
+    year_col = base_year if base_year in esto_df.columns else str(base_year)
+    required = {"economy", "flows", "products", year_col}
+    missing = required.difference(esto_df.columns)
+    if missing:
+        raise KeyError(
+            "ESTO child-flow profile requires columns: "
+            + ", ".join(sorted(missing))
+        )
+
+    working = esto_df.copy()
+    if "is_subtotal" in working.columns:
+        subtotal = (
+            working["is_subtotal"]
+            .fillna(False)
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .isin({"1", "true", "yes", "y", "t"})
+        )
+        working = working.loc[~subtotal].copy()
+    working = working[working["flows"].isin(child_flows)].copy()
+    if working.empty:
+        return pd.DataFrame(
+            columns=[
+                "economy_key",
+                "esto_product",
+                "child_flow",
+                "base_value",
+                "base_value_abs",
+                "profile_parent_flow",
+            ]
+        )
+
+    working["economy_key"] = working["economy"].apply(normalize_economy_key)
+    working["esto_product"] = working["products"].astype(str).str.strip()
+    working["child_flow"] = working["flows"].astype(str).str.strip()
+    working[year_col] = pd.to_numeric(working[year_col], errors="coerce").fillna(0.0)
+    profile = (
+        working.groupby(
+            ["economy_key", "esto_product", "child_flow"],
+            dropna=False,
+        )[year_col]
+        .sum()
+        .reset_index()
+        .rename(columns={year_col: "base_value"})
+    )
+    profile["base_value_abs"] = profile["base_value"].abs()
+    profile["profile_parent_flow"] = parent_flow
+    return profile
+
+
 def compute_esto_base_year_shares(
     base_values: pd.DataFrame,
     economy_key: str,
@@ -244,6 +332,133 @@ def _resolve_sign_stable_flow_set(
     }
 
 
+def _disaggregate_parent_flow_allocations(
+    allocated_rows: pd.DataFrame,
+    child_flow_profiles: pd.DataFrame | None,
+    year_cols: Sequence[int],
+    parent_flow: str = COAL_PARENT_ESTO_FLOW,
+    child_flows: Sequence[str] = COAL_CHILD_ESTO_FLOWS,
+    tolerance: float = 1e-9,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split projected parent-flow rows into signed, economy-specific children.
+
+    When the signed ESTO child profile has a nonzero net total, the complete
+    signed child vector is scaled by the projected parent-product value.  This
+    preserves simultaneous inputs and outputs for the same product and keeps
+    the child sum exactly equal to the parent projection.  If the historical
+    child profile nets to zero, the future split is underdetermined; a
+    sign-stable gross fallback is used and a diagnostic row is returned.
+    """
+    if (
+        allocated_rows.empty
+        or child_flow_profiles is None
+        or child_flow_profiles.empty
+        or not year_cols
+    ):
+        return allocated_rows, pd.DataFrame()
+
+    required = {"economy_key", "esto_product", "child_flow", "base_value", "base_value_abs"}
+    missing = required.difference(child_flow_profiles.columns)
+    if missing:
+        raise KeyError(
+            "Coal child-flow profiles require columns: "
+            + ", ".join(sorted(missing))
+        )
+
+    profile = child_flow_profiles[
+        child_flow_profiles["child_flow"].isin(child_flows)
+    ].copy()
+    if profile.empty:
+        return allocated_rows, pd.DataFrame()
+
+    parent_mask = allocated_rows["esto_flow"].eq(parent_flow)
+    parent_rows = allocated_rows.loc[parent_mask].copy()
+    if parent_rows.empty:
+        return allocated_rows, pd.DataFrame()
+    retained = allocated_rows.loc[~parent_mask].copy()
+    child_rows: list[dict] = []
+    diagnostics: list[dict] = []
+
+    for _, parent_row in parent_rows.iterrows():
+        economy_key = str(parent_row["economy_key"])
+        product = str(parent_row["esto_product"]).strip()
+        matching = profile[
+            profile["economy_key"].astype(str).eq(economy_key)
+            & profile["esto_product"].astype(str).eq(product)
+        ].copy()
+        if matching.empty:
+            retained_parent = parent_row.to_dict()
+            retained_parent["coal_allocation_method"] = "parent_flow_retained"
+            child_rows.append(retained_parent)
+            diagnostics.append(
+                {
+                    "economy_key": economy_key,
+                    "esto_product": product,
+                    "parent_flow": parent_flow,
+                    "diagnostic_type": "coal_child_profile_missing",
+                    "allocation_method": "parent_flow_retained",
+                }
+            )
+            continue
+
+        net_profile = float(matching["base_value"].sum())
+        if abs(net_profile) > tolerance:
+            for _, profile_row in matching.iterrows():
+                child = parent_row.to_dict()
+                child["esto_flow"] = profile_row["child_flow"]
+                child["coal_allocation_method"] = "signed_profile_scale"
+                scale = float(profile_row["base_value"]) / net_profile
+                for year in year_cols:
+                    child[year] = float(parent_row[year]) * scale
+                child_rows.append(child)
+            continue
+
+        positive = matching["base_value"].gt(tolerance)
+        negative = matching["base_value"].lt(-tolerance)
+        positive_total = float(matching.loc[positive, "base_value_abs"].sum())
+        negative_total = float(matching.loc[negative, "base_value_abs"].sum())
+        absolute_total = float(matching["base_value_abs"].sum())
+        for _, profile_row in matching.iterrows():
+            child = parent_row.to_dict()
+            child["esto_flow"] = profile_row["child_flow"]
+            child["coal_allocation_method"] = "sign_stable_gross_fallback"
+            child_base = float(profile_row["base_value"])
+            for year in year_cols:
+                source_value = float(parent_row[year])
+                if source_value > tolerance and positive_total > tolerance:
+                    share = (
+                        float(profile_row["base_value_abs"]) / positive_total
+                        if child_base > tolerance
+                        else 0.0
+                    )
+                elif source_value < -tolerance and negative_total > tolerance:
+                    share = (
+                        float(profile_row["base_value_abs"]) / negative_total
+                        if child_base < -tolerance
+                        else 0.0
+                    )
+                elif absolute_total > tolerance:
+                    share = float(profile_row["base_value_abs"]) / absolute_total
+                else:
+                    share = 1.0 / len(matching)
+                child[year] = source_value * share
+            child_rows.append(child)
+        diagnostics.append(
+            {
+                "economy_key": economy_key,
+                "esto_product": product,
+                "parent_flow": parent_flow,
+                "diagnostic_type": "coal_child_profile_net_zero",
+                "allocation_method": "sign_stable_gross_fallback",
+                "profile_net_value": net_profile,
+                "profile_abs_total": absolute_total,
+            }
+        )
+
+    result = pd.concat([retained, pd.DataFrame(child_rows)], ignore_index=True, sort=False)
+    return result, pd.DataFrame(diagnostics)
+
+
 def allocate_ninth_projection_to_esto(
     mapping_df: pd.DataFrame,
     ninth_series: pd.DataFrame,
@@ -252,6 +467,7 @@ def allocate_ninth_projection_to_esto(
     sign_stable_flows: Iterable[str] | str | None = None,
     strict_conservation: bool = False,
     return_allocation_provenance: bool = False,
+    child_flow_profiles: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame] | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Allocate 9th projections to ESTO pairs using base-year share rules.
 
@@ -261,6 +477,16 @@ def allocate_ninth_projection_to_esto(
     2. Use the mapping table to fan each source series out to one or more
        ESTO (flow, product) rows.
     3. Compute shares from base-year ESTO magnitudes.
+
+    Coal transformation exception
+    ------------------------------
+    9th projection rows for ``09_08_coal_transformation`` can be aggregate
+    while ESTO contains detailed child flows.  Parent-flow products are first
+    allocated using the economy's current ESTO data, then their full signed
+    child-flow vectors are scaled.  This preserves simultaneous child inputs
+    and outputs.  A net-zero historical child vector uses an explicit
+    sign-stable gross fallback and emits a diagnostic; APEC shares are never
+    used for this coal reconstruction.
 
     Legacy mode (default)
     ---------------------
@@ -391,7 +617,11 @@ def allocate_ninth_projection_to_esto(
         / merged.loc[economy_mask, "group_total"]
     )
     fallback_mask = ~economy_mask
-    apec_mask = fallback_mask & (merged["apec_group_total"] > 0)
+    # Coal parent-to-child reconstruction is deliberately economy-specific.
+    # The APEC aggregate is a validation fixture only and must never supply a
+    # production economy's coal allocation shares.
+    coal_source_mask = merged["ninth_sector"].eq("09_08_coal_transformation")
+    apec_mask = fallback_mask & ~coal_source_mask & (merged["apec_group_total"] > 0)
     merged.loc[apec_mask, "share"] = merged.loc[apec_mask, "apec_share"]
     merged.loc[apec_mask, "share_source"] = "apec"
     equal_mask = fallback_mask & ~apec_mask
@@ -463,14 +693,25 @@ def allocate_ninth_projection_to_esto(
             )
         merged[year] = allocated
 
+    merged["coal_allocation_method"] = "not_applicable"
+    merged, child_profile_diagnostics = _disaggregate_parent_flow_allocations(
+        merged,
+        child_flow_profiles,
+        year_cols,
+    )
+
     allocation_provenance = pd.DataFrame()
     if return_allocation_provenance:
         provenance = merged[
             [
                 "economy_key", "ninth_sector", "ninth_fuel", "esto_flow",
                 "esto_product", "share", "share_source", "group_count", *year_cols,
+                "coal_allocation_method",
             ]
         ].copy()
+        provenance["coal_allocation_method"] = provenance[
+            "coal_allocation_method"
+        ].fillna("not_applicable")
         provenance["allocation_method"] = "direct"
         multiple_targets = provenance["group_count"].gt(1)
         provenance.loc[multiple_targets & provenance["share_source"].eq("economy"), "allocation_method"] = (
@@ -486,6 +727,7 @@ def allocate_ninth_projection_to_esto(
             id_vars=[
                 "economy_key", "ninth_sector", "ninth_fuel", "esto_flow",
                 "esto_product", "share", "share_source", "allocation_method",
+                "coal_allocation_method",
             ],
             value_vars=year_cols,
             var_name="year",
@@ -551,8 +793,14 @@ def allocate_ninth_projection_to_esto(
             raise ValueError(f"{message}\nTop mismatches:\n{sample}")
         print(f"[WARN] {message}")
         diagnostics = pd.concat([diagnostics, conservation_diagnostics], ignore_index=True, sort=False)
+    if not child_profile_diagnostics.empty:
+        diagnostics = pd.concat(
+            [diagnostics, child_profile_diagnostics],
+            ignore_index=True,
+            sort=False,
+        )
 
-    if sign_stable_flow_set:
+    if sign_stable_flow_set and "apply_sign_stable" in diagnostics.columns:
         diagnostics["sign_stable_mode"] = diagnostics["apply_sign_stable"].map(
             {True: "enabled", False: "disabled"}
         )
@@ -599,6 +847,10 @@ def build_esto_projection_table(
     ninth_pairs["economy_key"] = ninth_pairs["economy"].apply(normalize_economy_key)
     ninth_series = build_ninth_projection_series(ninth_pairs, projection_years)
     base_values = build_esto_base_year_values(esto_data, base_year)
+    child_flow_profiles = build_economy_specific_child_flow_profiles(
+        esto_data,
+        base_year,
+    )
     return allocate_ninth_projection_to_esto(
         mapping_df,
         ninth_series,
@@ -606,6 +858,7 @@ def build_esto_projection_table(
         projection_years,
         sign_stable_flows=sign_stable_flows,
         strict_conservation=strict_conservation,
+        child_flow_profiles=child_flow_profiles,
     )
 
 

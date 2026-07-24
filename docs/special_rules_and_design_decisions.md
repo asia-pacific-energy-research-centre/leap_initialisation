@@ -762,3 +762,49 @@ or consistency behavior. Review `proxy_activity_source_fallbacks.csv` and
 - 2026-07-10: Recorded liquefaction/regasification and pump-storage fallback
   behavior, strict positive-target/zero-activity validation, and the oil
   refining proxy exception.
+
+## INIT-011: Economy-specific disaggregation of aggregate coal transformation projections
+
+**Status:** Implemented; validation expansion pending
+**Owner:** leap_initialisation
+**Type:** Projection allocation / modelling boundary
+**Affected areas:** `codebase/functions/ninth_projection_mapping.py`; transformation projection allocation
+
+### Situation
+
+The 9th Outlook can provide future values at the aggregate
+`09_08_coal_transformation` level while ESTO and the LEAP transformation
+workflow use the detailed child flows `09.08.01` through `09.08.05`. A product
+can also be an output in one child process and an input in another, so a simple
+positive/negative or equal split is not sufficient.
+
+### Current rule
+
+For each run, derive the coal child-flow profile from the current ESTO data for
+the economy being allocated. First allocate the aggregate 9th source to ESTO
+products using the economy's current ESTO profile. Then scale the complete
+signed child-flow vector for each product so simultaneous child inputs and
+outputs are preserved and the child sum conserves the 9th source value.
+
+If the economy's signed child profile nets to zero, the future split is
+underdetermined. Use the explicit sign-stable gross fallback and emit a
+`coal_child_profile_net_zero` diagnostic. If no child profile exists, retain
+the parent ESTO flow and emit `coal_child_profile_missing`. Do not use APEC
+aggregate ratios for production economy allocations.
+
+The APEC aggregate 9th file and an ESTO aggregate are validation fixtures only.
+They are used to stress-test mixed process/fuel combinations and conservation,
+not as production fallback profiles.
+
+### Validation
+
+Require exact source-to-child conservation for every economy, source 9th
+sector/fuel, and projection year. Review profile-missing and net-zero
+diagnostics. Run the APEC aggregate stress test against
+`data/9th merged_file_energy_00_APEC_20251106.csv`, then run economy-level
+tests using each economy's own current ESTO profile.
+
+### History
+
+- 2026-07-24: Added runtime economy-specific signed child-profile allocation;
+  APEC aggregate use restricted to validation.
