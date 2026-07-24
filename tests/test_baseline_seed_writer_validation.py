@@ -218,7 +218,7 @@ def test_final_writer_runs_combined_export_readiness(
     assert seen[0]["expected_region"] == "United States"
 
 
-def test_final_writer_blocks_on_combined_readiness_errors(
+def test_final_writer_retains_workbook_on_combined_readiness_errors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -237,14 +237,16 @@ def test_final_writer_blocks_on_combined_readiness_errors(
         )(),
     )
 
-    with pytest.raises(BaselineSeedValidationError, match="Combined export readiness failed"):
-        write_per_economy_combined_workbooks(
-            economies=["20_USA"],
-            output_dir=tmp_path / "output",
-            id_lookup_path=template,
-            source_workbooks_by_workflow={"supply_workflow": [source]},
-            required_years_by_scenario={"Reference": [2023]},
-        )
+    written = write_per_economy_combined_workbooks(
+        economies=["20_USA"],
+        output_dir=tmp_path / "output",
+        id_lookup_path=template,
+        source_workbooks_by_workflow={"supply_workflow": [source]},
+        required_years_by_scenario={"Reference": [2023]},
+    )
+
+    assert len(written) == 1
+    assert written[0].exists()
 
 
 @_XFAIL_WHILE_BLOCKING_DOWNGRADED

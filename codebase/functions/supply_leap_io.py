@@ -1689,10 +1689,11 @@ def write_per_economy_combined_workbooks(
     aggregated_demand_{econ}.xlsx into a single per-economy LEAP import workbook
     (leap_import_{econ}.xlsx) in output_dir.
 
-    Final IDs and branch existence are resolved from ``id_lookup_path`` and
-    validated before any workbook is written unless ``enforce_validation`` is
-    set to False. When current-run source paths are supplied, stale directory
-    matches are not read.
+    Final IDs and branch existence are resolved from ``id_lookup_path``.  The
+    post-write readiness report is diagnostic-only: a workbook with unresolved
+    rows is retained for manual repair and the remaining economies still run.
+    When current-run source paths are supplied, stale directory matches are not
+    read.
 
     excluded_sectors must match the value passed to
     build_aggregated_demand_workbooks_for_results_supply so that the filename
@@ -1767,19 +1768,16 @@ def write_per_economy_combined_workbooks(
                 result.findings["status"].eq("error")
                 & result.findings["severity"].eq("blocking")
             ]
-        # Baseline-seed validation already owns the configured policy for
-        # unresolved IDs. Preserve its warning downgrade, while keeping the
-        # independent readiness checks (Region, duplicates, catalog coverage,
-        # and legacy transfer paths) blocking.
-        if blocking_findings_are_warnings and "check_name" in blocking_findings.columns:
-            blocking_findings = blocking_findings[
-                blocking_findings["check_name"].ne("leap_ids")
-            ]
         if not blocking_findings.empty:
-            raise BaselineSeedValidationError(
-                f"Combined export readiness failed for {economy}: "
-                f"{len(blocking_findings)} blocking finding(s). "
-                f"Diagnostics: {readiness_dir}"
+            # Do not strand a long multi-economy run because a modeller can
+            # repair a generated workbook after the fact.  The readiness CSV
+            # remains the authoritative repair list; this warning deliberately
+            # does not hide the problem or make the workbook safe to import.
+            print(
+                f"[WARN] Combined export readiness found {len(blocking_findings)} "
+                f"repair-required finding(s) for {economy}; retaining the workbook "
+                f"and continuing. Do not import it until repaired. Diagnostics: "
+                f"{readiness_dir}"
             )
 
     economy_list = workflow_common.normalize_economies(economies)
