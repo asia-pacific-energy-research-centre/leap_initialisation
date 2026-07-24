@@ -1473,7 +1473,7 @@ def save_aggregated_demand_as_leap_workbook(
                 "Region": region,
                 "Scale": "",
                 "Units": UNITS,
-                "Per...": ACTIVITY_UNITS,
+                "Per...": "",
                 "Expression": "1",
             })
         else:
@@ -1768,7 +1768,7 @@ def save_to_leap_export(
                 "Region": region,
                 "Scale": "",
                 "Units": UNITS,
-                "Per...": ACTIVITY_UNITS,
+                "Per...": "",
                 "Expression": "1",
             })
         else:
