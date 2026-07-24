@@ -505,20 +505,25 @@ def apply_transformation_target_overrides_for_scenario(
             instance = int(instance_counter[counter_key])
             output_total_by_year: dict[int, float] = {int(year): 0.0 for year in all_years}
             output_values = record.get("output_values") or {}
-            output_labels: set[str] = set()
-            for label in output_values.keys():
-                canonical_label = _canonical_transformation_fuel_label(label)
-                if canonical_label:
-                    output_labels.add(canonical_label)
+            # Only add observed output labels to the trade-target reset when the
+            # process actually produces them.  Projection disaggregation keeps
+            # zero-valued child fuels in ``output_values``; adding every such
+            # label here used to create Import/Export Target rows for branches
+            # that do not exist in the economy's LEAP template.
+            active_output_labels: set[str] = set()
             for label, raw_value in output_values.items():
                 if not str(label or "").strip():
                     continue
+                canonical_label = _canonical_transformation_fuel_label(label)
                 year_map = coerce_value_by_year(raw_value, BASE_YEAR, FINAL_YEAR)
                 for year, value in year_map.items():
                     year_int = int(year)
                     if year_int < BASE_YEAR or year_int > FINAL_YEAR:
                         continue
-                    output_total_by_year[year_int] = output_total_by_year.get(year_int, 0.0) + max(float(value), 0.0)
+                    positive_value = max(float(value), 0.0)
+                    output_total_by_year[year_int] = output_total_by_year.get(year_int, 0.0) + positive_value
+                    if positive_value > 0.0 and canonical_label:
+                        active_output_labels.add(canonical_label)
             capacity_additions_by_year = _lookup_runtime_capacity_additions_for_record(
                 economy=economy_name,
                 scenario=scenario_key_for_capacity,
@@ -535,7 +540,7 @@ def apply_transformation_target_overrides_for_scenario(
             if CAPACITY_CLEAR_OUTPUT_TRADE_TARGETS:
                 sector_name = str(record.get("sector_title") or "").strip().lower()
                 zero_map = {int(year): 0.0 for year in all_years}
-                target_labels = set(output_labels)
+                target_labels = set(active_output_labels)
                 if reset_modules and sector_name in reset_modules:
                     module_reset_fuels = reset_output_fuels_by_module.get(
                         sector_name, []

@@ -80,6 +80,35 @@ def test_multi_economy_reset_uses_each_economys_template_scope(monkeypatch, tmp_
     assert updated_records[1]["output_import_targets"]["NZ fuel"][2022] == 0.0
 
 
+def test_capacity_target_reset_skips_zero_only_untemplated_output_labels(monkeypatch, tmp_path):
+    """Zero projection children must not create missing-template target rows."""
+    monkeypatch.setattr(supply_leap_io, "_use_capacity_like_mode", lambda: True)
+    monkeypatch.setattr(supply_leap_io, "_use_legacy_trade_split_mode", lambda: False)
+    monkeypatch.setattr(supply_leap_io, "_leap_export_template_for_economy", lambda economy: tmp_path / "aus.xlsx")
+    monkeypatch.setattr(supply_preflight, "_configured_reset_module_names", lambda template_path=None: {"coke ovens"})
+    monkeypatch.setattr(
+        supply_preflight,
+        "_configured_reset_output_fuel_labels_by_module",
+        lambda module_names, template_path=None: {"coke ovens": ["Coke oven coke"]},
+    )
+
+    record = {
+        "economy": "01_AUS",
+        "sector_title": "Coke ovens",
+        "process_name": "Coke ovens",
+        "output_values": {
+            "Coke oven coke": {2024: 10.0},
+            "BKB and PB": {2024: 0.0},
+        },
+    }
+    updated = supply_leap_io.apply_transformation_target_overrides_for_scenario(
+        [record], pd.DataFrame(), pd.DataFrame(), "Reference",
+    )
+
+    assert set(updated[0]["output_import_targets"]) == {"Coke oven coke"}
+    assert set(updated[0]["output_export_targets"]) == {"Coke oven coke"}
+
+
 def test_reset_sector_scope_narrows_reconciliation_rows(monkeypatch, tmp_path):
     monkeypatch.setattr(
         supply_reconciliation_tables,
