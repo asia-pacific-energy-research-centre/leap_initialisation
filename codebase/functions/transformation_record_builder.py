@@ -2257,6 +2257,17 @@ def build_aux_fuel_zero_rows(
             str(row.get("Scenario", "")),
             str(row.get("Branch_Path", "")),
         ))
+    # Case-insensitive variant of the same set, used only to detect whether a
+    # catalog branch is a case-variant duplicate of an already-written branch
+    # (e.g. a mis-cased leaf in one economy's export template, such as
+    # "Natural Gas" vs. "Natural gas"). LEAP branch names are case-insensitive,
+    # so without this a case-variant catalog entry looks "unset" and gets a
+    # spurious zero-fill row that can later collide with — and even win a
+    # tie-break over — the correctly-written row.
+    existing_casefold: set[tuple[str, str, str]] = {
+        (measure, scenario, branch_path.casefold())
+        for measure, scenario, branch_path in existing
+    }
 
     zero_rows = []
 
@@ -2319,7 +2330,7 @@ def build_aux_fuel_zero_rows(
                 )
                 if matched_prefix is None:
                     continue
-                already_set = (measure, scenario, branch_path) in existing
+                already_set = (measure, scenario, branch_path.casefold()) in existing_casefold
                 if is_feedstock:
                     process_branch_map.setdefault(matched_prefix, []).append(
                         (branch_path, already_set)

@@ -105,6 +105,29 @@ def test_explicitly_set_efficiency_is_not_overwritten() -> None:
     assert {r["Scenario"] for r in eff} == {"Current Accounts", "Reference"}
 
 
+def test_case_variant_catalog_branch_is_not_zero_filled() -> None:
+    catalog_branch = PROCESS + "\\Feedstock Fuels\\Crude"
+    existing_branch = PROCESS + "\\Feedstock Fuels\\CRUDE"
+    catalog = pd.DataFrame([{"fuel_group": "Feedstock Fuels", "branch_path": catalog_branch}])
+
+    rows = rb.build_aux_fuel_zero_rows(
+        [_feedstock_row() | {"Branch_Path": existing_branch}],
+        catalog,
+        SCENARIOS,
+        BASE_YEAR,
+        FINAL_YEAR,
+        in_scope_sector_titles={SECTOR_TITLE},
+    )
+
+    assert not [
+        row
+        for row in rows
+        if row["Measure"] == "Feedstock Fuel Share"
+        and row["Scenario"] == "Target"
+        and row["Branch_Path"] == catalog_branch
+    ]
+
+
 def test_capacity_present_but_no_efficiency_raises() -> None:
     workflow_common.THROW_ERROR_AFTER_RUN = False
     with pytest.raises(ValueError, match="Exogenous Capacity"):
