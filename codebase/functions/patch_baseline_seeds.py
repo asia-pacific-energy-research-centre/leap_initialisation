@@ -858,28 +858,26 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
         # The producer uses process_records to establish the economy scope,
         # then rebuilds reference/target records per scenario itself.  An
         # empty reconciliation table is the documented baseline-seed mode.
-        process_records = _w.collect_transformation_rows(economies=econ_list)
-        if not process_records:
-            return []
         catalog_df = _build_transformation_supply_fuel_catalog_df(
             transformation_export_paths=[],
             supply_export_paths=[],
             include_print_summary=False,
         )
-        catalog_by_economy = {
-            str(economy).strip(): _catalog_for_economy(catalog_df, economy)
-            for economy in econ_list
-        }
-        return save_transformation_exports_with_split_targets(
-            pd.DataFrame(),
-            pd.DataFrame(),
-            process_records,
-            scenarios=list(_w.DEFAULT_SCENARIOS),
-            output_dir=WORKBOOKS_DIR,
-            filename_template=_core.EXPORT_FILENAME_TEMPLATE,
-            full_branch_catalog_df=catalog_df if not catalog_df.empty else None,
-            full_branch_catalog_by_economy=catalog_by_economy,
-        )
+        written: list[Path] = []
+        for economy in econ_list:
+            economy_records = _w.collect_transformation_rows(economies=[economy])
+            if not economy_records:
+                continue
+            written.extend(save_transformation_exports_with_split_targets(
+                pd.DataFrame(),
+                pd.DataFrame(),
+                economy_records,
+                scenarios=list(_w.DEFAULT_SCENARIOS),
+                output_dir=WORKBOOKS_DIR,
+                filename_template=_core.EXPORT_FILENAME_TEMPLATE,
+                full_branch_catalog_df=_catalog_for_economy(catalog_df, economy),
+            ))
+        return written
 
     elif module == "supply":
         from codebase import supply_workflow as _w
