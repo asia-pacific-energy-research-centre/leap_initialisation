@@ -403,6 +403,15 @@ pins no severity of its own.
    asset-prep site (`transformation_analysis_utils.py:1820`) is not yet migrated
    and still blocks.
 
+### 2026-07-24 transformation patch-gate update
+
+The patch path is now rewired to `save_transformation_exports_with_split_targets`
+with economy-specific catalogs. The current-rule `20260723` post-boundary
+harness result is `12_NZ` **PASS** (0 dropped / 0 invented / 0 benign /
+0 non-benign), but `20_USA` **DEFECT** (0 / 0 / 0 / 2): 2023 Natural gas
+Feedstock Fuel Share in NG Liquefaction is `0.0 → 100.0` for Reference and
+Target. Keep the gate until the USA discrepancy is resolved.
+
 ## Related documents
 
 - [work_queue.md](work_queue.md) — what is left, in what order, what blocks what; plus recorded traps and pre-existing failures.

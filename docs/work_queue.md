@@ -1685,6 +1685,23 @@ contradiction likely to happen again and go unnoticed longer.
   completed checkpoints on its own branch, it does not wait for a shared
   merge point.
 
+### 2026-07-24 transformation rewire measurement addendum
+
+The transformation patch path now uses `save_transformation_exports_with_split_targets`
+with an empty reconciliation table and economy-specific template catalogs. The
+current-rule `20260723` seeds were tested post-boundary vs post-boundary:
+
+- `12_NZ`: **PASS** — 0 rows dropped, 0 invented, 0 benign differences, and 0
+  non-benign value differences.
+- `20_USA`: **DEFECT** — 0 rows dropped, 0 invented, 0 benign differences, and
+  2 non-benign value differences. Both are
+  `NG Liquefaction\Processes\Liquefaction\Feedstock Fuels\Natural gas`,
+  `Feedstock Fuel Share`, Reference and Target, 2023: `0.0 → 100.0`.
+
+The earlier simplified-path dropped/invented/value-divergence classes are gone.
+The gate remains operationally for all transformation modules until the USA
+share discrepancy is resolved and the harness passes.
+
 ## Related documents
 
 - [check_registry.md](check_registry.md) — every pre-export check, five families, rules A/B/C, hotspots.

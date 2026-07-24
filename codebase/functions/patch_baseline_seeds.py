@@ -178,51 +178,79 @@ def _transfers_strip_prefixes() -> list[str]:
     return _tf(*sorted(get_transfer_sector_titles()))
 
 
+def _transformation_strip_prefixes() -> list[str]:
+    """Transformation sector titles owned by the transformation producer."""
+    # Keep this resolver independent of transformation asset preparation: the
+    # patcher needs its prefixes before the source workflow is run. These are
+    # the configured transformation-workflow sectors, excluding transfer and
+    # interim-power ownership.
+    return _tf(
+        "NG Liquefaction",
+        "Gas works plants",
+        "Natural gas blending plants",
+        "Coke ovens",
+        "Blast furnaces",
+        "Patent fuel plants",
+        "BKB and PB plants",
+        "Liquefaction coal to oil",
+        "Electric boilers",
+        "Chemical heat for electricity production",
+        "Petrochemical industry",
+        "Gas to liquids plants",
+        "Biofuels processing",
+        "Charcoal processing",
+        "Non specified transformation",
+        "Oil Refining",
+        "Hydrogen transformation",
+    )
+
+
 MODULE_REGISTRY: dict[str, ModuleConfig] = {
-    # ── auto-regen from ESTO (transformation sectors) ──────────────────────
+    # ── transformation exports from the real workbook producer ────────────
+    # Keep the sector-specific prefixes so a focused module patch remains
+    # scoped even though the producer writes one workbook per economy/scenario.
     "oil_refineries": ModuleConfig(
         strip_prefixes=_tf("Oil Refining"),
-        auto_sector_keys=["oil_refineries"],
+        workbook_glob="transformation_leap_imports_{econ}*.xlsx",
     ),
     "lng": ModuleConfig(
         strip_prefixes=_tf("NG Liquefaction"),
-        auto_sector_keys=["lng"],
+        workbook_glob="transformation_leap_imports_{econ}*.xlsx",
     ),
     "hydrogen": ModuleConfig(
         strip_prefixes=_tf("Hydrogen transformation"),
-        auto_sector_keys=["hydrogen_transformation"],
+        workbook_glob="transformation_leap_imports_{econ}*.xlsx",
     ),
     "gas_processing": ModuleConfig(
         strip_prefixes=_tf("Gas works plants", "Natural gas blending plants",
                            "Gas to liquids plants"),
-        auto_sector_keys=["gas_works", "gas_blending"],
+        workbook_glob="transformation_leap_imports_{econ}*.xlsx",
     ),
     "coal_transformation": ModuleConfig(
         strip_prefixes=_tf("Coke ovens", "Blast furnaces", "Patent fuel plants",
                            "BKB and PB plants", "Liquefaction coal to oil"),
-        auto_sector_keys=["coal_coke_ovens", "coal_blast_furnaces",
-                          "coal_patent_fuel_plants", "coal_bkb_pb_plants",
-                          "coal_liquefaction"],
+        workbook_glob="transformation_leap_imports_{econ}*.xlsx",
     ),
     "petrochemical": ModuleConfig(
         strip_prefixes=_tf("Petrochemical industry"),
-        auto_sector_keys=["petrochemical_industry"],
+        workbook_glob="transformation_leap_imports_{econ}*.xlsx",
     ),
     "charcoal": ModuleConfig(
         strip_prefixes=_tf("Charcoal processing"),
-        auto_sector_keys=["charcoal_processing"],
+        workbook_glob="transformation_leap_imports_{econ}*.xlsx",
     ),
     "biofuels": ModuleConfig(
         strip_prefixes=_tf("Biofuels processing"),
-        auto_sector_keys=["biofuels_processing"],
+        workbook_glob="transformation_leap_imports_{econ}*.xlsx",
     ),
     "nonspecified_transformation": ModuleConfig(
         strip_prefixes=_tf("Non specified transformation"),
-        auto_sector_keys=["nonspecified_transformation"],
+        workbook_glob="transformation_leap_imports_{econ}*.xlsx",
     ),
     "transformation": ModuleConfig(          # all transformation sectors at once
-        strip_prefixes=["Transformation\\"],
-        auto_sector_keys=["__all__"],
+        strip_prefixes=[],
+        workbook_glob="transformation_leap_imports_{econ}*.xlsx",
+        strip_prefix_source=_transformation_strip_prefixes,
     ),
     # ── patch from existing workbooks (run the workflow first) ─────────────
     "supply": ModuleConfig(
@@ -640,6 +668,13 @@ def _collect_from_workbooks(cfg: ModuleConfig,
 
 def _collect_auto_regen(cfg: ModuleConfig,
                          economy_filter: list[str] | None) -> dict[str, pd.DataFrame]:
+    """Legacy inline collector retained for audit history.
+
+    Transformation patching now uses the same workbook producer as a full
+    baseline-seed run; no current registry entry selects this collector.
+    Keeping the implementation temporarily makes the historical comparison
+    code available without making it the active transformation patch path.
+    """
     from codebase.functions import transformation_analysis_utils as core
     from codebase import transformation_workflow
     from codebase.functions.supply_data_pipeline import get_region_for_economy
@@ -743,8 +778,8 @@ def _load_catalog(source_path: Path | None = None) -> pd.DataFrame:
 def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path] | None:
     """Re-run the upstream workflow that generates the source workbooks for a module.
 
-    Only applies to workbook-based modules.  Auto-regen modules regenerate their
-    data inline via _collect_auto_regen and do not need a pre-step.
+    Workbook-based modules, including transformation sectors, are regenerated
+    through their owning producer before patching.
 
     Writes workbooks to WORKBOOKS_DIR and returns the list of files written, so
     _collect_from_workbooks can read exactly those and not stale workbooks from
@@ -798,6 +833,52 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
             output_dir=WORKBOOKS_DIR,
             filename_template=_w.EXPORT_FILENAME_TEMPLATE,
             full_branch_catalog_df=catalog_df if not catalog_df.empty else None,
+        )
+
+    elif module in MODULE_REGISTRY and module in {
+        "oil_refineries", "lng", "hydrogen", "gas_processing",
+        "coal_transformation", "petrochemical", "charcoal", "biofuels",
+        "nonspecified_transformation", "transformation",
+    }:
+        from codebase import transformation_workflow as _w
+        from codebase.functions import transformation_analysis_utils as _core
+        from codebase.functions.supply_leap_io import (
+            save_transformation_exports_with_split_targets,
+        )
+        from codebase.functions.supply_results_saver import (
+            _build_transformation_supply_fuel_catalog_df,
+            _catalog_for_economy,
+        )
+
+        _core.prepare_transformation_assets()
+        econ_list = economies or sorted(
+            e for e in _core.esto_data["economy"].unique()
+            if not str(e).startswith("00_")
+        )
+        # The producer uses process_records to establish the economy scope,
+        # then rebuilds reference/target records per scenario itself.  An
+        # empty reconciliation table is the documented baseline-seed mode.
+        process_records = _w.collect_transformation_rows(economies=econ_list)
+        if not process_records:
+            return []
+        catalog_df = _build_transformation_supply_fuel_catalog_df(
+            transformation_export_paths=[],
+            supply_export_paths=[],
+            include_print_summary=False,
+        )
+        catalog_by_economy = {
+            str(economy).strip(): _catalog_for_economy(catalog_df, economy)
+            for economy in econ_list
+        }
+        return save_transformation_exports_with_split_targets(
+            pd.DataFrame(),
+            pd.DataFrame(),
+            process_records,
+            scenarios=list(_w.DEFAULT_SCENARIOS),
+            output_dir=WORKBOOKS_DIR,
+            filename_template=_core.EXPORT_FILENAME_TEMPLATE,
+            full_branch_catalog_df=catalog_df if not catalog_df.empty else None,
+            full_branch_catalog_by_economy=catalog_by_economy,
         )
 
     elif module == "supply":

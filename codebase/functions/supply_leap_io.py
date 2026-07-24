@@ -580,6 +580,7 @@ def save_transformation_exports_with_split_targets(
     output_dir: Path | str = TRANSFORMATION_EXPORT_OUTPUT_DIR,
     filename_template: str = TRANSFORMATION_EXPORT_FILENAME_TEMPLATE,
     full_branch_catalog_df: pd.DataFrame | None = None,
+    full_branch_catalog_by_economy: dict[str, pd.DataFrame] | None = None,
     records_by_scenario_out: dict[str, list[dict]] | None = None,
     allocation_ledger=None,
 ) -> list[Path]:
@@ -734,6 +735,12 @@ def save_transformation_exports_with_split_targets(
                 [scenario],
                 filename_template,
             )
+            economy_catalog_df = full_branch_catalog_df
+            if full_branch_catalog_by_economy is not None:
+                economy_catalog_df = full_branch_catalog_by_economy.get(
+                    economy,
+                    full_branch_catalog_df,
+                )
             export_path = transformation_workflow.core.save_transformation_export(
                 scenario_records,
                 transformation_workflow.core.EXPORT_REGION,
@@ -744,7 +751,7 @@ def save_transformation_exports_with_split_targets(
                 export_filename,
                 transformation_workflow.core.EXPORT_MODEL_NAME,
                 [scenario],
-                full_branch_catalog_df=full_branch_catalog_df,
+                full_branch_catalog_df=economy_catalog_df,
                 # Producer ownership: transfer-adjacent modules belong to the
                 # transfers workbook only, so exclude them from this producer's
                 # tier-2 zero-fill scope (they would otherwise duplicate keys).
