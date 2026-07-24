@@ -5,14 +5,14 @@ economy area. Do not enter data or expressions as part of this task.
 
 ## Branches to create
 
-Create these six branches directly under `Demand`:
+Create these six branches directly under `Demand\All demand aggregated`:
 
-- `Demand\Freight road`
-- `Demand\Passenger road`
-- `Demand\Transport non-road`
-- `Demand\Industry`
-- `Demand\Other sector`
-- `Demand\Buildings`
+- `Demand\All demand aggregated\Freight road`
+- `Demand\All demand aggregated\Passenger road`
+- `Demand\All demand aggregated\Transport non road`
+- `Demand\All demand aggregated\Industry`
+- `Demand\All demand aggregated\Other sector`
+- `Demand\All demand aggregated\Buildings`
 
 Under each sector branch, create the fuel leaves listed in
 [leap_all_demand_aggregated_fuels_by_sector.csv](<C:\Users\Work\github\leap_initialisation\docs\leap_all_demand_aggregated_fuels_by_sector.csv>).
@@ -20,7 +20,8 @@ The CSV includes the complete LEAP path for every fuel leaf.
 
 ## Important naming rules
 
-- Use the spellings and hyphenation shown in the CSV exactly.
+- Use the spellings shown in the CSV exactly. The branch is `Transport non road`
+  (with spaces), not `Transport non-road`.
 - Create each fuel as a direct child of its sector branch.
 - Keep `Demand\All demand aggregated` as the existing aggregate branch; do not
   move or delete it.
@@ -41,6 +42,6 @@ The CSV includes the complete LEAP path for every fuel leaf.
 | Buildings | 37 |
 | **Total branch/fuel rows** | **163** |
 
-The 163 requested fuel names were checked against the existing direct fuel
-leaves below `Demand\All demand aggregated` in both the `20_USA` and `12_NZ`
-LEAP templates. All were present; no missing fuel names were found.
+The CSV is the current structural handoff. The all-economy source-data and
+mapping-system audit is a separate task and must be completed before treating
+this list as the final generated branch catalogue.
