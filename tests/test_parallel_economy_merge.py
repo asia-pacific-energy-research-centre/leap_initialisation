@@ -160,3 +160,139 @@ def test_worker_output_dir_matches_the_workflow_own_context_resolution() -> None
         "baseline_seed", "MERGE_TEST_DIR_CHECK"
     ).output_dir
     assert merge.worker_output_dir(result) == expected
+
+
+# ---------------------------------------------------------------------------
+# Parent combined workbook merge. These fixtures mirror the sequential
+# two-economy/two-year workbook structure: raw LEAP preamble, a blank spacer
+# column between values and hierarchy, IDs, and an ordinary RUN_MANIFEST.
+# ---------------------------------------------------------------------------
+
+
+def _write_worker_results_workbook(
+    label: str,
+    economy: str,
+    *,
+    preamble_area: str = "Reference area",
+    extra_header_column: str | None = None,
+    include_shared_proxy_row: bool = False,
+) -> None:
+    context = config.resolve_reconciliation_run_context("baseline_seed", label)
+    path = context.output_dir / f"supply_recon_run_baseline_seed_{economy}_tgt_ref_ca.xlsx"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = [
+        "BranchID", "VariableID", "ScenarioID", "RegionID",
+        "Branch Path", "Variable", "Scenario", "Region",
+        "Scale", "Units", "Per...", "Method", "2022", "2023", "", "Level 1",
+    ]
+    if extra_header_column:
+        header.append(extra_header_column)
+    row0 = ["", "", "", "", "Area:", preamble_area, "Ver:", "2"] + [""] * (len(header) - 8)
+    row1 = [""] * len(header)
+    rows = [
+        [
+            101, 201, 301, 1,
+            f"Resources\\Primary\\Fuel {economy}", "Maximum Production", "Reference", economy,
+            "", "PJ", "", "Interp", 1.0, 2.0, "", "Resources",
+        ],
+        [
+            102, 202, 302, 1,
+            f"Demand\\All demand\\Fuel {economy}", "Activity Level", "Target", economy,
+            "", "PJ", "", "Interp", 3.0, 4.0, "", "Demand",
+        ],
+    ]
+    if extra_header_column:
+        rows = [row + ["extra"] for row in rows]
+    if include_shared_proxy_row:
+        shared_row = [
+            999, 888, 777, 1,
+            "Transformation\\Shared proxy", "Activity Level", "Target", "United States",
+            "", "PJ", "", "Interp", 10.0 if economy == "01_AUS" else 20.0,
+            11.0 if economy == "01_AUS" else 21.0, "", "Transformation",
+        ]
+        rows.append(shared_row + (["extra"] if extra_header_column else []))
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        pd.DataFrame([row0, row1, header] + rows).to_excel(
+            writer, sheet_name="Export", index=False, header=False
+        )
+        pd.DataFrame(
+            [{"workbook_type": "supply", "path": f"{economy}.xlsx", "exists": True}]
+        ).to_excel(writer, sheet_name="RUN_MANIFEST", index=False)
+
+
+def _read_raw_export(path):
+    return pd.read_excel(path, sheet_name="Export", header=None)
+
+
+def test_merge_parallel_results_workbooks_preserves_sequential_layout_and_data(tmp_path) -> None:
+    _write_worker_results_workbook("WORKER_01_AUS", "01_AUS")
+    _write_worker_results_workbook("WORKER_12_NZ", "12_NZ")
+    # Completion order deliberately differs from parent economy order.
+    results = [
+        _fake_result("12_NZ", "WORKER_12_NZ"),
+        _fake_result("01_AUS", "WORKER_01_AUS"),
+    ]
+    output = merge.merge_parallel_results_workbooks(
+        results,
+        output_path=tmp_path / "parent" / "supply_recon_run_baseline_seed_01_AUS-12_NZ_tgt_ref_ca.xlsx",
+        economies_run_order=["01_AUS", "12_NZ"],
+    )
+
+    raw = _read_raw_export(output)
+    # The sequential reference's preamble/header is copied without alteration,
+    # including the blank spacer after the two-year values.
+    assert raw.iloc[:3].equals(_read_raw_export(
+        config.resolve_reconciliation_run_context("baseline_seed", "WORKER_01_AUS").output_dir
+        / "supply_recon_run_baseline_seed_01_AUS_tgt_ref_ca.xlsx"
+    ).iloc[:3])
+    header = list(raw.iloc[2])
+    assert header[:14] == [
+        "BranchID", "VariableID", "ScenarioID", "RegionID",
+        "Branch Path", "Variable", "Scenario", "Region",
+        "Scale", "Units", "Per...", "Method", 2022, 2023,
+    ]
+    assert pd.isna(header[14])
+    assert header[15] == "Level 1"
+    assert list(raw.iloc[3:, 7]) == ["01_AUS", "01_AUS", "12_NZ", "12_NZ"]
+    assert list(raw.iloc[3:, 0]) == [101, 102, 101, 102]
+    manifest = pd.read_excel(output, sheet_name="RUN_MANIFEST")
+    assert list(manifest["path"]) == ["01_AUS.xlsx", "12_NZ.xlsx"]
+
+
+def test_merge_parallel_results_workbooks_rejects_failed_or_missing_worker(tmp_path) -> None:
+    _write_worker_results_workbook("WORKER_01_AUS", "01_AUS")
+    with pytest.raises(RuntimeError, match="partial parallel combined workbook"):
+        merge.merge_parallel_results_workbooks(
+            [_fake_result("01_AUS", "WORKER_01_AUS", succeeded=False)],
+            output_path=tmp_path / "parent.xlsx",
+            economies_run_order=["01_AUS"],
+        )
+
+
+def test_merge_parallel_results_workbooks_rejects_layout_drift(tmp_path) -> None:
+    _write_worker_results_workbook("WORKER_01_AUS", "01_AUS")
+    _write_worker_results_workbook("WORKER_12_NZ", "12_NZ", extra_header_column="Level 2")
+    with pytest.raises(ValueError, match="preamble/header layout differs"):
+        merge.merge_parallel_results_workbooks(
+            [_fake_result("01_AUS", "WORKER_01_AUS"), _fake_result("12_NZ", "WORKER_12_NZ")],
+            output_path=tmp_path / "parent.xlsx",
+            economies_run_order=["01_AUS", "12_NZ"],
+        )
+
+
+def test_merge_parallel_results_workbooks_uses_later_economy_for_shared_proxy_rows(tmp_path) -> None:
+    _write_worker_results_workbook("WORKER_01_AUS", "01_AUS", include_shared_proxy_row=True)
+    _write_worker_results_workbook("WORKER_12_NZ", "12_NZ", include_shared_proxy_row=True)
+    output = merge.merge_parallel_results_workbooks(
+        [_fake_result("12_NZ", "WORKER_12_NZ"), _fake_result("01_AUS", "WORKER_01_AUS")],
+        output_path=tmp_path / "parent.xlsx",
+        economies_run_order=["01_AUS", "12_NZ"],
+    )
+
+    raw = _read_raw_export(output)
+    shared = raw.iloc[3:]
+    shared = shared[shared.iloc[:, 4].eq("Transformation\\Shared proxy")]
+    assert len(shared) == 1
+    # The configured later economy wins, matching sequential multi-economy
+    # packaging rather than the worker process completion order.
+    assert shared.iloc[0, 12] == 20.0
