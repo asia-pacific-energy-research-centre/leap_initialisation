@@ -1451,15 +1451,17 @@ def _normalize_output_shares_for_export(output_shares, base_year, final_year):
                     }
                 )
 
-        # Preserve an explicit zero profile so the final canonical-group layer
-        # can capacity-gate any synthetic fallback and emit every sibling.
+        # Direct transformation workbooks must already contain an importable
+        # share profile.  Use the deterministic first sibling as the inert
+        # anchor when every output is zero; later canonical completion still
+        # validates capacity and can replace this profile when a genuine or
+        # donor-scenario profile is available.
         if not genuine_profiles:
-            if len(labels) == 1:
-                return {
-                    labels[0]: {year: 100.0 for year in years}
-                }
             return {
-                label: {year: 0.0 for year in years}
+                label: {
+                    year: 100.0 if label == labels[0] else 0.0
+                    for year in years
+                }
                 for label in labels
             }
 

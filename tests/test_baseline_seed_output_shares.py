@@ -90,6 +90,29 @@ def test_all_zero_single_output_share_is_anchored_at_100():
     assert shares == {"Heat": {2022: 100.0, 2023: 100.0}}
 
 
+def test_all_zero_multi_output_share_group_is_anchored_at_100():
+    records = [_record(
+        "Coal transformation",
+        {
+            "Coke oven coke": {2022: 0.0, 2023: 0.0},
+            "Coke oven gas": {2022: 0.0, 2023: 0.0},
+        },
+    )]
+    lookup = builder._build_output_share_lookup(
+        records, _identity_mapping(records[0]), 2022, 2023
+    )
+    shares = builder._normalize_output_shares_for_export(
+        lookup[("05_PRC", "Coal transformation")], 2022, 2023
+    )
+
+    assert shares["Coke oven coke"] == {2022: 100.0, 2023: 100.0}
+    assert shares["Coke oven gas"] == {2022: 0.0, 2023: 0.0}
+    assert all(
+        sum(values[year] for values in shares.values()) == pytest.approx(100.0)
+        for year in range(2022, 2024)
+    )
+
+
 def test_patch_deduplicates_identical_rows_but_rejects_zero_vs_100_conflict():
     base = {
         "Branch Path": "Transformation\\CHP interim\\Output Fuels\\Electricity",
