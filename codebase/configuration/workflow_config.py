@@ -74,6 +74,13 @@ BASELINE_SEED_VALIDATION_FINAL_YEAR = 2060
 # Revert to False to restore the INIT-005 guarantee once reviewed.
 BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True
 
+# LEAP can export share variables with an implicit percentage representation:
+# generated rows use Units=Share/Scale=% while the template reports
+# Units=U.S. Dollar/Scale=blank. LEAP interprets these correctly in practice,
+# so the unit-review diagnostic ignores this exact pair by default. Set False
+# to restore visibility of the raw metadata mismatch.
+BASELINE_SEED_IGNORE_IMPLICIT_SHARE_UNIT_MISMATCHES = True
+
 # Retained modelling decision: refining Exogenous Capacity follows Historical
 # Production, using the existing unit conversion metadata in refining_workflow.
 REFINING_USE_HISTORICAL_PRODUCTION_CAPACITY_HEURISTIC = True

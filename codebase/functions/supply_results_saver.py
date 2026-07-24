@@ -2107,7 +2107,22 @@ def save_results_linked_single_workbook(
         )
         mismatches: list[dict[str, object]] = []
         for _, row in merged.iterrows():
+            ignore_implicit_share_mismatch = bool(
+                getattr(
+                    workflow_cfg,
+                    "BASELINE_SEED_IGNORE_IMPLICIT_SHARE_UNIT_MISMATCHES",
+                    True,
+                )
+            ) and (
+                _normalize_metadata_text(row.get("Units")).casefold() == "share"
+                and _normalize_metadata_text(row.get("ref_Units")).casefold()
+                in {"u.s. dollar", "us dollar"}
+                and _normalize_metadata_text(row.get("Scale")) == "%"
+                and not _normalize_metadata_text(row.get("ref_Scale"))
+            )
             for col in compare_cols:
+                if ignore_implicit_share_mismatch and col in {"Units", "Scale"}:
+                    continue
                 left = _normalize_metadata_text(row.get(col))
                 right = _normalize_metadata_text(row.get(f"ref_{col}"))
                 if not right:
