@@ -901,7 +901,12 @@ def gather_output_target_dicts(economy, output_labels, base_year, final_year, ou
                     final_year,
                     output_series=output_series,
                 )
-                if import_dict:
+                # Do not create a target branch solely to write zeroes.  Coal
+                # disaggregation retains zero-valued child output labels, and
+                # those labels may not be branches in this economy's LEAP
+                # template.  Template-backed reset logic supplies any required
+                # zeroes for real branches later in the workflow.
+                if import_dict and any(float(value) != 0.0 for value in import_dict.values()):
                     import_targets[label] = import_dict
             if TRANSFORMATION_OUTPUT_VARIABLES.get("output_export_target"):
                 export_dict = build_est_output_target_dict(
@@ -914,7 +919,7 @@ def gather_output_target_dicts(economy, output_labels, base_year, final_year, ou
                     output_series=output_series,
                     cap_to_output=True,
                 )
-                if export_dict:
+                if export_dict and any(float(value) != 0.0 for value in export_dict.values()):
                     export_targets[label] = export_dict
         return import_targets, export_targets
     except Exception as exc:
