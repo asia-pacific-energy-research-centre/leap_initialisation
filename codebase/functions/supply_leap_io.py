@@ -540,7 +540,7 @@ def apply_transformation_target_overrides_for_scenario(
             if CAPACITY_CLEAR_OUTPUT_TRADE_TARGETS:
                 sector_name = str(record.get("sector_title") or "").strip().lower()
                 zero_map = {int(year): 0.0 for year in all_years}
-                target_labels = set(active_output_labels)
+                target_labels: set[str] = set()
                 if reset_modules and sector_name in reset_modules:
                     module_reset_fuels = reset_output_fuels_by_module.get(
                         sector_name, []
@@ -553,6 +553,12 @@ def apply_transformation_target_overrides_for_scenario(
                         canonical_label = _canonical_transformation_fuel_label(label)
                         if canonical_label:
                             target_labels.add(canonical_label)
+                else:
+                    # A missing module scope is a template/configuration problem.
+                    # Preserve active labels in that exceptional case so the
+                    # resulting diagnostic exposes it, but never extend the
+                    # normal per-economy target reset beyond its LEAP template.
+                    target_labels = set(active_output_labels)
                 record["output_import_targets"] = {label: dict(zero_map) for label in sorted(target_labels)}
                 record["output_export_targets"] = {label: dict(zero_map) for label in sorted(target_labels)}
 

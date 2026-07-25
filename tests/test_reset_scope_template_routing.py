@@ -80,8 +80,8 @@ def test_multi_economy_reset_uses_each_economys_template_scope(monkeypatch, tmp_
     assert updated_records[1]["output_import_targets"]["NZ fuel"][2022] == 0.0
 
 
-def test_capacity_target_reset_skips_zero_only_untemplated_output_labels(monkeypatch, tmp_path):
-    """Zero projection children must not create missing-template target rows."""
+def test_capacity_target_reset_uses_only_template_output_fuels(monkeypatch, tmp_path):
+    """Active projection children outside the template must not get target rows."""
     monkeypatch.setattr(supply_leap_io, "_use_capacity_like_mode", lambda: True)
     monkeypatch.setattr(supply_leap_io, "_use_legacy_trade_split_mode", lambda: False)
     monkeypatch.setattr(supply_leap_io, "_leap_export_template_for_economy", lambda economy: tmp_path / "aus.xlsx")
@@ -98,7 +98,7 @@ def test_capacity_target_reset_skips_zero_only_untemplated_output_labels(monkeyp
         "process_name": "Coke ovens",
         "output_values": {
             "Coke oven coke": {2024: 10.0},
-            "BKB and PB": {2024: 0.0},
+            "BKB and PB": {2024: 2.0},
         },
     }
     updated = supply_leap_io.apply_transformation_target_overrides_for_scenario(
