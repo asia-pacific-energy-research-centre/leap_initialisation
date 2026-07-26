@@ -16,6 +16,20 @@ COAL_CHILD_ESTO_FLOWS = (
     "09.08.04 BKB/PB plants",
     "09.08.05 Liquefaction (coal to oil)",
 )
+GAS_PARENT_NINTH_SECTOR = "09_06_gas_processing_plants"
+GAS_PARENT_ESTO_FLOW = "09.06 Gas processing plants"
+GAS_CHILD_NINTH_SECTORS = (
+    "09_06_01_gas_works_plants",
+    "09_06_02_liquefaction_regasification_plants",
+    "09_06_03_natural_gas_blending_plants",
+    "09_06_04_gastoliquids_plants",
+)
+GAS_CHILD_ESTO_FLOWS = (
+    "09.06.01 Gas works plants",
+    "09.06.02 Liquefaction/regasification plants",
+    "09.06.03 Natural gas blending plants",
+    "09.06.04 Gas-to-liquids plants",
+)
 NINTH_SECTOR_COLS = [
     "sub4sectors",
     "sub3sectors",
@@ -459,6 +473,90 @@ def _disaggregate_parent_flow_allocations(
     return result, pd.DataFrame(diagnostics)
 
 
+def _allocate_gas_parent_residuals(
+    allocated_rows: pd.DataFrame,
+    child_flow_profiles: pd.DataFrame | None,
+    year_cols: Sequence[int],
+    tolerance: float = 1e-9,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Allocate a gas-parent residual only to missing base-year-active children."""
+    if allocated_rows.empty or child_flow_profiles is None or child_flow_profiles.empty:
+        return allocated_rows, pd.DataFrame()
+
+    profile = child_flow_profiles[
+        child_flow_profiles["child_flow"].isin(GAS_CHILD_ESTO_FLOWS)
+    ].copy()
+    parent_mask = allocated_rows["esto_flow"].eq(GAS_PARENT_ESTO_FLOW)
+    if profile.empty or not parent_mask.any():
+        return allocated_rows, pd.DataFrame()
+
+    retained = allocated_rows.loc[~parent_mask].copy()
+    generated_rows: list[dict] = []
+    diagnostics: list[dict] = []
+    for _, parent_row in allocated_rows.loc[parent_mask].iterrows():
+        economy_key = str(parent_row["economy_key"])
+        product = str(parent_row["esto_product"]).strip()
+        active_children = profile[
+            profile["economy_key"].astype(str).eq(economy_key)
+            & profile["esto_product"].astype(str).eq(product)
+            & profile["base_value_abs"].gt(tolerance)
+        ].copy()
+        direct_rows = retained[
+            retained["economy_key"].astype(str).eq(economy_key)
+            & retained["esto_product"].astype(str).eq(product)
+            & retained["ninth_sector"].isin(GAS_CHILD_NINTH_SECTORS)
+            & retained["esto_flow"].isin(GAS_CHILD_ESTO_FLOWS)
+        ]
+        direct_by_flow = direct_rows.groupby("esto_flow", dropna=False)[list(year_cols)].sum()
+        direct_flows = {
+            flow for flow, values in direct_by_flow.iterrows()
+            if values.abs().gt(tolerance).any()
+        }
+        residual = {
+            year: float(parent_row[year]) - float(direct_by_flow[year].sum())
+            if year in direct_by_flow.columns else float(parent_row[year])
+            for year in year_cols
+        }
+        if not any(abs(value) > tolerance for value in residual.values()):
+            continue
+
+        missing_children = active_children[
+            ~active_children["child_flow"].isin(direct_flows)
+        ].copy()
+        if missing_children.empty:
+            raise ValueError(
+                "Gas processing parent residual has no base-year-active missing child: "
+                f"economy={economy_key}, product={product}, "
+                f"direct_children={sorted(direct_flows)}."
+            )
+        profile_total = float(missing_children["base_value"].sum())
+        if abs(profile_total) <= tolerance:
+            raise ValueError(
+                "Gas processing residual cannot be allocated because the base-year-active "
+                f"missing child profile nets to zero: economy={economy_key}, product={product}."
+            )
+        for _, profile_row in missing_children.iterrows():
+            child = parent_row.to_dict()
+            child["esto_flow"] = profile_row["child_flow"]
+            child["gas_allocation_method"] = "parent_residual_signed_profile_scale"
+            scale = float(profile_row["base_value"]) / profile_total
+            for year in year_cols:
+                child[year] = residual[year] * scale
+            generated_rows.append(child)
+        diagnostics.append(
+            {
+                "economy_key": economy_key,
+                "esto_product": product,
+                "parent_flow": GAS_PARENT_ESTO_FLOW,
+                "diagnostic_type": "gas_parent_residual_allocated",
+                "allocation_method": "parent_residual_signed_profile_scale",
+                "direct_children": "; ".join(sorted(direct_flows)),
+                "missing_children": "; ".join(missing_children["child_flow"].astype(str)),
+            }
+        )
+    return pd.concat([retained, pd.DataFrame(generated_rows)], ignore_index=True, sort=False), pd.DataFrame(diagnostics)
+
+
 def allocate_ninth_projection_to_esto(
     mapping_df: pd.DataFrame,
     ninth_series: pd.DataFrame,
@@ -468,6 +566,7 @@ def allocate_ninth_projection_to_esto(
     strict_conservation: bool = False,
     return_allocation_provenance: bool = False,
     child_flow_profiles: pd.DataFrame | None = None,
+    gas_child_flow_profiles: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame] | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Allocate 9th projections to ESTO pairs using base-year share rules.
 
@@ -699,6 +798,11 @@ def allocate_ninth_projection_to_esto(
         child_flow_profiles,
         year_cols,
     )
+    merged, gas_profile_diagnostics = _allocate_gas_parent_residuals(
+        merged,
+        gas_child_flow_profiles,
+        year_cols,
+    )
 
     allocation_provenance = pd.DataFrame()
     if return_allocation_provenance:
@@ -762,7 +866,9 @@ def allocate_ninth_projection_to_esto(
         diagnostics["diagnostic_type"] = "share_fallback"
 
     conservation_diagnostics = _build_conservation_diagnostics(
-        source_by_pair,
+        source_by_pair.loc[
+            ~source_by_pair["ninth_sector"].eq(GAS_PARENT_NINTH_SECTOR)
+        ],
         merged,
         year_cols,
         tolerance=1e-6,
@@ -796,6 +902,12 @@ def allocate_ninth_projection_to_esto(
     if not child_profile_diagnostics.empty:
         diagnostics = pd.concat(
             [diagnostics, child_profile_diagnostics],
+            ignore_index=True,
+            sort=False,
+        )
+    if not gas_profile_diagnostics.empty:
+        diagnostics = pd.concat(
+            [diagnostics, gas_profile_diagnostics],
             ignore_index=True,
             sort=False,
         )
@@ -844,12 +956,49 @@ def build_esto_projection_table(
         return pd.DataFrame(), pd.DataFrame()
     ninth_filtered = filter_ninth_projection_rows(ninth_data, scenario=scenario)
     ninth_pairs = add_ninth_pair_columns(ninth_filtered)
+    # 09.06 is exceptional: the aggregate parent is marked subtotal while its
+    # children are not consistently projected.  Keep this parent as a source
+    # for the residual policy below; all other subtotal rows stay excluded.
+    ninth_with_subtotals = ninth_data.copy()
+    if scenario and "scenarios" in ninth_with_subtotals.columns:
+        ninth_with_subtotals = ninth_with_subtotals[
+            ninth_with_subtotals["scenarios"].astype(str).str.strip().str.lower()
+            == str(scenario).strip().lower()
+        ]
+    ninth_parent_pairs = add_ninth_pair_columns(ninth_with_subtotals)
+    if "subtotal_results" in ninth_parent_pairs.columns:
+        subtotal_mask = (
+            ninth_parent_pairs["subtotal_results"].fillna(False).astype(str).str.strip().str.lower()
+            .isin({"1", "true", "yes", "y", "t"})
+        )
+        ninth_parent_pairs = ninth_parent_pairs.loc[
+            subtotal_mask & ninth_parent_pairs["ninth_sector"].eq(GAS_PARENT_NINTH_SECTOR)
+        ]
+        # Prefer the subtotal parent where both it and an equivalent regular
+        # parent row are present (currently observed for PNG).  Otherwise the
+        # parent would be counted twice before residual allocation.
+        parent_keys = ["economy", "ninth_sector", "ninth_fuel"]
+        if not ninth_parent_pairs.empty:
+            subtotal_index = pd.MultiIndex.from_frame(ninth_parent_pairs[parent_keys])
+            normal_index = pd.MultiIndex.from_frame(ninth_pairs[parent_keys])
+            duplicate_parent = (
+                ninth_pairs["ninth_sector"].eq(GAS_PARENT_NINTH_SECTOR)
+                & normal_index.isin(subtotal_index)
+            )
+            ninth_pairs = ninth_pairs.loc[~duplicate_parent]
+        ninth_pairs = pd.concat([ninth_pairs, ninth_parent_pairs], ignore_index=True, sort=False)
     ninth_pairs["economy_key"] = ninth_pairs["economy"].apply(normalize_economy_key)
     ninth_series = build_ninth_projection_series(ninth_pairs, projection_years)
     base_values = build_esto_base_year_values(esto_data, base_year)
     child_flow_profiles = build_economy_specific_child_flow_profiles(
         esto_data,
         base_year,
+    )
+    gas_child_flow_profiles = build_economy_specific_child_flow_profiles(
+        esto_data,
+        base_year,
+        parent_flow=GAS_PARENT_ESTO_FLOW,
+        child_flows=GAS_CHILD_ESTO_FLOWS,
     )
     return allocate_ninth_projection_to_esto(
         mapping_df,
@@ -859,6 +1008,7 @@ def build_esto_projection_table(
         sign_stable_flows=sign_stable_flows,
         strict_conservation=strict_conservation,
         child_flow_profiles=child_flow_profiles,
+        gas_child_flow_profiles=gas_child_flow_profiles,
     )
 
 
