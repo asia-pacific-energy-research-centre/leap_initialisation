@@ -209,6 +209,66 @@ def test_net_zero_child_profile_is_explicitly_diagnosed(tmp_path) -> None:
         assert not diagnostics["share_source"].astype(str).eq("apec").any()
 
 
+def test_gas_parent_residual_only_fills_a_missing_base_year_active_child(tmp_path) -> None:
+    esto = pd.DataFrame(
+        [
+            {"economy": "01AUS", "flows": "09.06 Gas processing plants", "products": "08.01 Natural gas", "is_subtotal": True, "2022": 100.0},
+            {"economy": "01AUS", "flows": "09.06.01 Gas works plants", "products": "08.01 Natural gas", "is_subtotal": False, "2022": 60.0},
+            {"economy": "01AUS", "flows": "09.06.03 Natural gas blending plants", "products": "08.01 Natural gas", "is_subtotal": False, "2022": 40.0},
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {"economy": "01_AUS", "scenarios": "reference", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x", "fuels": "08_01_natural_gas", "subfuels": "x", "subtotal_results": True, 2023: 100.0},
+            {"economy": "01_AUS", "scenarios": "reference", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "09_06_01_gas_works_plants", "sub3sectors": "x", "sub4sectors": "x", "fuels": "08_01_natural_gas", "subfuels": "x", "subtotal_results": False, 2023: 60.0},
+        ]
+    )
+    mapping_path = tmp_path / "mapping.xlsx"
+    pd.DataFrame(
+        [
+            {"ninth_sector": "09_06_gas_processing_plants", "ninth_fuel": "08_01_natural_gas", "esto_flow": "09.06 Gas processing plants", "esto_product": "08.01 Natural gas"},
+            {"ninth_sector": "09_06_01_gas_works_plants", "ninth_fuel": "08_01_natural_gas", "esto_flow": "09.06.01 Gas works plants", "esto_product": "08.01 Natural gas"},
+        ]
+    ).to_excel(mapping_path, index=False)
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth, esto, mapping_path, base_year=2022, projection_years=[2023], sign_stable_flows="all"
+    )
+
+    values = projection.set_index("esto_flow")[2023].to_dict()
+    assert values["09.06.01 Gas works plants"] == pytest.approx(60.0)
+    assert values["09.06.03 Natural gas blending plants"] == pytest.approx(40.0)
+    assert "09.06 Gas processing plants" not in values
+    assert "gas_parent_residual_allocated" in set(diagnostics["diagnostic_type"])
+
+
+def test_gas_parent_residual_without_a_missing_base_year_active_child_raises(tmp_path) -> None:
+    esto = pd.DataFrame(
+        [
+            {"economy": "01AUS", "flows": "09.06 Gas processing plants", "products": "08.01 Natural gas", "is_subtotal": True, "2022": 100.0},
+            {"economy": "01AUS", "flows": "09.06.01 Gas works plants", "products": "08.01 Natural gas", "is_subtotal": False, "2022": 100.0},
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {"economy": "01_AUS", "scenarios": "reference", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x", "fuels": "08_01_natural_gas", "subfuels": "x", "subtotal_results": True, 2023: 100.0},
+            {"economy": "01_AUS", "scenarios": "reference", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "09_06_01_gas_works_plants", "sub3sectors": "x", "sub4sectors": "x", "fuels": "08_01_natural_gas", "subfuels": "x", "subtotal_results": False, 2023: 60.0},
+        ]
+    )
+    mapping_path = tmp_path / "mapping.xlsx"
+    pd.DataFrame(
+        [
+            {"ninth_sector": "09_06_gas_processing_plants", "ninth_fuel": "08_01_natural_gas", "esto_flow": "09.06 Gas processing plants", "esto_product": "08.01 Natural gas"},
+            {"ninth_sector": "09_06_01_gas_works_plants", "ninth_fuel": "08_01_natural_gas", "esto_flow": "09.06.01 Gas works plants", "esto_product": "08.01 Natural gas"},
+        ]
+    ).to_excel(mapping_path, index=False)
+
+    with pytest.raises(ValueError, match="Gas processing parent residual has no base-year-active missing child"):
+        build_esto_projection_table(
+            ninth, esto, mapping_path, base_year=2022, projection_years=[2023], sign_stable_flows="all"
+        )
+
+
 def test_apec_aggregate_is_a_stress_fixture_not_a_production_fallback() -> None:
     repo = Path(__file__).resolve().parents[1]
     ninth_path = repo / "data" / "9th merged_file_energy_00_APEC_20251106.csv"

@@ -808,3 +808,24 @@ tests using each economy's own current ESTO profile.
 
 - 2026-07-24: Added runtime economy-specific signed child-profile allocation;
   APEC aggregate use restricted to validation.
+
+## INIT-012: Gas-processing parent residual allocation
+
+**Status:** Implemented
+**Owner:** leap_initialisation
+**Type:** Projection allocation / modelling boundary
+**Affected areas:** `codebase/functions/ninth_projection_mapping.py`; transformation projection allocation
+
+### Current rule
+
+`09_06_gas_processing_plants` is retained as an exceptional subtotal source.
+For each economy and mapped ESTO product, existing nonzero child projections
+(`09.06.01` through `09.06.04`) remain authoritative. The workflow subtracts
+those direct child values from the parent and allocates only the signed residual
+to children that are nonzero in ESTO in the active base year but have no direct
+9th projection. Shares use the signed, product-specific ESTO base-year profile.
+
+A nonzero residual with no base-year-active missing child is an unexpected
+source-data contradiction and raises a `ValueError`; the workflow must not
+invent activity in a zero base-year child. This criterion automatically moves
+from 2022 to a later ESTO year when the configured base year is updated.
