@@ -1685,6 +1685,40 @@ def _backfill_metadata_from_reference(df: pd.DataFrame, reference_df: pd.DataFra
     return merged
 
 
+def _drop_zero_only_unmatched_transformation_rows(combined: pd.DataFrame) -> pd.DataFrame:
+    """Remove all-zero Transformation rows that cannot be matched to a LEAP branch."""
+    required = {"BranchID", "Branch Path"}
+    if combined is None or combined.empty or not required.issubset(combined.columns):
+        return combined
+    year_columns = [
+        column for column in combined.columns
+        if _parse_year_column_token(column) is not None
+    ]
+    if not year_columns:
+        return combined
+    candidate_mask = (
+        pd.to_numeric(combined["BranchID"], errors="coerce").eq(-1)
+        & combined["Branch Path"].fillna("").astype(str).str.casefold().str.startswith(
+            "transformation\\"
+        )
+    )
+    if not candidate_mask.any():
+        return combined
+    values = combined.loc[candidate_mask, year_columns].apply(
+        pd.to_numeric, errors="coerce",
+    ).fillna(0.0)
+    drop_mask = pd.Series(False, index=combined.index)
+    drop_mask.loc[values.index] = values.abs().le(1e-9).all(axis=1)
+    if drop_mask.any():
+        print(
+            "[INFO] Dropped "
+            f"{int(drop_mask.sum())} zero-only unmatched Transformation row(s) "
+            "after final ID resolution."
+        )
+        return combined.loc[~drop_mask].copy()
+    return combined
+
+
 def write_per_economy_combined_workbooks(
     *,
     economies: Iterable[str],
@@ -2048,6 +2082,8 @@ def write_per_economy_combined_workbooks(
                 combined["ScenarioID"] = combined["Scenario"].map(
                     lambda x: scenario_to_id.get(str(x).strip(), -1))
             combined["RegionID"] = 1
+
+        combined = _drop_zero_only_unmatched_transformation_rows(combined)
 
         # Surface unresolved -1 sentinel IDs loudly. These never raise on their
         # own (the row is still written), so without this warning an economy can
