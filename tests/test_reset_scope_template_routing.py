@@ -109,6 +109,32 @@ def test_capacity_target_reset_uses_only_template_output_fuels(monkeypatch, tmp_
     assert set(updated[0]["output_export_targets"]) == {"Coke oven coke"}
 
 
+def test_capacity_target_reset_skips_module_without_template_scope(monkeypatch, tmp_path):
+    """An absent module must not create zero-target rows from active outputs."""
+    monkeypatch.setattr(supply_leap_io, "_use_capacity_like_mode", lambda: True)
+    monkeypatch.setattr(supply_leap_io, "_use_legacy_trade_split_mode", lambda: False)
+    monkeypatch.setattr(supply_leap_io, "_leap_export_template_for_economy", lambda economy: tmp_path / "aus.xlsx")
+    monkeypatch.setattr(supply_preflight, "_configured_reset_module_names", lambda template_path=None: {"coke ovens"})
+    monkeypatch.setattr(
+        supply_preflight,
+        "_configured_reset_output_fuel_labels_by_module",
+        lambda module_names, template_path=None: {"coke ovens": ["Coke oven coke"]},
+    )
+
+    record = {
+        "economy": "01_AUS",
+        "sector_title": "Liquefaction coal to oil",
+        "process_name": "Liquefaction coal to oil",
+        "output_values": {"Gas coke": {2024: 2.0}},
+    }
+    updated = supply_leap_io.apply_transformation_target_overrides_for_scenario(
+        [record], pd.DataFrame(), pd.DataFrame(), "Reference",
+    )
+
+    assert updated[0]["output_import_targets"] == {}
+    assert updated[0]["output_export_targets"] == {}
+
+
 def test_reset_sector_scope_narrows_reconciliation_rows(monkeypatch, tmp_path):
     monkeypatch.setattr(
         supply_reconciliation_tables,

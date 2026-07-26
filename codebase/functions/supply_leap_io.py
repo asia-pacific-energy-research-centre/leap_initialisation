@@ -554,11 +554,18 @@ def apply_transformation_target_overrides_for_scenario(
                         if canonical_label:
                             target_labels.add(canonical_label)
                 else:
-                    # A missing module scope is a template/configuration problem.
-                    # Preserve active labels in that exceptional case so the
-                    # resulting diagnostic exposes it, but never extend the
-                    # normal per-economy target reset beyond its LEAP template.
-                    target_labels = set(active_output_labels)
+                    # A missing module scope means this economy's template does
+                    # not define an Output Fuels reset surface for the module.
+                    # Do not manufacture Import/Export Target rows from active
+                    # labels: they would have no LEAP IDs and form zero-only
+                    # scaffolds. The process/output diagnostics remain available
+                    # elsewhere without creating an invalid import row.
+                    if active_output_labels:
+                        print(
+                            "[WARN] Skipping output trade-target reset for "
+                            f"'{record.get('sector_title')}' in {economy_name}: "
+                            "no economy-template Output Fuels scope."
+                        )
                 record["output_import_targets"] = {label: dict(zero_map) for label in sorted(target_labels)}
                 record["output_export_targets"] = {label: dict(zero_map) for label in sorted(target_labels)}
 
