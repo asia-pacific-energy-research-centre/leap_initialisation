@@ -1449,6 +1449,30 @@ def _resolve_ids_and_filter_unmatched_export_rows(
         )
         out = out.loc[~drop_zero_placeholder_mask].copy()
 
+    # Transformation rows without a template ID are never importable.  Retain
+    # nonzero rows for repair diagnostics, but discard all-zero scaffolds so an
+    # absent auxiliary/output branch cannot pollute a baseline seed workbook.
+    transformation_missing_mask = (
+        out["BranchID"].eq(-1)
+        & branch_text.str.casefold().str.startswith("transformation\\")
+    )
+    if year_cols:
+        transformation_values = out.loc[transformation_missing_mask, year_cols].apply(
+            pd.to_numeric,
+            errors="coerce",
+        ).fillna(0.0)
+        drop_zero_transformation_mask = pd.Series(False, index=out.index)
+        drop_zero_transformation_mask.loc[transformation_values.index] = (
+            transformation_values.abs().le(1e-9).all(axis=1)
+        )
+        if drop_zero_transformation_mask.any():
+            print(
+                "[INFO] Dropped "
+                f"{int(drop_zero_transformation_mask.sum())} zero-only unmatched "
+                "Transformation row(s)."
+            )
+            out = out.loc[~drop_zero_transformation_mask].copy()
+
     unmatched = out[out["BranchID"].eq(-1)][
         ["Branch Path", "Variable", "Scenario", "Region"]
     ].copy()

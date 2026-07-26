@@ -234,6 +234,27 @@ def test_saver_nonzero_aggregate_demand_placeholder_is_retained_with_minus_one()
     assert unmatched["Branch Path"].tolist() == ["Demand\\All demand aggregated\\Unobtanium"]
 
 
+def test_saver_drops_zero_only_unmatched_transformation_row() -> None:
+    resolve = _saver_resolver()
+    branch = "Transformation\\Gas works plants\\Processes\\Gas works plants\\Auxiliary Fuels\\Anthracite"
+
+    zero_out, zero_unmatched = resolve(
+        pd.DataFrame([_seed_row(branch, "Auxiliary Fuel Use", years={"2022": 0.0})]),
+        source_data=_source_data(),
+        source_path=Path("template.xlsx"),
+    )
+    assert zero_out.empty
+    assert zero_unmatched.empty
+
+    nonzero_out, nonzero_unmatched = resolve(
+        pd.DataFrame([_seed_row(branch, "Auxiliary Fuel Use", years={"2022": 0.5})]),
+        source_data=_source_data(),
+        source_path=Path("template.xlsx"),
+    )
+    assert nonzero_out["BranchID"].tolist() == [-1]
+    assert nonzero_unmatched["reason"].tolist() == ["no_verification_export_id_match"]
+
+
 def test_saver_retain_drop_follows_activity_level_not_own_row(tmp_path: Path) -> None:
     # A structural row (e.g. Final Energy Intensity = 1) on a missing branch is
     # retained only when the branch's Activity Level row is genuinely nonzero.
