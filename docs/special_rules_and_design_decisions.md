@@ -825,7 +825,16 @@ those direct child values from the parent and allocates only the signed residual
 to children that are nonzero in ESTO in the active base year but have no direct
 9th projection. Shares use the signed, product-specific ESTO base-year profile.
 
-A nonzero residual with no base-year-active missing child is an unexpected
-source-data contradiction and raises a `ValueError`; the workflow must not
-invent activity in a zero base-year child. This criterion automatically moves
-from 2022 to a later ESTO year when the configured base year is updated.
+If no child is base-year-active for a parent/product pair, the parent residual
+has no valid destination and is skipped with a diagnostic; the workflow must
+not invent activity in a zero base-year child. If active children exist but no
+active child is missing from the direct 9th projections, a nonzero residual is
+an unexpected source-data contradiction and raises a `ValueError`. These
+criteria automatically move from 2022 to a later ESTO year when the configured
+base year is updated.
+
+### History
+
+- 2026-07-27: Defined no-active-child pairs as a diagnosable skip, after the
+  full projection table exposed the valid 13_PNG LPG case outside a five-economy
+  seed run.

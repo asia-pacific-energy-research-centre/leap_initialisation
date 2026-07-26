@@ -269,6 +269,33 @@ def test_gas_parent_residual_without_a_missing_base_year_active_child_raises(tmp
         )
 
 
+def test_gas_parent_residual_without_any_active_child_profile_is_skipped(tmp_path) -> None:
+    esto = pd.DataFrame(
+        [
+            {"economy": "13PNG", "flows": "09.06 Gas processing plants", "products": "07.09 LPG", "is_subtotal": True, "2022": 100.0},
+            {"economy": "01AUS", "flows": "09.06.01 Gas works plants", "products": "08.01 Natural gas", "is_subtotal": False, "2022": 1.0},
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {"economy": "13_PNG", "scenarios": "reference", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x", "fuels": "07_09_lpg", "subfuels": "x", "subtotal_results": True, 2023: 100.0},
+        ]
+    )
+    mapping_path = tmp_path / "mapping.xlsx"
+    pd.DataFrame(
+        [
+            {"ninth_sector": "09_06_gas_processing_plants", "ninth_fuel": "07_09_lpg", "esto_flow": "09.06 Gas processing plants", "esto_product": "07.09 LPG"},
+        ]
+    ).to_excel(mapping_path, index=False)
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth, esto, mapping_path, base_year=2022, projection_years=[2023], sign_stable_flows="all"
+    )
+
+    assert projection.empty
+    assert "gas_parent_residual_no_active_child_profile" in set(diagnostics["diagnostic_type"])
+
+
 def test_apec_aggregate_is_a_stress_fixture_not_a_production_fallback() -> None:
     repo = Path(__file__).resolve().parents[1]
     ninth_path = repo / "data" / "9th merged_file_energy_00_APEC_20251106.csv"

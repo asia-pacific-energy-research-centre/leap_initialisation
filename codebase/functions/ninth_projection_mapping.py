@@ -523,6 +523,19 @@ def _allocate_gas_parent_residuals(
         if not any(abs(value) > tolerance for value in residual.values()):
             continue
 
+        if active_children.empty:
+            diagnostics.append(
+                {
+                    "economy_key": economy_key,
+                    "esto_product": product,
+                    "parent_flow": GAS_PARENT_ESTO_FLOW,
+                    "diagnostic_type": "gas_parent_residual_no_active_child_profile",
+                    "allocation_method": "skipped_no_base_year_active_child",
+                    "direct_children": "; ".join(sorted(direct_flows)),
+                }
+            )
+            continue
+
         missing_children = active_children[
             ~active_children["child_flow"].isin(direct_flows)
         ].copy()
