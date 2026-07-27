@@ -1,5 +1,63 @@
 # Remaining work queue
 
+## [21] Cyclical baseline-seed LEAP balance diagnostics
+
+**Status: Step 1 implemented and real-data verified 2026-07-27 in the
+`codex/baseline-seed-export-diagnostics` worktree.**
+
+Build a limited-year feedback loop that generates a baseline seed, imports and
+recalculates it in LEAP, reads REF/TGT Energy Balance exports back, diagnoses
+source differences, previews the existing results-update changes, and repeats
+until differences converge or are classified.
+
+Step 1 is read-only:
+
+- `codebase/baseline_seed_balance_diagnostics_workflow.py` is the slim notebook
+  entry point and `codebase/functions/baseline_seed_balance_diagnostics.py`
+  reuses the canonical LEAP-to-ESTO and ESTO-to-9th comparison backbone;
+- ESTO is the reference for the configured base year and the 9th Outlook for
+  later selected years;
+- the primary CSV reports `LEAP - source` and `source - LEAP`;
+- comparisons are aggregated on the ESTO flow/product axis; and
+- LEAP/9th mapping cardinality is retained so an aggregate difference is never
+  misrepresented as a safe row-level update.
+
+Real `20_USA` smoke, latest REF/TGT exports, years 2022-2023:
+
+- 996 comparison rows: 463 ESTO-referenced, 325 9th-referenced, and 208 with no
+  available source comparator;
+- 738 mismatches: 428 ESTO value mismatches, 29 ESTO rows missing in LEAP, 266
+  9th value mismatches, and 15 9th rows missing in LEAP;
+- 15 9th sector/fuel pairs are shared by multiple ESTO pairs, affecting 30
+  future-year comparison rows (27 mismatches, two missing in LEAP, one match);
+  these are now flagged as requiring an allocation rule before update; and
+- 625 selected-window mapping/check rows were retained (613 missing ESTO pairs,
+  12 total-balance checks), rather than the 11,792 all-horizon rows produced
+  before supporting diagnostics were scoped to the selected years.
+
+The smoke took about five minutes because the existing reference loader still
+prepares the full 288 MB 9th table before selecting two years. Push
+economy/scenario/year column filtering down into the loader before treating the
+limited-year path as fast; this is a performance follow-up, not a correctness
+blocker.
+
+Next work, in order:
+
+1. review and classify the largest Step 1 differences and selected-window
+   mapping issues;
+2. push economy/scenario/year filtering into the large source loader;
+3. add pre-base historical ESTO-year comparisons;
+4. add a dry-run table of the exact changes the current `results_update`
+   allocator would propose;
+5. compare that preview with current baseline-seed rules at the post-boundary
+   seed surface and repair drift;
+6. define explicit allocation rules for many-to-one / one-to-many 9th
+   comparisons before enabling updates for those rows; and
+7. retain per-cycle convergence history and issue ownership.
+
+Design and notebook usage:
+[baseline_seed_balance_diagnostics.md](baseline_seed_balance_diagnostics.md).
+
 ## [20] General opt-in projection of ESTO-active sectors missing from 9th
 
 **Status: planned; first narrow 09.06 implementation landed 2026-07-27.**
