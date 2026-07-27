@@ -65,6 +65,9 @@ Next work, in order:
 Design and notebook usage:
 [baseline_seed_balance_diagnostics.md](baseline_seed_balance_diagnostics.md).
 
+Execution prompt for the first evidence-led AUS investigation:
+[investigate_aus_2022_balance_export_for_seed_improvements.md](prompts/investigate_aus_2022_balance_export_for_seed_improvements.md).
+
 ## [20] General opt-in projection of ESTO-active sectors missing from 9th
 
 **Status: planned; first narrow 09.06 implementation landed 2026-07-27.**
