@@ -731,7 +731,7 @@ def test_tracked_adjustment_strategy_config_is_loadable() -> None:
     assert rules.loc[0, "positive_gap_strategy"] == (
         "configured_levers_then_residual"
     )
-    assert rules.loc[0, "negative_gap_strategy"] == "residual_only"
+    assert rules.loc[0, "negative_gap_strategy"] == "exports_then_residual"
     assert rules.loc[0, "residual_error_signal"] == "imports_gap"
 
 
@@ -762,10 +762,52 @@ def test_negative_gap_without_allocator_proposal_remains_visible() -> None:
     row = resolved.iloc[0]
     assert row["proposal_type"] == "residual_signal"
     assert row["gap_direction"] == "negative"
-    assert row["selected_adjustment_strategy"] == "residual_only"
-    assert row["update_disposition"] == "residual_only_no_model_adjustment"
-    assert row["residual_signal_status"] == "leave_full_signal_to_imports"
+    assert row["selected_adjustment_strategy"] == "exports_then_residual"
+    assert row["update_disposition"] == "residual_signal"
+    assert row["residual_signal_status"] == (
+        "no_export_proposal_residual_to_imports"
+    )
     assert bool(row["safe_to_apply"]) is False
+
+
+def test_default_negative_gap_allows_eligible_export_proposal() -> None:
+    summary = {
+        "comparison_rows": [
+            {
+                "economy": "20_USA",
+                "scenario": "reference",
+                "esto_product": "17 Electricity",
+                "year": 2030,
+                "baseline_imports_pj": 5.0,
+                "observed_imports_pj": 2.0,
+                "import_gap_pj": -3.0,
+            }
+        ],
+        "allocation_rows": [],
+        "export_rows": [
+            {
+                "economy": "20_USA",
+                "scenario": "reference",
+                "esto_product": "17 Electricity",
+                "year": 2030,
+                "extra_exports": 3.0,
+            }
+        ],
+        "clipping_rows": [],
+        "unresolved_positive_rows": [],
+        "fatal_unresolved_positive_rows": [],
+    }
+
+    table = preview.build_results_update_preview_table(summary)
+    resolved = preview.apply_results_update_adjustment_strategies(table)
+
+    row = resolved.iloc[0]
+    assert row["proposal_type"] == "extra_exports"
+    assert row["selected_adjustment_strategy"] == "exports_then_residual"
+    assert bool(row["strategy_allows_proposal"]) is True
+    assert bool(row["safe_to_apply"]) is True
+    assert row["update_disposition"] == "allocator_candidate"
+    assert row["residual_signal_status"] == "recalculate_after_exports"
 
 
 def test_configured_decrease_strategy_is_explicitly_blocked() -> None:

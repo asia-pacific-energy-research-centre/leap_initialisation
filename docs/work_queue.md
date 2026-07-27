@@ -35,8 +35,10 @@ allocator can increase production/capacity but cannot yet safely perform the
 corresponding decreases. Configuration and per-cycle execution history are
 specified in [results_update_dry_run_preview.md](results_update_dry_run_preview.md).
 The strategy table and preview enforcement are implemented on
-`codex/results-update-dry-run-preview`; safe signed decrease behavior remains
-open.
+`codex/results-update-dry-run-preview`. The tracked default uses configured
+production/transformation levers for a shortage, leaves the immediate residual
+to imports, and routes a later surplus to exports when exports are eligible.
+Safe signed production/transformation decrease behavior remains open.
 
 Step 1 is read-only:
 

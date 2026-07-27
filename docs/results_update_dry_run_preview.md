@@ -137,8 +137,12 @@ selects, by economy/scenario/ESTO product:
 - a reviewed reason and enabled flag.
 
 The tracked default preserves the existing positive-gap behavior
-(`configured_levers_then_residual`) and leaves negative gaps to imports
-(`residual_only`). More-specific reviewed rows can override either direction.
+(`configured_levers_then_residual`) and routes a negative gap to eligible
+exports before retaining any unresolved amount as the imports residual
+(`exports_then_residual`). In cycle terms: configured production or
+transformation levers address a shortage; imports absorb the immediate
+remainder; if recalculation later reveals a surplus, exports absorb it when
+they are not pinned. More-specific reviewed rows can override either direction.
 
 The table does not duplicate module lists or numeric caps. Those remain the
 lever catalogue used by the allocator; the strategy table decides whether the
