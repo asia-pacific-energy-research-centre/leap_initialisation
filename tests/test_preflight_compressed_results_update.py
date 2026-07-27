@@ -241,6 +241,60 @@ def test_direct_target_resolution_requires_configured_target_path(monkeypatch) -
         )
 
 
+def test_deferred_balance_failure_returns_schema_safe_empty_tables(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    import codebase.functions.supply_demand_mapping as sdm
+    from codebase.utilities import workflow_common
+
+    monkeypatch.setattr(
+        sdm,
+        "build_esto_axis_structure_from_dashboard_template",
+        lambda path: {},
+    )
+    monkeypatch.setattr(sdm, "_load_optional_json_dict", lambda path: {})
+    monkeypatch.setattr(
+        sdm,
+        "_build_augmented_balance_demand_mapping_workbook",
+        lambda: tmp_path / "mapping.xlsx",
+    )
+    monkeypatch.setattr(
+        sdm,
+        "_resolve_balance_demand_workbooks_for_economy",
+        lambda economy, scenarios=None: (None, tmp_path / "target.xlsx"),
+    )
+    monkeypatch.setattr(sdm, "REQUIRE_LEVEL2_BALANCE_EXPORT_DETAIL", False)
+
+    def _fail_conversion(**kwargs):
+        raise ValueError("reviewed mapping decision required")
+
+    monkeypatch.setattr(sdm, "convert_leap_balances_to_esto_long_table", _fail_conversion)
+    workflow_common.clear_deferred_errors()
+    monkeypatch.setattr(workflow_common, "THROW_ERROR_AFTER_RUN", True)
+    try:
+        comparison, mapping_status, issues, diagnostics = (
+            sdm.load_balance_demand_inputs(
+                economies=["12_NZ"],
+                scenarios=["Target"],
+            )
+        )
+    finally:
+        workflow_common.clear_deferred_errors()
+
+    assert comparison.empty
+    assert mapping_status.empty
+    assert {
+        "sheet",
+        "fuel_label",
+        "esto_product",
+        "sector_code_9th",
+        "esto_flow",
+    }.issubset(mapping_status.columns)
+    assert issues.empty
+    assert diagnostics.empty
+
+
 # --- Shared state-override builder: exact per-mode override dicts --------------
 
 _RESULTS_UPDATE_ONLY_KEYS = {
@@ -349,10 +403,28 @@ def test_results_update_override_dict_extends_projection_exactly(tmp_path) -> No
 
 def test_results_update_mode_requires_reduced_workbook_paths(tmp_path) -> None:
     inputs = _override_inputs(tmp_path)
-    with pytest.raises(ValueError, match="reduced_ref_path and reduced_tgt_path"):
+    with pytest.raises(ValueError, match="reduced_ref_path for Reference"):
         sp._build_preflight_config_overrides(**inputs, mode="results_update")
     with pytest.raises(ValueError, match="Unknown preflight mode"):
         sp._build_preflight_config_overrides(**inputs, mode="bogus")
+
+
+def test_target_only_results_update_override_does_not_require_reference(tmp_path) -> None:
+    inputs = _override_inputs(tmp_path)
+    inputs["scenarios"] = ["Target"]
+    tgt = tmp_path / "reduced_TGT.xlsx"
+
+    overrides = sp._build_preflight_config_overrides(
+        **inputs,
+        mode="results_update",
+        economy="20_USA",
+        reduced_ref_path=None,
+        reduced_tgt_path=tgt,
+    )
+
+    assert overrides["SCENARIOS"] == ["Target"]
+    assert overrides["BALANCE_DEMAND_REF_WORKBOOK_PATH"] is None
+    assert overrides["BALANCE_DEMAND_TGT_WORKBOOK_PATH"] == tgt
 
 
 # --- Config broadcast: isolation + restoration --------------------------------
@@ -378,6 +450,70 @@ def test_config_broadcast_round_trips_across_modules() -> None:
 
     assert srs.CAPACITY_UNMET_PASS_MODE == before_srs
     assert sdm.DIRECT_DEMAND_PROJECTION_ECONOMY == before_sdm_econ
+
+
+def test_target_only_preflight_builds_only_target_balance_workbook(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    import codebase.supply_reconciliation_workflow as workflow
+
+    target_source = tmp_path / "source_TGT.xlsx"
+    target_source.touch()
+    monkeypatch.setattr(sp, "BALANCE_DEMAND_REF_WORKBOOK_PATH", None)
+    monkeypatch.setattr(sp, "BALANCE_DEMAND_TGT_WORKBOOK_PATH", target_source)
+
+    built_scenarios: list[str] = []
+
+    def _fake_build_reduced(**kwargs):
+        built_scenarios.append(kwargs["scenario_code"])
+        return {
+            "workbook_path": tmp_path / f"reduced_{kwargs['scenario_code']}.xlsx",
+            "scenario_code": kwargs["scenario_code"],
+        }
+
+    monkeypatch.setattr(sp, "_build_reduced_preflight_balance_workbook", _fake_build_reduced)
+    monkeypatch.setattr(
+        sp,
+        "_create_preflight_compressed_source_files",
+        lambda **kwargs: {
+            "esto_path": tmp_path / "esto.csv",
+            "ninth_path": tmp_path / "ninth.csv",
+            "ninth_abs_diagnostics_path": tmp_path / "ninth_abs.csv",
+            "base_year": 2022,
+            "compressed_year": 2023,
+        },
+    )
+    monkeypatch.setattr(sp, "_snapshot_preflight_state", lambda: {})
+    monkeypatch.setattr(sp, "_restore_preflight_state", lambda state: None)
+    monkeypatch.setattr(sp, "_restore_config_overrides", lambda snapshot: None)
+    monkeypatch.setattr(
+        sp,
+        "_finalize_balance_demand_issue_report",
+        lambda **kwargs: {"total_issue_rows": 0},
+    )
+
+    applied: dict[str, object] = {}
+
+    def _fake_apply(**kwargs):
+        applied.update(kwargs)
+        return []
+
+    monkeypatch.setattr(sp, "_apply_preflight_compressed_state", _fake_apply)
+    monkeypatch.setattr(
+        workflow,
+        "run_results_linked_transformation_supply_workflow",
+        lambda **kwargs: {},
+    )
+
+    result = sp.run_preflight_compressed_results_update(
+        scenario_names=["Target"],
+    )
+
+    assert built_scenarios == ["TGT"]
+    assert applied["reduced_ref_path"] is None
+    assert applied["reduced_tgt_path"] == tmp_path / "reduced_TGT.xlsx"
+    assert result["preflight_results_update_reduced_ref"] is None
 
 
 def test_broadcast_does_not_create_missing_attributes() -> None:

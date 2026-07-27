@@ -1183,10 +1183,20 @@ def _build_preflight_config_overrides(
     """
     if mode not in ("projection", "results_update"):
         raise ValueError(f"Unknown preflight mode: {mode!r}")
-    if mode == "results_update" and (reduced_ref_path is None or reduced_tgt_path is None):
-        raise ValueError(
-            "results_update mode requires reduced_ref_path and reduced_tgt_path."
-        )
+    requested_scenarios = {
+        str(scenario or "").strip().lower()
+        for scenario in scenarios
+        if str(scenario or "").strip()
+    }
+    if mode == "results_update":
+        if "reference" in requested_scenarios and reduced_ref_path is None:
+            raise ValueError(
+                "results_update mode requires reduced_ref_path for Reference."
+            )
+        if "target" in requested_scenarios and reduced_tgt_path is None:
+            raise ValueError(
+                "results_update mode requires reduced_tgt_path for Target."
+            )
     base_year = int(source_files["base_year"])
     compressed_year = int(source_files["compressed_year"])
     workbooks_dir = preflight_root / "workbooks"
@@ -2033,23 +2043,46 @@ def run_preflight_compressed_results_update(
         f"years={base_year}-{synthetic_year} (real reduced LEAP balance structure)."
     )
 
-    # Build temporary reduced REF/TGT workbooks from the production source workbooks
-    # (read-only). The REF synthetic sheet is built only from REF; TGT only from TGT.
-    reduced_ref = _build_reduced_preflight_balance_workbook(
-        source_path=BALANCE_DEMAND_REF_WORKBOOK_PATH,
-        output_path=reduced_dir / f"reduced_{economy}_REF_EBal_{base_year}_{synthetic_year}.xlsx",
-        base_year=base_year,
-        synthetic_year=synthetic_year,
-        scenario_code="REF",
-        abs_diagnostic_path=reduced_dir / f"reduced_{economy}_REF_abs_sum_{synthetic_year}.csv",
+    # Build only the temporary workbooks required by this run. A Target-only
+    # production update must not require an unrelated Reference export.
+    requested_scenarios = {
+        str(scenario or "").strip().lower() for scenario in scenario_list
+    }
+    reduced_ref = (
+        _build_reduced_preflight_balance_workbook(
+            source_path=BALANCE_DEMAND_REF_WORKBOOK_PATH,
+            output_path=(
+                reduced_dir
+                / f"reduced_{economy}_REF_EBal_{base_year}_{synthetic_year}.xlsx"
+            ),
+            base_year=base_year,
+            synthetic_year=synthetic_year,
+            scenario_code="REF",
+            abs_diagnostic_path=(
+                reduced_dir
+                / f"reduced_{economy}_REF_abs_sum_{synthetic_year}.csv"
+            ),
+        )
+        if "reference" in requested_scenarios
+        else None
     )
-    reduced_tgt = _build_reduced_preflight_balance_workbook(
-        source_path=BALANCE_DEMAND_TGT_WORKBOOK_PATH,
-        output_path=reduced_dir / f"reduced_{economy}_TGT_EBal_{base_year}_{synthetic_year}.xlsx",
-        base_year=base_year,
-        synthetic_year=synthetic_year,
-        scenario_code="TGT",
-        abs_diagnostic_path=reduced_dir / f"reduced_{economy}_TGT_abs_sum_{synthetic_year}.csv",
+    reduced_tgt = (
+        _build_reduced_preflight_balance_workbook(
+            source_path=BALANCE_DEMAND_TGT_WORKBOOK_PATH,
+            output_path=(
+                reduced_dir
+                / f"reduced_{economy}_TGT_EBal_{base_year}_{synthetic_year}.xlsx"
+            ),
+            base_year=base_year,
+            synthetic_year=synthetic_year,
+            scenario_code="TGT",
+            abs_diagnostic_path=(
+                reduced_dir
+                / f"reduced_{economy}_TGT_abs_sum_{synthetic_year}.csv"
+            ),
+        )
+        if "target" in requested_scenarios
+        else None
     )
 
     # Scenario-separated compressed ESTO/9th sources for 20_USA (Reference stays
@@ -2087,8 +2120,12 @@ def run_preflight_compressed_results_update(
             scenarios=scenario_list,
             mode="results_update",
             economy=economy,
-            reduced_ref_path=reduced_ref["workbook_path"],
-            reduced_tgt_path=reduced_tgt["workbook_path"],
+            reduced_ref_path=(
+                reduced_ref["workbook_path"] if reduced_ref is not None else None
+            ),
+            reduced_tgt_path=(
+                reduced_tgt["workbook_path"] if reduced_tgt is not None else None
+            ),
         )
         run_error: Exception | None = None
         try:

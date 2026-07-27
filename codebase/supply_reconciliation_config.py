@@ -34,6 +34,7 @@ from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions import supply_data_pipeline
 from codebase import transformation_workflow
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP_EXPORTS_ROOT
+from codebase.utilities import leap_export_template_resolver
 from codebase.mappings.canonical_mapping import DEFAULT_SHEET_MAP
 from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
 from codebase.utilities.workflow_utils import _resolve
@@ -315,7 +316,7 @@ LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH = (
 )
 USE_RESULTS_VERIFICATION_EXPORT_SOURCE = True
 RESULTS_VERIFICATION_EXPORT_PATH = (
-    REPO_ROOT / "data" / "leap_export_templates" / "leap_export_template 20_USA.xlsx"
+    leap_export_template_resolver.resolve_leap_export_template("20_USA")
 )
 RESULTS_VERIFICATION_EXPORT_SHEET = "Export"
 # AGGREGATED_DEMAND_ID_LOOKUP_PATH removed 2026-07-17: dead since cdb813d routed

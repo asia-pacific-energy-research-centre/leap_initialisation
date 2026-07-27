@@ -1633,7 +1633,19 @@ def load_balance_demand_inputs(
         matching_diagnostics_parts.append(economy_matching_diagnostics)
 
     comparison_long = pd.concat(comparison_long_parts, ignore_index=True) if comparison_long_parts else pd.DataFrame()
-    mapping_status = pd.concat(mapping_status_parts, ignore_index=True) if mapping_status_parts else pd.DataFrame()
+    mapping_status = (
+        pd.concat(mapping_status_parts, ignore_index=True)
+        if mapping_status_parts
+        else pd.DataFrame(
+            columns=[
+                "sheet",
+                "fuel_label",
+                "esto_product",
+                "sector_code_9th",
+                "esto_flow",
+            ]
+        )
+    )
     issues = pd.concat(issue_parts, ignore_index=True) if issue_parts else pd.DataFrame()
     matching_diagnostics = (
         pd.concat(matching_diagnostics_parts, ignore_index=True)
