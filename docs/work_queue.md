@@ -4,8 +4,9 @@
 
 **Status: Step 1 implemented and real-data verified 2026-07-27 in the
 `codex/baseline-seed-export-diagnostics` worktree. AUS Reference 2022 direct
-workbook investigation completed code-side; a fresh LEAP cycle is required to
-verify the already-landed thermal-coal producer fix.**
+workbook investigation completed code-side. The feedstock-only transformation
+efficiency fix is implemented; a fresh LEAP cycle is required to verify it and
+the already-landed thermal-coal producer fix.**
 
 Build a limited-year feedback loop that generates a baseline seed, imports and
 recalculates it in LEAP, reads REF/TGT Energy Balance exports back, diagnoses
@@ -58,14 +59,18 @@ The 102 mismatches are now published as a stable-ID issue register in the main
 repository's normal output tree:
 `outputs/leap_exports/supply_reconciliation/supporting_files/baseline_seed_balance_diagnostics/01_AUS_2022/aus_2022_mismatch_issue_register.csv`.
 It orders the 67 material rows first and separates six causal/review clusters.
-Two additional code-side findings are confirmed but not yet implemented:
+Two additional findings were confirmed:
 
-- transformation efficiency currently includes own-use/loss energy that is
-  also exported as auxiliary fuel, contrary to LEAP's feedstock-only
-  efficiency definition; and
+- transformation efficiency included own-use/loss energy that was also
+  exported as auxiliary fuel. The shared process-record boundary now
+  recalculates efficiency from exported output and feedstock only, covering
+  every transformation module while leaving auxiliary ratios separate; and
 - the non-specified-own-use demand proxy produces exactly 1/100 of its intended
   Current Accounts energy because the existing LEAP leaf Activity Level is
-  interpreted as a percentage/share.
+  interpreted as a percentage/share. The user corrected the live LEAP setting
+  to blank. The AUS template and seed already show blank `Scale`, and the final
+  seed validator does not compare `Scale`, `Units`, or `Per...`; this is a
+  live-area metadata validation gap, not a seed-row value defect.
 
 A Current Accounts-only seed is structurally supported, but selecting only
 that scenario is not yet a true fast path: the runner still builds the 9th
@@ -83,8 +88,8 @@ blocker.
 
 Next work, in order:
 
-1. work through the stable-ID AUS issue register, beginning with the confirmed
-   thermal-coal, transformation-efficiency, and non-specified-own-use clusters;
+1. verify the thermal-coal and transformation-efficiency fixes through one
+   fresh LEAP cycle, then continue through the stable-ID AUS issue register;
 2. implement a measured Current Accounts-only ESTO fast-path preset whose 2022
    rows exactly equal a normal three-scenario run;
 3. push economy/scenario/year filtering into the large source loader;

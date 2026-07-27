@@ -1000,9 +1000,8 @@ def _build_interim_process_record(
         timeseries, output_values.keys(), export_base, export_final
     )
 
-    zero_loss = pd.Series({year: 0.0 for year in export_years}, dtype=float)
     efficiency_series = core.compute_efficiency_by_year(
-        total_output_series, total_input_series, zero_loss
+        total_output_series, total_input_series
     )
 
     # Remap labels to canonical LEAP branch names (e.g. "Unallocated Solar" →

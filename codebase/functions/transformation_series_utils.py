@@ -156,35 +156,53 @@ def filter_loss_values_for_feedstock_by_year(loss_values_by_year, feedstock_labe
         raise
 
 
-def get_loss_total_for_efficiency_by_year(loss_values_by_year, feedstock_label, output_label, years):
-    """Return year->loss total using feedstock/output labels only."""
+def compute_efficiency_by_year(output_series, feedstock_series):
+    """Return LEAP process efficiency by year: output / feedstock.
+
+    LEAP treats auxiliary fuels separately from feedstock fuels. Their energy
+    must therefore not be added to the process-efficiency denominator.
+    """
     try:
-        if not loss_values_by_year:
-            return pd.Series({year: 0.0 for year in years})
-        relevant_labels = {feedstock_label, output_label}
-        totals = {year: 0.0 for year in years}
-        for label in relevant_labels:
-            series = loss_values_by_year.get(label)
-            if not series:
-                continue
-            for year, value in series.items():
-                totals[int(year)] = totals.get(int(year), 0.0) + abs(value)
-        return pd.Series(totals)
+        output_series_pos = to_output_only_series(output_series)
+        feedstock_series_pos = pd.Series(feedstock_series, dtype=float).clip(lower=0.0)
+        return safe_divide_series(output_series_pos, feedstock_series_pos)
     except Exception as exc:
-        print(f"Failed to build loss total for efficiency by year: {exc}")
+        print(f"Failed to compute efficiency by year: {exc}")
         try_debug_breakpoint()
         raise
 
 
-def compute_efficiency_by_year(output_series, input_series, loss_series):
-    """Return efficiency by year: output / (input + losses)."""
+def compute_efficiency_from_value_maps(output_values, feedstock_values):
+    """Return year->efficiency from the fuels exported on a process record.
+
+    The process-record boundary is the canonical LEAP interpretation: every
+    entry in ``feedstock_values`` is converted into output, while auxiliary
+    ratios and loss diagnostics are separate and cannot affect efficiency.
+    """
     try:
-        output_series_pos = to_output_only_series(output_series)
-        denom = input_series.add(loss_series, fill_value=0.0)
-        denom = denom.clip(lower=0.0)
-        return safe_divide_series(output_series_pos, denom)
+        output_totals: dict[int, float] = {}
+        feedstock_totals: dict[int, float] = {}
+        for values in (output_values or {}).values():
+            for year, value in (values or {}).items():
+                year_int = int(year)
+                output_totals[year_int] = output_totals.get(year_int, 0.0) + float(
+                    value or 0.0
+                )
+        for values in (feedstock_values or {}).values():
+            for year, value in (values or {}).items():
+                year_int = int(year)
+                feedstock_totals[year_int] = feedstock_totals.get(year_int, 0.0) + abs(
+                    float(value or 0.0)
+                )
+        years = sorted(set(output_totals) | set(feedstock_totals))
+        if not years:
+            return {}
+        return compute_efficiency_by_year(
+            pd.Series({year: output_totals.get(year, 0.0) for year in years}),
+            pd.Series({year: feedstock_totals.get(year, 0.0) for year in years}),
+        ).to_dict()
     except Exception as exc:
-        print(f"Failed to compute efficiency by year: {exc}")
+        print(f"Failed to compute efficiency from process-record energy values: {exc}")
         try_debug_breakpoint()
         raise
 
@@ -334,14 +352,13 @@ def scale_year_dict_by_share(year_dict, share_series):
         raise
 
 
-def calculate_efficiency_with_losses(output_total, input_total, loss_total):
-    """Return efficiency including losses (output / (input + losses))."""
+def calculate_feedstock_efficiency(output_total, feedstock_total):
+    """Return LEAP process efficiency as output divided by feedstock."""
     try:
-        denominator = input_total + loss_total
-        if denominator == 0:
+        if feedstock_total == 0:
             return 0.0
-        return output_total / denominator
+        return output_total / feedstock_total
     except Exception as exc:
-        print(f"Failed to calculate efficiency with losses: {exc}")
+        print(f"Failed to calculate feedstock efficiency: {exc}")
         try_debug_breakpoint()
         raise

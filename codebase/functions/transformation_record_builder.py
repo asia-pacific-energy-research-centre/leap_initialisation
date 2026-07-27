@@ -21,6 +21,9 @@ from codebase.functions.leap_excel_io import (
     save_export_files,
 )
 from codebase.functions.leap_core import sanitize_leap_branch_path
+from codebase.functions.transformation_series_utils import (
+    compute_efficiency_from_value_maps,
+)
 from codebase.functions.esto_data_utils import (
     _extract_numeric_segments,
     _match_code_prefix,
@@ -373,21 +376,6 @@ def filter_loss_values_for_feedstock(loss_values, feedstock_label):
         return {feedstock_label: loss_values[feedstock_label]}
     except Exception as exc:
         print(f"Failed to filter loss values for feedstock: {exc}")
-        _try_debug_breakpoint()
-        raise
-
-
-def get_loss_total_for_efficiency(loss_values, feedstock_label, output_label):
-    """Return loss total for efficiency using feedstock/output fuel losses only."""
-    try:
-        if not loss_values:
-            return 0.0
-        relevant_labels = {feedstock_label, output_label}
-        return sum(
-            value for label, value in loss_values.items() if label in relevant_labels
-        )
-    except Exception as exc:
-        print(f"Failed to build loss total for efficiency: {exc}")
         _try_debug_breakpoint()
         raise
 
@@ -931,7 +919,6 @@ def build_process_record(
     auxiliary_ratios,
     loss_values,
     loss_total,
-    loss_values_for_efficiency=None,
     feedstock_shares=None,
     input_total=None,
     output_import_targets=None,
@@ -939,21 +926,38 @@ def build_process_record(
     efficiency_scale="ratio",
     own_use_ratios=None,
 ):
-    """Return a standardized record for a transformation process."""
+    """Return a standardized record for a transformation process.
+
+    ``efficiency`` remains an accepted argument for compatibility with the
+    sector builders and their debug summaries. The stored/exported value is
+    recalculated here from output and exported feedstock values, ensuring no
+    auxiliary or own-use energy can enter LEAP process efficiency.
+    """
     try:
+        output_values = dict(output_values or {})
+        feedstock_values = dict(feedstock_values or {})
+        canonical_efficiency = compute_efficiency_from_value_maps(
+            output_values,
+            feedstock_values,
+        )
+        has_nonzero_feedstock = any(
+            abs(float(value or 0.0)) > 0.0
+            for values in feedstock_values.values()
+            for value in (values or {}).values()
+        )
+        stored_efficiency = canonical_efficiency if has_nonzero_feedstock else efficiency
         return {
             "economy": economy,
             "sector_title": sector_title,
             "process_name": process_name,
-            "output_values": dict(output_values or {}),
-            "feedstock_values": dict(feedstock_values or {}),
+            "output_values": output_values,
+            "feedstock_values": feedstock_values,
             "feedstock_shares": dict(feedstock_shares or {}),
-            "efficiency": efficiency,
+            "efficiency": stored_efficiency,
             "efficiency_scale": str(efficiency_scale or "ratio"),
             "auxiliary_ratios": dict(auxiliary_ratios or {}),
             "loss_values": dict(loss_values or {}),
             "loss_total": loss_total,
-            "loss_values_for_efficiency": dict(loss_values_for_efficiency or {}),
             "input_total": input_total,
             "output_import_targets": dict(output_import_targets or {}),
             "output_export_targets": dict(output_export_targets or {}),

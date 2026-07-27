@@ -76,7 +76,6 @@ from codebase.functions.transformation_series_utils import (
     build_auxiliary_from_losses_by_year,
     merge_loss_into_auxiliary_by_year,
     filter_loss_values_for_feedstock_by_year,
-    get_loss_total_for_efficiency_by_year,
     compute_efficiency_by_year,
     compute_primary_io,
     build_total_input_series,
@@ -85,7 +84,7 @@ from codebase.functions.transformation_series_utils import (
     allocate_loss_by_share,
     sum_loss_values_by_year,
     scale_year_dict_by_share,
-    calculate_efficiency_with_losses,
+    calculate_feedstock_efficiency,
 )
 from codebase.functions.transformation_fuel_utils import (  # noqa: F401
     get_years_from,
@@ -1463,7 +1462,6 @@ from codebase.functions.transformation_record_builder import (
     build_auxiliary_from_losses,
     merge_loss_into_auxiliary,
     filter_loss_values_for_feedstock,
-    get_loss_total_for_efficiency,
     print_leap_structure_header,
     format_value,
     build_year_rows,
@@ -1502,14 +1500,15 @@ from codebase.functions.transformation_record_builder import (
 )
 
 def calculate_efficiency(output_df, input_df, loss_df, year_cols):
-    """Compute process efficiency as output / (abs(input) + abs(losses))."""
+    """Compute LEAP process efficiency as output divided by feedstock input.
+
+    ``loss_df`` remains in the signature for notebook compatibility but is
+    deliberately excluded: loss/own-use fuels are exported as auxiliaries.
+    """
     try:
         output_total = sum_years(output_df, year_cols)
         input_total = abs(sum_years(input_df, year_cols))
-        loss_total = abs(sum_years(loss_df, year_cols)) if loss_df is not None else 0.0
-        if (input_total + loss_total) == 0:
-            return 0.0
-        return output_total / (input_total + loss_total)
+        return calculate_feedstock_efficiency(output_total, input_total)
     except Exception as exc:
         print(f"Failed to calculate efficiency: {exc}")
         try_debug_breakpoint()
