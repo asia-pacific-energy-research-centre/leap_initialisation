@@ -21,6 +21,34 @@ are retained and reported without failing the run. Close this temporary
 exception after refreshed economy templates contain the branches and all
 generated rows receive canonical IDs.
 
+Governing design recorded 2026-07-27: update eligibility is based on a
+balance-variable contract, not a discrepancy-by-discrepancy allowlist.
+`02 Imports` is initially the default allowed balancing variable and
+`imports_gap` error signal. Differences in protected flows raise a baseline
+seed / LEAP balancing-rule / contract-expectation issue. Aggregate totals are
+derived checks. Interim/placeholder scopes are labelled but not automatically
+excluded; an exclusion requires a named placeholder-to-replacement group and a
+signed, fuel-specific replacement-boundary reconciliation so genuine
+placeholder bugs are not hidden. The canonical mapping repository already
+declares the power interim/standard alternatives and the membership of
+`All demand aggregated`; those declarations identify the groups but do not by
+themselves prove the LEAP result matches the independent source.
+See [baseline_seed_balance_diagnostics.md](baseline_seed_balance_diagnostics.md).
+
+The imports gap is an error signal, not automatically the only acceptable
+outcome. A separate adjustment strategy must choose whether a product uses
+configured production/transformation/electricity-or-heat levers before leaving
+the residual to imports, leaves the full difference to imports, or requires
+review. Positive and negative gaps need separate strategies because the current
+allocator can increase production/capacity but cannot yet safely perform the
+corresponding decreases. Configuration and per-cycle execution history are
+specified in [results_update_dry_run_preview.md](results_update_dry_run_preview.md).
+The strategy table and preview enforcement are implemented on
+`codex/results-update-dry-run-preview`. The tracked default uses configured
+production/transformation levers for a shortage, leaves the immediate residual
+to imports, and routes a later surplus to exports when exports are eligible.
+Safe signed production/transformation decrease behavior remains open.
+
 Step 1 is read-only:
 
 - `codebase/baseline_seed_balance_diagnostics_workflow.py` is the slim notebook
@@ -35,7 +63,7 @@ Step 1 is read-only:
 - LEAP/9th mapping cardinality is retained so an aggregate difference is never
   misrepresented as a safe row-level update.
 
-Real `20_USA` smoke, latest REF/TGT exports, years 2022-2023:
+Initial real `20_USA` smoke, latest REF/TGT exports, years 2022-2023:
 
 - 996 comparison rows: 463 ESTO-referenced, 325 9th-referenced, and 208 with no
   available source comparator;
@@ -43,7 +71,9 @@ Real `20_USA` smoke, latest REF/TGT exports, years 2022-2023:
   9th value mismatches, and 15 9th rows missing in LEAP;
 - 15 9th sector/fuel pairs are shared by multiple ESTO pairs, affecting 30
   future-year comparison rows (27 mismatches, two missing in LEAP, one match);
-  these are now flagged as requiring an allocation rule before update; and
+  the old raw-cardinality gate flagged them, but all 30 have exactly one LEAP
+  component. The problem was comparison-side 9th fan-out rather than a need
+  for a reverse LEAP allocation rule; and
 - 625 selected-window mapping/check rows were retained (613 missing ESTO pairs,
   12 total-balance checks), rather than the 11,792 all-horizon rows produced
   before supporting diagnostics were scoped to the selected years.
@@ -89,12 +119,18 @@ Historical one-economy, three-scenario runs have a median of 17.8 minutes; a
 configuration-only one-scenario run is estimated at 9–11 minutes, while a
 genuine ESTO-only 2022 path requires lazy projection loading and projection
 stage bypasses. See the findings document for the exact equivalence criterion.
-
 The smoke took about five minutes because the existing reference loader still
 prepares the full 288 MB 9th table before selecting two years. Push
 economy/scenario/year column filtering down into the loader before treating the
 limited-year path as fast; this is a performance follow-up, not a correctness
 blocker.
+
+Canonical allocation verification on the same exports and years produced 1,056
+comparison rows and 465 canonical allocated projection rows. It reduced the
+blocked set from 32 rows to two genuine multiple-LEAP-component cases. The
+preview now also consumes the tracked adjustment-strategy table and retains
+unresolved residual signals, including negative gaps for which safe decrease
+behavior is not yet implemented.
 
 Next work, in order:
 
@@ -104,19 +140,33 @@ Next work, in order:
    rows exactly equal a normal three-scenario run;
 3. push economy/scenario/year filtering into the large source loader;
 4. add pre-base historical ESTO-year comparisons;
-5. add a dry-run table of the exact changes the current `results_update`
-   allocator would propose;
-6. compare that preview with current baseline-seed rules at the post-boundary
+5. compare the implemented dry-run preview with current baseline-seed rules at
+   the post-boundary
    seed surface and repair drift;
-7. define explicit allocation rules for many-to-one / one-to-many 9th
-   comparisons before enabling updates for those rows; and
+6. review the two genuine multiple-LEAP-component allocation cases before
+   enabling updates for those rows;
+7. design and verify safe signed decrease behavior for any products configured
+   to use a decrease lever rather than leaving the residual to imports; and
 8. retain per-cycle convergence history and issue ownership.
 
 Design and notebook usage:
 [baseline_seed_balance_diagnostics.md](baseline_seed_balance_diagnostics.md).
 
-Execution prompt for the first evidence-led AUS investigation:
+Completed execution prompt for the first evidence-led AUS investigation:
 [investigate_aus_2022_balance_export_for_seed_improvements.md](archive/investigate_aus_2022_balance_export_for_seed_improvements.md).
+
+Parallel update-method checkpoint (2026-07-27): the current balanced allocator
+now has a side-effect-free execution mode and normalized proposal table on
+`codex/results-update-dry-run-preview`. It reports transformation-capacity,
+primary-production, export, clipping, and unresolved proposals without updating
+state/history or the runtime ledger. Diagnostic triage now excludes only
+confirmed upstream defects and rows needing a reviewed allocation rule;
+unresolved, model-behavior, and unmatched proposals remain provisional updater
+candidates. Stale-export status is provenance rather than a global veto. A
+tracked reviewed-decision table excludes the proven AUS thermal-coal seed
+defect despite its preliminary `unresolved` CSV classification. Exact final
+workbook values remain open. See
+[results_update_dry_run_preview.md](results_update_dry_run_preview.md).
 
 ## [20] General opt-in projection of ESTO-active sectors missing from 9th
 

@@ -483,6 +483,24 @@ def test_generated_balance_workbook_names_keep_requested_scenarios(
     )
 
 
+def test_generated_balance_workbook_names_allow_lazy_default_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codebase.supply_reconciliation_balance_tables as balance_tables
+
+    monkeypatch.setattr(balance_tables, "BALANCE_DEMAND_REF_WORKBOOK_PATH", None)
+    monkeypatch.setattr(balance_tables, "BALANCE_DEMAND_TGT_WORKBOOK_PATH", None)
+
+    assert balance_tables._balance_export_parts_for_scenario("Reference") == (
+        "unknown_date",
+        "REF",
+    )
+    assert balance_tables._balance_export_parts_for_scenario("Target") == (
+        "unknown_date",
+        "TGT",
+    )
+
+
 def test_capacity_unmet_iterative_allocates_and_persists(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     reconciliation = _minimal_reconciliation_df()
     state_path = tmp_path / "state.json"

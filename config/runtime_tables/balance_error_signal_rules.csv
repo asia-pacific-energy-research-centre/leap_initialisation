@@ -1,0 +1,4 @@
+economy,scenario,esto_product,esto_flow,balance_variable_role,error_signal_name,reason,enabled
+*,*,*,02 Imports,error_signal,imports_gap,Imports are the default final balancing variable and the main reconciliation error signal,True
+*,*,*,07 Total primary energy supply,derived_check,,Total primary supply is derived from component flows and is not independently adjustable,True
+*,*,*,13 Total final energy consumption,derived_check,,Total final energy consumption is a derived boundary check and is not independently adjustable,True

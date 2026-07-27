@@ -71,6 +71,9 @@ DEFAULT_EXPLICIT_REASSIGNMENTS_PATH = (
 DEFAULT_SYNTHETIC_REFERENCE_ROWS_PATH = (
     REPO_ROOT / "config" / "runtime_tables" / "synthetic_reference_rows.csv"
 )
+DEFAULT_BALANCE_VARIABLE_RULES_PATH = (
+    REPO_ROOT / "config" / "runtime_tables" / "balance_error_signal_rules.csv"
+)
 DEFAULT_BASE_TABLE_PATH = workflow_cfg.get_energy_source_config().esto_base_table_path
 DEFAULT_PROJECTION_TABLE_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 
@@ -97,6 +100,11 @@ DIFFERENCE_OUTPUT_COLUMNS = [
     "leap_component_count",
     "ninth_pair_count",
     "ninth_pair_max_esto_claimants",
+    "projection_allocation_complete",
+    "projection_target_pair_count",
+    "projection_matched_pair_count",
+    "projection_allocation_methods",
+    "projection_share_sources",
     "update_allocation_required",
     "update_allocation_reason",
     "sheet",
@@ -108,12 +116,37 @@ REVIEW_ADDED_COLUMNS = [
     "leap_balance_row",
     "leap_balance_fuel",
     "material_for_review",
+    "balance_variable_role",
+    "allowed_to_change",
+    "error_signal_name",
+    "balance_variable_rule_reason",
+    "balance_contract_issue",
+    "requires_issue_review",
+    "update_signal_eligible",
+    "placeholder_scope",
+    "placeholder_scope_reason",
     "preliminary_owner",
     "primary_classification",
     "evidence_note",
     "next_action",
 ]
 
+BALANCE_VARIABLE_RULE_COLUMNS = [
+    "economy",
+    "scenario",
+    "esto_product",
+    "esto_flow",
+    "balance_variable_role",
+    "error_signal_name",
+    "reason",
+    "enabled",
+]
+
+PLACEHOLDER_SECTOR_PATTERN = re.compile(
+    r"(?:^|\|)(?:Electricity interim/|CHP interim/|Heat plant interim/|"
+    r"All demand aggregated(?:/|$))",
+    flags=re.IGNORECASE,
+)
 
 def _resolve(path: Path | str) -> Path:
     """Resolve a notebook-friendly path against this repository."""
@@ -122,10 +155,82 @@ def _resolve(path: Path | str) -> Path:
     return candidate if candidate.is_absolute() else REPO_ROOT / candidate
 
 
+def _resolve_config_table_ref(
+    value: ConfigTableRef,
+) -> ConfigTableRef:
+    """Resolve a path or ``(workbook, sheet)`` mapping-table reference."""
+    if isinstance(value, tuple):
+        return (_resolve(value[0]), str(value[1]))
+    return _resolve(value)
+
+
 def _clean_token(value: object) -> str:
     if value is None or value is pd.NA:
         return ""
     return str(value).strip()
+
+
+def load_balance_variable_rules(
+    path: Path | str = DEFAULT_BALANCE_VARIABLE_RULES_PATH,
+) -> pd.DataFrame:
+    """Load the explicit balance-variable/error-signal contract."""
+    rules = pd.read_csv(_resolve(path))
+    missing = sorted(set(BALANCE_VARIABLE_RULE_COLUMNS) - set(rules.columns))
+    if missing:
+        raise KeyError(f"Balance-variable rules are missing columns: {missing}")
+    enabled = rules["enabled"].fillna(False).astype(str).str.lower().isin(
+        {"true", "1", "yes"}
+    )
+    return rules[enabled].reset_index(drop=True)
+
+
+def classify_balance_variable(
+    *,
+    economy: object,
+    scenario: object,
+    esto_product: object,
+    esto_flow: object,
+    rules: pd.DataFrame,
+) -> dict[str, str]:
+    """Resolve the most-specific rule, defaulting unlisted flows to protected."""
+    values = {
+        "economy": _clean_token(economy),
+        "scenario": _clean_token(scenario).lower(),
+        "esto_product": _clean_token(esto_product),
+        "esto_flow": _clean_token(esto_flow),
+    }
+    matches: list[tuple[int, int, pd.Series]] = []
+    for index, rule in rules.iterrows():
+        specificity = 0
+        matched = True
+        for column, value in values.items():
+            rule_value = _clean_token(rule.get(column))
+            if column == "scenario":
+                rule_value = rule_value.lower()
+            if rule_value == "*":
+                continue
+            if rule_value != value:
+                matched = False
+                break
+            specificity += 1
+        if matched:
+            matches.append((specificity, int(index), rule))
+    if not matches:
+        return {
+            "balance_variable_role": "protected",
+            "error_signal_name": "",
+            "balance_variable_rule_reason": (
+                "No allowed-change rule applies; differences are protected by default."
+            ),
+        }
+    _, _, selected = sorted(matches, key=lambda item: (-item[0], item[1]))[0]
+    return {
+        "balance_variable_role": _clean_token(
+            selected.get("balance_variable_role")
+        ),
+        "error_signal_name": _clean_token(selected.get("error_signal_name")),
+        "balance_variable_rule_reason": _clean_token(selected.get("reason")),
+    }
 
 
 def _split_pipe_tokens(value: object) -> list[str]:
@@ -360,8 +465,9 @@ def build_balance_review_table(
     differences: pd.DataFrame,
     *,
     material_threshold_pj: float = 1.0,
+    balance_variable_rules: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Add concise review fields without pretending unresolved rows are defects."""
+    """Classify differences using the explicit allowed balance-variable contract."""
     review = differences.copy()
     for column in DIFFERENCE_OUTPUT_COLUMNS:
         if column not in review.columns:
@@ -373,18 +479,132 @@ def build_balance_review_table(
         .fillna(0.0)
         .ge(float(material_threshold_pj))
     )
+    rules = (
+        load_balance_variable_rules()
+        if balance_variable_rules is None
+        else balance_variable_rules.copy()
+    )
+    variable_classifications = [
+        classify_balance_variable(
+            economy=row.get("economy"),
+            scenario=row.get("scenario"),
+            esto_product=row.get("esto_product"),
+            esto_flow=row.get("esto_flow"),
+            rules=rules,
+        )
+        for row in review.to_dict("records")
+    ]
+    review["balance_variable_role"] = [
+        row["balance_variable_role"] for row in variable_classifications
+    ]
+    review["allowed_to_change"] = review["balance_variable_role"].eq("error_signal")
+    review["error_signal_name"] = [
+        row["error_signal_name"] for row in variable_classifications
+    ]
+    review["balance_variable_rule_reason"] = [
+        row["balance_variable_rule_reason"] for row in variable_classifications
+    ]
+    review["balance_contract_issue"] = ""
+    review["requires_issue_review"] = False
+    review["update_signal_eligible"] = False
+    review["placeholder_scope"] = (
+        review["leap_sector_names"]
+        .fillna("")
+        .astype(str)
+        .str.contains(PLACEHOLDER_SECTOR_PATTERN, regex=True)
+    )
+    review["placeholder_scope_reason"] = ""
+    review.loc[review["placeholder_scope"], "placeholder_scope_reason"] = (
+        "Interim/placeholder activity may need a combined placeholder-and-replacement "
+        "comparison boundary; it is not automatically excluded."
+    )
     review["preliminary_owner"] = review["esto_flow"].map(_preliminary_owner)
     review["primary_classification"] = ""
     review["evidence_note"] = ""
     review["next_action"] = ""
 
     discrepancy_mask = review["status"].ne("match")
-    review.loc[discrepancy_mask, "primary_classification"] = "unresolved"
-    review.loc[discrepancy_mask, "evidence_note"] = (
-        "Direct ESTO-axis comparison; trace the producer and post-boundary seed "
-        "before treating this as a code defect."
+    unavailable = discrepancy_mask & review["status"].isin(
+        {"reference_unavailable", "missing_in_reference", "missing_in_leap"}
     )
-    review.loc[discrepancy_mask, "next_action"] = "Review in descending PJ magnitude."
+    allocation_required = discrepancy_mask & review[
+        "update_allocation_required"
+    ].fillna(False).astype(bool)
+    error_signal_difference = (
+        discrepancy_mask
+        & ~unavailable
+        & ~allocation_required
+        & review["balance_variable_role"].eq("error_signal")
+    )
+    derived_difference = (
+        discrepancy_mask
+        & ~unavailable
+        & ~allocation_required
+        & review["balance_variable_role"].eq("derived_check")
+    )
+    protected_difference = (
+        discrepancy_mask
+        & ~unavailable
+        & ~allocation_required
+        & review["balance_variable_role"].eq("protected")
+    )
+
+    review.loc[unavailable, "balance_contract_issue"] = (
+        "comparison_unavailable_or_mapping_issue"
+    )
+    review.loc[allocation_required, "balance_contract_issue"] = (
+        "mapping_allocation_rule_required"
+    )
+    review.loc[error_signal_difference, "balance_contract_issue"] = (
+        "expected_error_signal_difference"
+    )
+    review.loc[derived_difference, "balance_contract_issue"] = (
+        "derived_balance_difference"
+    )
+    review.loc[protected_difference, "balance_contract_issue"] = (
+        "protected_flow_difference"
+    )
+    review.loc[
+        unavailable | allocation_required | derived_difference | protected_difference,
+        "requires_issue_review",
+    ] = True
+    review.loc[error_signal_difference, "update_signal_eligible"] = True
+
+    review.loc[discrepancy_mask, "primary_classification"] = "unresolved"
+    review.loc[error_signal_difference, "primary_classification"] = (
+        "expected_error_signal"
+    )
+    review.loc[derived_difference, "primary_classification"] = (
+        "derived_balance_difference"
+    )
+    review.loc[protected_difference, "primary_classification"] = (
+        "protected_flow_difference"
+    )
+    review.loc[discrepancy_mask, "evidence_note"] = (
+        "Classified against the allowed balance-variable contract."
+    )
+    review.loc[error_signal_difference, "evidence_note"] = (
+        "Imports are the configured balancing error signal for this fuel."
+    )
+    review.loc[error_signal_difference, "next_action"] = (
+        "Use this difference as updater input, subject to allocator and mapping checks."
+    )
+    review.loc[
+        protected_difference | derived_difference,
+        "evidence_note",
+    ] = (
+        "This variable is not configured as an allowed balancing signal. Investigate "
+        "the baseline seed, LEAP balancing rules, or the variable contract."
+    )
+    review.loc[
+        protected_difference | derived_difference,
+        "next_action",
+    ] = (
+        "Raise an issue; do not convert this row directly into a numeric update."
+    )
+    review.loc[unavailable | allocation_required, "next_action"] = (
+        "Resolve comparison coverage or allocation grain before using this row."
+    )
 
     total_final_boundary = (
         discrepancy_mask
@@ -395,6 +615,11 @@ def build_balance_review_table(
         .eq("total final energy consumption")
     )
     review.loc[total_final_boundary, "primary_classification"] = "diagnostic_bug"
+    review.loc[total_final_boundary, "balance_contract_issue"] = (
+        "diagnostic_comparison_boundary_bug"
+    )
+    review.loc[total_final_boundary, "requires_issue_review"] = True
+    review.loc[total_final_boundary, "update_signal_eligible"] = False
     review.loc[total_final_boundary, "preliminary_owner"] = "mapping_or_diagnostic"
     review.loc[total_final_boundary, "evidence_note"] = (
         "LEAP Total Final Energy Demand includes the separate Other loss and own "
@@ -619,12 +844,307 @@ def _build_mapping_metadata(
     return metadata[metadata_columns]
 
 
+def _projection_pair_records(mapping_status: pd.DataFrame) -> pd.DataFrame:
+    """Expand displayed comparison keys to distinct ESTO target pairs."""
+    columns = ["sheet", "measure", "fuel_label", "esto_flow", "esto_product"]
+    if mapping_status is None or mapping_status.empty:
+        return pd.DataFrame(columns=columns)
+    status = mapping_status.copy()
+    if "sheet" not in status.columns and "sheet_name" in status.columns:
+        status["sheet"] = status["sheet_name"]
+    for column in columns:
+        if column not in status.columns:
+            status[column] = ""
+        status[column] = status[column].fillna("").astype(str).str.strip()
+
+    records: list[dict[str, str]] = []
+    for row in status[columns].itertuples(index=False, name=None):
+        for esto_flow, esto_product in _iter_paired_tokens(row[3], row[4]):
+            records.append(
+                {
+                    "sheet": row[0],
+                    "measure": row[1],
+                    "fuel_label": row[2],
+                    "esto_flow": esto_flow,
+                    "esto_product": esto_product,
+                }
+            )
+    if not records:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(records).drop_duplicates().reset_index(drop=True)
+
+
+def apply_canonical_projection_comparators(
+    *,
+    comparison_long: pd.DataFrame,
+    mapping_status: pd.DataFrame,
+    projection_tables: pd.DataFrame,
+    allocation_provenance: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Replace raw 9th projection claims with allocated ESTO-pair values.
+
+    ``projection_tables`` contains one row per scenario/economy/ESTO pair and
+    year columns. ``allocation_provenance`` is optional review detail from the
+    same canonical allocation. Only complete displayed comparison groups are
+    replaced; incomplete groups retain their original value and stay subject
+    to the conservative raw-cardinality gate.
+    """
+    status_columns = [
+        "scenario",
+        "sheet",
+        "measure",
+        "fuel_label",
+        "year",
+        "projection_allocation_complete",
+        "projection_target_pair_count",
+        "projection_matched_pair_count",
+        "projection_allocation_methods",
+        "projection_share_sources",
+    ]
+    if (
+        comparison_long is None
+        or comparison_long.empty
+        or projection_tables is None
+        or projection_tables.empty
+    ):
+        return comparison_long.copy(), pd.DataFrame(columns=status_columns)
+
+    keys = ["scenario", "sheet", "measure", "fuel_label", "year"]
+    targets = comparison_long.copy()
+    for column in ["scenario", "sheet", "measure", "fuel_label", "source"]:
+        if column not in targets.columns:
+            targets[column] = ""
+        targets[column] = targets[column].fillna("").astype(str).str.strip()
+    targets["scenario"] = targets["scenario"].str.title()
+    targets["year"] = pd.to_numeric(targets["year"], errors="coerce").astype("Int64")
+    targets = targets[
+        targets["source"].str.lower().eq("projection") & targets["year"].notna()
+    ][keys].drop_duplicates()
+    if targets.empty:
+        return comparison_long.copy(), pd.DataFrame(columns=status_columns)
+
+    pair_records = _projection_pair_records(mapping_status)
+    if pair_records.empty:
+        return comparison_long.copy(), pd.DataFrame(columns=status_columns)
+    expanded = targets.merge(
+        pair_records,
+        on=["sheet", "measure", "fuel_label"],
+        how="left",
+    )
+    expanded = expanded[
+        expanded["esto_flow"].fillna("").astype(str).str.strip().ne("")
+        & expanded["esto_product"].fillna("").astype(str).str.strip().ne("")
+    ].drop_duplicates()
+    if expanded.empty:
+        return comparison_long.copy(), pd.DataFrame(columns=status_columns)
+
+    projection = projection_tables.copy()
+    projection["scenario"] = (
+        projection.get("scenario", "").fillna("").astype(str).str.strip().str.title()
+    )
+    for column in ["esto_flow", "esto_product"]:
+        projection[column] = projection.get(column, "").fillna("").astype(str).str.strip()
+    year_columns = [
+        column
+        for column in projection.columns
+        if str(column).isdigit()
+    ]
+    if not year_columns:
+        return comparison_long.copy(), pd.DataFrame(columns=status_columns)
+    projection_long = projection.melt(
+        id_vars=["scenario", "esto_flow", "esto_product"],
+        value_vars=year_columns,
+        var_name="year",
+        value_name="_allocated_projection_value",
+    )
+    projection_long["year"] = pd.to_numeric(
+        projection_long["year"], errors="coerce"
+    ).astype("Int64")
+    projection_long["_allocated_projection_value"] = pd.to_numeric(
+        projection_long["_allocated_projection_value"], errors="coerce"
+    )
+    projection_long = (
+        projection_long.groupby(
+            ["scenario", "esto_flow", "esto_product", "year"],
+            as_index=False,
+            dropna=False,
+        )["_allocated_projection_value"]
+        .sum(min_count=1)
+    )
+
+    expanded = expanded.merge(
+        projection_long,
+        on=["scenario", "esto_flow", "esto_product", "year"],
+        how="left",
+        indicator="_projection_merge",
+    )
+    expanded["_pair_key"] = (
+        expanded["esto_flow"].astype(str) + "\x1f" + expanded["esto_product"].astype(str)
+    )
+    pair_counts = (
+        expanded.groupby(keys, dropna=False, as_index=False)
+        .agg(
+            projection_target_pair_count=("_pair_key", "nunique"),
+            projection_matched_pair_count=(
+                "_projection_merge",
+                lambda values: int((values == "both").sum()),
+            ),
+            _allocated_projection_value=(
+                "_allocated_projection_value",
+                lambda values: values.sum(min_count=1),
+            ),
+        )
+    )
+    pair_counts["projection_allocation_complete"] = (
+        pair_counts["projection_target_pair_count"].gt(0)
+        & pair_counts["projection_matched_pair_count"].eq(
+            pair_counts["projection_target_pair_count"]
+        )
+    )
+
+    provenance_summary = pd.DataFrame(
+        columns=[*keys, "projection_allocation_methods", "projection_share_sources"]
+    )
+    if allocation_provenance is not None and not allocation_provenance.empty:
+        provenance = allocation_provenance.copy()
+        provenance["scenario"] = (
+            provenance.get("scenario", "")
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.title()
+        )
+        provenance["year"] = pd.to_numeric(
+            provenance.get("year"), errors="coerce"
+        ).astype("Int64")
+        for column in [
+            "esto_flow",
+            "esto_product",
+            "allocation_method",
+            "share_source",
+        ]:
+            provenance[column] = (
+                provenance.get(column, "").fillna("").astype(str).str.strip()
+            )
+        provenance_join = expanded[
+            [*keys, "esto_flow", "esto_product"]
+        ].drop_duplicates().merge(
+            provenance[
+                [
+                    "scenario",
+                    "year",
+                    "esto_flow",
+                    "esto_product",
+                    "allocation_method",
+                    "share_source",
+                ]
+            ],
+            on=["scenario", "year", "esto_flow", "esto_product"],
+            how="left",
+        )
+        provenance_summary = (
+            provenance_join.groupby(keys, as_index=False, dropna=False)
+            .agg(
+                projection_allocation_methods=(
+                    "allocation_method",
+                    _unique_pipe,
+                ),
+                projection_share_sources=("share_source", _unique_pipe),
+            )
+        )
+
+    status = pair_counts.merge(provenance_summary, on=keys, how="left")
+    status["projection_allocation_methods"] = (
+        status["projection_allocation_methods"].fillna("")
+    )
+    status["projection_share_sources"] = status["projection_share_sources"].fillna("")
+
+    replacement = status[
+        [*keys, "projection_allocation_complete", "_allocated_projection_value"]
+    ]
+    output = comparison_long.copy()
+    for column in ["scenario", "sheet", "measure", "fuel_label", "source"]:
+        if column not in output.columns:
+            output[column] = ""
+        output[column] = output[column].fillna("").astype(str).str.strip()
+    output["scenario"] = output["scenario"].str.title()
+    output["year"] = pd.to_numeric(output["year"], errors="coerce").astype("Int64")
+    output = output.merge(replacement, on=keys, how="left")
+    replace_mask = (
+        output["source"].str.lower().eq("projection")
+        & output["projection_allocation_complete"].fillna(False).astype(bool)
+    )
+    output.loc[replace_mask, "value"] = output.loc[
+        replace_mask, "_allocated_projection_value"
+    ]
+    output = output.drop(
+        columns=["projection_allocation_complete", "_allocated_projection_value"]
+    )
+    return output, status[status_columns].reset_index(drop=True)
+
+
+def build_canonical_projection_inputs(
+    *,
+    base_df: pd.DataFrame,
+    ninth_df: pd.DataFrame,
+    mapping_pairs_path: ConfigTableRef,
+    base_year: int,
+    projection_years: Sequence[int],
+    scenarios: Sequence[str],
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Build allocated ESTO projections once per selected 9th scenario."""
+    if not projection_years:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    from codebase.functions.ninth_projection_mapping import (
+        build_esto_projection_table,
+    )
+
+    projection_parts: list[pd.DataFrame] = []
+    diagnostic_parts: list[pd.DataFrame] = []
+    provenance_parts: list[pd.DataFrame] = []
+    resolved_mapping = _resolve_config_table_ref(mapping_pairs_path)
+    for scenario in _normalize_scenarios(scenarios):
+        projection, allocation_diagnostics, provenance = build_esto_projection_table(
+            ninth_data=ninth_df,
+            esto_data=base_df,
+            mapping_path=resolved_mapping,
+            base_year=int(base_year),
+            projection_years=projection_years,
+            scenario=scenario.lower(),
+            sign_stable_flows="all",
+            strict_conservation=False,
+            return_allocation_provenance=True,
+        )
+        for frame in (projection, allocation_diagnostics, provenance):
+            if frame is not None and not frame.empty:
+                frame["scenario"] = scenario
+        if projection is not None and not projection.empty:
+            projection_parts.append(projection)
+        if allocation_diagnostics is not None and not allocation_diagnostics.empty:
+            diagnostic_parts.append(allocation_diagnostics)
+        if provenance is not None and not provenance.empty:
+            provenance_parts.append(provenance)
+    return (
+        pd.concat(projection_parts, ignore_index=True, sort=False)
+        if projection_parts
+        else pd.DataFrame(),
+        pd.concat(diagnostic_parts, ignore_index=True, sort=False)
+        if diagnostic_parts
+        else pd.DataFrame(),
+        pd.concat(provenance_parts, ignore_index=True, sort=False)
+        if provenance_parts
+        else pd.DataFrame(),
+    )
+
+
 def _comparison_grain(row: pd.Series) -> str:
     leap_count = int(row.get("leap_component_count", 0) or 0)
     ninth_count = int(row.get("ninth_pair_count", 0) or 0)
     ninth_claimants = int(row.get("ninth_pair_max_esto_claimants", 0) or 0)
     source = _clean_token(row.get("reference_source", "")).lower()
     if source == "9th outlook":
+        if bool(row.get("projection_allocation_complete", False)):
+            return "canonical_allocated_ninth_to_esto_pair"
         if ninth_claimants > 1 and leap_count > 1:
             return "aggregate_many_leap_via_shared_ninth_pair"
         if ninth_claimants > 1:
@@ -645,13 +1165,18 @@ def _allocation_reason(row: pd.Series) -> str:
     reasons: list[str] = []
     if int(row.get("leap_component_count", 0) or 0) > 1:
         reasons.append("multiple_leap_components_share_the_esto_pair")
+    projection_allocation_complete = bool(
+        row.get("projection_allocation_complete", False)
+    )
     if (
         _clean_token(row.get("reference_source", "")).lower() == "9th outlook"
+        and not projection_allocation_complete
         and int(row.get("ninth_pair_count", 0) or 0) > 1
     ):
         reasons.append("esto_pair_sums_multiple_ninth_pairs")
     if (
         _clean_token(row.get("reference_source", "")).lower() == "9th outlook"
+        and not projection_allocation_complete
         and int(row.get("ninth_pair_max_esto_claimants", 0) or 0) > 1
     ):
         reasons.append("ninth_pair_is_shared_by_multiple_esto_pairs")
@@ -663,6 +1188,7 @@ def build_leap_source_difference_table(
     comparison_long: pd.DataFrame,
     mapping_status: pd.DataFrame,
     leap_long: pd.DataFrame | None = None,
+    projection_allocation_status: pd.DataFrame | None = None,
     economy: str,
     years: Sequence[int],
     scenarios: Sequence[str],
@@ -742,6 +1268,27 @@ def build_leap_source_difference_table(
 
     metadata = _build_mapping_metadata(mapping_status, leap_long)
     wide = wide.merge(metadata, on=["sheet", "measure", "fuel_label"], how="left")
+    allocation_keys = ["scenario", "sheet", "measure", "fuel_label", "year"]
+    if (
+        projection_allocation_status is not None
+        and not projection_allocation_status.empty
+    ):
+        allocation_status = projection_allocation_status.copy()
+        allocation_status["scenario"] = (
+            allocation_status["scenario"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.title()
+        )
+        allocation_status["year"] = pd.to_numeric(
+            allocation_status["year"], errors="coerce"
+        ).astype("Int64")
+        wide = wide.merge(
+            allocation_status,
+            on=allocation_keys,
+            how="left",
+        )
     for column in [
         "esto_flow",
         "esto_product",
@@ -757,6 +1304,29 @@ def build_leap_source_difference_table(
         "ninth_pair_max_esto_claimants",
     ]:
         wide[column] = pd.to_numeric(wide.get(column, 0), errors="coerce").fillna(0).astype(int)
+    if "projection_allocation_complete" not in wide.columns:
+        wide["projection_allocation_complete"] = False
+    wide["projection_allocation_complete"] = wide[
+        "projection_allocation_complete"
+    ].fillna(False).astype(bool)
+    for column in [
+        "projection_target_pair_count",
+        "projection_matched_pair_count",
+    ]:
+        if column not in wide.columns:
+            wide[column] = 0
+        wide[column] = (
+            pd.to_numeric(wide[column], errors="coerce")
+            .fillna(0)
+            .astype(int)
+        )
+    for column in [
+        "projection_allocation_methods",
+        "projection_share_sources",
+    ]:
+        if column not in wide.columns:
+            wide[column] = ""
+        wide[column] = wide[column].fillna("").astype(str)
 
     wide["economy"] = _clean_token(economy)
     wide["comparison_grain"] = wide.apply(_comparison_grain, axis=1)
@@ -891,10 +1461,38 @@ def run_economy_balance_diagnostic(
             balance_mapping_workbook_path=resolved_codebook_path,
             known_issues=known_issues,
         )
+    canonical_projection, projection_allocation_diagnostics, allocation_provenance = (
+        build_canonical_projection_inputs(
+            base_df=comparison.get("base_df", pd.DataFrame()),
+            ninth_df=comparison.get("ninth_df", pd.DataFrame()),
+            mapping_pairs_path=mapping_pairs_path,
+            base_year=int(base_year),
+            projection_years=projection_years,
+            scenarios=selected_scenarios,
+        )
+    )
+    comparison_long_raw = comparison["comparison_long"]
+    allocated_comparison_long, projection_allocation_status = (
+        apply_canonical_projection_comparators(
+            comparison_long=comparison_long_raw,
+            mapping_status=comparison["mapping_status"],
+            projection_tables=canonical_projection,
+            allocation_provenance=allocation_provenance,
+        )
+    )
+    comparison["comparison_long_raw"] = comparison_long_raw
+    comparison["comparison_long"] = allocated_comparison_long
+    comparison["canonical_projection"] = canonical_projection
+    comparison["projection_allocation_status"] = projection_allocation_status
+    comparison["projection_allocation_diagnostics"] = (
+        projection_allocation_diagnostics
+    )
+    comparison["projection_allocation_provenance"] = allocation_provenance
     difference_table = build_leap_source_difference_table(
-        comparison_long=comparison["comparison_long"],
+        comparison_long=allocated_comparison_long,
         mapping_status=comparison["mapping_status"],
         leap_long=conversion["leap_long"],
+        projection_allocation_status=projection_allocation_status,
         economy=economy,
         years=selected_years,
         scenarios=selected_scenarios,
@@ -926,6 +1524,9 @@ def run_economy_balance_diagnostic(
         "mapping_issues": mapping_issues,
         "total_balance_checks": total_balance_checks,
         "matching_diagnostics": matching_diagnostics,
+        "projection_allocation_status": projection_allocation_status,
+        "projection_allocation_diagnostics": projection_allocation_diagnostics,
+        "projection_allocation_provenance": allocation_provenance,
         "conversion": conversion,
         "comparison": comparison,
     }

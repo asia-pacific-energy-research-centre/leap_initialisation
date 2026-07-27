@@ -55,7 +55,6 @@ decision question, and exact next check for each row. The complete 193-row
 comparison is published beside it as `aus_2022_balance_source_review.csv`.
 The six-row `aus_2022_issue_cluster_summary.csv` is the working queue for
 reviewing the causal clusters one at a time.
-
 The 107 unmapped rows are dominated by hierarchy totals and LEAP-specific
 branches, not 107 proven mapping defects. They include `Total` fuel rows, LEAP
 transformation subtotals, `All demand aggregated` branches, and own-use/loss

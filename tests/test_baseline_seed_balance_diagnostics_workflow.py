@@ -196,6 +196,89 @@ def test_shared_ninth_pair_across_esto_rows_requires_allocation() -> None:
     )
 
 
+def test_canonical_projection_allocation_resolves_shared_ninth_pair() -> None:
+    comparison = _comparison_rows(
+        scenario="Reference",
+        year=2023,
+        leap_value=42.0,
+        source="projection",
+        source_value=100.0,
+    )
+    mapping_status = _mapping_status(
+        ninth_pairs=[("09_06_gas_processing_plants", "08_01_natural_gas")]
+    )
+    shared = mapping_status.iloc[0].copy()
+    shared["sheet"] = "02 Imports"
+    shared["fuel_label"] = "06.08 Other hydrocarbons"
+    shared["esto_flow"] = "02 Imports"
+    shared["esto_product"] = "06.08 Other hydrocarbons"
+    mapping_status = pd.concat(
+        [mapping_status, shared.to_frame().T],
+        ignore_index=True,
+    )
+    projection_tables = pd.DataFrame(
+        [
+            {
+                "scenario": "Reference",
+                "economy_key": "20USA",
+                "esto_flow": "09.06 Gas processing plants",
+                "esto_product": "08.01 Natural gas",
+                2023: 40.0,
+            },
+            {
+                "scenario": "Reference",
+                "economy_key": "20USA",
+                "esto_flow": "02 Imports",
+                "esto_product": "06.08 Other hydrocarbons",
+                2023: 60.0,
+            },
+        ]
+    )
+    provenance = pd.DataFrame(
+        [
+            {
+                "scenario": "Reference",
+                "year": 2023,
+                "esto_flow": "09.06 Gas processing plants",
+                "esto_product": "08.01 Natural gas",
+                "allocation_method": "proportional_esto_base_year",
+                "share_source": "economy",
+            }
+        ]
+    )
+
+    allocated, allocation_status = (
+        diagnostics.apply_canonical_projection_comparators(
+            comparison_long=comparison,
+            mapping_status=mapping_status,
+            projection_tables=projection_tables,
+            allocation_provenance=provenance,
+        )
+    )
+    table = diagnostics.build_leap_source_difference_table(
+        comparison_long=allocated,
+        mapping_status=mapping_status,
+        leap_long=_leap_long(components=[("Gas processing", "Natural gas")]),
+        projection_allocation_status=allocation_status,
+        economy="20_USA",
+        years=[2023],
+        scenarios=["Reference"],
+    )
+
+    row = table.iloc[0]
+    assert row["source_value_pj"] == pytest.approx(40.0)
+    assert row["difference_pj"] == pytest.approx(2.0)
+    assert bool(row["projection_allocation_complete"]) is True
+    assert row["projection_target_pair_count"] == 1
+    assert row["projection_matched_pair_count"] == 1
+    assert row["projection_allocation_methods"] == (
+        "proportional_esto_base_year"
+    )
+    assert row["comparison_grain"] == "canonical_allocated_ninth_to_esto_pair"
+    assert bool(row["update_allocation_required"]) is False
+    assert row["update_allocation_reason"] == ""
+
+
 def test_missing_reference_is_visible_but_not_called_a_mismatch() -> None:
     comparison = _comparison_rows(
         scenario="Reference",
@@ -328,6 +411,123 @@ def test_review_table_flags_non_comparable_total_final_energy_boundary() -> None
     assert review.loc[0, "primary_classification"] == "diagnostic_bug"
     assert review.loc[0, "preliminary_owner"] == "mapping_or_diagnostic"
     assert bool(review.loc[0, "material_for_review"]) is True
+
+
+def test_review_table_uses_imports_as_error_signal_and_protects_other_flows() -> None:
+    rows = []
+    for flow, sector in [
+        ("02 Imports", "Imports"),
+        ("01 Production", "Production"),
+        ("03 Exports", "Exports"),
+        ("07 Total primary energy supply", "Total Primary Supply"),
+    ]:
+        row = {column: "" for column in diagnostics.DIFFERENCE_OUTPUT_COLUMNS}
+        row.update(
+            {
+                "economy": "01_AUS",
+                "scenario": "Reference",
+                "year": 2022,
+                "esto_flow": flow,
+                "esto_product": "01.04 Anthracite",
+                "leap_sector_names": sector,
+                "absolute_difference_pj": 10.0,
+                "status": "value_mismatch",
+                "update_allocation_required": False,
+            }
+        )
+        rows.append(row)
+
+    review = diagnostics.build_balance_review_table(pd.DataFrame(rows))
+    indexed = review.set_index("esto_flow")
+
+    imports = indexed.loc["02 Imports"]
+    assert imports["balance_variable_role"] == "error_signal"
+    assert bool(imports["allowed_to_change"]) is True
+    assert imports["error_signal_name"] == "imports_gap"
+    assert bool(imports["update_signal_eligible"]) is True
+    assert bool(imports["requires_issue_review"]) is False
+
+    for flow in ["01 Production", "03 Exports"]:
+        protected = indexed.loc[flow]
+        assert protected["balance_variable_role"] == "protected"
+        assert protected["balance_contract_issue"] == "protected_flow_difference"
+        assert bool(protected["update_signal_eligible"]) is False
+        assert bool(protected["requires_issue_review"]) is True
+
+    total = indexed.loc["07 Total primary energy supply"]
+    assert total["balance_variable_role"] == "derived_check"
+    assert total["balance_contract_issue"] == "derived_balance_difference"
+    assert bool(total["requires_issue_review"]) is True
+
+
+def test_placeholder_scope_is_visible_but_not_silently_excluded() -> None:
+    row = {column: "" for column in diagnostics.DIFFERENCE_OUTPUT_COLUMNS}
+    row.update(
+        {
+            "economy": "01_AUS",
+            "scenario": "Reference",
+            "year": 2022,
+            "esto_flow": "09.01.01,09.02.01 Electricity plants",
+            "esto_product": "01.04 Anthracite",
+            "leap_sector_names": "Electricity interim/Electricity interim",
+            "absolute_difference_pj": 10.0,
+            "status": "value_mismatch",
+            "update_allocation_required": False,
+        }
+    )
+
+    review = diagnostics.build_balance_review_table(pd.DataFrame([row]))
+
+    assert bool(review.loc[0, "placeholder_scope"]) is True
+    assert review.loc[0, "balance_contract_issue"] == "protected_flow_difference"
+    assert bool(review.loc[0, "requires_issue_review"]) is True
+    assert "not automatically excluded" in review.loc[0, "placeholder_scope_reason"]
+
+
+def test_more_specific_rule_can_allow_a_non_import_error_signal() -> None:
+    rules = diagnostics.load_balance_variable_rules()
+    rules = pd.concat(
+        [
+            rules,
+            pd.DataFrame(
+                [
+                    {
+                        "economy": "01_AUS",
+                        "scenario": "Reference",
+                        "esto_product": "17 Electricity",
+                        "esto_flow": "03 Exports",
+                        "balance_variable_role": "error_signal",
+                        "error_signal_name": "exports_gap",
+                        "reason": "Reviewed product-specific exception.",
+                        "enabled": True,
+                    }
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    row = {column: "" for column in diagnostics.DIFFERENCE_OUTPUT_COLUMNS}
+    row.update(
+        {
+            "economy": "01_AUS",
+            "scenario": "Reference",
+            "year": 2022,
+            "esto_flow": "03 Exports",
+            "esto_product": "17 Electricity",
+            "absolute_difference_pj": 10.0,
+            "status": "value_mismatch",
+            "update_allocation_required": False,
+        }
+    )
+
+    review = diagnostics.build_balance_review_table(
+        pd.DataFrame([row]),
+        balance_variable_rules=rules,
+    )
+
+    assert review.loc[0, "balance_variable_role"] == "error_signal"
+    assert review.loc[0, "error_signal_name"] == "exports_gap"
+    assert bool(review.loc[0, "update_signal_eligible"]) is True
 
 
 def test_diagnostic_counts_keep_missing_unmapped_and_total_failures_separate() -> None:

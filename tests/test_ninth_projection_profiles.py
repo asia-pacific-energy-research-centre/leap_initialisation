@@ -5,8 +5,27 @@ from pathlib import Path
 from codebase.functions.ninth_projection_mapping import (
     build_esto_projection_table,
     build_economy_specific_child_flow_profiles,
+    build_ninth_projection_series,
 )
 from codebase.functions.esto_data_utils import add_all_economy_total
+
+
+def test_projection_series_accepts_string_year_headers() -> None:
+    ninth_pairs = pd.DataFrame(
+        [
+            {
+                "economy_key": "01AUS",
+                "ninth_sector": "01_production",
+                "ninth_fuel": "01_01_coking_coal",
+                "2023": 12.0,
+            }
+        ]
+    )
+
+    result = build_ninth_projection_series(ninth_pairs, [2023])
+
+    assert 2023 in result.columns
+    assert result.loc[0, 2023] == pytest.approx(12.0)
 
 
 def test_child_flow_profiles_are_built_per_economy_and_keep_signed_values() -> None:

@@ -462,10 +462,14 @@ def _balance_export_parts_for_scenario(scenario: object) -> tuple[str, str]:
     """Return filename provenance for Reference/Target balance-demand source workbooks."""
     scenario_key = str(scenario or "").strip().lower()
     if scenario_key == "reference":
+        if BALANCE_DEMAND_REF_WORKBOOK_PATH is None:
+            return "unknown_date", "REF"
         date_id, scenario_code = _balance_export_filename_parts(
             BALANCE_DEMAND_REF_WORKBOOK_PATH
         )
     elif scenario_key == "target":
+        if BALANCE_DEMAND_TGT_WORKBOOK_PATH is None:
+            return "unknown_date", "TGT"
         date_id, scenario_code = _balance_export_filename_parts(
             BALANCE_DEMAND_TGT_WORKBOOK_PATH
         )

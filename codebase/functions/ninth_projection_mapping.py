@@ -106,19 +106,32 @@ def build_ninth_projection_series(
     """Aggregate projected-year values by economy + 9th pair."""
     if not projection_years or ninth_df.empty:
         return pd.DataFrame()
-    year_cols = [year for year in projection_years if year in ninth_df.columns]
-    if not year_cols:
+    year_column_map: dict[int, object] = {}
+    for year in projection_years:
+        if year in ninth_df.columns:
+            year_column_map[int(year)] = year
+        elif str(int(year)) in ninth_df.columns:
+            year_column_map[int(year)] = str(int(year))
+    if not year_column_map:
         return pd.DataFrame()
     working = ninth_df.copy()
     working = working[(working["ninth_sector"] != "") & (working["ninth_fuel"] != "")]
     if working.empty:
         return pd.DataFrame()
-    for year in year_cols:
-        working[year] = pd.to_numeric(working[year], errors="coerce").fillna(0.0)
+    source_year_columns = list(year_column_map.values())
+    for source_column in source_year_columns:
+        working[source_column] = pd.to_numeric(
+            working[source_column], errors="coerce"
+        ).fillna(0.0)
     grouped = (
-        working.groupby(["economy_key", "ninth_sector", "ninth_fuel"], dropna=False)[year_cols]
+        working.groupby(
+            ["economy_key", "ninth_sector", "ninth_fuel"], dropna=False
+        )[source_year_columns]
         .sum()
         .reset_index()
+    )
+    grouped = grouped.rename(
+        columns={source_column: year for year, source_column in year_column_map.items()}
     )
     return grouped
 
@@ -982,7 +995,11 @@ def build_esto_projection_table(
     sign_stable_flows: Iterable[str] | str | None = None,
     strict_conservation: bool = False,
     fill_missing_ninth_sectors: bool = False,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+    return_allocation_provenance: bool = False,
+) -> (
+    tuple[pd.DataFrame, pd.DataFrame]
+    | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
+):
     """Return projected ESTO values plus allocation diagnostics.
 
     Args:
@@ -992,20 +1009,25 @@ def build_esto_projection_table(
             Use `"all"` to apply sign-stable routing to every mapped ESTO flow.
         strict_conservation:
             If True, raise ValueError when allocated totals do not match source totals.
+        return_allocation_provenance:
+            If True, also return one long-form row per allocated 9th source
+            pair, ESTO target pair, and projection year.
     """
     if isinstance(mapping_path, tuple):
         mapping_file, mapping_sheet = Path(mapping_path[0]), str(mapping_path[1])
     else:
         mapping_file, mapping_sheet = Path(mapping_path), None
     if not config_table_exists(mapping_file, mapping_sheet):
-        return pd.DataFrame(), pd.DataFrame()
+        empty = (pd.DataFrame(), pd.DataFrame())
+        return (*empty, pd.DataFrame()) if return_allocation_provenance else empty
     mapping_df = read_config_table(
         mapping_file,
         sheet_name=mapping_sheet,
         dtype=str,
     ).fillna("")
     if mapping_df.empty:
-        return pd.DataFrame(), pd.DataFrame()
+        empty = (pd.DataFrame(), pd.DataFrame())
+        return (*empty, pd.DataFrame()) if return_allocation_provenance else empty
     ninth_filtered = filter_ninth_projection_rows(ninth_data, scenario=scenario)
     ninth_pairs = add_ninth_pair_columns(ninth_filtered)
     # 09.06 is exceptional: the aggregate parent is marked subtotal while its
@@ -1068,6 +1090,7 @@ def build_esto_projection_table(
         child_flow_profiles=child_flow_profiles,
         gas_child_flow_profiles=gas_child_flow_profiles,
         fill_missing_ninth_sectors=fill_missing_ninth_sectors,
+        return_allocation_provenance=return_allocation_provenance,
     )
 
 
