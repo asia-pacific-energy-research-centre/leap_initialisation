@@ -26,6 +26,7 @@ from codebase.functions.supply_export_rows import (
 from codebase.functions.supply_value_series import (
     build_ninth_bucket_allocator,
     build_supply_value_by_year,
+    get_flow_total_for_fuel,
     select_fuel_rows,
 )
 from codebase.utilities import workflow_common
@@ -88,6 +89,25 @@ if not getattr(workflow_cfg, "SUPPLY_INCLUDE_UNMET_REQUIREMENTS", False):
     SUPPLY_MEASURES = [
         measure for measure in SUPPLY_MEASURES if measure.get("name") != "Unmet Requirements"
     ]
+
+# Stock Changes and Statistical Differences are balancing items LEAP cannot
+# project: unlike Imports/Exports/Production they get real values only in
+# Current Accounts (straight from ESTO base-year actuals, sign preserved);
+# Reference/Target are left at 0 on purpose. They live outside SUPPLY_MEASURES
+# because their branch root ("Stock Changes" / "Statistical Differences")
+# replaces "Resources" rather than sitting under it, and they are not gated by
+# the per-economy Resources-tree existence check -- these branches are not yet
+# present in most economy export templates (see the sample workbook the
+# feature was scoped from).
+STOCK_AND_STATISTICAL_FLOWS = [
+    ("Stock Change", "stock_changes", "06 Stock changes"),
+    ("Statistical Differences", "statistical_discrepancy", "11 Statistical discrepancy"),
+]
+STOCK_AND_STATISTICAL_ROOT_LABELS = {
+    "Stock Change": "Stock Changes",
+    "Statistical Differences": "Statistical Differences",
+}
+CURRENT_ACCOUNTS_SCENARIO_NAME = "current accounts"
 
 EXPORT_SCENARIOS = ["Current Accounts", "Reference", "Target"]
 DEFAULT_EXPORT_OUTPUT_DIR = REPO_ROOT / "outputs" / "leap_exports"
@@ -160,6 +180,76 @@ def format_scenario_label_for_filename(scenarios):
         raise
 
 
+def _build_stock_and_statistical_rows_for_fuel(
+    esto_data,
+    esto_year_cols,
+    economy,
+    entry,
+    fuel_key,
+    display_name,
+    branch_roots,
+    scenario_names,
+    base_year,
+    final_year,
+    classification_source,
+    code_to_name_mapping=None,
+):
+    """Build Stock Change / Statistical Differences rows for one fuel.
+
+    Current Accounts carries the actual (signed) ESTO base-year total for
+    each flow; Reference/Target stay at 0 because LEAP has no basis for
+    projecting either balancing item forward.
+    """
+    try:
+        stock_and_stat_totals = {
+            label: get_flow_total_for_fuel(
+                esto_data,
+                esto_year_cols,
+                base_year,
+                economy,
+                entry,
+                flow_key,
+                esto_flow_label,
+                code_to_name_mapping=code_to_name_mapping,
+            )
+            for label, flow_key, esto_flow_label in STOCK_AND_STATISTICAL_FLOWS
+        }
+        rows = []
+        for branch_root in branch_roots:
+            branch_type = str(branch_root[-1] if branch_root else "").strip().lower()
+            template_label = None
+            if classification_source is not None:
+                template_label = _resolve_supply_branch_label_from_export(
+                    branch_type,
+                    display_name,
+                    entry.get("fuel_label_esto"),
+                    fuel_key,
+                    source_path=classification_source,
+                )
+            safe_name = sanitize_leap_label(template_label or display_name)
+            # branch_root looks like ["Resources", "Primary"/"Secondary"];
+            # these branches replace "Resources" with their own root label.
+            branch_suffix = list(branch_root[1:]) + [safe_name]
+            for label, _, _ in STOCK_AND_STATISTICAL_FLOWS:
+                root_label = STOCK_AND_STATISTICAL_ROOT_LABELS[label]
+                branch_path = build_branch_path([root_label] + branch_suffix)
+                actual_value = float(stock_and_stat_totals[label])
+                for scenario in scenario_names:
+                    value_by_year = {year: 0.0 for year in range(base_year, final_year + 1)}
+                    if str(scenario or "").strip().lower() == CURRENT_ACCOUNTS_SCENARIO_NAME:
+                        value_by_year[base_year] = actual_value
+                    rows.extend(
+                        build_year_rows(
+                            branch_path, label, scenario, value_by_year, "Petajoule", "", ""
+                        )
+                    )
+        return rows
+    except Exception as exc:
+        print(f"Failed to build stock/statistical rows for {economy}, fuel {fuel_key}: {exc}")
+        try_debug_breakpoint()
+        raise
+
+
 def build_supply_log_rows(
     data,
     year_cols,
@@ -175,6 +265,8 @@ def build_supply_log_rows(
     flow_value_overrides=None,
     supply_measures=None,
     bucket_allocator=None,
+    esto_data=None,
+    esto_year_cols=None,
 ):
     """Build log entries for supply measures per fuel."""
     try:
@@ -229,6 +321,23 @@ def build_supply_log_rows(
             branch_roots = _get_supply_branch_roots_for_entry(
                 fuel_key, entry, source_path=classification_source
             )
+            if esto_data is not None:
+                rows.extend(
+                    _build_stock_and_statistical_rows_for_fuel(
+                        esto_data,
+                        esto_year_cols,
+                        economy,
+                        entry,
+                        fuel_key,
+                        display_name,
+                        branch_roots,
+                        scenario_names,
+                        base_year,
+                        final_year,
+                        classification_source,
+                        code_to_name_mapping=code_to_name_mapping,
+                    )
+                )
             required_flow_keys = {
                 str(measure.get("flow_key") or "").strip()
                 for measure in measures
@@ -366,8 +475,10 @@ def generate_supply_exports(
     # Split shared 9th buckets across their ESTO products by base-year ESTO
     # shares; without this every sibling product would take the full bucket.
     bucket_allocator = None
+    esto_data = None
+    esto_year_cols = None
     if "esto" in dataset_map:
-        esto_data, _ = resolve_dataset_func(dataset_map, "esto")
+        esto_data, esto_year_cols = resolve_dataset_func(dataset_map, "esto")
         bucket_allocator = build_ninth_bucket_allocator(
             data,
             fuel_config,
@@ -406,6 +517,8 @@ def generate_supply_exports(
             flow_value_overrides=economy_flow_overrides,
             supply_measures=supply_measures,
             bucket_allocator=bucket_allocator,
+            esto_data=esto_data,
+            esto_year_cols=esto_year_cols,
         )
         if not log_rows:
             print(f"No supply rows generated for {economy}")

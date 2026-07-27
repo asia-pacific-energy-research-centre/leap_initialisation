@@ -6,10 +6,10 @@ import pandas as pd
 from codebase.functions.leap_excel_io import finalise_export_df
 
 
-def _row(branch: str, measure: str, value: float) -> dict[str, object]:
+def _row(branch: str, measure: str, value: float, scenario: str = "Reference") -> dict[str, object]:
     return {
         "Branch_Path": branch,
-        "Scenario": "Reference",
+        "Scenario": scenario,
         "Measure": measure,
         "Units": "%" if measure.endswith("Share") else "Petajoule",
         "Scale": "Share" if measure.endswith("Share") else "",
@@ -64,6 +64,35 @@ def test_share_diagnostic_flags_parent_total_not_equal_to_100() -> None:
     invalid = result.attrs["invalid_share_totals"]
     assert len(invalid) == 1
     assert invalid.iloc[0]["share_total"] == 90.0
+
+
+def test_negative_values_clipped_except_for_signed_supply_measures() -> None:
+    # Base-year values only survive the masking policy under Current Accounts
+    # (see the "Scenario/year masking policy" in finalise_export_df), so use
+    # that scenario to isolate the negative-value clipping behavior itself.
+    log = pd.DataFrame([
+        _row("Resources\\Primary\\Gas", "Imports", -3.0, scenario="Current Accounts"),
+        _row("Stock Changes\\Primary\\Coal", "Stock Change", -1.5, scenario="Current Accounts"),
+        _row(
+            "Statistical Differences\\Primary\\Coal",
+            "Statistical Differences",
+            -0.75,
+            scenario="Current Accounts",
+        ),
+    ])
+
+    result = finalise_export_df(
+        log,
+        scenario="Current Accounts",
+        region="United States",
+        base_year=2023,
+        final_year=2023,
+    )
+
+    by_branch = result.set_index("Branch Path")[2023]
+    assert by_branch["Resources\\Primary\\Gas"] == 0.0
+    assert by_branch["Stock Changes\\Primary\\Coal"] == -1.5
+    assert by_branch["Statistical Differences\\Primary\\Coal"] == -0.75
 
 
 #%%

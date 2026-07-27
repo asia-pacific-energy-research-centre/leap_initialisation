@@ -22,6 +22,10 @@ from codebase.functions.leap_expressions import expression_to_series, parse_expr
 
 LEAP_HEADER_TOKENS: tuple[str, ...] = ("branch path", "variable")
 
+# Supply measures whose values are signed balancing items in ESTO rather than
+# quantities -- see the non-negative clip below.
+SIGNED_SUPPLY_MEASURES: frozenset[str] = frozenset({"Stock Change", "Statistical Differences"})
+
 
 def find_leap_header_row(raw: pd.DataFrame, *, tokens: tuple[str, ...] = LEAP_HEADER_TOKENS) -> int | None:
     """Return the 0-based index of the LEAP column-header row, or None.
@@ -322,8 +326,14 @@ def finalise_export_df(log_df, scenario, region, base_year, final_year
     # --- Filter years ---
     log_df = log_df[(log_df["Date"] >= base_year) & (log_df["Date"] <= final_year)]
     # --- Enforce non-negative values for LEAP imports ---
+    # Stock Change and Statistical Differences are signed balancing items in
+    # ESTO (a stock drawdown or a negative discrepancy is a real, meaningful
+    # value) -- unlike every other supply measure here, clipping them to 0
+    # would silently discard the actual base-year accounting.
     numeric_values = pd.to_numeric(log_df["Value"], errors="coerce")
     negative_mask = numeric_values < 0
+    if "Measure" in log_df.columns:
+        negative_mask &= ~log_df["Measure"].isin(SIGNED_SUPPLY_MEASURES)
     if negative_mask.any():
         negative_count = int(negative_mask.sum())
         sample_paths = (
