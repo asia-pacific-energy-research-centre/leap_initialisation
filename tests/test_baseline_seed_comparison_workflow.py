@@ -360,7 +360,7 @@ def test_aggregated_demand_patch_excludes_active_detailed_branch_sectors(monkeyp
     monkeypatch.setattr(
         reconciliation_config,
         "DETAILED_DEMAND_BRANCHES_ACTIVE",
-        ["Industry", "Freight road", "Passenger road"],
+        ["Industry", "Road"],
     )
 
     def fake_save_aggregated_demand_as_leap_workbook(**kwargs):

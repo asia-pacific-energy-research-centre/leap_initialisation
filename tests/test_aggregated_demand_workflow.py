@@ -19,6 +19,7 @@ from codebase.utilities.workflow_utils import clear_csv_cache, load_esto_csv, lo
 from codebase.aggregated_demand_workflow import (
     _apply_first_projection_year_bridge,
     _extract_contextual_projection_years,
+    _demand_branch_from_esto_flow,
     _esto_flow_is_excluded,
     _sector_exclusion_suffix,
     build_aggregated_demand_as_dummy,
@@ -383,11 +384,9 @@ class TestResolveActiveBranchExcludedSectors:
         # base comes first, then active-branch additions
         assert result == ["16_01_buildings", "14_industry_sector"]
 
-    def test_road_deduplication_freight_and_passenger(self):
-        """Freight road and Passenger road both map to 15_02_road.
-        The road sector must appear only once in the effective exclusion list."""
+    def test_road_excludes_road_sector(self):
         result = resolve_active_branch_excluded_sectors(
-            active_branches=["Freight road", "Passenger road"],
+            active_branches=["Road"],
             sector_map=self.SECTOR_MAP,
             base_excluded=None,
         )
@@ -396,9 +395,9 @@ class TestResolveActiveBranchExcludedSectors:
 
     def test_road_deduplication_when_base_also_contains_road(self):
         """If 15_02_road is already in base_excluded, it must not be duplicated
-        when Freight road or Passenger road is also active."""
+        when Road is also active."""
         result = resolve_active_branch_excluded_sectors(
-            active_branches=["Freight road"],
+            active_branches=["Road"],
             sector_map=self.SECTOR_MAP,
             base_excluded=["15_02_road"],
         )
@@ -407,7 +406,7 @@ class TestResolveActiveBranchExcludedSectors:
 
     def test_multiple_branches_deduplication(self):
         result = resolve_active_branch_excluded_sectors(
-            active_branches=["Freight road", "Passenger road", "Industry", "Buildings"],
+            active_branches=["Road", "Industry", "Buildings"],
             sector_map=self.SECTOR_MAP,
             base_excluded=None,
         )
@@ -420,7 +419,7 @@ class TestResolveActiveBranchExcludedSectors:
 
     def test_transport_non_road_excludes_expected_sectors(self):
         result = resolve_active_branch_excluded_sectors(
-            active_branches=["Transport non-road"],
+            active_branches=["Transport non road"],
             sector_map=self.SECTOR_MAP,
             base_excluded=None,
         )
@@ -497,18 +496,16 @@ class TestLeapDemandGroupEstoSectorMapConfig:
 
     def test_map_contains_all_expected_groups(self):
         expected_groups = {
-            "Freight road",
-            "Passenger road",
-            "Transport non-road",
+            "Road",
+            "Transport non road",
             "Industry",
             "Other sector",
             "Buildings",
         }
         assert set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP.keys()) == expected_groups
 
-    def test_road_groups_share_15_02_road(self):
-        assert LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Freight road"] == ["15_02_road"]
-        assert LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Passenger road"] == ["15_02_road"]
+    def test_road_maps_to_15_02_road(self):
+        assert LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Road"] == ["15_02_road"]
 
     def test_industry_maps_to_top_level_sector(self):
         assert "14_industry_sector" in LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Industry"]
@@ -528,7 +525,7 @@ class TestLeapDemandGroupEstoSectorMapConfig:
         assert "16_01_buildings" not in other_codes
 
     def test_transport_non_road_includes_international_bunkers(self):
-        non_road = set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Transport non-road"])
+        non_road = set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Transport non road"])
         assert "04_international_marine_bunkers" in non_road
         assert "05_international_aviation_bunkers" in non_road
         # Road must NOT be in non-road transport
@@ -640,10 +637,9 @@ class TestSectorExclusionSuffix:
         )
         assert _sector_exclusion_suffix(excl_a) == _sector_exclusion_suffix(excl_b)
 
-    def test_road_dedup_produces_single_rd_in_suffix(self):
-        """When Freight road and Passenger road are both active, RD should appear once."""
+    def test_road_produces_rd_in_suffix(self):
         excl = resolve_active_branch_excluded_sectors(
-            active_branches=["Freight road", "Passenger road"],
+            active_branches=["Road"],
             sector_map=LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
         )
         suffix = _sector_exclusion_suffix(excl)
@@ -792,6 +788,20 @@ class TestAggregatedDemandWorkbookModes:
         assert "Demand\\All demand aggregated\\Industry\\Electricity" in sector_branch_paths
         assert "Demand\\All demand aggregated\\Industry\\Electricity" not in flat_branch_paths
 
+    @pytest.mark.parametrize(
+        ("flow", "expected_branch"),
+        [
+            ("15.02 Road", "Road"),
+            ("15.01 Domestic aviation", "Transport non road"),
+            ("14.03 Manufacturing", "Industry"),
+            ("16.01 Buildings", "Buildings"),
+            ("16.02 Agriculture", "Other sector"),
+            ("17 Non-energy use", "Other sector"),
+        ],
+    )
+    def test_requested_sector_branches_classify_source_flows(self, flow, expected_branch):
+        assert _demand_branch_from_esto_flow(flow) == expected_branch
+
 
 class TestReconciliationDemandInference:
     """Verify aggregated-demand reconciliation uses LEAP results to identify active branches."""
@@ -817,8 +827,7 @@ class TestReconciliationDemandInference:
             return pd.DataFrame(
                 [
                     {"sheet": "Industry", "demand_value": 10.0},
-                    {"sheet": "Freight road", "demand_value": 8.0},
-                    {"sheet": "Passenger road", "demand_value": 7.0},
+                    {"sheet": "Road", "demand_value": 15.0},
                 ]
             )
 
@@ -897,22 +906,12 @@ class TestReconciliationAccountingLogic:
         )
         assert result is None
 
-    def test_road_active_produces_single_road_exclusion(self):
-        """Only one road exclusion even when both Freight road and Passenger road active.
-        This prevents subtracting the same ESTO road total twice."""
-        excl_freight_only = resolve_active_branch_excluded_sectors(
-            active_branches=["Freight road"],
+    def test_road_active_produces_road_exclusion(self):
+        excluded = resolve_active_branch_excluded_sectors(
+            active_branches=["Road"],
             sector_map=self.SECTOR_MAP,
         )
-        excl_both = resolve_active_branch_excluded_sectors(
-            active_branches=["Freight road", "Passenger road"],
-            sector_map=self.SECTOR_MAP,
-        )
-        # Adding Passenger road when Freight road already present must not add a second 15_02_road
-        assert excl_freight_only == excl_both, (
-            "Freight road and Passenger road combined must produce the same exclusion "
-            "list as Freight road alone (15_02_road appears only once)"
-        )
+        assert excluded == ["15_02_road"]
 
     def test_inactive_branches_not_excluded(self):
         """When a branch group is not in active_branches, its ESTO sectors must remain
@@ -954,22 +953,12 @@ class TestReconciliationAccountingLogic:
         len_3 = len(excl_3 or [])
         assert len_0 <= len_1 <= len_2 <= len_3
 
-    def test_both_road_branches_active_exclusion_equals_one_road_branch(self):
-        """Explicitly assert that the accounting does not subtract 15.02 Road twice."""
-        excl_freight = resolve_active_branch_excluded_sectors(
-            active_branches=["Freight road"],
+    def test_road_branch_exclusion_is_15_02(self):
+        excluded = resolve_active_branch_excluded_sectors(
+            active_branches=["Road"],
             sector_map=self.SECTOR_MAP,
         )
-        excl_passenger = resolve_active_branch_excluded_sectors(
-            active_branches=["Passenger road"],
-            sector_map=self.SECTOR_MAP,
-        )
-        excl_both = resolve_active_branch_excluded_sectors(
-            active_branches=["Freight road", "Passenger road"],
-            sector_map=self.SECTOR_MAP,
-        )
-        # All three cases produce the same road exclusion
-        assert excl_freight == excl_passenger == excl_both
+        assert excluded == ["15_02_road"]
 
 
 class TestContributionsSheet:

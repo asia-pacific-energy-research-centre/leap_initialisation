@@ -914,7 +914,7 @@ _PRESET_BASELINE_SEED = {
     # When True, branches are written as Demand\All demand aggregated\{SectorLabel}\{fuel}
     # instead of the flat Demand\All demand aggregated\{fuel}.
     # Enable when LEAP has per-sector sub-branches under the aggregated demand node.
-    "AGGREGATED_DEMAND_USE_SECTOR_BRANCHES": False,  # overrides config default
+    "AGGREGATED_DEMAND_USE_SECTOR_BRANCHES": True,  # overrides config default
     # When True, also generate a LEAP import workbook that zeros every non-share
     # Demand branch from the full model export, so those branches produce no energy
     # use while the aggregated demand branches provide the actual demand values.
@@ -1050,7 +1050,7 @@ _PRESET_RESULTS_UPDATE = {
     # When True, branches are written as Demand\All demand aggregated\{SectorLabel}\{fuel}
     # instead of the flat Demand\All demand aggregated\{fuel}.
     # Enable when LEAP has per-sector sub-branches under the aggregated demand node.
-    "AGGREGATED_DEMAND_USE_SECTOR_BRANCHES": False,  # overrides config default
+    "AGGREGATED_DEMAND_USE_SECTOR_BRANCHES": True,  # overrides config default
     # Keep stale detailed demand branches from surviving update imports when the
     # aggregated-demand dummy is still the active demand source.
     "ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT": True,  # overrides config default

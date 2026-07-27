@@ -1093,10 +1093,10 @@ AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES = True
 AGGREGATED_DEMAND_EXCLUDED_SECTORS: list[str] | None = None
 # When True, aggregated demand branches are written as
 # Demand\All demand aggregated\{SectorLabel}\{fuel} instead of the flat
-# Demand\All demand aggregated\{fuel} path. Enable when LEAP has per-sector
-# sub-branches configured under the aggregated demand node.
+# Demand\All demand aggregated\{fuel} path. The configured split uses Road,
+# Transport non road, Industry, Other sector, and Buildings.
 # PRESET-CONTROLLED DEFAULT: both active presets replace this value.
-AGGREGATED_DEMAND_USE_SECTOR_BRANCHES: bool = False
+AGGREGATED_DEMAND_USE_SECTOR_BRANCHES: bool = True
 
 # TEMPORARY - enabled 2026-07-23 at the user's request to inspect the new
 # "Contributions" sheet (T6 5B.3/5B.4, aggregated_demand_workflow.py) after
@@ -1118,18 +1118,15 @@ AGGREGATED_DEMAND_WRITE_CONTRIBUTIONS: bool = True
 # result values.  This keeps the placeholder independent of how the detailed LEAP
 # branch evolves in future years relative to the 9th projection baseline.
 #
-# Road deduplication: Freight road and Passenger road both map to 15_02_road.
-# resolve_active_branch_excluded_sectors() deduplicates automatically, so the road
-# sector is excluded only once even when both LEAP branches are active.
+# Road is one LEAP branch and maps to 15_02_road.
 #
 # Buildings note: 16_01_buildings covers all buildings sub2sectors (16.01.01
 # Commercial and public services, 16.01.02 Residential, etc.).
 # Other sector note: ESTO does not separate agriculture (16.02.03) and fishing
 # (16.02.04) at sub1sector level — both fall under 16_02_agriculture_and_fishing.
 LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP: dict[str, list[str]] = {
-    "Freight road":       ["15_02_road"],
-    "Passenger road":     ["15_02_road"],
-    "Transport non-road": [
+    "Road":               ["15_02_road"],
+    "Transport non road": [
         "15_01_domestic_air_transport",
         "15_03_rail",
         "15_04_domestic_navigation",

@@ -97,9 +97,9 @@ LEAP_SCENARIOS = ["Current Accounts", "Reference", "Target"]
 
 # ── Sector-branch mode ────────────────────────────────────────────────────────
 # When True, branches are written as Demand\All demand aggregated\{SectorLabel}\{fuel_name}
-# instead of the flat Demand\All demand aggregated\{fuel_name}.
-# Disabled by default; enable when LEAP has per-sector sub-branches set up.
-USE_SECTOR_BRANCHES = False
+# instead of the flat Demand\All demand aggregated\{fuel_name}.  Road freight
+# and passenger source rows are deliberately combined in the single Road branch.
+USE_SECTOR_BRANCHES = True
 # Maps LEAP scenario names to the 'scenarios' column values in the merged CSV
 SCENARIO_CSV_MAP: dict[str, str] = {
     "Current Accounts": "reference",
@@ -280,6 +280,27 @@ _SECTOR_LEAP_LABELS: dict[str, str] = {
     "17_nonenergy_use":                            "Non-Energy Use",
 }
 
+
+def _demand_branch_from_esto_flow(flow: object) -> str:
+    """Return the requested aggregated-demand branch for an ESTO flow.
+
+    The branch structure intentionally has one ``Road`` category.  ESTO does
+    not split the road balance flow into freight and passenger at this level, so
+    both source types belong to ``Road``.
+    """
+    flow_text = str(flow or "").strip()
+    if flow_text.startswith("15.02"):
+        return "Road"
+    if flow_text.startswith(("04", "05", "15")):
+        return "Transport non road"
+    if flow_text.startswith("14"):
+        return "Industry"
+    if flow_text.startswith("16.01"):
+        return "Buildings"
+    # This covers other-sector, non-energy-use, and any own-use/loss rows when
+    # the optional other-loss proxy exclusion is disabled.
+    return "Other sector"
+
 _SECTOR_SHORT_CODES: dict[str, str] = {
     # top-level sectors
     "04_international_marine_bunkers":          "MB",
@@ -417,8 +438,7 @@ def resolve_active_branch_excluded_sectors(
     is always reduced by the source-data amount for the given sector, regardless
     of how the detailed LEAP branch evolves in future years.
 
-    Deduplication: if both 'Freight road' and 'Passenger road' are active,
-    15_02_road is added only once because both map to the same ESTO sector.
+    Road is represented by one ``Road`` branch and maps to ``15_02_road``.
 
     Parameters
     ----------
@@ -562,19 +582,6 @@ def _esto_flow_is_excluded(flow: object, excluded_codes: set[str]) -> bool:
     return False
 
 
-def _esto_flow_to_sector(flow: str) -> str:
-    """Map an ESTO flow code (dot-notation prefix) to a top-level sector key."""
-    if flow.startswith("04"):    return "04_international_marine_bunkers"
-    if flow.startswith("05"):    return "05_international_aviation_bunkers"
-    if flow.startswith("10.01"): return "10_01_own_use"
-    if flow.startswith("10.02"): return "10_02_transmission_and_distribution_losses"
-    if flow.startswith("14"):    return "14_industry_sector"
-    if flow.startswith("15"):    return "15_transport_sector"
-    if flow.startswith("16"):    return "16_other_sector"
-    if flow.startswith("17"):    return "17_nonenergy_use"
-    return "other"
-
-
 def _load_demand_csv(
     path: Path = PROJECTION_DATA_PATH,
     economy: str | None = None,
@@ -715,7 +722,7 @@ def _extract_base_year(
     filtered["value"] = pd.to_numeric(filtered[base_col], errors="coerce").abs().fillna(0.0)
 
     if use_sector_branches:
-        filtered["sector"] = filtered["flows"].apply(_esto_flow_to_sector)
+        filtered["sector"] = filtered["flows"].apply(_demand_branch_from_esto_flow)
         return filtered[["economy", "sector", "source_flow", "fuel_code", "year", "value"]].copy()
     return filtered[["economy", "source_flow", "fuel_code", "year", "value"]].copy()
 
@@ -964,7 +971,7 @@ def _extract_contextual_projection_years(
         lambda value: f"{str(value)[:2]}_{str(value)[2:]}" if len(str(value)) > 2 else str(value)
     )
     if use_sector_branches:
-        projection_wide["sector"] = projection_wide["esto_flow"].map(_esto_flow_to_sector)
+        projection_wide["sector"] = projection_wide["esto_flow"].map(_demand_branch_from_esto_flow)
         id_vars = ["economy", "sector", "leap_fuel_name"]
     else:
         id_vars = ["economy", "leap_fuel_name"]

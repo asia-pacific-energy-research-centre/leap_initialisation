@@ -692,9 +692,13 @@ def _infer_active_demand_branch_groups(sector_table: pd.DataFrame) -> list[str]:
         return []
 
     aliases = {
-        "freight road": "Freight road",
-        "passenger road": "Passenger road",
-        "transport non-road": "Transport non-road",
+        "road": "Road",
+        # Read prior LEAP result labels as Road while areas transition to the
+        # consolidated aggregated-demand branch.
+        "freight road": "Road",
+        "passenger road": "Road",
+        "transport non road": "Transport non road",
+        "transport non-road": "Transport non road",
         "industry": "Industry",
         "industry sector": "Industry",
         "other sector": "Other sector",

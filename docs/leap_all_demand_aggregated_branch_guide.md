@@ -5,10 +5,9 @@ economy area. Do not enter data or expressions as part of this task.
 
 ## Branches to create
 
-Create these six branches directly under `Demand\All demand aggregated`:
+Create these five branches directly under `Demand\All demand aggregated`:
 
-- `Demand\All demand aggregated\Freight road`
-- `Demand\All demand aggregated\Passenger road`
+- `Demand\All demand aggregated\Road`
 - `Demand\All demand aggregated\Transport non road`
 - `Demand\All demand aggregated\Industry`
 - `Demand\All demand aggregated\Other sector`
@@ -34,13 +33,12 @@ The CSV includes the complete LEAP path for every fuel leaf.
 
 | LEAP sector branch | Fuel leaves |
 |---|---:|
-| Freight road | 9 |
-| Passenger road | 9 |
+| Road | 9 |
 | Transport non-road | 26 |
 | Industry | 49 |
 | Other sector | 33 |
 | Buildings | 37 |
-| **Total branch/fuel rows** | **163** |
+| **Total branch/fuel rows** | **154** |
 
 The CSV is the current structural handoff. The all-economy source-data and
 mapping-system audit is a separate task and must be completed before treating
