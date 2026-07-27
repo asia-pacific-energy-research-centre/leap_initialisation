@@ -1371,6 +1371,23 @@ def _resolve_export_key_workbook_path(
     )
 
 
+def _resolve_proxy_import_scenarios(
+    scenario_list: Sequence[str],
+    import_scenario: str | Sequence[str] | None,
+    *,
+    include_leap_import: bool,
+) -> list[str]:
+    """Choose import scenarios only when this call will actually import to LEAP."""
+    if not include_leap_import:
+        if not scenario_list:
+            raise ValueError("At least one export scenario is required.")
+        return [str(scenario_list[0])]
+    return workflow_common.resolve_import_scenarios(
+        scenario_list,
+        import_scenario,
+    )
+
+
 def assemble_proxy_workbook(
     *,
     economy: str = "20_USA",
@@ -1642,7 +1659,11 @@ def assemble_proxy_workbook(
             copied["Scenario"] = scenario_name
             rows.append(copied)
     log_df = pd.DataFrame(rows)
-    import_scenarios = workflow_common.resolve_import_scenarios(scenario_list, import_scenario)
+    import_scenarios = _resolve_proxy_import_scenarios(
+        scenario_list,
+        import_scenario,
+        include_leap_import=include_leap_import,
+    )
     scenario_to_import = import_scenarios[0]
     export_df = finalise_export_df(
         log_df,

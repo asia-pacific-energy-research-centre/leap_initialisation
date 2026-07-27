@@ -36,6 +36,7 @@ ESTO_FLOW_LABELS_BY_KEY = {
     "imports": "02 Imports",
     "exports": "03 Exports",
     "stock_changes": "06 Stock changes",
+    "statistical_discrepancy": "11 Statistical discrepancy",
     "tpes": "07 Total primary energy supply",
 }
 

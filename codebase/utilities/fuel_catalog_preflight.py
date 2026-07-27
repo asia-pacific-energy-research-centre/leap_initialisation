@@ -187,27 +187,39 @@ def build_incremental_template_catalog(
     current_manifest: dict[str, object] = {}
     frames: list[pd.DataFrame] = []
     for source_path in source_paths:
-        signature = _source_file_signature(source_path)
-        source_key = str(source_path.resolve()).lower()
-        cache_name = f"{source_path.stem}.csv"
-        cache_path = cache_dir / cache_name
-        previous = previous_manifest.get(source_key, {})
-        unchanged = (
-            isinstance(previous, dict)
-            and previous.get("size") == signature["size"]
-            and previous.get("modified_ns") == signature["modified_ns"]
-            and cache_path.exists()
-        )
-
-        if unchanged:
-            frame = pd.read_csv(cache_path)
-        else:
-            rows = _catalog_rows_from_full_model_export(
-                source_path=source_path,
-                sheet_name=full_model_sheet,
+        try:
+            signature = _source_file_signature(source_path)
+            source_key = str(source_path.resolve()).lower()
+            cache_name = f"{source_path.stem}.csv"
+            cache_path = cache_dir / cache_name
+            previous = previous_manifest.get(source_key, {})
+            unchanged = (
+                isinstance(previous, dict)
+                and previous.get("size") == signature["size"]
+                and previous.get("modified_ns") == signature["modified_ns"]
+                and cache_path.exists()
             )
-            frame = _add_catalog_source_metadata(rows, source_path)
-            frame.to_csv(cache_path, index=False)
+
+            if unchanged:
+                frame = pd.read_csv(cache_path)
+            else:
+                rows = _catalog_rows_from_full_model_export(
+                    source_path=source_path,
+                    sheet_name=full_model_sheet,
+                )
+                frame = _add_catalog_source_metadata(rows, source_path)
+                frame.to_csv(cache_path, index=False)
+        except FileNotFoundError:
+            # Operators may replace/rename a freshly exported economy template
+            # while another isolated economy run is assembling the shared
+            # catalog. The directory scan and workbook read are not atomic, so
+            # skip a source that disappeared between them. A later run will
+            # discover the replacement filename normally.
+            print(
+                "[WARN] LEAP template disappeared while building the shared "
+                f"fuel catalog; skipping this scan entry: {source_path}"
+            )
+            continue
 
         if not frame.empty:
             frames.append(frame)

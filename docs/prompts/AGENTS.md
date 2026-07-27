@@ -59,7 +59,7 @@ Good prompts in this repo are specific, testable, and conservative.
 
 ## Current Inventory
 
-Reviewed on 2026-07-10.
+Reviewed on 2026-07-27.
 
 | Prompt | Type | Status | Basic Details | Notes Before Use |
 |---|---|---|---|---|
@@ -109,6 +109,7 @@ Reviewed on 2026-07-10.
 
 ## Recently Archived
 
+- `investigate_aus_2022_balance_export_for_seed_improvements.md`
 - `other_loss_own_use_proxy_hardening_prompt.md`
 - `other_loss_own_use_initialisation_post_initialisation_prompt.md`
 - `leap_mappings_prompt_folder_agents_review_prompt.md`

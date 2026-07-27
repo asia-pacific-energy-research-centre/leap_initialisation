@@ -232,7 +232,7 @@ Do not fold into F1/F2.
 | fuel-catalog currency | `fuel_catalog_preflight.py` (`ensure_fuel_catalog_current:486`, `_validate_probe_vs_full_model:300`) | LEAP probe vs full-model export |
 | projected base-year coverage | `industry_fuel_remap.py:371` (`_validate_projected_base_year_coverage`) | base-year data present after projection |
 | results-update readiness | `supply_reconciliation_workflow.py` (~1021–1029) | fresh LEAP balance workbooks exported before update pass |
-| level-2 export readiness | see `project_level2_export_requirement` memory | level-2 branches exported before dependent step |
+| level-2 export readiness | `utilities/leap_balance_export_resolver.py` (`inspect_balance_export_detail`, `require_level2_balance_export_detail`); called by `supply_demand_mapping.py`, `supply_reconciliation_workflow.py`, and `functions/baseline_seed_balance_diagnostics.py` | indented Level 2+ branches exported before results update or baseline-seed diagnostics |
 
 ---
 

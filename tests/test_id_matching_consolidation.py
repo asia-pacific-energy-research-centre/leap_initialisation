@@ -147,6 +147,35 @@ def _saver_resolver():
     return _resolve_ids_and_filter_unmatched_export_rows
 
 
+def test_only_temporary_balance_roots_are_excluded_from_fatal_missing_id_gate() -> None:
+    from codebase.functions.supply_results_saver import (
+        _filter_blocking_nonzero_missing_id_rows,
+    )
+
+    rows = pd.DataFrame(
+        [
+            {"Branch Path": "Stock Changes\\Primary\\Gas", "2022": 1.0},
+            {
+                "Branch Path": "Statistical Differences\\Primary\\Gas",
+                "2022": -2.0,
+            },
+            {
+                "Branch Path": "Demand\\All demand aggregated\\Buildings\\Gas",
+                "2022": 4.0,
+            },
+            {"Branch Path": "Resources\\Primary\\Unknown", "2022": 3.0},
+            {"Branch Path": "Demand\\Unreviewed\\Unknown", "2022": 5.0},
+        ]
+    )
+
+    blocking = _filter_blocking_nonzero_missing_id_rows(rows)
+
+    assert blocking["Branch Path"].tolist() == [
+        "Resources\\Primary\\Unknown",
+        "Demand\\Unreviewed\\Unknown",
+    ]
+
+
 def _source_data() -> pd.DataFrame:
     return pd.DataFrame(
         [
@@ -564,6 +593,45 @@ def test_validate_seed_files_case_insensitive_path_match(tmp_path: Path) -> None
     seed_dir = tmp_path / "seeds"
     seed_dir.mkdir()
     _write_seed_workbook(seed_dir / "leap_import_baseline_seed_02_TST.xlsx", [row])
+
+    total_bad = patch_baseline_seeds.validate_seed_files(
+        seed_dir=seed_dir,
+        template_path=template_path,
+        ignore_prefixes=frozenset(),
+        ignore_fuel_names=frozenset(),
+    )
+
+    assert total_bad == 0
+
+
+def test_validate_seed_files_allows_temporary_balance_roots(tmp_path: Path) -> None:
+    from codebase.functions import patch_baseline_seeds
+
+    template_path = tmp_path / "template.xlsx"
+    _write_template(template_path, [_template_row("Resources\\Primary\\Gas", "Imports")])
+    rows = [
+        dict(
+            _template_row("Resources\\Primary\\Gas", "Imports"),
+            BranchID=-1,
+            VariableID=-1,
+            **{
+                "Branch Path": "Stock Changes\\Primary\\Gas",
+                "Variable": "Stock Changes",
+            },
+        ),
+        dict(
+            _template_row("Resources\\Primary\\Gas", "Imports"),
+            BranchID=-1,
+            VariableID=-1,
+            **{
+                "Branch Path": "Statistical Differences\\Primary\\Gas",
+                "Variable": "Statistical Differences",
+            },
+        ),
+    ]
+    seed_dir = tmp_path / "seeds"
+    seed_dir.mkdir()
+    _write_seed_workbook(seed_dir / "leap_import_baseline_seed_01_TST.xlsx", rows)
 
     total_bad = patch_baseline_seeds.validate_seed_files(
         seed_dir=seed_dir,

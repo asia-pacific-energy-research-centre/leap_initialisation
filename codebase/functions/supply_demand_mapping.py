@@ -74,7 +74,10 @@ from codebase.utilities.leap_results_dashboard_balance import (
     build_esto_axis_structure_from_dashboard_template,
     convert_leap_balances_to_esto_long_table,
 )
-from codebase.utilities.leap_balance_export_resolver import resolve_balance_export_workbook
+from codebase.utilities.leap_balance_export_resolver import (
+    inspect_balance_export_detail,
+    resolve_balance_export_workbook,
+)
 from codebase.utilities.leap_results_dashboard_utils import (
     DEFAULT_EXPLICIT_LEAP_MAPPINGS,
     DEFAULT_EXPLICIT_LEAP_REASSIGNMENTS,
@@ -1294,36 +1297,12 @@ def _resolve_balance_demand_workbooks_for_economy(economy: str) -> tuple[Path, P
 
 
 def _workbook_has_level2_detail(workbook_path: Path | str) -> bool:
-    """Return True when a balance workbook was exported with Level 2+ detail.
-
-    Level 1 exports collapse every module to a single flat row in column A.
-    Level 2+ exports indent child rows with leading spaces (e.g. '   Oil
-    Refining' under 'Oil Refining'), which is what the branch-path mappings
-    key on, so any indented sector row is a reliable detail signal.
-    """
-    path = _resolve(workbook_path)
-    if not path.exists():
-        return False
+    """Compatibility wrapper for the shared balance-export detail inspection."""
     try:
-        from openpyxl import load_workbook
-
-        wb = load_workbook(path, read_only=True, data_only=True)
-    except Exception as exc:
-        print(f"[WARN] Could not inspect balance workbook {path}: {exc}")
+        return inspect_balance_export_detail(workbook_path).has_level2_detail
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"[WARN] Could not inspect balance workbook {workbook_path}: {exc}")
         return False
-
-    try:
-        for sheet in wb.worksheets:
-            try:
-                for row in sheet.iter_rows(min_row=4, max_col=1, values_only=True):
-                    value = row[0]
-                    if isinstance(value, str) and value.strip() and value != value.lstrip(" "):
-                        return True
-            except Exception:
-                continue
-    finally:
-        wb.close()
-    return False
 
 
 def _build_projection_only_mapping_status(balance_mapping_workbook: Path | str) -> pd.DataFrame:

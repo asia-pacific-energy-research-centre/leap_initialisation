@@ -329,7 +329,10 @@ def verify_transformation_backcalculation(
     For each process-year:
     - source output is summed from `output_values` in process records.
     - output used by LEAP is `max(source_output, 0)` (negative years are non-exportable).
-    - implied output is `efficiency * (feedstock_total + loss_total)`.
+    - implied output is `efficiency * feedstock_total`.
+
+    Auxiliary/own-use energy is reported separately but is not included in
+    LEAP's process-efficiency calculation.
     """
     rows = collect_transformation_rows(
         economies=economies,
@@ -340,9 +343,7 @@ def verify_transformation_backcalculation(
         output_by_year = _sum_fuel_values_by_year(record.get("output_values"))
         feedstock_by_year = _sum_fuel_values_by_year(record.get("feedstock_values"))
         loss_by_year = _sum_fuel_values_by_year(record.get("loss_values"))
-        loss_for_eff_by_year = _coerce_year_map(record.get("loss_values_for_efficiency"))
         year_set = set(output_by_year) | set(feedstock_by_year) | set(loss_by_year)
-        year_set.update(loss_for_eff_by_year)
         efficiency = record.get("efficiency")
         if isinstance(efficiency, dict):
             year_set.update(int(year) for year in efficiency.keys())
@@ -357,11 +358,8 @@ def verify_transformation_backcalculation(
             output_for_leap = max(output_raw, 0.0)
             feedstock_total = max(feedstock_by_year.get(year, 0.0), 0.0)
             loss_total_raw = abs(loss_by_year.get(year, 0.0))
-            loss_total_for_eff = abs(
-                loss_for_eff_by_year.get(year, loss_total_raw)
-            )
             efficiency_value = max(_coerce_year_value(efficiency, year), 0.0)
-            implied_output = efficiency_value * (feedstock_total + loss_total_for_eff)
+            implied_output = efficiency_value * feedstock_total
             abs_error = abs(implied_output - output_for_leap)
             rel_error = (
                 abs_error / output_for_leap
@@ -388,7 +386,6 @@ def verify_transformation_backcalculation(
                     "output_for_leap": output_for_leap,
                     "feedstock_total": feedstock_total,
                     "loss_total": loss_total_raw,
-                    "loss_total_for_efficiency": loss_total_for_eff,
                     "efficiency": efficiency_value,
                     "implied_output_from_leap_params": implied_output,
                     "abs_error": abs_error,

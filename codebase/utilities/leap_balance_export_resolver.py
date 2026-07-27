@@ -37,6 +37,16 @@ class BalanceExportWorkbook:
     parsed_date: date | None
 
 
+@dataclass(frozen=True)
+class BalanceExportDetailInspection:
+    """Minimum LEAP Energy Balance detail that can be proven from a workbook."""
+
+    path: Path
+    detected_level_label: str
+    has_level2_detail: bool
+    sample_indented_label: str | None
+
+
 def normalize_balance_scenario_code(scenario: str) -> str:
     """Return the balance-export filename scenario token."""
     text = str(scenario).strip()
@@ -48,6 +58,76 @@ def normalize_balance_scenario_code(scenario: str) -> str:
 def normalize_balance_label(value: object) -> str:
     """Return a compact lowercase key for LEAP balance row/fuel matching."""
     return " ".join(str(value or "").strip().lower().split())
+
+
+def inspect_balance_export_detail(
+    workbook_path: Path | str,
+) -> BalanceExportDetailInspection:
+    """Distinguish a Level 1 export from an export with Level 2+ detail.
+
+    LEAP writes Level 2 child rows with leading spaces in column A. Higher
+    export settings do not include reliable metadata that distinguishes Levels
+    2-5, so the strongest honest result from the workbook is ``Level 2+``.
+    """
+    path = _resolve_path(workbook_path)
+    if not path.exists():
+        raise FileNotFoundError(f"LEAP balance-export workbook does not exist: {path}")
+
+    try:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(path, read_only=True, data_only=True)
+    except Exception as exc:
+        raise ValueError(
+            f"Could not inspect LEAP balance-export detail in {path}: {exc}"
+        ) from exc
+
+    sample_indented_label: str | None = None
+    try:
+        for sheet in workbook.worksheets:
+            for row in sheet.iter_rows(min_row=4, max_col=1, values_only=True):
+                value = row[0]
+                if (
+                    isinstance(value, str)
+                    and value.strip()
+                    and value != value.lstrip(" ")
+                ):
+                    sample_indented_label = value.strip()
+                    break
+            if sample_indented_label is not None:
+                break
+    except Exception as exc:
+        raise ValueError(
+            f"Could not inspect LEAP balance-export detail rows in {path}: {exc}"
+        ) from exc
+    finally:
+        workbook.close()
+
+    has_level2_detail = sample_indented_label is not None
+    return BalanceExportDetailInspection(
+        path=path,
+        detected_level_label="Level 2+" if has_level2_detail else "Level 1",
+        has_level2_detail=has_level2_detail,
+        sample_indented_label=sample_indented_label,
+    )
+
+
+def require_level2_balance_export_detail(
+    workbook_paths: Sequence[Path | str],
+) -> list[BalanceExportDetailInspection]:
+    """Inspect workbooks and reject any that cannot prove Level 2 detail."""
+    inspections = [inspect_balance_export_detail(path) for path in workbook_paths]
+    insufficient = [
+        inspection for inspection in inspections if not inspection.has_level2_detail
+    ]
+    if insufficient:
+        paths = ", ".join(str(inspection.path) for inspection in insufficient)
+        raise ValueError(
+            "LEAP Energy Balance export workbook(s) were detected as Level 1 "
+            "(no indented branch rows). Re-export with at least Level 2 detail "
+            f"before running balance diagnostics or results_update: {paths}"
+        )
+    return inspections
 
 
 # LEAP's own-use/loss balance rows are exported as positive quantities, but they

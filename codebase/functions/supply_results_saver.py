@@ -59,8 +59,10 @@ from codebase.functions.analysis_input_write_dispatcher import (
     reset_is_effective,
 )
 from codebase.functions.baseline_seed_validation import (
+    AGGREGATED_DEMAND_BRANCH_PREFIX,
     apply_template_ids,
     build_template_id_lookup,
+    is_temporary_unresolved_branch_path,
 )
 from codebase import (
     electricity_heat_interim_workflow,
@@ -1480,6 +1482,20 @@ def _resolve_ids_and_filter_unmatched_export_rows(
         unmatched["reason"] = "no_verification_export_id_match"
         unmatched = unmatched.drop_duplicates().reset_index(drop=True)
     return out, unmatched
+
+
+def _filter_blocking_nonzero_missing_id_rows(rows: pd.DataFrame) -> pd.DataFrame:
+    """Apply documented warning-only exceptions to the fatal missing-ID gate."""
+    if rows is None or rows.empty or "Branch Path" not in rows.columns:
+        return rows.copy() if isinstance(rows, pd.DataFrame) else pd.DataFrame()
+    branch_paths = rows["Branch Path"].fillna("").astype(str)
+    reviewed_warning_mask = (
+        branch_paths.str.casefold().str.startswith(
+            AGGREGATED_DEMAND_BRANCH_PREFIX
+        )
+        | branch_paths.map(is_temporary_unresolved_branch_path)
+    )
+    return rows[~reviewed_warning_mask].copy()
 
 
 def _economy_for_region_label(region_value: object) -> str | None:
@@ -2912,6 +2928,9 @@ def save_results_linked_single_workbook(
                     axis=1,
                 )
             ][unmatched_key_cols + year_cols_in_export[:1]].copy()
+            nonzero_missing_id_rows = _filter_blocking_nonzero_missing_id_rows(
+                nonzero_missing_id_rows
+            )
         else:
             nonzero_missing_id_rows = pd.DataFrame()
     else:
@@ -3227,6 +3246,27 @@ def run_results_linked_transformation_supply_workflow(
             )
         export_scenario_list = expanded
     balance_scenario_list = _filter_balance_scenarios(scenario_list)
+    if (
+        not balance_scenario_list
+        and _is_capacity_unmet_baseline_seed_pass()
+        and any(
+            str(scenario or "").strip().lower()
+            in {"current accounts", "current account"}
+            for scenario in scenario_list
+        )
+    ):
+        # Current Accounts is a base-year export scenario rather than a LEAP
+        # balance/projection scenario. The baseline workflow still needs one
+        # projection scenario internally to assemble its reconciliation tables.
+        # Reference is the established fallback used when Current Accounts
+        # records consume those tables; only the requested Current Accounts rows
+        # are written to the final seed.
+        balance_scenario_list = ["Reference"]
+        print(
+            "[INFO] Current Accounts-only baseline seed: using Reference "
+            "internally for balance/reconciliation inputs while exporting only "
+            "Current Accounts."
+        )
     economy_list = workflow_common.normalize_economies(economies or ECONOMIES)
     timer.set_metadata(
         economies=economy_list,

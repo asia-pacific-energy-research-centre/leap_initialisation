@@ -101,6 +101,32 @@ def test_catalog_records_all_source_templates_for_deduplicated_rows(tmp_path, mo
     assert catalog.iloc[0]["source_templates"] == "; ".join(sorted([usa.name, nz.name]))
 
 
+def test_incremental_catalog_skips_template_renamed_after_directory_scan(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    missing_source = tmp_path / "leap_export_template 19_THA_COMP_GEN.xlsx"
+    monkeypatch.setattr(
+        preflight,
+        "_template_source_paths",
+        lambda **kwargs: [missing_source],
+    )
+
+    catalog, registry = preflight.build_incremental_template_catalog(
+        template_directory=tmp_path,
+        full_model_export_path=None,
+        cache_directory=tmp_path / "cache",
+        manifest_path=tmp_path / "manifest.json",
+        catalog_path=tmp_path / "catalog.csv",
+        registry_path=tmp_path / "fuel_registry.csv",
+    )
+
+    assert catalog.empty
+    assert registry.empty
+    assert "template disappeared" in capsys.readouterr().out
+
+
 def test_preflight_expected_identity_is_branch_path_and_variable():
     catalog = pd.DataFrame(
         [

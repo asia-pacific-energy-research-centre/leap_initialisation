@@ -128,6 +128,35 @@ def test_unlimited_expression_is_not_a_year_coverage_failure() -> None:
     assert not result.findings["rule_id"].eq("SEED-009").any()
 
 
+@pytest.mark.parametrize(
+    "branch_path,variable",
+    [
+        ("Stock Changes\\Primary\\Natural gas", "Stock Changes"),
+        (
+            "Statistical Differences\\Primary\\Natural gas",
+            "Statistical Differences",
+        ),
+    ],
+)
+def test_temporary_balance_roots_are_retained_as_nonblocking_warnings(
+    tmp_path: Path,
+    branch_path: str,
+    variable: str,
+) -> None:
+    template = tmp_path / "template.xlsx"
+    _write_template(template)
+    row = _row("1.5")
+    row.update({"Branch Path": branch_path, "Variable": variable})
+
+    result = validate_seed_rows(pd.DataFrame([row]), template_path=template)
+    findings = result.findings[
+        result.findings["rule_id"].isin(["SEED-003", "SEED-004", "SEED-011"])
+    ]
+
+    assert set(findings["status"]) == {"warn"}
+    assert not findings["blocking"].any()
+
+
 def _write_template(path: Path, *, variable_id: int = 420) -> None:
     row = _row("")
     row.update({"BranchID": 101, "VariableID": variable_id, "ScenarioID": 2, "RegionID": 1})

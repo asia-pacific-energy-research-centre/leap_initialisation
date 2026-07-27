@@ -23,6 +23,7 @@ import codebase.aggregated_demand_workflow as aggregated_demand
 import codebase.electricity_heat_interim_workflow as elec_heat
 import codebase.transfers_workflow as transfers
 import codebase.transformation_workflow as transformation
+from codebase.utilities import leap_export_template_resolver
 
 MODULES = {
     "transformation": transformation,
@@ -84,7 +85,9 @@ def test_aggregated_demand_id_lookup_defaults_to_auto_not_the_pinned_export(func
 def test_aggregated_demand_auto_resolves_the_economys_own_template():
     for economy in ("12_NZ", "01_AUS", "20_USA"):
         resolved = aggregated_demand._resolve_export_id_lookup(economy)
-        assert economy in resolved.name, f"{economy} resolved to {resolved.name}"
+        template = leap_export_template_resolver.find_leap_export_template(economy)
+        assert template.economy == economy
+        assert resolved == template.path
 
 
 def test_aggregated_demand_auto_falls_back_for_aggregate_sentinels():
@@ -103,18 +106,32 @@ def test_electricity_heat_resolves_each_economy_in_a_multi_economy_call(monkeypa
     """This writer loops economies and writes one workbook each, so resolving
     once outside the loop would stamp the first economy's IDs on all of them."""
     seen: list[object] = []
+    validated: list[tuple[list[str], Path]] = []
+    catalog_paths: list[Path] = []
 
     def _fake_resolver(economy, *, fallback, **kwargs):
         seen.append(economy)
-        return Path(fallback)
+        return tmp_path / f"{economy}.xlsx"
 
     monkeypatch.setattr(
         elec_heat.leap_export_template_resolver,
         "resolve_leap_export_template_or_fallback",
         _fake_resolver,
     )
-    monkeypatch.setattr(elec_heat, "validate_power_interim_fuel_coverage", lambda **kw: None)
-    monkeypatch.setattr(elec_heat, "build_interim_branch_catalog", lambda: None)
+    monkeypatch.setattr(
+        elec_heat,
+        "validate_power_interim_fuel_coverage",
+        lambda **kw: validated.append(
+            (list(kw["economies"]), Path(kw["workbook_path"]))
+        ),
+    )
+    monkeypatch.setattr(
+        elec_heat,
+        "build_interim_branch_catalog",
+        lambda **kwargs: catalog_paths.extend(
+            Path(path) for path in kwargs["template_paths"]
+        ),
+    )
     monkeypatch.setattr(
         elec_heat, "build_electricity_heat_interim_rows",
         lambda economies=None: [{"economy": economies[0]}],
@@ -131,6 +148,16 @@ def test_electricity_heat_resolves_each_economy_in_a_multi_economy_call(monkeypa
     assert seen == ["12_NZ", "01_AUS", "05_PRC"], (
         f"each economy must resolve its own template; resolver saw {seen!r}"
     )
+    assert validated == [
+        (["12_NZ"], tmp_path / "12_NZ.xlsx"),
+        (["01_AUS"], tmp_path / "01_AUS.xlsx"),
+        (["05_PRC"], tmp_path / "05_PRC.xlsx"),
+    ]
+    assert catalog_paths == [
+        tmp_path / "12_NZ.xlsx",
+        tmp_path / "01_AUS.xlsx",
+        tmp_path / "05_PRC.xlsx",
+    ]
 
 
 def test_electricity_heat_explicit_path_still_bypasses_the_resolver(monkeypatch, tmp_path):
@@ -145,7 +172,9 @@ def test_electricity_heat_explicit_path_still_bypasses_the_resolver(monkeypatch,
         _explode,
     )
     monkeypatch.setattr(elec_heat, "validate_power_interim_fuel_coverage", lambda **kw: None)
-    monkeypatch.setattr(elec_heat, "build_interim_branch_catalog", lambda: None)
+    monkeypatch.setattr(
+        elec_heat, "build_interim_branch_catalog", lambda **kwargs: None
+    )
     monkeypatch.setattr(
         elec_heat, "build_electricity_heat_interim_rows",
         lambda economies=None: [{"economy": economies[0]}],

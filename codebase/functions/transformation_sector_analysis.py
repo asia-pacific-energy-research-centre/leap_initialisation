@@ -25,7 +25,6 @@ from codebase.functions.transformation_series_utils import (
     build_auxiliary_from_losses_by_year,
     merge_loss_into_auxiliary_by_year,
     filter_loss_values_for_feedstock_by_year,
-    get_loss_total_for_efficiency_by_year,
     compute_efficiency_by_year,
     compute_primary_io,
     build_total_input_series,
@@ -34,7 +33,6 @@ from codebase.functions.transformation_series_utils import (
     allocate_loss_by_share,
     sum_loss_values_by_year,
     scale_year_dict_by_share,
-    calculate_efficiency_with_losses,
 )
 from codebase.functions.transformation_fuel_utils import (
     get_years_from,
@@ -535,11 +533,12 @@ def analyze_lng_liquefaction_regas(
                         loss_values_by_year,
                         share_series,
                     )
-                    loss_total_for_eff = total_loss_by_year.mul(share_series, fill_value=0.0)
+                    allocated_loss_total_by_year = total_loss_by_year.mul(
+                        share_series, fill_value=0.0
+                    )
                     efficiency_series = compute_efficiency_by_year(
                         allocated_output_series,
                         input_series,
-                        loss_total_for_eff,
                     )
                     auxiliary_fuels, auxiliary_ratios = build_auxiliary_from_losses_by_year(
                         allocated_loss_values,
@@ -600,12 +599,7 @@ def analyze_lng_liquefaction_regas(
                             ),
                             auxiliary_ratios,
                             allocated_loss_values,
-                            float(pd.Series(loss_total_for_eff, dtype=float).sum()),
-                            loss_values_for_efficiency=series_to_year_dict(
-                                loss_total_for_eff,
-                                export_base_year,
-                                export_final_year,
-                            ),
+                            float(pd.Series(allocated_loss_total_by_year, dtype=float).sum()),
                             feedstock_shares={feedstock_label: 1.0},
                             input_total=float(input_series.sum()),
                             output_import_targets=output_import_targets,
@@ -622,7 +616,6 @@ def analyze_lng_liquefaction_regas(
                 efficiency_series = compute_efficiency_by_year(
                     output_series,
                     total_input_series,
-                    total_loss_by_year,
                 )
                 feedstock_values = {
                     label: series_to_year_dict(series, export_base_year, export_final_year)
@@ -673,11 +666,6 @@ def analyze_lng_liquefaction_regas(
                         auxiliary_ratios,
                         loss_values_by_year,
                         float(pd.Series(total_loss_by_year, dtype=float).sum()),
-                        loss_values_for_efficiency=series_to_year_dict(
-                            total_loss_by_year,
-                            export_base_year,
-                            export_final_year,
-                        ),
                         feedstock_shares=feedstock_shares,
                         input_total=float(total_input_series.sum()),
                         output_import_targets=output_import_targets_total,
@@ -716,8 +704,7 @@ def analyze_lng_liquefaction_regas(
             )
             efficiency_series = compute_efficiency_by_year(
                 output_series,
-                total_input_series,
-                total_loss_by_year,
+                input_series,
             )
             print_leap_structure_block(
                 f"LNG {process_name}",
@@ -761,11 +748,6 @@ def analyze_lng_liquefaction_regas(
                     auxiliary_ratios,
                     loss_values_by_year,
                     float(pd.Series(total_loss_by_year, dtype=float).sum()),
-                    loss_values_for_efficiency=series_to_year_dict(
-                        total_loss_by_year,
-                        export_base_year,
-                        export_final_year,
-                    ),
                     feedstock_shares={primary_input: 1.0},
                     input_total=float(total_input_series.sum()),
                     output_import_targets=output_import_targets_total,
@@ -898,11 +880,12 @@ def _build_gas_process_record(
                 loss_values_by_year,
                 share_series,
             )
-            loss_total_for_eff = total_loss_by_year.mul(share_series, fill_value=0.0)
+            allocated_loss_total_by_year = total_loss_by_year.mul(
+                share_series, fill_value=0.0
+            )
             efficiency_series = compute_efficiency_by_year(
                 allocated_output_series,
                 input_series,
-                loss_total_for_eff,
             )
             auxiliary_fuels, auxiliary_ratios = build_auxiliary_from_losses_by_year(
                 allocated_loss_values,
@@ -951,12 +934,7 @@ def _build_gas_process_record(
                 series_to_year_dict(efficiency_series, export_base_year, export_final_year),
                 auxiliary_ratios,
                 allocated_loss_values,
-                float(pd.Series(loss_total_for_eff, dtype=float).sum()),
-                loss_values_for_efficiency=series_to_year_dict(
-                    loss_total_for_eff,
-                    export_base_year,
-                    export_final_year,
-                ),
+                float(pd.Series(allocated_loss_total_by_year, dtype=float).sum()),
                 feedstock_shares={feedstock_label: 1.0},
                 input_total=float(input_series.sum()),
                 output_import_targets=output_import_targets,
@@ -972,7 +950,6 @@ def _build_gas_process_record(
         efficiency_series = compute_efficiency_by_year(
             output_series,
             total_input_series,
-            total_loss_by_year,
         )
         feedstock_values = {
             label: series_to_year_dict(series, export_base_year, export_final_year)
@@ -1015,11 +992,6 @@ def _build_gas_process_record(
             auxiliary_ratios,
             loss_values_by_year,
             loss_total,
-            loss_values_for_efficiency=series_to_year_dict(
-                total_loss_by_year,
-                export_base_year,
-                export_final_year,
-            ),
             feedstock_shares=feedstock_shares,
             input_total=float(total_input_series.sum()),
             output_import_targets=output_import_targets_total,
@@ -1051,8 +1023,7 @@ def _build_gas_process_record(
         )
         efficiency_series = compute_efficiency_by_year(
             output_series,
-            total_input_series,
-            total_loss_by_year,
+            input_series,
         )
         print_leap_structure_block(
             process_name,
@@ -1084,11 +1055,6 @@ def _build_gas_process_record(
             auxiliary_ratios,
             loss_values_by_year,
             loss_total,
-            loss_values_for_efficiency=series_to_year_dict(
-                total_loss_by_year,
-                export_base_year,
-                export_final_year,
-            ),
             feedstock_shares={primary_input: 1.0},
             input_total=float(total_input_series.sum()),
             output_import_targets=output_import_targets_total,
@@ -1485,12 +1451,13 @@ def summarize_transformation_flows(
                         loss_values_by_year,
                         share_series,
                     )
-                    loss_total_for_eff = total_loss_by_year.mul(share_series, fill_value=0.0)
+                    allocated_loss_total_by_year = total_loss_by_year.mul(
+                        share_series, fill_value=0.0
+                    )
                     allocated_output_series = allocated_outputs.get(primary_output, pd.Series(dtype=float))
                     efficiency_series = compute_efficiency_by_year(
                         allocated_output_series,
                         input_series,
-                        loss_total_for_eff,
                     )
                     auxiliary_fuels, auxiliary_ratios = build_auxiliary_from_losses_by_year(
                         allocated_loss_values,
@@ -1557,12 +1524,7 @@ def summarize_transformation_flows(
                         series_to_year_dict(efficiency_series, export_base_year, export_final_year),
                         auxiliary_ratios,
                         allocated_loss_values,
-                        float(pd.Series(loss_total_for_eff, dtype=float).sum()),
-                        loss_values_for_efficiency=series_to_year_dict(
-                            loss_total_for_eff,
-                            export_base_year,
-                            export_final_year,
-                        ),
+                        float(pd.Series(allocated_loss_total_by_year, dtype=float).sum()),
                         feedstock_shares={feedstock_label: 1.0},
                         input_total=float(input_series.sum()),
                         output_import_targets=output_import_targets,
@@ -1580,11 +1542,9 @@ def summarize_transformation_flows(
                     efficiency_output_series,
                     feedstock_labels=list(input_series_map.keys()) if LOSS_AUX_EXCLUDE_FEEDSTOCKS else None,
                 )
-                loss_total_for_eff = total_loss_by_year
                 efficiency_series = compute_efficiency_by_year(
                     efficiency_output_series,
                     total_input_series,
-                    loss_total_for_eff,
                 )
                 feedstock_values = {
                     label: series_to_year_dict(series, export_base_year, export_final_year)
@@ -1636,11 +1596,6 @@ def summarize_transformation_flows(
                     auxiliary_ratios,
                     loss_values_by_year,
                     float(loss_total),
-                    loss_values_for_efficiency=series_to_year_dict(
-                        loss_total_for_eff,
-                        export_base_year,
-                        export_final_year,
-                    ),
                     feedstock_shares=feedstock_shares,
                     input_total=float(total_input_series.sum()),
                     output_import_targets=output_import_targets_total,
@@ -1669,13 +1624,9 @@ def summarize_transformation_flows(
                 if input_series is None or input_series.empty:
                     print(f"{flow_code}: primary input series missing after normalization")
                     continue
-                loss_total_for_eff = total_loss_by_year
-                # Compute efficiency from total process input so auxiliary
-                # feedstocks are included in the denominator.
                 efficiency_series = compute_efficiency_by_year(
                     output_series,
-                    total_input_series,
-                    loss_total_for_eff,
+                    input_series,
                 )
                 print_leap_structure_block(
                     f"{title} - {flow_code}",
@@ -1707,11 +1658,6 @@ def summarize_transformation_flows(
                     auxiliary_ratios,
                     loss_values_by_year,
                     loss_total,
-                    loss_values_for_efficiency=series_to_year_dict(
-                        loss_total_for_eff,
-                        export_base_year,
-                        export_final_year,
-                    ),
                     feedstock_shares={primary_input: 1.0},
                     input_total=float(total_input_series.sum()),
                     output_import_targets=output_import_targets_total,
@@ -1994,14 +1940,13 @@ def analyze_hydrogen_transformation(
                             loss_values_by_year,
                             feedstock_share_series,
                         )
-                        loss_total_for_eff = total_loss_by_year.mul(
+                        allocated_loss_total_by_year = total_loss_by_year.mul(
                             feedstock_share_series,
                             fill_value=0.0,
                         )
                         efficiency_series = compute_efficiency_by_year(
                             allocated_output_total,
                             input_series,
-                            loss_total_for_eff,
                         )
                         auxiliary_fuels, auxiliary_ratios = build_auxiliary_from_losses_by_year(
                             allocated_loss_values,
@@ -2067,11 +2012,10 @@ def analyze_hydrogen_transformation(
                                 ),
                                 auxiliary_ratios,
                                 allocated_loss_values,
-                                float(pd.Series(loss_total_for_eff, dtype=float).sum()),
-                                loss_values_for_efficiency=series_to_year_dict(
-                                    loss_total_for_eff,
-                                    export_base_year,
-                                    export_final_year,
+                                float(
+                                    pd.Series(
+                                        allocated_loss_total_by_year, dtype=float
+                                    ).sum()
                                 ),
                                 feedstock_shares={feedstock_label: 1.0},
                                 input_total=input_series.sum(),
@@ -2088,7 +2032,6 @@ def analyze_hydrogen_transformation(
                     efficiency_series = compute_efficiency_by_year(
                         total_output_series,
                         input_total_series,
-                        total_loss_by_year,
                     )
                     feedstock_values = {
                         label: series_to_year_dict(series, export_base_year, export_final_year)
@@ -2142,11 +2085,6 @@ def analyze_hydrogen_transformation(
                             auxiliary_ratios,
                             loss_values_by_year,
                             float(pd.Series(total_loss_by_year, dtype=float).sum()),
-                            loss_values_for_efficiency=series_to_year_dict(
-                                total_loss_by_year,
-                                export_base_year,
-                                export_final_year,
-                            ),
                             feedstock_shares=feedstock_shares,
                             input_total=input_total_series.sum(),
                             output_import_targets=output_import_targets_total,
@@ -2179,12 +2117,9 @@ def analyze_hydrogen_transformation(
                         total_output_series,
                         primary_input,
                     )
-                    # Use total process input for efficiency so years where the
-                    # chosen primary fuel is zero do not inflate efficiency.
                     efficiency_series = compute_efficiency_by_year(
                         total_output_series,
-                        input_total_series,
-                        total_loss_by_year,
+                        input_series,
                     )
                     output_values = {
                         label: series_to_year_dict(series, export_base_year, export_final_year)
@@ -2228,11 +2163,6 @@ def analyze_hydrogen_transformation(
                             auxiliary_ratios,
                             loss_values_by_year,
                             float(pd.Series(total_loss_by_year, dtype=float).sum()),
-                            loss_values_for_efficiency=series_to_year_dict(
-                                total_loss_by_year,
-                                export_base_year,
-                                export_final_year,
-                            ),
                             feedstock_shares={primary_input: 1.0},
                             input_total=input_series.sum(),
                             output_import_targets=output_import_targets_total,

@@ -1,5 +1,123 @@
 # Remaining work queue
 
+## [21] Cyclical baseline-seed LEAP balance diagnostics
+
+**Status: Step 1 implemented and real-data verified 2026-07-27 in the
+`codex/baseline-seed-export-diagnostics` worktree. AUS Reference 2022 direct
+workbook investigation completed code-side. The feedstock-only transformation
+efficiency fix is implemented; a fresh LEAP cycle is required to verify it and
+the already-landed thermal-coal producer fix.**
+
+Build a limited-year feedback loop that generates a baseline seed, imports and
+recalculates it in LEAP, reads REF/TGT Energy Balance exports back, diagnoses
+source differences, previews the existing results-update changes, and repeats
+until differences converge or are classified.
+
+Before the next AUS rerun, the supply exporter now emits native
+`Stock Changes\Primary|Secondary\...` and
+`Statistical Differences\Primary|Secondary\...` rows directly from the balance
+flows. Current templates do not yet expose these roots, so their unresolved IDs
+are retained and reported without failing the run. Close this temporary
+exception after refreshed economy templates contain the branches and all
+generated rows receive canonical IDs.
+
+Step 1 is read-only:
+
+- `codebase/baseline_seed_balance_diagnostics_workflow.py` is the slim notebook
+  entry point and `codebase/functions/baseline_seed_balance_diagnostics.py`
+  reuses the canonical LEAP-to-ESTO and ESTO-to-9th comparison backbone;
+- the shared balance-export inspection now blocks Level 1 workbooks before
+  extraction; Level 2 is the minimum and is sufficient for the update backbone;
+- ESTO is the reference for the configured base year and the 9th Outlook for
+  later selected years;
+- the primary CSV reports `LEAP - source` and `source - LEAP`;
+- comparisons are aggregated on the ESTO flow/product axis; and
+- LEAP/9th mapping cardinality is retained so an aggregate difference is never
+  misrepresented as a safe row-level update.
+
+Real `20_USA` smoke, latest REF/TGT exports, years 2022-2023:
+
+- 996 comparison rows: 463 ESTO-referenced, 325 9th-referenced, and 208 with no
+  available source comparator;
+- 738 mismatches: 428 ESTO value mismatches, 29 ESTO rows missing in LEAP, 266
+  9th value mismatches, and 15 9th rows missing in LEAP;
+- 15 9th sector/fuel pairs are shared by multiple ESTO pairs, affecting 30
+  future-year comparison rows (27 mismatches, two missing in LEAP, one match);
+  these are now flagged as requiring an allocation rule before update; and
+- 625 selected-window mapping/check rows were retained (613 missing ESTO pairs,
+  12 total-balance checks), rather than the 11,792 all-horizon rows produced
+  before supporting diagnostics were scoped to the selected years.
+
+The representative limited-year workbook
+`data/leap balances exports - testing/01_AUS/2022.xlsx` passes the new detail
+check as `Level 2+`. The file proves the required minimum through indented
+child rows; it cannot reliably distinguish exact settings above Level 2.
+
+The AUS investigation produced 193 direct ESTO-pair rows. After correcting
+missing raw ESTO pairs so they report unavailable rather than numeric zero:
+102 rows were value mismatches, 36 lacked a valid raw comparator, 55 matched,
+107 scoped extraction rows were unmapped, and all three aggregate total checks
+failed because rollup/comparison boundaries are not yet applied consistently.
+There were 67 material rows at 1 PJ. The largest six form one proven pre-fix
+thermal-coal producer cluster; current code already fixes it in `778f649`, but
+the supplied LEAP export was generated from the older seed. Findings:
+[aus_2022_balance_export_investigation_findings.md](aus_2022_balance_export_investigation_findings.md).
+
+The 102 mismatches are now published as a stable-ID issue register in the main
+repository's normal output tree:
+`outputs/leap_exports/supply_reconciliation/supporting_files/baseline_seed_balance_diagnostics/01_AUS_2022/aus_2022_mismatch_issue_register.csv`.
+It orders the 67 material rows first and separates six causal/review clusters.
+Two additional findings were confirmed:
+
+- transformation efficiency included own-use/loss energy that was also
+  exported as auxiliary fuel. The shared process-record boundary now
+  recalculates efficiency from exported output and feedstock only, covering
+  every transformation module while leaving auxiliary ratios separate; and
+- the non-specified-own-use demand proxy produces exactly 1/100 of its intended
+  Current Accounts energy because the existing LEAP leaf Activity Level is
+  interpreted as a percentage/share. The user corrected the live LEAP setting
+  to blank. The AUS template and seed already show blank `Scale`, and the final
+  seed validator does not compare `Scale`, `Units`, or `Per...`; this is a
+  live-area metadata validation gap, not a seed-row value defect.
+
+A Current Accounts-only seed is structurally supported. When no Reference or
+Target scenario is requested, the baseline runner now uses Reference only for
+its internal balance/reconciliation inputs while writing only Current Accounts
+rows. This is not yet a true fast path: the runner still builds the 9th
+projection inputs. The current seed would shrink from 5,451 rows to 1,793.
+Historical one-economy, three-scenario runs have a median of 17.8 minutes; a
+configuration-only one-scenario run is estimated at 9–11 minutes, while a
+genuine ESTO-only 2022 path requires lazy projection loading and projection
+stage bypasses. See the findings document for the exact equivalence criterion.
+
+The smoke took about five minutes because the existing reference loader still
+prepares the full 288 MB 9th table before selecting two years. Push
+economy/scenario/year column filtering down into the loader before treating the
+limited-year path as fast; this is a performance follow-up, not a correctness
+blocker.
+
+Next work, in order:
+
+1. verify the thermal-coal and transformation-efficiency fixes through one
+   fresh LEAP cycle, then continue through the stable-ID AUS issue register;
+2. implement a measured Current Accounts-only ESTO fast-path preset whose 2022
+   rows exactly equal a normal three-scenario run;
+3. push economy/scenario/year filtering into the large source loader;
+4. add pre-base historical ESTO-year comparisons;
+5. add a dry-run table of the exact changes the current `results_update`
+   allocator would propose;
+6. compare that preview with current baseline-seed rules at the post-boundary
+   seed surface and repair drift;
+7. define explicit allocation rules for many-to-one / one-to-many 9th
+   comparisons before enabling updates for those rows; and
+8. retain per-cycle convergence history and issue ownership.
+
+Design and notebook usage:
+[baseline_seed_balance_diagnostics.md](baseline_seed_balance_diagnostics.md).
+
+Execution prompt for the first evidence-led AUS investigation:
+[investigate_aus_2022_balance_export_for_seed_improvements.md](archive/investigate_aus_2022_balance_export_for_seed_improvements.md).
+
 ## [20] General opt-in projection of ESTO-active sectors missing from 9th
 
 **Status: planned; first narrow 09.06 implementation landed 2026-07-27.**
