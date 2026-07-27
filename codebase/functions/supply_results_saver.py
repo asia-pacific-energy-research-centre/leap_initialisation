@@ -61,6 +61,7 @@ from codebase.functions.analysis_input_write_dispatcher import (
 from codebase.functions.baseline_seed_validation import (
     apply_template_ids,
     build_template_id_lookup,
+    is_temporary_unresolved_branch_path,
 )
 from codebase import (
     electricity_heat_interim_workflow,
@@ -1480,6 +1481,15 @@ def _resolve_ids_and_filter_unmatched_export_rows(
         unmatched["reason"] = "no_verification_export_id_match"
         unmatched = unmatched.drop_duplicates().reset_index(drop=True)
     return out, unmatched
+
+
+def _filter_blocking_nonzero_missing_id_rows(rows: pd.DataFrame) -> pd.DataFrame:
+    """Exclude only reviewed, temporary balance roots from the fatal ID gate."""
+    if rows is None or rows.empty or "Branch Path" not in rows.columns:
+        return rows.copy() if isinstance(rows, pd.DataFrame) else pd.DataFrame()
+    return rows[
+        ~rows["Branch Path"].map(is_temporary_unresolved_branch_path)
+    ].copy()
 
 
 def _economy_for_region_label(region_value: object) -> str | None:
@@ -2912,6 +2922,9 @@ def save_results_linked_single_workbook(
                     axis=1,
                 )
             ][unmatched_key_cols + year_cols_in_export[:1]].copy()
+            nonzero_missing_id_rows = _filter_blocking_nonzero_missing_id_rows(
+                nonzero_missing_id_rows
+            )
         else:
             nonzero_missing_id_rows = pd.DataFrame()
     else:

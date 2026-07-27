@@ -68,6 +68,7 @@ from codebase.functions.baseline_seed_validation import (
     normalize_template_key,
     prepare_seed_rows_for_write,
     resolve_logical_duplicates,
+    TEMPORARY_UNRESOLVED_BRANCH_PREFIXES,
     _exclude_ignored_full_model_export_rows,
     load_template_rows,
 )
@@ -519,6 +520,7 @@ def validate_seed_files(
     template_path: Path | None = None,
     ignore_prefixes: frozenset[str] = VALIDATION_IGNORE_PREFIXES,
     ignore_fuel_names: frozenset[str] = VALIDATION_IGNORE_FUEL_NAMES,
+    allow_unresolved_prefixes: tuple[str, ...] = TEMPORARY_UNRESOLVED_BRANCH_PREFIXES,
 ) -> int:
     """Check all seed files against the template; return number of invalid rows found.
 
@@ -568,6 +570,12 @@ def validate_seed_files(
             branch_key = normalize_template_key(bp)
             canonical_bp = lookup.canonical_paths.get(branch_key)
             if canonical_bp is None:
+                normalized_bp = bp.strip().lower()
+                if any(
+                    normalized_bp.startswith(prefix)
+                    for prefix in allow_unresolved_prefixes
+                ):
+                    continue
                 bad_rows.append(f"  unknown path: {bp}")
                 continue
             # Use canonical path for ID column checks.

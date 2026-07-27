@@ -13,6 +13,14 @@ recalculates it in LEAP, reads REF/TGT Energy Balance exports back, diagnoses
 source differences, previews the existing results-update changes, and repeats
 until differences converge or are classified.
 
+Before the next AUS rerun, the supply exporter now emits native
+`Stock Changes\Primary|Secondary\...` and
+`Statistical Differences\Primary|Secondary\...` rows directly from the balance
+flows. Current templates do not yet expose these roots, so their unresolved IDs
+are retained and reported without failing the run. Close this temporary
+exception after refreshed economy templates contain the branches and all
+generated rows receive canonical IDs.
+
 Step 1 is read-only:
 
 - `codebase/baseline_seed_balance_diagnostics_workflow.py` is the slim notebook

@@ -43,6 +43,7 @@ FLOW_CODES_BY_DATASET = {
         "imports": "02 Imports",
         "exports": "03 Exports",
         "stock_changes": "06 Stock changes",
+        "statistical_discrepancy": "11 Statistical discrepancy",
         "tpes": "07 Total primary energy supply",
     },
     "ninth": {
@@ -50,6 +51,7 @@ FLOW_CODES_BY_DATASET = {
         "imports": "02_imports",
         "exports": "03_exports",
         "stock_changes": "06_stock_changes",
+        "statistical_discrepancy": "11_statistical_discrepancy",
         "tpes": "07_total_primary_energy_supply",
     },
 }
@@ -57,6 +59,20 @@ FLOW_CODES_BY_DATASET = {
 SUPPLY_MEASURES = [
     {"name": "Imports", "flow_key": "imports", "units": "Petajoule", "per": ""},
     {"name": "Exports", "flow_key": "exports", "units": "Petajoule", "per": ""},
+    {
+        "name": "Stock Changes",
+        "flow_key": "stock_changes",
+        "units": "Petajoule",
+        "per": "",
+        "top_level_root": "Stock Changes",
+    },
+    {
+        "name": "Statistical Differences",
+        "flow_key": "statistical_discrepancy",
+        "units": "Petajoule",
+        "per": "",
+        "top_level_root": "Statistical Differences",
+    },
     {
         "name": "Maximum Production",
         "flow_key": "max_production",
@@ -270,26 +286,38 @@ def build_supply_log_rows(
                             source_path=classification_source,
                         )
                     safe_name = sanitize_leap_label(template_label or display_name)
-                    branch_path = build_branch_path(branch_root + [safe_name])
-                    if (
+                    resource_branch_path = build_branch_path(branch_root + [safe_name])
+                    resource_branch_exists = not (
                         classification_source is not None
                         and not _supply_branch_exists_in_export_source(
-                            branch_path, source_path=classification_source
+                            resource_branch_path, source_path=classification_source
                         )
-                    ):
-                        miss_key = f"{economy}|{scenario}|{branch_path}"
+                    )
+                    if not resource_branch_exists:
+                        miss_key = f"{economy}|{scenario}|{resource_branch_path}"
                         if miss_key not in _SUPPLY_BRANCH_PATH_MISS_WARNED:
                             _SUPPLY_BRANCH_PATH_MISS_WARNED.add(miss_key)
                             print(
-                                "[WARN] Skipping supply export row for branch not present in "
+                                "[WARN] Skipping Resources rows for branch not present in "
                                 "the economy-specific export template: "
-                                f"{branch_path} (economy={economy}, scenario={scenario}, fuel={display_name})"
+                                f"{resource_branch_path} "
+                                f"(economy={economy}, scenario={scenario}, fuel={display_name})"
                             )
-                        continue
                     for measure in measures:
                         root_filter = str(measure.get("branch_root") or "").strip().lower()
                         if root_filter and root_filter not in {"all", branch_type}:
                             continue
+                        top_level_root = str(
+                            measure.get("top_level_root") or ""
+                        ).strip()
+                        if top_level_root:
+                            branch_path = build_branch_path(
+                                [top_level_root, branch_root[-1], safe_name]
+                            )
+                        else:
+                            if not resource_branch_exists:
+                                continue
+                            branch_path = resource_branch_path
                         flow_key = measure.get("flow_key")
                         if flow_key:
                             if flow_key == "max_production" and _is_unlimited_production_entry(entry):

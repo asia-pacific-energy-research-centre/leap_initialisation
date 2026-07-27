@@ -98,6 +98,15 @@ mapping decision. Remove missing-branch aggregate-demand groups when their
 source Activity Level is zero in every represented year; structural values such
 as `Final Energy Intensity = 1` do not by themselves make the source nonzero.
 
+There is also a temporary, narrower migration exception for the native
+`Stock Changes\` and `Statistical Differences\` roots. These rows must be
+generated from the `06 Stock changes` and `11 Statistical discrepancy` balance
+flows and retained even while the current economy templates omit those roots.
+Until the templates are refreshed, unresolved IDs under exactly these two roots
+are warnings rather than blockers. The rows remain non-importable while their
+IDs are unresolved; the unmatched-ID diagnostics are deliberately retained so
+the later ID backfill is visible. No other root inherits this exception.
+
 ### Validation
 
 After refreshing the export, compare its branch paths and IDs with the archived version; rebuild catalog/reset scope; run unknown-path, metadata, duplicate-key, and missing-ID checks; validate share totals after duplicate resolution; and compare new baseline seeds with the last accepted set. Rules `SEED-001` through `SEED-005` and `SEED-011` automate the import-integrity checks. The detailed lifecycle and required export contents are documented in `data/README.md`.
@@ -105,14 +114,15 @@ After refreshing the export, compare its branch paths and IDs with the archived 
 Missing-ID rows remain blocking by default, including zero resets. The final
 writer accepts an optional exact-match exception list for a specifically
 reviewed rule and measure/logical key. Broad rule-only exceptions are invalid,
-and no production missing-ID exception is currently configured. An exception
-does not make a `-1` row effective in LEAP.
+and the only production-level prefix exception is the temporary stock/statistical
+migration rule above. An exception does not make a `-1` row effective in LEAP.
 
 ### History
 
 - 2026-06-27: Defined order-independent duplicate classification and required duplicate resolution before share validation.
 - 2026-06-27: Recorded the full-model export lifecycle, ID sentinel rules, duplicate-key requirement, and cross-repository mapping dependency after reviewing the June 2026 USA baseline backup.
 - 2026-06-28: Added a narrow rule-and-key exception mechanism for explicitly reviewed findings; missing-ID zero resets continue to block by default.
+- 2026-07-27: Added temporary unresolved-ID handling for generated Stock Changes and Statistical Differences rows while economy templates are refreshed.
 
 ## INIT-003: Share group invariants
 
