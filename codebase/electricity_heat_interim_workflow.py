@@ -50,6 +50,7 @@ except Exception as exc:
     print(f"Failed to add repo root to sys.path: {exc}")
 
 from codebase.functions import transformation_analysis_utils as core
+from codebase.functions import ninth_projection_mapping as ninth_alloc
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions import leap_api, leap_exports
 from codebase.functions.analysis_input_write_dispatcher import (
@@ -202,6 +203,24 @@ POWER_INTERIM_ALLOWED_WORKBOOK_ONLY_LABELS: frozenset[str] = frozenset({
 _ESTO_PRODUCT_TO_NINTH_FUEL: dict[str, str] | None = None
 _POWER_INTERIM_DISPLAY_NAME_MAP: dict[str, str] | None = None
 
+# The 9th-data fuel code "01_x_thermal_coal" is a genuine aggregate: it has no
+# sub-fuel breakdown in the projection dataset, yet leap_display_names carries
+# three conflicting display names for it (Anthracite, Other bituminous coal,
+# Sub bituminous coal) and the LEAP export template expects all three as
+# separate branches. Rather than silently collapsing the whole projected
+# total onto whichever display name wins the canonical loader's first-match
+# rule (Anthracite), split it across the underlying ESTO products using each
+# economy's base-year ESTO share. Keyed by the raw 9th fuel code; values are
+# the exact ESTO product labels (as they appear in "ninth fuel to esto
+# product") that the code aggregates.
+AMBIGUOUS_NINTH_FUEL_ESTO_SPLITS: dict[str, list[str]] = {
+    "01_x_thermal_coal": [
+        "01.02 Other bituminous coal",
+        "01.03 Sub-bituminous coal",
+        "01.04 Anthracite",
+    ],
+}
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -303,6 +322,13 @@ def _load_esto_product_to_ninth_fuel() -> dict[str, str]:
         )
         if parent_match:
             mapping[esto_label] = parent_match
+
+    # Keep these ESTO products under their own labels instead of collapsing
+    # them onto the shared ambiguous 9th code (see AMBIGUOUS_NINTH_FUEL_ESTO_SPLITS).
+    # _split_ambiguous_ninth_fuel_rows re-expands the 9th aggregate to match.
+    for esto_products in AMBIGUOUS_NINTH_FUEL_ESTO_SPLITS.values():
+        for esto_product in esto_products:
+            mapping.pop(esto_product, None)
 
     _ESTO_PRODUCT_TO_NINTH_FUEL = mapping
     return _ESTO_PRODUCT_TO_NINTH_FUEL
@@ -417,6 +443,141 @@ def _select_esto_module_rows(
     return _map_esto_products_to_ninth_fuels(_drop_esto_subtotals(data[mask]))
 
 
+def _ambiguous_fuel_base_year_esto_rows(
+    esto_flows: tuple[str, ...],
+    esto_products: tuple[str, ...],
+) -> pd.DataFrame:
+    """Return raw ESTO rows across ALL economies for a set of flows/products.
+
+    Deliberately not filtered to one economy: allocate_ninth_projection_to_esto
+    uses the full set to compute an APEC-wide fallback share (economies with
+    their own base-year history use it; economies without any get the APEC
+    share instead of an arbitrary even split), matching the precedent already
+    established for demand-side allocation in aggregated_demand_workflow.py.
+    """
+    data = core.esto_data
+    if not core.has_required_columns(data, [["economy", "flows", "products"]], "ambiguous fuel split"):
+        return pd.DataFrame(columns=["economy", "flows", "products"])
+    normalized_products = {_normalize_label_text(p) for p in esto_products}
+    mask = (
+        data["flows"].fillna("").astype(str).str.strip().isin(esto_flows)
+    ) & (
+        data["products"].map(_normalize_label_text).isin(normalized_products)
+    )
+    return _drop_esto_subtotals(data[mask])
+
+
+def _split_ambiguous_ninth_fuel_rows(
+    ninth_rows: pd.DataFrame,
+    economy: str,
+    esto_flows: list[str],
+) -> pd.DataFrame:
+    """Expand 9th-data rows whose fuel code aggregates several ESTO products.
+
+    Some 9th fuel codes (see AMBIGUOUS_NINTH_FUEL_ESTO_SPLITS) have no
+    sub-fuel breakdown in the projection dataset even though ESTO and the
+    LEAP export template distinguish the underlying products. Rather than
+    re-deriving base-year shares here, this delegates to the same
+    allocate_ninth_projection_to_esto engine that already solves this class
+    of problem for demand-side projections (per-economy base-year share,
+    APEC-wide fallback when an economy has no base-year history of its own).
+    """
+    if ninth_rows.empty:
+        return ninth_rows
+    fuel_labels = core.get_fuel_labels(ninth_rows)
+    if fuel_labels is None:
+        return ninth_rows
+    fuel_labels = fuel_labels.fillna("").astype(str).str.strip()
+
+    ambiguous_codes = set(AMBIGUOUS_NINTH_FUEL_ESTO_SPLITS) & set(fuel_labels.unique())
+    if not ambiguous_codes:
+        return ninth_rows
+
+    year_cols = [col for col in ninth_rows.columns if col in core.ninth_year_cols]
+    economy_key = ninth_alloc.normalize_economy_key(economy)
+    kept_frames = [ninth_rows[~fuel_labels.isin(ambiguous_codes)]]
+
+    for ninth_code in ambiguous_codes:
+        esto_products = AMBIGUOUS_NINTH_FUEL_ESTO_SPLITS[ninth_code]
+        matched = ninth_rows[fuel_labels == ninth_code].copy()
+        if matched.empty:
+            continue
+        sectors = (
+            matched["sub1sectors"].astype(str).str.strip()
+            if "sub1sectors" in matched.columns
+            else pd.Series([ninth_code] * len(matched), index=matched.index)
+        )
+        base_esto_rows = _ambiguous_fuel_base_year_esto_rows(
+            tuple(esto_flows), tuple(esto_products)
+        )
+        # No base-year ESTO history anywhere (not even in another economy) for
+        # this flow/product set: allocate_ninth_projection_to_esto's APEC-wide
+        # fallback has nothing to compute a share from in this case, so skip
+        # straight to an even split rather than calling it with an empty
+        # base_values table.
+        no_base_year_data_anywhere = base_esto_rows.empty
+        base_values = (
+            pd.DataFrame()
+            if no_base_year_data_anywhere
+            else ninth_alloc.build_esto_base_year_values(base_esto_rows, core.BASE_YEAR)
+        )
+
+        for sector in sorted(set(sectors)):
+            sector_rows = matched[sectors == sector].copy()
+            if sector_rows.empty:
+                continue
+            template_row = sector_rows.iloc[[0]]
+            projection_df = pd.DataFrame()
+            if not no_base_year_data_anywhere:
+                allocation_input = sector_rows.copy()
+                allocation_input["ninth_sector"] = sector
+                allocation_input["ninth_fuel"] = ninth_code
+                allocation_input["economy_key"] = economy_key
+                ninth_series = ninth_alloc.build_ninth_projection_series(allocation_input, year_cols)
+                mapping_df = pd.DataFrame(
+                    [
+                        {
+                            "ninth_sector": sector,
+                            "ninth_fuel": ninth_code,
+                            "esto_flow": flow,
+                            "esto_product": product,
+                        }
+                        for flow in esto_flows
+                        for product in esto_products
+                    ]
+                )
+                projection_df, _diagnostics = ninth_alloc.allocate_ninth_projection_to_esto(
+                    mapping_df=mapping_df,
+                    ninth_series=ninth_series,
+                    base_values=base_values,
+                    projection_years=year_cols,
+                )
+            if projection_df.empty:
+                share = 1.0 / len(esto_products)
+                print(
+                    f"[WARN] {economy}: allocate_ninth_projection_to_esto returned no "
+                    f"rows for {ninth_code} ({sector}); dividing evenly across {esto_products}."
+                )
+                for esto_product in esto_products:
+                    split_row = template_row.copy()
+                    split_row[year_cols] = split_row[year_cols] * share
+                    split_row["subfuels"] = esto_product
+                    split_row["fuels"] = esto_product
+                    kept_frames.append(split_row)
+                continue
+            for esto_product in esto_products:
+                product_rows = projection_df[projection_df["esto_product"] == esto_product]
+                split_row = template_row.copy()
+                for year in year_cols:
+                    split_row[year] = (
+                        float(product_rows[year].sum()) if not product_rows.empty else 0.0
+                    )
+                split_row["subfuels"] = esto_product
+                split_row["fuels"] = esto_product
+                kept_frames.append(split_row)
+    return pd.concat(kept_frames, ignore_index=True, sort=False)
+
+
 def _combine_module_source_rows(
     economy: str,
     sub1sectors: list[str],
@@ -425,6 +586,7 @@ def _combine_module_source_rows(
     """Return ESTO historical/base rows plus 9th projection rows for a module."""
     esto_rows = _select_esto_module_rows(core.esto_data, economy, esto_flows)
     ninth_rows = _select_module_rows(core.ninth_data, economy, sub1sectors)
+    ninth_rows = _split_ambiguous_ninth_fuel_rows(ninth_rows, economy, esto_flows)
 
     all_year_cols = sorted(
         set(int(year) for year in core.esto_year_cols)
