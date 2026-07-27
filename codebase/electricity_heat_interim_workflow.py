@@ -1204,6 +1204,7 @@ def print_all_power_sector_feedstocks(
 
 def build_interim_branch_catalog(
     economies: Iterable[str] | None = None,
+    template_paths: Iterable[Path | str] | None = None,
 ) -> pd.DataFrame:
     """Build a branch-path catalog for build_aux_fuel_zero_rows.
 
@@ -1243,29 +1244,47 @@ def build_interim_branch_catalog(
             ])
             catalog_rows.append({"fuel_group": "Feedstock Fuels", "branch_path": branch_path})
 
-    # Include every template feedstock leaf, even if no current economy has data
-    # for it. These explicit zero rows clear stale LEAP values after a patch.
-    template_df = pd.read_excel(
-        POWER_INTERIM_REFERENCE_WORKBOOK_PATH,
-        sheet_name=POWER_INTERIM_REFERENCE_SHEET_NAME,
-        header=2,
-        dtype=str,
-    ).fillna("")
     existing_paths = {str(row["branch_path"]) for row in catalog_rows}
-    for branch_path in template_df["Branch Path"].astype(str):
-        if not any(
-            branch_path.startswith(
-                f"Transformation\\{module_name}\\Processes\\{module_name}\\Feedstock Fuels\\"
+    # Include every feedstock leaf in the active economies' own templates, even
+    # if no current economy has data for it. These explicit zero rows clear stale
+    # LEAP values after a patch without depending on a specially named USA file.
+    resolved_template_paths = list(
+        dict.fromkeys(
+            Path(path)
+            for path in (
+                template_paths
+                if template_paths is not None
+                else [POWER_INTERIM_REFERENCE_WORKBOOK_PATH]
             )
-            for module_name in INTERIM_MODULES
-        ):
-            continue
-        if branch_path in existing_paths:
-            continue
-        catalog_rows.append(
-            {"fuel_group": "Feedstock Fuels", "branch_path": branch_path}
         )
-        existing_paths.add(branch_path)
+    )
+    for template_path in resolved_template_paths:
+        if not template_path.exists():
+            print(
+                "[WARN] Interim branch-catalog template does not exist; "
+                f"continuing with source-derived fuels: {template_path}"
+            )
+            continue
+        template_df = pd.read_excel(
+            template_path,
+            sheet_name=POWER_INTERIM_REFERENCE_SHEET_NAME,
+            header=2,
+            dtype=str,
+        ).fillna("")
+        for branch_path in template_df["Branch Path"].astype(str):
+            if not any(
+                branch_path.startswith(
+                    f"Transformation\\{module_name}\\Processes\\{module_name}\\Feedstock Fuels\\"
+                )
+                for module_name in INTERIM_MODULES
+            ):
+                continue
+            if branch_path in existing_paths:
+                continue
+            catalog_rows.append(
+                {"fuel_group": "Feedstock Fuels", "branch_path": branch_path}
+            )
+            existing_paths.add(branch_path)
 
     if not catalog_rows:
         return pd.DataFrame(columns=["fuel_group", "branch_path"])
@@ -1294,14 +1313,8 @@ def assemble_electricity_heat_interim_workbook(
     output_dir_path = Path(export_output_dir or core.EXPORT_OUTPUT_DIR)
     output_dir_path.mkdir(parents=True, exist_ok=True)
 
-    # Build catalog once from ALL APEC economies so every known feedstock fuel
-    # is zero-cleared for economies that lack data for it.
-    branch_catalog = build_interim_branch_catalog()
-    in_scope = set(INTERIM_MODULES.keys())
-
-    exported_paths: list[Path] = []
-    for economy in economy_list:
-        economy_template_path = (
+    economy_template_paths = {
+        economy: (
             Path(id_lookup_path)
             if id_lookup_path is not None
             else leap_export_template_resolver.resolve_leap_export_template_or_fallback(
@@ -1309,6 +1322,18 @@ def assemble_electricity_heat_interim_workbook(
                 fallback=EXPORT_ID_LOOKUP_PATH,
             )
         )
+        for economy in economy_list
+    }
+    # Build catalog once from ALL APEC source data plus the active economies'
+    # templates so every known feedstock fuel is zero-cleared.
+    branch_catalog = build_interim_branch_catalog(
+        template_paths=economy_template_paths.values()
+    )
+    in_scope = set(INTERIM_MODULES.keys())
+
+    exported_paths: list[Path] = []
+    for economy in economy_list:
+        economy_template_path = economy_template_paths[economy]
         validate_power_interim_fuel_coverage(
             economies=[economy],
             workbook_path=economy_template_path,

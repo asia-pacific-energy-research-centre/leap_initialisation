@@ -107,6 +107,7 @@ def test_electricity_heat_resolves_each_economy_in_a_multi_economy_call(monkeypa
     once outside the loop would stamp the first economy's IDs on all of them."""
     seen: list[object] = []
     validated: list[tuple[list[str], Path]] = []
+    catalog_paths: list[Path] = []
 
     def _fake_resolver(economy, *, fallback, **kwargs):
         seen.append(economy)
@@ -124,7 +125,13 @@ def test_electricity_heat_resolves_each_economy_in_a_multi_economy_call(monkeypa
             (list(kw["economies"]), Path(kw["workbook_path"]))
         ),
     )
-    monkeypatch.setattr(elec_heat, "build_interim_branch_catalog", lambda: None)
+    monkeypatch.setattr(
+        elec_heat,
+        "build_interim_branch_catalog",
+        lambda **kwargs: catalog_paths.extend(
+            Path(path) for path in kwargs["template_paths"]
+        ),
+    )
     monkeypatch.setattr(
         elec_heat, "build_electricity_heat_interim_rows",
         lambda economies=None: [{"economy": economies[0]}],
@@ -146,6 +153,11 @@ def test_electricity_heat_resolves_each_economy_in_a_multi_economy_call(monkeypa
         (["01_AUS"], tmp_path / "01_AUS.xlsx"),
         (["05_PRC"], tmp_path / "05_PRC.xlsx"),
     ]
+    assert catalog_paths == [
+        tmp_path / "12_NZ.xlsx",
+        tmp_path / "01_AUS.xlsx",
+        tmp_path / "05_PRC.xlsx",
+    ]
 
 
 def test_electricity_heat_explicit_path_still_bypasses_the_resolver(monkeypatch, tmp_path):
@@ -160,7 +172,9 @@ def test_electricity_heat_explicit_path_still_bypasses_the_resolver(monkeypatch,
         _explode,
     )
     monkeypatch.setattr(elec_heat, "validate_power_interim_fuel_coverage", lambda **kw: None)
-    monkeypatch.setattr(elec_heat, "build_interim_branch_catalog", lambda: None)
+    monkeypatch.setattr(
+        elec_heat, "build_interim_branch_catalog", lambda **kwargs: None
+    )
     monkeypatch.setattr(
         elec_heat, "build_electricity_heat_interim_rows",
         lambda economies=None: [{"economy": economies[0]}],
