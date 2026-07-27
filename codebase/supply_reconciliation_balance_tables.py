@@ -480,10 +480,7 @@ def _balance_export_parts_for_scenario(scenario: object) -> tuple[str, str]:
     # rather than production LEAP-export names. Preserve unknown date provenance,
     # but never collapse distinct requested scenarios into ``unknown_scenario``.
     if scenario_code == "unknown_scenario":
-        scenario_code = {
-            "reference": "REF",
-            "target": "TGT",
-        }.get(scenario_key, _safe_filename_token(scenario).upper())
+        scenario_code = _safe_filename_token(scenario).upper()
     return date_id, scenario_code
 
 

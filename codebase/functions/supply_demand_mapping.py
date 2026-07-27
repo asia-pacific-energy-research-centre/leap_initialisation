@@ -1274,24 +1274,66 @@ def _compact_economy_code(economy: str) -> str:
     return str(economy or "").strip().replace("_", "")
 
 
-def _resolve_balance_demand_workbooks_for_economy(economy: str) -> tuple[Path, Path]:
-    """Return REF/TGT LEAP balance export workbooks for one economy."""
+def _resolve_balance_demand_workbooks_for_economy(
+    economy: str,
+    scenarios: Iterable[str] | None = None,
+) -> tuple[Path | None, Path | None]:
+    """Return only the REF/TGT workbooks required by the requested scenarios."""
     economy_text = str(economy or "").strip()
     if not economy_text:
         raise ValueError("Balance-export economy cannot be blank.")
-    if economy_text == DIRECT_DEMAND_PROJECTION_ECONOMY:
-        return _resolve(BALANCE_DEMAND_REF_WORKBOOK_PATH), _resolve(BALANCE_DEMAND_TGT_WORKBOOK_PATH)
-    ref_workbook = resolve_balance_export_workbook(
-        economy=economy_text,
-        scenario="REF",
-        date_id=BALANCE_DEMAND_REF_BALANCE_EXPORT_DATE_ID,
-        exports_root=BALANCE_DEMAND_EXPORTS_ROOT,
+    requested = (
+        {
+            str(scenario or "").strip().lower()
+            for scenario in scenarios
+            if str(scenario or "").strip()
+        }
+        if scenarios is not None
+        else {"reference", "target"}
     )
-    tgt_workbook = resolve_balance_export_workbook(
-        economy=economy_text,
-        scenario="TGT",
-        date_id=BALANCE_DEMAND_TGT_BALANCE_EXPORT_DATE_ID,
-        exports_root=BALANCE_DEMAND_EXPORTS_ROOT,
+    require_reference = "reference" in requested
+    require_target = "target" in requested
+    if economy_text == DIRECT_DEMAND_PROJECTION_ECONOMY:
+        if require_reference and BALANCE_DEMAND_REF_WORKBOOK_PATH is None:
+            raise ValueError(
+                "BALANCE_DEMAND_REF_WORKBOOK_PATH is required for a Reference "
+                f"results-update run of {economy_text}."
+            )
+        if require_target and BALANCE_DEMAND_TGT_WORKBOOK_PATH is None:
+            raise ValueError(
+                "BALANCE_DEMAND_TGT_WORKBOOK_PATH is required for a Target "
+                f"results-update run of {economy_text}."
+            )
+        ref_workbook = (
+            _resolve(BALANCE_DEMAND_REF_WORKBOOK_PATH)
+            if require_reference
+            else None
+        )
+        tgt_workbook = (
+            _resolve(BALANCE_DEMAND_TGT_WORKBOOK_PATH)
+            if require_target
+            else None
+        )
+        return ref_workbook, tgt_workbook
+    ref_workbook = (
+        resolve_balance_export_workbook(
+            economy=economy_text,
+            scenario="REF",
+            date_id=BALANCE_DEMAND_REF_BALANCE_EXPORT_DATE_ID,
+            exports_root=BALANCE_DEMAND_EXPORTS_ROOT,
+        )
+        if require_reference
+        else None
+    )
+    tgt_workbook = (
+        resolve_balance_export_workbook(
+            economy=economy_text,
+            scenario="TGT",
+            date_id=BALANCE_DEMAND_TGT_BALANCE_EXPORT_DATE_ID,
+            exports_root=BALANCE_DEMAND_EXPORTS_ROOT,
+        )
+        if require_target
+        else None
     )
     return ref_workbook, tgt_workbook
 
@@ -1454,7 +1496,12 @@ def load_balance_demand_inputs(
             return comparison_long, mapping_status, issues, matching_diagnostics
 
         try:
-            ref_workbook_path, tgt_workbook_path = _resolve_balance_demand_workbooks_for_economy(economy_text)
+            ref_workbook_path, tgt_workbook_path = (
+                _resolve_balance_demand_workbooks_for_economy(
+                    economy_text,
+                    scenarios=balance_scenarios,
+                )
+            )
         except FileNotFoundError:
             # No LEAP balance-export workbook exists for this economy at all (e.g.
             # the synthetic 00_APEC aggregate used by preflight_compressed_projection,

@@ -210,6 +210,37 @@ def test_temporary_workbook_resolution_used_by_balance_loader(monkeypatch, tmp_p
     assert resolved_tgt == sdm._resolve(tgt)
 
 
+def test_direct_target_only_resolution_does_not_require_reference(monkeypatch, tmp_path) -> None:
+    import codebase.functions.supply_demand_mapping as sdm
+
+    tgt = tmp_path / "full_model_output_TGT.xlsx"
+    monkeypatch.setattr(sdm, "DIRECT_DEMAND_PROJECTION_ECONOMY", "12_NZ")
+    monkeypatch.setattr(sdm, "BALANCE_DEMAND_REF_WORKBOOK_PATH", None)
+    monkeypatch.setattr(sdm, "BALANCE_DEMAND_TGT_WORKBOOK_PATH", tgt)
+
+    resolved_ref, resolved_tgt = sdm._resolve_balance_demand_workbooks_for_economy(
+        "12_NZ",
+        scenarios=["Target"],
+    )
+
+    assert resolved_ref is None
+    assert resolved_tgt == sdm._resolve(tgt)
+
+
+def test_direct_target_resolution_requires_configured_target_path(monkeypatch) -> None:
+    import codebase.functions.supply_demand_mapping as sdm
+
+    monkeypatch.setattr(sdm, "DIRECT_DEMAND_PROJECTION_ECONOMY", "12_NZ")
+    monkeypatch.setattr(sdm, "BALANCE_DEMAND_REF_WORKBOOK_PATH", None)
+    monkeypatch.setattr(sdm, "BALANCE_DEMAND_TGT_WORKBOOK_PATH", None)
+
+    with pytest.raises(ValueError, match="BALANCE_DEMAND_TGT_WORKBOOK_PATH"):
+        sdm._resolve_balance_demand_workbooks_for_economy(
+            "12_NZ",
+            scenarios=["Target"],
+        )
+
+
 # --- Shared state-override builder: exact per-mode override dicts --------------
 
 _RESULTS_UPDATE_ONLY_KEYS = {

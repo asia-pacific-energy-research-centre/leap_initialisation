@@ -631,18 +631,14 @@ def _run_capacity_unmet_iterative_balanced_pass(**kwargs):
     return _sra._run_capacity_unmet_iterative_balanced_pass(**kwargs)
 
 
-def _resolve_balance_demand_workbooks_for_economy(economy: str):
-    return (
-        resolve_balance_export_workbook(
-            economy=economy,
-            scenario="REF",
-            exports_root=BALANCE_DEMAND_EXPORTS_ROOT,
-        ),
-        resolve_balance_export_workbook(
-            economy=economy,
-            scenario="TGT",
-            exports_root=BALANCE_DEMAND_EXPORTS_ROOT,
-        ),
+def _resolve_balance_demand_workbooks_for_economy(
+    economy: str,
+    scenarios: Iterable[str] | None = None,
+):
+    """Delegate scenario-aware balance-workbook resolution to the shared loader."""
+    return _sdm._resolve_balance_demand_workbooks_for_economy(
+        economy,
+        scenarios=scenarios,
     )
 
 
@@ -1239,14 +1235,18 @@ def _run_results_update_readiness_check() -> None:
     )
     for economy in economy_list:
         try:
-            ref_workbook, tgt_workbook = _resolve_balance_demand_workbooks_for_economy(economy)
+            ref_workbook, tgt_workbook = _resolve_balance_demand_workbooks_for_economy(
+                economy,
+                scenarios=SCENARIOS,
+            )
         except Exception as exc:
             issues.append(f"{economy}: could not resolve REF/TGT balance workbooks ({exc})")
             continue
 
-        missing_paths = [
-            path for path in (ref_workbook, tgt_workbook) if not Path(path).exists()
+        requested_paths = [
+            path for path in (ref_workbook, tgt_workbook) if path is not None
         ]
+        missing_paths = [path for path in requested_paths if not Path(path).exists()]
         if missing_paths:
             missing_text = ", ".join(str(path) for path in missing_paths)
             issues.append(f"{economy}: missing balance workbook(s): {missing_text}")
@@ -1255,7 +1255,7 @@ def _run_results_update_readiness_check() -> None:
         if REQUIRE_LEVEL2_BALANCE_EXPORT_DETAIL:
             missing_detail_paths = [
                 path
-                for path in (ref_workbook, tgt_workbook)
+                for path in requested_paths
                 if not _workbook_has_level2_detail(path)
             ]
             if missing_detail_paths:

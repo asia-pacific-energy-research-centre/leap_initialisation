@@ -21,8 +21,12 @@ def test_balance_demand_workbooks_resolve_for_non_default_economy(
         calls.append(kwargs)
         return tmp_path / f"{kwargs['economy']}_{kwargs['scenario']}.xlsx"
 
-    monkeypatch.setattr(workflow, "BALANCE_DEMAND_EXPORTS_ROOT", tmp_path, raising=False)
-    monkeypatch.setattr(workflow, "resolve_balance_export_workbook", _fake_resolve_balance_export_workbook)
+    monkeypatch.setattr(workflow._sdm, "BALANCE_DEMAND_EXPORTS_ROOT", tmp_path, raising=False)
+    monkeypatch.setattr(
+        workflow._sdm,
+        "resolve_balance_export_workbook",
+        _fake_resolve_balance_export_workbook,
+    )
 
     ref_path, tgt_path = workflow._resolve_balance_demand_workbooks_for_economy("05_PRC")
 
@@ -30,6 +34,38 @@ def test_balance_demand_workbooks_resolve_for_non_default_economy(
     assert tgt_path == tmp_path / "05_PRC_TGT.xlsx"
     assert [call["scenario"] for call in calls] == ["REF", "TGT"]
     assert all(call["economy"] == "05_PRC" for call in calls)
+
+
+def test_results_update_readiness_accepts_target_only_workbook(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    target_workbook = tmp_path / "full model output all years 23072026 TGT.xlsx"
+    target_workbook.touch()
+    requested: list[tuple[str, list[str]]] = []
+
+    def _resolve_target_only(economy: str, scenarios=None):
+        requested.append((economy, list(scenarios or [])))
+        return None, target_workbook
+
+    monkeypatch.setattr(workflow, "CAPACITY_UNMET_PASS_MODE", "results_update")
+    monkeypatch.setattr(workflow, "ECONOMIES", ["12_NZ"])
+    monkeypatch.setattr(workflow, "SCENARIOS", ["Target"])
+    monkeypatch.setattr(workflow, "REQUIRE_LEVEL2_BALANCE_EXPORT_DETAIL", True)
+    monkeypatch.setattr(
+        workflow,
+        "_resolve_balance_demand_workbooks_for_economy",
+        _resolve_target_only,
+    )
+    monkeypatch.setattr(
+        workflow,
+        "_workbook_has_level2_detail",
+        lambda path: Path(path) == target_workbook,
+    )
+
+    workflow._run_results_update_readiness_check()
+
+    assert requested == [("12_NZ", ["Target"])]
 
 
 def _minimal_reconciliation_df() -> pd.DataFrame:
