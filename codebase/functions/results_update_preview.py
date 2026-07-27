@@ -31,14 +31,30 @@ RESULTS_UPDATE_PREVIEW_COLUMNS = [
     "safe_to_apply",
     "safety_scope",
     "blocked_reason",
+    "diagnostic_material_rows",
+    "diagnostic_classifications",
+    "diagnostic_update_allocation_required",
+    "diagnostic_next_actions",
 ]
+
+
+def _clean_text(value: object) -> str:
+    return "" if value is None or pd.isna(value) else str(value).strip()
+
+
+def _truthy_series(values: pd.Series) -> pd.Series:
+    if values.dtype == bool:
+        return values.fillna(False)
+    return values.fillna(False).astype(str).str.strip().str.lower().isin(
+        {"true", "1", "yes"}
+    )
 
 
 def _comparison_key(row: dict[str, object]) -> tuple[str, str, str, int]:
     return (
-        str(row.get("economy") or "").strip(),
-        str(row.get("scenario") or "").strip().lower(),
-        str(row.get("esto_product") or "").strip(),
+        _clean_text(row.get("economy")),
+        _clean_text(row.get("scenario")).lower(),
+        _clean_text(row.get("esto_product")),
         int(row.get("year")),
     )
 
@@ -73,6 +89,10 @@ def build_results_update_preview_table(
             "safe_to_apply": True,
             "safety_scope": "current_allocator_only",
             "blocked_reason": "",
+            "diagnostic_material_rows": 0,
+            "diagnostic_classifications": "",
+            "diagnostic_update_allocation_required": False,
+            "diagnostic_next_actions": "",
         }
 
     for source in pass_summary.get("allocation_rows", []):
@@ -157,6 +177,118 @@ def build_results_update_preview_table(
     ).reset_index(drop=True)
 
 
+def apply_balance_review_safety(
+    preview_table: pd.DataFrame,
+    balance_review: pd.DataFrame,
+    *,
+    require_fresh_leap_cycle: bool = False,
+    approved_classifications: Iterable[str] = ("approved_results_update",),
+) -> pd.DataFrame:
+    """Default-deny preview rows unless diagnostic evidence approves updating."""
+    if preview_table.empty:
+        return preview_table.copy()
+
+    required = {
+        "economy",
+        "scenario",
+        "year",
+        "esto_product",
+        "material_for_review",
+        "primary_classification",
+        "update_allocation_required",
+        "next_action",
+    }
+    missing = sorted(required - set(balance_review.columns))
+    if missing:
+        raise KeyError(f"balance_review is missing required columns: {missing}")
+
+    review = balance_review.copy()
+    review["economy"] = review["economy"].fillna("").astype(str).str.strip()
+    review["scenario"] = review["scenario"].fillna("").astype(str).str.strip().str.lower()
+    review["esto_product"] = review["esto_product"].fillna("").astype(str).str.strip()
+    review["year"] = pd.to_numeric(review["year"], errors="coerce").astype("Int64")
+    material = _truthy_series(review["material_for_review"])
+    review = review[material & review["year"].notna()].copy()
+
+    key_columns = ["economy", "scenario", "year", "esto_product"]
+    summaries: dict[tuple[str, str, int, str], dict[str, object]] = {}
+    for key, group in review.groupby(key_columns, dropna=False, sort=False):
+        classifications = sorted(
+            {
+                _clean_text(value)
+                for value in group["primary_classification"]
+                if _clean_text(value)
+            }
+        )
+        next_actions = sorted(
+            {
+                _clean_text(value)
+                for value in group["next_action"]
+                if _clean_text(value)
+            }
+        )
+        allocation_required = _truthy_series(
+            group["update_allocation_required"]
+        ).any()
+        summaries[(str(key[0]), str(key[1]), int(key[2]), str(key[3]))] = {
+            "rows": int(len(group)),
+            "classifications": "|".join(classifications),
+            "classification_set": set(classifications),
+            "allocation_required": bool(allocation_required),
+            "next_actions": "|".join(next_actions),
+        }
+
+    approved = {
+        _clean_text(value)
+        for value in approved_classifications
+        if _clean_text(value)
+    }
+    output = preview_table.copy()
+    for index, row in output.iterrows():
+        key = (
+            _clean_text(row.get("economy")),
+            _clean_text(row.get("scenario")).lower(),
+            int(row.get("year")),
+            _clean_text(row.get("esto_product")),
+        )
+        summary = summaries.get(key)
+        output.at[index, "safety_scope"] = "allocator_plus_balance_review"
+        if summary is not None:
+            output.at[index, "diagnostic_material_rows"] = summary["rows"]
+            output.at[index, "diagnostic_classifications"] = summary["classifications"]
+            output.at[index, "diagnostic_update_allocation_required"] = summary[
+                "allocation_required"
+            ]
+            output.at[index, "diagnostic_next_actions"] = summary["next_actions"]
+
+        reason = ""
+        if require_fresh_leap_cycle:
+            reason = (
+                "The diagnostic export predates a relevant seed fix; regenerate the "
+                "seed, import it into LEAP, recalculate, and export again."
+            )
+        elif summary is None:
+            reason = "No material balance-review evidence explicitly approves this update."
+        elif bool(summary["allocation_required"]):
+            reason = "The diagnostic comparison requires a reviewed allocation rule."
+        elif not summary["classification_set"] or not set(
+            summary["classification_set"]
+        ).issubset(approved):
+            reason = (
+                "Material diagnostic classification is not approved for results_update: "
+                f"{summary['classifications'] or 'unclassified'}."
+            )
+
+        if reason:
+            existing = str(row.get("blocked_reason") or "").strip()
+            output.at[index, "safe_to_apply"] = False
+            output.at[index, "blocked_reason"] = (
+                f"{existing} {reason}".strip() if existing else reason
+            )
+
+    return output[RESULTS_UPDATE_PREVIEW_COLUMNS]
+
+
 def run_results_update_allocation_preview(
     *,
     reconciliation_table: pd.DataFrame,
@@ -168,6 +300,8 @@ def run_results_update_allocation_preview(
     state_path: Path | str | None = None,
     allow_same_results_reuse: bool | None = None,
     output_path: Path | str | None = None,
+    balance_review: pd.DataFrame | None = None,
+    require_fresh_leap_cycle: bool = False,
 ) -> dict[str, object]:
     """Run the current balanced allocator without mutating iterative state."""
     summary = allocation._run_capacity_unmet_iterative_balanced_pass(
@@ -191,6 +325,12 @@ def run_results_update_allocation_preview(
         iteration_run_mode="results_update",
     )
     preview_table = build_results_update_preview_table(summary)
+    if balance_review is not None:
+        preview_table = apply_balance_review_safety(
+            preview_table,
+            balance_review,
+            require_fresh_leap_cycle=require_fresh_leap_cycle,
+        )
     resolved_output_path: Path | None = None
     if output_path is not None:
         resolved_output_path = _resolve(output_path)

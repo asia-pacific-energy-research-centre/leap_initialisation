@@ -54,6 +54,22 @@ Those checks require integration with the AUS balance investigation and the
 final generated import rows. Until then, the table is a faithful preview of
 current allocator behavior, not approval to write or import the changes.
 
+## Balance-review safety gate
+
+`apply_balance_review_safety()` joins material diagnostic evidence on economy,
+scenario, year, and ESTO product. It is deliberately default-deny:
+
+- only `approved_results_update` is accepted by default;
+- aggregate/cardinality warnings remain blocked;
+- unresolved, diagnostic-boundary, model-behavior, and baseline-seed defects
+  are not converted automatically into update instructions; and
+- proposals with no matching material review evidence remain blocked.
+
+The supplied AUS export predates the thermal-coal fix in `778f649`.
+`require_fresh_leap_cycle=True` therefore blocks every proposal, including the
+coal rows: the right next action is to regenerate the seed and LEAP export, not
+to compensate for an obsolete seed through `results_update`.
+
 ## Notebook-oriented use
 
 The preview accepts the same in-memory reconciliation table, transformation

@@ -289,3 +289,112 @@ def test_public_preview_runner_writes_only_requested_review_csv(
     assert output_path.exists()
     assert result["preview_path"] == output_path
     assert list(pd.read_csv(output_path).columns) == preview.RESULTS_UPDATE_PREVIEW_COLUMNS
+
+
+def test_balance_review_safety_is_default_deny_and_respects_cardinality() -> None:
+    preview_table = pd.DataFrame(
+        [
+            {
+                column: (
+                    False
+                    if column in {
+                        "safe_to_apply",
+                        "diagnostic_update_allocation_required",
+                    }
+                    else 0 if column == "diagnostic_material_rows" else ""
+                )
+                for column in preview.RESULTS_UPDATE_PREVIEW_COLUMNS
+            }
+            for _ in range(3)
+        ]
+    )
+    preview_table["economy"] = "01_AUS"
+    preview_table["scenario"] = "reference"
+    preview_table["year"] = 2022
+    preview_table["safe_to_apply"] = True
+    preview_table["esto_product"] = [
+        "01.02 Other bituminous coal",
+        "17 Electricity",
+        "07.09 LPG",
+    ]
+    review = pd.DataFrame(
+        [
+            {
+                "economy": "01_AUS",
+                "scenario": "Reference",
+                "year": 2022,
+                "esto_product": "01.02 Other bituminous coal",
+                "material_for_review": True,
+                "primary_classification": "approved_results_update",
+                "update_allocation_required": False,
+                "next_action": "Apply reviewed correction.",
+            },
+            {
+                "economy": "01_AUS",
+                "scenario": "Reference",
+                "year": 2022,
+                "esto_product": "17 Electricity",
+                "material_for_review": True,
+                "primary_classification": "approved_results_update",
+                "update_allocation_required": True,
+                "next_action": "Define allocation.",
+            },
+        ]
+    )
+
+    gated = preview.apply_balance_review_safety(preview_table, review)
+
+    coal = gated[gated["esto_product"].eq("01.02 Other bituminous coal")].iloc[0]
+    electricity = gated[gated["esto_product"].eq("17 Electricity")].iloc[0]
+    lpg = gated[gated["esto_product"].eq("07.09 LPG")].iloc[0]
+    assert bool(coal["safe_to_apply"]) is True
+    assert coal["safety_scope"] == "allocator_plus_balance_review"
+    assert bool(electricity["safe_to_apply"]) is False
+    assert "allocation rule" in electricity["blocked_reason"]
+    assert bool(lpg["safe_to_apply"]) is False
+    assert "No material balance-review evidence" in lpg["blocked_reason"]
+
+
+def test_stale_leap_export_blocks_every_reviewed_proposal() -> None:
+    summary = {
+        "comparison_rows": [],
+        "allocation_rows": [
+            {
+                "economy": "01_AUS",
+                "scenario": "reference",
+                "esto_product": "01.02 Other bituminous coal",
+                "year": 2022,
+                "allocation_type": "primary_production",
+                "allocated_output_uplift": 5.0,
+                "capacity_increment": 5.0,
+            }
+        ],
+        "export_rows": [],
+        "clipping_rows": [],
+        "unresolved_positive_rows": [],
+        "fatal_unresolved_positive_rows": [],
+    }
+    preview_table = preview.build_results_update_preview_table(summary)
+    review = pd.DataFrame(
+        [
+            {
+                "economy": "01_AUS",
+                "scenario": "Reference",
+                "year": 2022,
+                "esto_product": "01.02 Other bituminous coal",
+                "material_for_review": True,
+                "primary_classification": "baseline_seed_generation_bug",
+                "update_allocation_required": False,
+                "next_action": "Regenerate after the producer fix.",
+            }
+        ]
+    )
+
+    gated = preview.apply_balance_review_safety(
+        preview_table,
+        review,
+        require_fresh_leap_cycle=True,
+    )
+
+    assert not gated["safe_to_apply"].any()
+    assert "predates a relevant seed fix" in gated.iloc[0]["blocked_reason"]

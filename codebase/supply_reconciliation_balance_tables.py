@@ -444,8 +444,10 @@ def _archive_prior_year_balance_tables(
     return archived_paths
 
 
-def _balance_export_filename_parts(path: Path | str) -> tuple[str, str]:
+def _balance_export_filename_parts(path: Path | str | None) -> tuple[str, str]:
     """Return (date_id, scenario_code) from a LEAP balance-export workbook name."""
+    if path is None:
+        return "unknown_date", "unknown_scenario"
     match = re.match(
         r"^full model output all years (?P<date_id>\d{5,8}) (?P<scenario>[A-Za-z]+)(?:\s[^.]*)?\.xlsx$",
         Path(path).name,
@@ -460,10 +462,14 @@ def _balance_export_parts_for_scenario(scenario: object) -> tuple[str, str]:
     """Return filename provenance for Reference/Target balance-demand source workbooks."""
     scenario_key = str(scenario or "").strip().lower()
     if scenario_key == "reference":
+        if BALANCE_DEMAND_REF_WORKBOOK_PATH is None:
+            return "unknown_date", "REF"
         date_id, scenario_code = _balance_export_filename_parts(
             BALANCE_DEMAND_REF_WORKBOOK_PATH
         )
     elif scenario_key == "target":
+        if BALANCE_DEMAND_TGT_WORKBOOK_PATH is None:
+            return "unknown_date", "TGT"
         date_id, scenario_code = _balance_export_filename_parts(
             BALANCE_DEMAND_TGT_WORKBOOK_PATH
         )
