@@ -213,6 +213,11 @@ TRANSFORMATION_RUN_CHARCOAL_PROCESSING_ANALYSIS = True
 TRANSFORMATION_RUN_NONSPECIFIED_TRANSFORMATION_ANALYSIS = True
 TRANSFORMATION_RUN_OIL_REFINERY_ANALYSIS = True
 TRANSFORMATION_RUN_HYDROGEN_TRANSFORMATION_ANALYSIS = True
+# This is only the first use of the broader missing-9th-sector capability.
+# When enabled, 09.06 gas-processing children that are active in the ESTO base
+# year but absent from 9th projections are held constant at their base-year
+# flow/product values. Other missing-sector families still need explicit rules.
+FILL_IN_MISSING_9TH_SECTORS = False
 TRANSFORMATION_ALL_ECONOMY_LABEL = GLOBAL_AGGREGATE_ECONOMY_LABEL
 TRANSFORMATION_INCLUDE_ALL_FEEDSTOCKS_AS_AUXILIARY = True
 TRANSFORMATION_ECONOMIES_TO_ANALYZE = list(GLOBAL_ECONOMIES)

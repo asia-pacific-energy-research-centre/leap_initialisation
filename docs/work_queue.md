@@ -1,5 +1,36 @@
 # Remaining work queue
 
+## [20] General opt-in projection of ESTO-active sectors missing from 9th
+
+**Status: planned; first narrow 09.06 implementation landed 2026-07-27.**
+
+Build the broader `FILL_IN_MISSING_9TH_SECTORS` capability. When enabled, it
+must identify an ESTO sector/fuel pair that is active in the configured base
+year, absent from the 9th projection, and not already produced by the LEAP
+initialisation output. It must then route the pair to the workflow that owns
+that sector and apply an explicit, sector-appropriate projection rule.
+
+The initial implementation is deliberately limited to missing `09.06`
+gas-processing children: it carries each missing child flow/product's base-year
+ESTO value forward unchanged, allowing the existing gas process builder to
+retain the corresponding production, efficiency, feedstocks, and outputs.
+This is a foundation, **not** a universal imputation rule. Other sectors may
+need fixed base-year values, ratios, capacity assumptions, external drivers, or
+must remain unprojected; add them only with a documented owner and tests.
+
+Required design and implementation work:
+
+- create a diagnostic inventory of candidate missing sector/fuel pairs, with
+  9th presence, ESTO base-year value, existing LEAP-output presence, owning
+  workflow, and proposed rule;
+- define the ownership routing for supply, transformation, transfers, demand,
+  and losses/own-use so two workflows cannot project the same pair;
+- make every fill opt-in through `FILL_IN_MISSING_9TH_SECTORS`, preserve exact
+  9th results when it is false, and record every applied fill in a reviewable
+  diagnostic artifact;
+- add per-family conservation, base-year continuity, and no-duplicate-output
+  tests before enabling a new sector family by default.
+
 ## [19] Consolidate and filter template-matching diagnostics — ✅ Implemented and verified 2026-07-23 (`9be92bf`)
 
 **Status: follow-up recorded 2026-07-23 from the four-real-template full run.**

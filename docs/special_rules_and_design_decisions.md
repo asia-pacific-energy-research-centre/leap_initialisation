@@ -821,9 +821,12 @@ tests using each economy's own current ESTO profile.
 `09_06_gas_processing_plants` is retained as an exceptional subtotal source.
 For each economy and mapped ESTO product, existing nonzero child projections
 (`09.06.01` through `09.06.04`) remain authoritative. The workflow subtracts
-those direct child values from the parent and allocates only the signed residual
-to children that are nonzero in ESTO in the active base year but have no direct
-9th projection. Shares use the signed, product-specific ESTO base-year profile.
+those direct child values from a **nonzero** parent and allocates only the
+signed residual to children that are nonzero in ESTO in the active base year
+but have no direct 9th projection. A zero-valued parent is a 9th structural
+placeholder, not a projected aggregate, so the workflow leaves its direct
+children unchanged. Shares use the signed, product-specific ESTO base-year
+profile.
 
 If no child is base-year-active for a parent/product pair, the parent residual
 has no valid destination and is skipped with a diagnostic; the workflow must
@@ -832,6 +835,14 @@ active child is missing from the direct 9th projections, a nonzero residual is
 an unexpected source-data contradiction and raises a `ValueError`. These
 criteria automatically move from 2022 to a later ESTO year when the configured
 base year is updated.
+
+`FILL_IN_MISSING_9TH_SECTORS` is off by default, preserving
+9th projections exactly. Its first narrow implementation applies only here:
+when enabled, a base-year-active `09.06` child with no direct 9th projection is
+held at its base-year ESTO flow/product value through the projection horizon.
+The ordinary gas process builder then derives the matching production,
+efficiency, feedstocks, and outputs. This is intentionally only the first
+missing-sector family; the broader project is tracked in `work_queue.md` [20].
 
 ### History
 

@@ -477,9 +477,10 @@ def _allocate_gas_parent_residuals(
     allocated_rows: pd.DataFrame,
     child_flow_profiles: pd.DataFrame | None,
     year_cols: Sequence[int],
+    fill_missing_ninth_sectors: bool = False,
     tolerance: float = 1e-9,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Allocate a gas-parent residual only to missing base-year-active children."""
+    """Allocate gas parent residuals, optionally filling missing 9th children."""
     if allocated_rows.empty or child_flow_profiles is None or child_flow_profiles.empty:
         return allocated_rows, pd.DataFrame()
 
@@ -520,6 +521,38 @@ def _allocate_gas_parent_residuals(
             if year in direct_by_flow.columns else float(parent_row[year])
             for year in year_cols
         }
+        parent_has_projection = any(
+            abs(float(parent_row[year])) > tolerance for year in year_cols
+        )
+        if not parent_has_projection:
+            # A zero-valued parent row is a structural placeholder, not an
+            # aggregate amount to reconcile against its directly projected
+            # children. By default retain the 9th projection exactly.
+            if not fill_missing_ninth_sectors:
+                continue
+            missing_children = active_children[
+                ~active_children["child_flow"].isin(direct_flows)
+            ].copy()
+            for _, profile_row in missing_children.iterrows():
+                child = parent_row.to_dict()
+                child["esto_flow"] = profile_row["child_flow"]
+                child["gas_allocation_method"] = "base_year_constant_missing_ninth_fill"
+                for year in year_cols:
+                    child[year] = float(profile_row["base_value"])
+                generated_rows.append(child)
+            if not missing_children.empty:
+                diagnostics.append(
+                    {
+                        "economy_key": economy_key,
+                        "esto_product": product,
+                        "parent_flow": GAS_PARENT_ESTO_FLOW,
+                        "diagnostic_type": "gas_missing_ninth_child_base_year_fill",
+                        "allocation_method": "base_year_constant_missing_ninth_fill",
+                        "direct_children": "; ".join(sorted(direct_flows)),
+                        "missing_children": "; ".join(missing_children["child_flow"].astype(str)),
+                    }
+                )
+            continue
         if not any(abs(value) > tolerance for value in residual.values()):
             continue
 
@@ -583,6 +616,7 @@ def allocate_ninth_projection_to_esto(
     return_allocation_provenance: bool = False,
     child_flow_profiles: pd.DataFrame | None = None,
     gas_child_flow_profiles: pd.DataFrame | None = None,
+    fill_missing_ninth_sectors: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame] | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Allocate 9th projections to ESTO pairs using base-year share rules.
 
@@ -818,6 +852,7 @@ def allocate_ninth_projection_to_esto(
         merged,
         gas_child_flow_profiles,
         year_cols,
+        fill_missing_ninth_sectors=fill_missing_ninth_sectors,
     )
 
     allocation_provenance = pd.DataFrame()
@@ -946,6 +981,7 @@ def build_esto_projection_table(
     scenario: str = DEFAULT_SCENARIO,
     sign_stable_flows: Iterable[str] | str | None = None,
     strict_conservation: bool = False,
+    fill_missing_ninth_sectors: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Return projected ESTO values plus allocation diagnostics.
 
@@ -1031,6 +1067,7 @@ def build_esto_projection_table(
         strict_conservation=strict_conservation,
         child_flow_profiles=child_flow_profiles,
         gas_child_flow_profiles=gas_child_flow_profiles,
+        fill_missing_ninth_sectors=fill_missing_ninth_sectors,
     )
 
 

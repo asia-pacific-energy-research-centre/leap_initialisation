@@ -219,6 +219,7 @@ def collect_transformation_rows(
                 scenario=normalized_projection_scenario,
                 sign_stable_flows=projection_sign_stable_flows,
                 strict_conservation=strict_conservation,
+                fill_missing_ninth_sectors=core.FILL_IN_MISSING_9TH_SECTORS,
             ),
         )
         scenario_esto = core.merge_projection_into_esto(
