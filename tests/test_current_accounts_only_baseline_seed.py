@@ -3,6 +3,10 @@
 #%%
 
 from codebase.functions import supply_results_saver
+from codebase.supply_reconciliation_balance_tables import (
+    _balance_export_filename_parts,
+    _balance_export_parts_for_scenario,
+)
 
 
 def test_current_accounts_only_baseline_uses_reference_internally(
@@ -69,6 +73,25 @@ def test_current_accounts_only_baseline_uses_reference_internally(
         "economies": ["01_AUS"],
         "balance_scenarios": ["Reference"],
     }
+
+
+def test_projection_only_balance_filename_does_not_require_a_workbook(
+    monkeypatch,
+) -> None:
+    """Projection-only baseline tables have no LEAP-export filename provenance."""
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation_balance_tables.BALANCE_DEMAND_REF_WORKBOOK_PATH",
+        None,
+    )
+
+    assert _balance_export_filename_parts(None) == (
+        "unknown_date",
+        "unknown_scenario",
+    )
+    assert _balance_export_parts_for_scenario("Reference") == (
+        "unknown_date",
+        "REF",
+    )
 
 
 #%%
