@@ -101,8 +101,40 @@ and `All demand aggregated`) with `placeholder_scope=True`.
 This does **not** automatically exclude their fuel/flow differences. A blanket
 exclusion would have hidden the confirmed AUS thermal-coal seed defect inside
 `Electricity interim`. A future exclusion must name a reviewed
-placeholder-to-replacement group and compare the combined group at a
-conservation boundary before suppressing its internal redistribution.
+placeholder-to-replacement group and pass a **replacement-boundary
+reconciliation** before suppressing its internal redistribution.
+
+This is narrower than a general transformation-efficiency or whole-balance
+conservation rule. For each economy, scenario, year, signed flow, and fuel (or
+an explicitly reviewed non-expanding rollup), it means:
+
+```text
+observed_group = retained_placeholder + sum(active_replacement_branches)
+observed_group ~= source_expected_at_the_same_boundary
+```
+
+The placeholder and replacements may redistribute values internally, but their
+combined value must still match the independent ESTO/9th expectation within the
+configured tolerance. Transformation inputs and outputs must be checked
+separately; a single net total could hide an input error with an offsetting
+output error.
+
+The canonical mapping repository already contains useful group declarations:
+
+- `config/source_branch_fallback_rules.csv` pairs Electricity/CHP/Heat standard
+  branches with their interim alternatives. Its current
+  `warn_and_zero_interim` conversion policy prevents both alternatives from
+  being added when both are active, but it does not prove that the selected
+  branch matches the independent source expectation.
+- `config/all_demand_aggregated_components.json` records which detailed demand
+  sectors remain represented by `All demand aggregated`. It warns about
+  overlap and deliberately does not zero either side because the aggregate may
+  be a residual.
+
+The update diagnostic should reuse these group declarations, then add the
+independent group comparison above. Only a passing group can make internal
+placeholder/replacement redistribution ignorable. A failing group remains a
+baseline-seed, LEAP-rule, mapping, or balance-variable-contract issue.
 
 ### Difference convention
 
@@ -114,13 +146,33 @@ correction_to_match_source_pj = source_value_pj - leap_value_pj
 A positive difference means LEAP shows more energy than the source at the
 reported comparison grain.
 
-### Comparison grain and many-to-one mappings
+### Comparison grain versus reverse-update allocation
 
 The common comparison grain is the ESTO flow/product pair. Several LEAP rows can
 map to one ESTO pair, and one ESTO pair can represent several 9th pairs. Their
 sums are valid for diagnosing an aggregate difference, but the aggregate
 difference cannot be pushed back to individual LEAP rows without an explicit
 allocation rule.
+
+The phrase "many-to-one cases are blocked" is therefore too broad. Mapping
+direction matters:
+
+- many source rows to one comparison row is a safe forward sum;
+- one source aggregate fanning out to several comparison rows is not safe
+  without an allocation or a common rolled-up boundary; and
+- one safe aggregate difference mapping back to several possible LEAP update
+  targets is a separate reverse-update target-selection problem.
+
+The diagnostic already reads
+`config/outlook_mappings_master.xlsx`, including
+`ninth_pairs_to_esto_pairs`; merely referring to the master workbook again does
+not resolve the ambiguity. The next comparison implementation should consume
+the canonical post-rollup Common ESTO structural artifacts
+(`source_pair_to_common_row.csv` and component lineage) so raw mapping
+cardinality is not mistaken for comparison unsafety. Those artifacts define
+safe aggregation membership but deliberately do not allocate a common-row
+value back to its source children. Reverse update targeting must therefore
+remain a separate decision.
 
 Rows therefore include:
 
@@ -132,8 +184,10 @@ Rows therefore include:
 - `update_allocation_required`; and
 - `update_allocation_reason`.
 
-These fields are warnings for later update design. Step 1 never changes LEAP or
-generates an update workbook.
+These current fields conservatively combine comparison safety and reverse
+targeting. A later schema should split them into, at minimum,
+`comparison_boundary_safe` and `reverse_update_target_required`. Step 1 never
+changes LEAP or generates an update workbook.
 
 The extraction stage deliberately validates and consumes only
 `leap_combined_esto`. It does not mark unrelated `leap_combined_ninth`
@@ -218,13 +272,14 @@ filtering is the next performance task.
 
 1. Connect the dry-run update preview directly to `update_signal_eligible`
    imports-gap rows and keep protected-flow issues out of numeric updates.
-2. Add reviewed placeholder-to-replacement comparison groups that prove
-   combined conservation before excluding internal sector redistribution.
+2. Reuse the canonical placeholder/replacement group declarations and add the
+   signed, fuel-specific replacement-boundary reconciliation before excluding
+   internal sector redistribution.
 3. Reconcile the update path with current baseline-seed rules and require both
    paths to cross the same post-boundary seed validation/completion logic.
-4. Define explicit allocation policies for aggregate comparisons, especially
-   LEAP-to-9th many-to-one and one-to-many cases. Aggregate differences must not
-   be divided silently.
+4. Replace raw-cardinality blocking with post-rollup Common ESTO comparison
+   safety, while keeping source fan-out and reverse LEAP update-target selection
+   explicit. Aggregate differences must not be divided silently.
 5. Add issue classification by likely owner: demand, supply, transformation,
    transfers, own use/losses, mapping, or LEAP structure.
 6. Add convergence history across repeated limited-year LEAP export/update

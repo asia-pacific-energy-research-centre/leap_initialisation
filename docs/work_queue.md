@@ -19,7 +19,11 @@ balance-variable contract, not a discrepancy-by-discrepancy allowlist.
 seed / LEAP balancing-rule / contract-expectation issue. Aggregate totals are
 derived checks. Interim/placeholder scopes are labelled but not automatically
 excluded; an exclusion requires a named placeholder-to-replacement group and a
-combined conservation comparison so genuine placeholder bugs are not hidden.
+signed, fuel-specific replacement-boundary reconciliation so genuine
+placeholder bugs are not hidden. The canonical mapping repository already
+declares the power interim/standard alternatives and the membership of
+`All demand aggregated`; those declarations identify the groups but do not by
+themselves prove the LEAP result matches the independent source.
 See [baseline_seed_balance_diagnostics.md](baseline_seed_balance_diagnostics.md).
 
 Step 1 is read-only:
@@ -80,8 +84,9 @@ Next work, in order:
    allocator would propose;
 5. compare that preview with current baseline-seed rules at the post-boundary
    seed surface and repair drift;
-6. define explicit allocation rules for many-to-one / one-to-many 9th
-   comparisons before enabling updates for those rows; and
+6. use post-rollup Common ESTO lineage to distinguish safe forward aggregation
+   from true source fan-out, then define reverse LEAP update-target rules where
+   one aggregate difference has several possible targets; and
 7. retain per-cycle convergence history and issue ownership.
 
 Design and notebook usage:
