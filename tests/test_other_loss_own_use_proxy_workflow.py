@@ -92,6 +92,25 @@ def test_export_key_workbook_explicit_override_skips_economy_resolution(monkeypa
     assert workflow._resolve_export_key_workbook_path("12_NZ", explicit) == explicit
 
 
+def test_export_only_proxy_accepts_current_accounts_without_projection_import() -> None:
+    resolved = workflow._resolve_proxy_import_scenarios(
+        ["Current Accounts"],
+        None,
+        include_leap_import=False,
+    )
+
+    assert resolved == ["Current Accounts"]
+
+
+def test_proxy_leap_import_still_requires_a_projection_scenario() -> None:
+    with pytest.raises(ValueError, match="No non-'Current Accounts'"):
+        workflow._resolve_proxy_import_scenarios(
+            ["Current Accounts"],
+            None,
+            include_leap_import=True,
+        )
+
+
 def test_proxy_source_coverage_gaps_are_filtered_to_requested_economy() -> None:
     esto = pd.DataFrame([
         {
