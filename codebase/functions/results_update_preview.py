@@ -12,6 +12,10 @@ from codebase import supply_reconciliation_allocation as allocation
 from codebase.utilities.workflow_utils import _resolve
 
 
+DEFAULT_RESULTS_UPDATE_ISSUE_DECISIONS_PATH = Path(
+    "config/runtime_tables/results_update_issue_decisions.csv"
+)
+
 RESULTS_UPDATE_PREVIEW_COLUMNS = [
     "economy",
     "scenario",
@@ -29,13 +33,24 @@ RESULTS_UPDATE_PREVIEW_COLUMNS = [
     "clipped_output_pj",
     "unresolved_output_pj",
     "safe_to_apply",
+    "update_disposition",
     "safety_scope",
     "blocked_reason",
+    "diagnostic_flow_scope",
+    "diagnostic_provenance_status",
     "diagnostic_material_rows",
     "diagnostic_classifications",
     "diagnostic_update_allocation_required",
     "diagnostic_next_actions",
 ]
+
+
+def load_results_update_issue_decisions(
+    path: Path | str = DEFAULT_RESULTS_UPDATE_ISSUE_DECISIONS_PATH,
+) -> pd.DataFrame:
+    """Load reviewed issue dispositions used to override preliminary findings."""
+    resolved_path = _resolve(path)
+    return pd.read_csv(resolved_path)
 
 
 def _clean_text(value: object) -> str:
@@ -87,8 +102,11 @@ def build_results_update_preview_table(
             "clipped_output_pj": 0.0,
             "unresolved_output_pj": 0.0,
             "safe_to_apply": True,
+            "update_disposition": "allocator_candidate",
             "safety_scope": "current_allocator_only",
             "blocked_reason": "",
+            "diagnostic_flow_scope": "",
+            "diagnostic_provenance_status": "not_assessed",
             "diagnostic_material_rows": 0,
             "diagnostic_classifications": "",
             "diagnostic_update_allocation_required": False,
@@ -156,6 +174,9 @@ def build_results_update_preview_table(
                 leap_branch_hint="Resources\\Primary" if proposal_type == "extra_exports" else "",
                 leap_variable=variable,
                 safe_to_apply=not blocked,
+                update_disposition=(
+                    "allocator_blocked" if blocked else "allocator_candidate"
+                ),
                 blocked_reason=str(source.get("reason") or "").strip() if blocked else "",
             )
             row[output_name] = float(source.get(value_name) or 0.0)
@@ -166,6 +187,7 @@ def build_results_update_preview_table(
     frame = pd.DataFrame(rows)
     if pass_summary.get("fatal_unresolved_positive_rows"):
         frame["safe_to_apply"] = False
+        frame["update_disposition"] = "allocator_blocked"
         frame["blocked_reason"] = frame["blocked_reason"].where(
             frame["blocked_reason"].astype(str).str.strip().ne(""),
             "The current allocator would abort this pass because a residual is fatal.",
@@ -181,10 +203,18 @@ def apply_balance_review_safety(
     preview_table: pd.DataFrame,
     balance_review: pd.DataFrame,
     *,
+    reviewed_decisions: pd.DataFrame | None = None,
     require_fresh_leap_cycle: bool = False,
     approved_classifications: Iterable[str] = ("approved_results_update",),
+    excluded_classifications: Iterable[str] = (
+        "baseline_seed_generation_bug",
+        "post_boundary_completion_bug",
+        "diagnostic_bug",
+        "mapping_defect",
+        "leap_structure_or_export_issue",
+    ),
 ) -> pd.DataFrame:
-    """Default-deny preview rows unless diagnostic evidence approves updating."""
+    """Triage allocator proposals without treating unresolved evidence as a veto."""
     if preview_table.empty:
         return preview_table.copy()
 
@@ -192,6 +222,7 @@ def apply_balance_review_safety(
         "economy",
         "scenario",
         "year",
+        "esto_flow",
         "esto_product",
         "material_for_review",
         "primary_classification",
@@ -203,15 +234,61 @@ def apply_balance_review_safety(
         raise KeyError(f"balance_review is missing required columns: {missing}")
 
     review = balance_review.copy()
+    if reviewed_decisions is not None and not reviewed_decisions.empty:
+        decision_required = {
+            "economy",
+            "scenario",
+            "year",
+            "esto_flow",
+            "esto_product",
+            "primary_classification",
+            "next_action",
+        }
+        decision_missing = sorted(decision_required - set(reviewed_decisions.columns))
+        if decision_missing:
+            raise KeyError(
+                "reviewed_decisions is missing required columns: "
+                f"{decision_missing}"
+            )
+        decisions = reviewed_decisions.copy()
+        if "material_for_review" not in decisions:
+            decisions["material_for_review"] = True
+        if "update_allocation_required" not in decisions:
+            decisions["update_allocation_required"] = False
+        decision_keys = [
+            "economy",
+            "scenario",
+            "year",
+            "esto_flow",
+            "esto_product",
+        ]
+        for frame in (review, decisions):
+            frame["economy"] = frame["economy"].fillna("").astype(str).str.strip()
+            frame["scenario"] = (
+                frame["scenario"].fillna("").astype(str).str.strip().str.lower()
+            )
+            frame["esto_flow"] = frame["esto_flow"].fillna("").astype(str).str.strip()
+            frame["esto_product"] = (
+                frame["esto_product"].fillna("").astype(str).str.strip()
+            )
+            frame["year"] = pd.to_numeric(frame["year"], errors="coerce").astype(
+                "Int64"
+            )
+        decision_index = pd.MultiIndex.from_frame(decisions[decision_keys])
+        review_index = pd.MultiIndex.from_frame(review[decision_keys])
+        review = review[~review_index.isin(decision_index)].copy()
+        review = pd.concat([review, decisions], ignore_index=True, sort=False)
+
     review["economy"] = review["economy"].fillna("").astype(str).str.strip()
     review["scenario"] = review["scenario"].fillna("").astype(str).str.strip().str.lower()
+    review["esto_flow"] = review["esto_flow"].fillna("").astype(str).str.strip()
     review["esto_product"] = review["esto_product"].fillna("").astype(str).str.strip()
     review["year"] = pd.to_numeric(review["year"], errors="coerce").astype("Int64")
     material = _truthy_series(review["material_for_review"])
     review = review[material & review["year"].notna()].copy()
 
-    key_columns = ["economy", "scenario", "year", "esto_product"]
-    summaries: dict[tuple[str, str, int, str], dict[str, object]] = {}
+    key_columns = ["economy", "scenario", "year", "esto_flow", "esto_product"]
+    summaries: dict[tuple[str, str, int, str, str], dict[str, object]] = {}
     for key, group in review.groupby(key_columns, dropna=False, sort=False):
         classifications = sorted(
             {
@@ -230,7 +307,9 @@ def apply_balance_review_safety(
         allocation_required = _truthy_series(
             group["update_allocation_required"]
         ).any()
-        summaries[(str(key[0]), str(key[1]), int(key[2]), str(key[3]))] = {
+        summaries[
+            (str(key[0]), str(key[1]), int(key[2]), str(key[3]), str(key[4]))
+        ] = {
             "rows": int(len(group)),
             "classifications": "|".join(classifications),
             "classification_set": set(classifications),
@@ -243,16 +322,33 @@ def apply_balance_review_safety(
         for value in approved_classifications
         if _clean_text(value)
     }
+    excluded = {
+        _clean_text(value)
+        for value in excluded_classifications
+        if _clean_text(value)
+    }
     output = preview_table.copy()
     for index, row in output.iterrows():
+        diagnostic_flow = (
+            "03 Exports"
+            if _clean_text(row.get("proposal_type")) == "extra_exports"
+            else "02 Imports"
+        )
         key = (
             _clean_text(row.get("economy")),
             _clean_text(row.get("scenario")).lower(),
             int(row.get("year")),
+            diagnostic_flow,
             _clean_text(row.get("esto_product")),
         )
         summary = summaries.get(key)
         output.at[index, "safety_scope"] = "allocator_plus_balance_review"
+        output.at[index, "diagnostic_flow_scope"] = diagnostic_flow
+        output.at[index, "diagnostic_provenance_status"] = (
+            "predates_known_seed_fix"
+            if require_fresh_leap_cycle
+            else "current_or_unspecified"
+        )
         if summary is not None:
             output.at[index, "diagnostic_material_rows"] = summary["rows"]
             output.at[index, "diagnostic_classifications"] = summary["classifications"]
@@ -261,23 +357,28 @@ def apply_balance_review_safety(
             ]
             output.at[index, "diagnostic_next_actions"] = summary["next_actions"]
 
+        if not bool(row.get("safe_to_apply")):
+            output.at[index, "update_disposition"] = "allocator_blocked"
+            continue
+
         reason = ""
-        if require_fresh_leap_cycle:
-            reason = (
-                "The diagnostic export predates a relevant seed fix; regenerate the "
-                "seed, import it into LEAP, recalculate, and export again."
-            )
-        elif summary is None:
-            reason = "No material balance-review evidence explicitly approves this update."
-        elif bool(summary["allocation_required"]):
+        if summary is not None and bool(summary["allocation_required"]):
             reason = "The diagnostic comparison requires a reviewed allocation rule."
-        elif not summary["classification_set"] or not set(
-            summary["classification_set"]
-        ).issubset(approved):
+            output.at[index, "update_disposition"] = "blocked_allocation_rule"
+        elif summary is not None and set(summary["classification_set"]) & excluded:
             reason = (
-                "Material diagnostic classification is not approved for results_update: "
-                f"{summary['classifications'] or 'unclassified'}."
+                "A reviewed upstream issue should be fixed before results_update: "
+                f"{summary['classifications']}."
             )
+            output.at[index, "update_disposition"] = "excluded_upstream_issue"
+        elif (
+            summary is not None
+            and summary["classification_set"]
+            and set(summary["classification_set"]).issubset(approved)
+        ):
+            output.at[index, "update_disposition"] = "approved_update_candidate"
+        else:
+            output.at[index, "update_disposition"] = "provisional_update_candidate"
 
         if reason:
             existing = str(row.get("blocked_reason") or "").strip()
@@ -301,6 +402,7 @@ def run_results_update_allocation_preview(
     allow_same_results_reuse: bool | None = None,
     output_path: Path | str | None = None,
     balance_review: pd.DataFrame | None = None,
+    reviewed_decisions: pd.DataFrame | None = None,
     require_fresh_leap_cycle: bool = False,
 ) -> dict[str, object]:
     """Run the current balanced allocator without mutating iterative state."""
@@ -326,9 +428,15 @@ def run_results_update_allocation_preview(
     )
     preview_table = build_results_update_preview_table(summary)
     if balance_review is not None:
+        effective_decisions = (
+            load_results_update_issue_decisions()
+            if reviewed_decisions is None
+            else reviewed_decisions
+        )
         preview_table = apply_balance_review_safety(
             preview_table,
             balance_review,
+            reviewed_decisions=effective_decisions,
             require_fresh_leap_cycle=require_fresh_leap_cycle,
         )
     resolved_output_path: Path | None = None

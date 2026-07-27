@@ -38,9 +38,9 @@ into a narrow table containing:
 - `safe_to_apply`; and
 - a blocked reason.
 
-`safe_to_apply=True` currently means only that the existing allocator would
-apply the row under its present caps and unresolved-residual policy. The table
-marks this explicitly with `safety_scope=current_allocator_only`.
+Before diagnostic triage, `safe_to_apply=True` means only that the existing
+allocator would apply the row under its present caps and unresolved-residual
+policy. The table marks this with `safety_scope=current_allocator_only`.
 
 It does **not** yet prove that:
 
@@ -56,19 +56,33 @@ current allocator behavior, not approval to write or import the changes.
 
 ## Balance-review safety gate
 
-`apply_balance_review_safety()` joins material diagnostic evidence on economy,
-scenario, year, and ESTO product. It is deliberately default-deny:
+`apply_balance_review_safety()` joins material diagnostic evidence at the flow
+used by each proposal: imports for positive-gap capacity/production proposals
+and exports for additional-export proposals. This avoids blocking an import
+proposal because an unrelated final-demand diagnostic is wrong.
 
-- only `approved_results_update` is accepted by default;
-- aggregate/cardinality warnings remain blocked;
-- unresolved, diagnostic-boundary, model-behavior, and baseline-seed defects
-  are not converted automatically into update instructions; and
-- proposals with no matching material review evidence remain blocked.
+The gate is selective:
 
-The supplied AUS export predates the thermal-coal fix in `778f649`.
-`require_fresh_leap_cycle=True` therefore blocks every proposal, including the
-coal rows: the right next action is to regenerate the seed and LEAP export, not
-to compensate for an obsolete seed through `results_update`.
+- confirmed baseline-seed, post-boundary, diagnostic, mapping, and LEAP
+  structure/export defects are excluded;
+- aggregate/cardinality warnings remain blocked until an allocation rule is
+  reviewed;
+- allocator clipping and fatal residuals remain blocked;
+- explicitly approved rows are labelled `approved_update_candidate`; and
+- unresolved, model-behavior, and unmatched rows remain visible as
+  `provisional_update_candidate`.
+
+Provisional means suitable for exercising and reviewing the updater, not proof
+that the change should be imported. A stale export is recorded as provenance
+(`predates_known_seed_fix`) rather than used as a global veto.
+
+Reviewed decisions can override preliminary diagnostic classifications. The
+tracked `config/runtime_tables/results_update_issue_decisions.csv` records the
+AUS 2022 thermal-coal cluster as a baseline-seed defect fixed by `778f649`,
+even though the original review CSV still labels those rows `unresolved`. The
+public preview runner loads this table automatically when a balance review is
+provided. Pass an explicit empty DataFrame only when deliberately testing
+without reviewed decisions.
 
 ## Notebook-oriented use
 
@@ -94,6 +108,7 @@ PREVIEW_RESULT = run_results_update_allocation_preview(
         "outputs/leap_exports/supply_reconciliation/supporting_files/"
         "baseline_seed_balance_diagnostics/results_update_allocation_preview.csv"
     ),
+    require_fresh_leap_cycle=True,
 )
 
 PREVIEW_TABLE = PREVIEW_RESULT["preview_table"]

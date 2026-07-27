@@ -1,0 +1,4 @@
+economy,scenario,year,esto_flow,esto_product,primary_classification,update_allocation_required,next_action,evidence_note
+01_AUS,Reference,2022,02 Imports,01.02 Other bituminous coal,baseline_seed_generation_bug,False,Regenerate and recalculate the seed before considering an update,Part of the reviewed thermal-coal allocation defect fixed in 778f649
+01_AUS,Reference,2022,02 Imports,01.03 Sub-bituminous coal,baseline_seed_generation_bug,False,Regenerate and recalculate the seed before considering an update,Part of the reviewed thermal-coal allocation defect fixed in 778f649
+01_AUS,Reference,2022,02 Imports,01.04 Anthracite,baseline_seed_generation_bug,False,Regenerate and recalculate the seed before considering an update,The obsolete seed assigned thermal-coal electricity feedstock to Anthracite

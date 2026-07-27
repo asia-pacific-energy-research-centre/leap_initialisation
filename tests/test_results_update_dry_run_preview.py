@@ -291,7 +291,74 @@ def test_public_preview_runner_writes_only_requested_review_csv(
     assert list(pd.read_csv(output_path).columns) == preview.RESULTS_UPDATE_PREVIEW_COLUMNS
 
 
-def test_balance_review_safety_is_default_deny_and_respects_cardinality() -> None:
+def test_public_preview_runner_loads_reviewed_issue_decisions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    summary = {
+        "comparison_rows": [],
+        "allocation_rows": [
+            {
+                "economy": "01_AUS",
+                "scenario": "reference",
+                "esto_product": "01.04 Anthracite",
+                "year": 2022,
+                "allocation_type": "primary_production",
+                "allocated_output_uplift": 5.0,
+                "capacity_increment": 5.0,
+            }
+        ],
+        "export_rows": [],
+        "clipping_rows": [],
+        "unresolved_positive_rows": [],
+        "fatal_unresolved_positive_rows": [],
+    }
+    raw_review = pd.DataFrame(
+        [
+            {
+                "economy": "01_AUS",
+                "scenario": "Reference",
+                "year": 2022,
+                "esto_flow": "02 Imports",
+                "esto_product": "01.04 Anthracite",
+                "material_for_review": True,
+                "primary_classification": "unresolved",
+                "update_allocation_required": False,
+                "next_action": "Review.",
+            }
+        ]
+    )
+    decisions = pd.read_csv(
+        Path("config/runtime_tables/results_update_issue_decisions.csv")
+    )
+    monkeypatch.setattr(
+        allocation,
+        "_run_capacity_unmet_iterative_balanced_pass",
+        lambda **kwargs: summary,
+    )
+    monkeypatch.setattr(
+        preview,
+        "load_results_update_issue_decisions",
+        lambda: decisions,
+    )
+
+    result = preview.run_results_update_allocation_preview(
+        reconciliation_table=_reconciliation(),
+        process_records=[{}],
+        economies=["01_AUS"],
+        scenarios=["Reference"],
+        resolve_scenario_key=lambda frame, scenario: str(scenario).lower(),
+        results_dir=tmp_path,
+        state_path=tmp_path / "state.json",
+        balance_review=raw_review,
+    )
+
+    assert result["preview_table"].iloc[0]["update_disposition"] == (
+        "excluded_upstream_issue"
+    )
+
+
+def test_balance_review_safety_keeps_unresolved_candidates_and_respects_cardinality() -> None:
     preview_table = pd.DataFrame(
         [
             {
@@ -323,6 +390,7 @@ def test_balance_review_safety_is_default_deny_and_respects_cardinality() -> Non
                 "economy": "01_AUS",
                 "scenario": "Reference",
                 "year": 2022,
+                "esto_flow": "02 Imports",
                 "esto_product": "01.02 Other bituminous coal",
                 "material_for_review": True,
                 "primary_classification": "approved_results_update",
@@ -333,6 +401,7 @@ def test_balance_review_safety_is_default_deny_and_respects_cardinality() -> Non
                 "economy": "01_AUS",
                 "scenario": "Reference",
                 "year": 2022,
+                "esto_flow": "02 Imports",
                 "esto_product": "17 Electricity",
                 "material_for_review": True,
                 "primary_classification": "approved_results_update",
@@ -348,14 +417,17 @@ def test_balance_review_safety_is_default_deny_and_respects_cardinality() -> Non
     electricity = gated[gated["esto_product"].eq("17 Electricity")].iloc[0]
     lpg = gated[gated["esto_product"].eq("07.09 LPG")].iloc[0]
     assert bool(coal["safe_to_apply"]) is True
+    assert coal["update_disposition"] == "approved_update_candidate"
     assert coal["safety_scope"] == "allocator_plus_balance_review"
     assert bool(electricity["safe_to_apply"]) is False
+    assert electricity["update_disposition"] == "blocked_allocation_rule"
     assert "allocation rule" in electricity["blocked_reason"]
-    assert bool(lpg["safe_to_apply"]) is False
-    assert "No material balance-review evidence" in lpg["blocked_reason"]
+    assert bool(lpg["safe_to_apply"]) is True
+    assert lpg["update_disposition"] == "provisional_update_candidate"
+    assert lpg["blocked_reason"] == ""
 
 
-def test_stale_leap_export_blocks_every_reviewed_proposal() -> None:
+def test_stale_export_is_provenance_while_reviewed_seed_defect_is_excluded() -> None:
     summary = {
         "comparison_rows": [],
         "allocation_rows": [
@@ -381,6 +453,7 @@ def test_stale_leap_export_blocks_every_reviewed_proposal() -> None:
                 "economy": "01_AUS",
                 "scenario": "Reference",
                 "year": 2022,
+                "esto_flow": "02 Imports",
                 "esto_product": "01.02 Other bituminous coal",
                 "material_for_review": True,
                 "primary_classification": "baseline_seed_generation_bug",
@@ -397,4 +470,103 @@ def test_stale_leap_export_blocks_every_reviewed_proposal() -> None:
     )
 
     assert not gated["safe_to_apply"].any()
-    assert "predates a relevant seed fix" in gated.iloc[0]["blocked_reason"]
+    assert gated.iloc[0]["update_disposition"] == "excluded_upstream_issue"
+    assert gated.iloc[0]["diagnostic_provenance_status"] == (
+        "predates_known_seed_fix"
+    )
+    assert "baseline_seed_generation_bug" in gated.iloc[0]["blocked_reason"]
+
+
+def test_reviewed_decision_overrides_unresolved_raw_diagnostic() -> None:
+    summary = {
+        "comparison_rows": [],
+        "allocation_rows": [
+            {
+                "economy": "01_AUS",
+                "scenario": "reference",
+                "esto_product": "01.04 Anthracite",
+                "year": 2022,
+                "allocation_type": "primary_production",
+                "allocated_output_uplift": 5.0,
+                "capacity_increment": 5.0,
+            }
+        ],
+        "export_rows": [],
+        "clipping_rows": [],
+        "unresolved_positive_rows": [],
+        "fatal_unresolved_positive_rows": [],
+    }
+    preview_table = preview.build_results_update_preview_table(summary)
+    raw_review = pd.DataFrame(
+        [
+            {
+                "economy": "01_AUS",
+                "scenario": "Reference",
+                "year": 2022,
+                "esto_flow": "02 Imports",
+                "esto_product": "01.04 Anthracite",
+                "material_for_review": True,
+                "primary_classification": "unresolved",
+                "update_allocation_required": False,
+                "next_action": "Review.",
+            }
+        ]
+    )
+    decisions = pd.read_csv(
+        Path("config/runtime_tables/results_update_issue_decisions.csv")
+    )
+
+    gated = preview.apply_balance_review_safety(
+        preview_table,
+        raw_review,
+        reviewed_decisions=decisions,
+    )
+
+    assert bool(gated.iloc[0]["safe_to_apply"]) is False
+    assert gated.iloc[0]["diagnostic_classifications"] == (
+        "baseline_seed_generation_bug"
+    )
+    assert gated.iloc[0]["update_disposition"] == "excluded_upstream_issue"
+
+
+def test_non_import_diagnostic_does_not_block_import_gap_proposal() -> None:
+    summary = {
+        "comparison_rows": [],
+        "allocation_rows": [
+            {
+                "economy": "01_AUS",
+                "scenario": "reference",
+                "esto_product": "17 Electricity",
+                "year": 2022,
+                "allocation_type": "primary_production",
+                "allocated_output_uplift": 5.0,
+                "capacity_increment": 5.0,
+            }
+        ],
+        "export_rows": [],
+        "clipping_rows": [],
+        "unresolved_positive_rows": [],
+        "fatal_unresolved_positive_rows": [],
+    }
+    preview_table = preview.build_results_update_preview_table(summary)
+    review = pd.DataFrame(
+        [
+            {
+                "economy": "01_AUS",
+                "scenario": "Reference",
+                "year": 2022,
+                "esto_flow": "13 Total final energy demand",
+                "esto_product": "17 Electricity",
+                "material_for_review": True,
+                "primary_classification": "diagnostic_bug",
+                "update_allocation_required": False,
+                "next_action": "Fix diagnostic boundary.",
+            }
+        ]
+    )
+
+    gated = preview.apply_balance_review_safety(preview_table, review)
+
+    assert bool(gated.iloc[0]["safe_to_apply"]) is True
+    assert gated.iloc[0]["update_disposition"] == "provisional_update_candidate"
+    assert gated.iloc[0]["diagnostic_flow_scope"] == "02 Imports"

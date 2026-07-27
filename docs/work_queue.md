@@ -84,11 +84,13 @@ Parallel update-method checkpoint (2026-07-27): the current balanced allocator
 now has a side-effect-free execution mode and normalized proposal table on
 `codex/results-update-dry-run-preview`. It reports transformation-capacity,
 primary-production, export, clipping, and unresolved proposals without updating
-state/history or the runtime ledger. The AUS diagnostic integration is now
-default-deny: only explicitly approved `results_update` classifications without
-mapping-cardinality warnings can pass. The supplied AUS export predates the
-thermal-coal fix, so all its proposals remain blocked pending a fresh LEAP
-cycle. Exact final workbook values remain open. See
+state/history or the runtime ledger. Diagnostic triage now excludes only
+confirmed upstream defects and rows needing a reviewed allocation rule;
+unresolved, model-behavior, and unmatched proposals remain provisional updater
+candidates. Stale-export status is provenance rather than a global veto. A
+tracked reviewed-decision table excludes the proven AUS thermal-coal seed
+defect despite its preliminary `unresolved` CSV classification. Exact final
+workbook values remain open. See
 [results_update_dry_run_preview.md](results_update_dry_run_preview.md).
 
 ## [20] General opt-in projection of ESTO-active sectors missing from 9th
