@@ -26,6 +26,15 @@ declares the power interim/standard alternatives and the membership of
 themselves prove the LEAP result matches the independent source.
 See [baseline_seed_balance_diagnostics.md](baseline_seed_balance_diagnostics.md).
 
+The imports gap is an error signal, not automatically the only acceptable
+outcome. A separate adjustment strategy must choose whether a product uses
+configured production/transformation/electricity-or-heat levers before leaving
+the residual to imports, leaves the full difference to imports, or requires
+review. Positive and negative gaps need separate strategies because the current
+allocator can increase production/capacity but cannot yet safely perform the
+corresponding decreases. Configuration and per-cycle execution history are
+specified in [results_update_dry_run_preview.md](results_update_dry_run_preview.md).
+
 Step 1 is read-only:
 
 - `codebase/baseline_seed_balance_diagnostics_workflow.py` is the slim notebook
@@ -48,7 +57,10 @@ Real `20_USA` smoke, latest REF/TGT exports, years 2022-2023:
   9th value mismatches, and 15 9th rows missing in LEAP;
 - 15 9th sector/fuel pairs are shared by multiple ESTO pairs, affecting 30
   future-year comparison rows (27 mismatches, two missing in LEAP, one match);
-  these are now flagged as requiring an allocation rule before update; and
+  the current raw-cardinality gate flags them, but all 30 have exactly one LEAP
+  component. The problem is comparison-side 9th fan-out and should be resolved
+  by reusing the baseline seed's canonical 9th-to-ESTO projection allocation,
+  not by inventing a reverse LEAP allocation rule; and
 - 625 selected-window mapping/check rows were retained (613 missing ESTO pairs,
   12 total-balance checks), rather than the 11,792 all-horizon rows produced
   before supporting diagnostics were scoped to the selected years.
@@ -84,9 +96,10 @@ Next work, in order:
    allocator would propose;
 5. compare that preview with current baseline-seed rules at the post-boundary
    seed surface and repair drift;
-6. use post-rollup Common ESTO lineage to distinguish safe forward aggregation
-   from true source fan-out, then define reverse LEAP update-target rules where
-   one aggregate difference has several possible targets; and
+6. replace the raw 9th-pair cardinality gate with the canonical projected ESTO
+   values and allocation provenance already used by baseline seed generation;
+   retain a defensive multiple-LEAP-component check, but no real example
+   currently requires a reverse update allocation rule; and
 7. retain per-cycle convergence history and issue ownership.
 
 Design and notebook usage:

@@ -131,6 +131,11 @@ The canonical mapping repository already contains useful group declarations:
   overlap and deliberately does not zero either side because the aggregate may
   be a residual.
 
+Both files already live in the canonical `leap_mappings/config` directory.
+They should remain there and be read directly (preferably through the
+`leap_mappings` loader functions), rather than copied into this repository and
+allowed to drift.
+
 The update diagnostic should reuse these group declarations, then add the
 independent group comparison above. Only a passing group can make internal
 placeholder/replacement redistribution ignorable. A failing group remains a
@@ -146,33 +151,43 @@ correction_to_match_source_pj = source_value_pj - leap_value_pj
 A positive difference means LEAP shows more energy than the source at the
 reported comparison grain.
 
-### Comparison grain versus reverse-update allocation
+### Comparison grain and observed 9th-to-ESTO fan-out
 
 The common comparison grain is the ESTO flow/product pair. Several LEAP rows can
 map to one ESTO pair, and one ESTO pair can represent several 9th pairs. Their
-sums are valid for diagnosing an aggregate difference, but the aggregate
-difference cannot be pushed back to individual LEAP rows without an explicit
-allocation rule.
+sums can be valid, but a 9th aggregate must not be repeated as the expected
+value for every detailed ESTO pair that claims it.
 
 The phrase "many-to-one cases are blocked" is therefore too broad. Mapping
 direction matters:
 
 - many source rows to one comparison row is a safe forward sum;
 - one source aggregate fanning out to several comparison rows is not safe
-  without an allocation or a common rolled-up boundary; and
-- one safe aggregate difference mapping back to several possible LEAP update
-  targets is a separate reverse-update target-selection problem.
+  without the canonical projection allocation or a common rolled-up boundary.
 
 The diagnostic already reads
 `config/outlook_mappings_master.xlsx`, including
-`ninth_pairs_to_esto_pairs`; merely referring to the master workbook again does
-not resolve the ambiguity. The next comparison implementation should consume
-the canonical post-rollup Common ESTO structural artifacts
-(`source_pair_to_common_row.csv` and component lineage) so raw mapping
-cardinality is not mistaken for comparison unsafety. Those artifacts define
-safe aggregation membership but deliberately do not allocate a common-row
-value back to its source children. Reverse update targeting must therefore
-remain a separate decision.
+`ninth_pairs_to_esto_pairs`. The missing step is not another mapping table: it
+is reuse of the same projection allocation already used to build the baseline
+seed. `codebase/functions/ninth_projection_mapping.py` allocates a 9th source
+pair across detailed ESTO pairs using economy base-year shares and records
+allocation provenance. The diagnostic should compare LEAP against those
+allocated ESTO expectations. Post-rollup Common ESTO structural artifacts
+remain useful for aggregate checks where a detailed split is intentionally
+unavailable.
+
+The available real diagnostics contain no observed case where one discrepancy
+has several possible LEAP update rows:
+
+- AUS 2022 has zero `update_allocation_required` rows.
+- The 996-row USA smoke has 30 rows currently flagged for allocation, but every
+  one has `leap_component_count=1`. All 30 are flagged only because one 9th pair
+  is shared by several ESTO rows.
+
+The immediate issue is therefore comparison-side 9th fan-out, not reverse LEAP
+target selection. Keep a defensive check for multiple LEAP components, but do
+not design an allocation system for that hypothetical case unless real data
+produces one.
 
 Rows therefore include:
 
@@ -184,9 +199,8 @@ Rows therefore include:
 - `update_allocation_required`; and
 - `update_allocation_reason`.
 
-These current fields conservatively combine comparison safety and reverse
-targeting. A later schema should split them into, at minimum,
-`comparison_boundary_safe` and `reverse_update_target_required`. Step 1 never
+These current fields conservatively flag raw bridge cardinality. Replace that
+gate with the canonical allocated projection and its provenance. Step 1 never
 changes LEAP or generates an update workbook.
 
 The extraction stage deliberately validates and consumes only
@@ -260,9 +274,9 @@ available source comparator. There were 738 mismatches.
 
 The inverse-cardinality audit found 15 9th sector/fuel pairs shared by multiple
 ESTO pairs. They affect 30 future-year rows, which the current schema flags as
-`update_allocation_required=True`. This confirms that a row can have
-`ninth_pair_count=1` and still be unsafe to update directly because the same
-9th pair is also claimed elsewhere.
+`update_allocation_required=True`. All 30 have one LEAP component. This is
+evidence that the diagnostic must reuse the baseline seed's 9th-to-ESTO
+allocation, not evidence that a correction needs several LEAP destinations.
 
 The run took about five minutes. Selecting two output years does not yet avoid
 preparing the full 288 MB 9th table, so source-level economy/scenario/year
@@ -277,9 +291,9 @@ filtering is the next performance task.
    internal sector redistribution.
 3. Reconcile the update path with current baseline-seed rules and require both
    paths to cross the same post-boundary seed validation/completion logic.
-4. Replace raw-cardinality blocking with post-rollup Common ESTO comparison
-   safety, while keeping source fan-out and reverse LEAP update-target selection
-   explicit. Aggregate differences must not be divided silently.
+4. Replace raw-cardinality blocking with the canonical 9th-to-ESTO projection
+   allocation and provenance; use Common ESTO rollups only where a detailed
+   split remains intentionally unavailable.
 5. Add issue classification by likely owner: demand, supply, transformation,
    transfers, own use/losses, mapping, or LEAP structure.
 6. Add convergence history across repeated limited-year LEAP export/update

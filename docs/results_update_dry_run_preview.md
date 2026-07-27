@@ -11,6 +11,12 @@ gaps as an unmet-energy proxy. It then proposes one or more of:
 - clipped amounts where configured caps restrict an increase; or
 - unresolved amounts handled or blocked by the configured policy.
 
+The import gap is the **error signal**, not a command that every other balance
+flow must be restored to its original value. A reviewed response may instead
+change domestic supply, transformation output/capacity, or electricity/heat
+provision and let imports absorb only the residual. For other products or
+cycles, leaving the complete difference in imports may be the intended result.
+
 `run_results_update_allocation_preview()` in
 `codebase/functions/results_update_preview.py` now runs those same allocation
 rules without:
@@ -45,8 +51,8 @@ policy. The table marks this with `safety_scope=current_allocator_only`.
 It does **not** yet prove that:
 
 - the underlying LEAP/source difference is a baseline-seed defect;
-- the LEAP-to-ESTO or ESTO-to-9th mapping is one-to-one;
-- an aggregate 9th difference has a reviewed allocation rule;
+- the future-year comparator reused the baseline seed's canonical
+  9th-to-ESTO allocation and provenance;
 - the hinted branch resolves to the final workbook row; or
 - the proposed value agrees with the current post-boundary baseline-seed rule.
 
@@ -69,8 +75,8 @@ The contract is the primary gate:
 - protected-flow differences raise an issue rather than becoming numeric
   updates;
 - total primary supply and total final energy consumption are derived checks;
-- aggregate/cardinality warnings remain blocked until an allocation rule is
-  reviewed;
+- current raw-cardinality warnings remain blocked until the comparator is
+  connected to the canonical allocated ESTO projection;
 - allocator clipping and fatal residuals remain blocked;
 - explicitly approved rows are labelled `approved_update_candidate`; and
 - eligible imports-gap rows remain visible as `provisional_update_candidate`.
@@ -89,9 +95,58 @@ without reviewed decisions.
 
 Known placeholder/interim sectors are labelled in the diagnostic, but are not
 blanket-excluded. A future exclusion must define a placeholder/replacement
-group and prove that the combined boundary conserves energy. This prevents a
-sector substitution from creating false alarms without hiding fuel-allocation
-bugs inside the placeholder.
+group and pass a signed, fuel-specific replacement-boundary reconciliation.
+This prevents a sector substitution from creating false alarms without hiding
+fuel-allocation bugs inside the placeholder.
+
+## Error signals versus permitted adjustment strategies
+
+Two decisions must remain separate:
+
+1. `config/runtime_tables/balance_error_signal_rules.csv` identifies the
+   observed residual variable. Imports are currently the default
+   `imports_gap` signal.
+2. A results-update strategy decides which model levers may respond to that
+   signal.
+
+The existing balanced allocator already approximates one strategy for a
+positive imports gap:
+
+```text
+increase eligible primary production
+then increase eligible transformation output/capacity
+then leave any unresolved residual to imports
+```
+
+Its product-specific module priorities, capacity caps, production caps, and
+production-only products determine which levers are eligible. Negative gaps
+are not symmetric: the current code can route them to exports only when exports
+are not pinned, and it does not yet safely decrease production or
+transformation capacity/output.
+
+Add a separate, most-specific-match configuration table when this behavior is
+connected to the diagnostic, proposed as
+`config/runtime_tables/results_update_adjustment_strategy_rules.csv`. It should
+select, by economy/scenario/ESTO product:
+
+- positive-gap strategy:
+  `residual_only`, `configured_levers_then_residual`, or `review_required`;
+- negative-gap strategy:
+  `residual_only`, `configured_decrease_then_residual`,
+  `exports_then_residual`, or `review_required`;
+- the residual error signal (normally imports); and
+- a reviewed reason and enabled flag.
+
+Do not duplicate module lists or numeric caps in that table. Those remain the
+lever catalogue used by the allocator; the strategy table decides whether the
+catalogue may be used for this product and direction.
+
+Each cycle should also write an execution ledger, separate from configuration,
+with the signal before the update, chosen strategy, proposed and applied lever,
+signed change, residual left to imports, next-cycle signal, decision status,
+and reason. This is especially important for electricity/heat adjustments:
+changing their provision changes transformation fuel use and can create a
+second-order import gap that is only visible after recalculation.
 
 ## Notebook-oriented use
 
