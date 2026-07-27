@@ -48,16 +48,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BALANCE_EXPORT_ECONOMY = "20_USA"
 DEFAULT_REF_BALANCE_EXPORT_DATE_ID: str | None = None
 DEFAULT_TGT_BALANCE_EXPORT_DATE_ID: str | None = None
-DEFAULT_REF_WORKBOOK_PATH = resolve_balance_export_workbook(
-    economy=DEFAULT_BALANCE_EXPORT_ECONOMY,
-    scenario="REF",
-    date_id=DEFAULT_REF_BALANCE_EXPORT_DATE_ID,
-)
-DEFAULT_TGT_WORKBOOK_PATH = resolve_balance_export_workbook(
-    economy=DEFAULT_BALANCE_EXPORT_ECONOMY,
-    scenario="TGT",
-    date_id=DEFAULT_TGT_BALANCE_EXPORT_DATE_ID,
-)
+# Resolve these lazily inside loaders. Importing this utility must not require
+# unrelated default USA workbooks when a caller supplies an explicit workbook.
+DEFAULT_REF_WORKBOOK_PATH: Path | None = None
+DEFAULT_TGT_WORKBOOK_PATH: Path | None = None
 # Canonical 9th-pair -> ESTO-pair mapping (leap_mappings/config/outlook_mappings_master.xlsx).
 # All balance-conversion and balance-demand consumers use the canonical source of truth.
 DEFAULT_MAPPING_PAIRS_PATH = (OUTLOOK_MAPPINGS_MASTER_PATH, "ninth_pairs_to_esto_pairs")
@@ -1147,8 +1141,8 @@ def build_simple_leap_balance_table(leap_long: pd.DataFrame) -> pd.DataFrame:
 
 def convert_leap_balances_to_esto_long_table(
     *,
-    ref_workbook_path: Path | str = DEFAULT_REF_WORKBOOK_PATH,
-    tgt_workbook_path: Path | str = DEFAULT_TGT_WORKBOOK_PATH,
+    ref_workbook_path: Path | str | None = DEFAULT_REF_WORKBOOK_PATH,
+    tgt_workbook_path: Path | str | None = DEFAULT_TGT_WORKBOOK_PATH,
     template_sheet: str = "EBal|2060",
     mapping_pairs_path: ConfigTableRef = DEFAULT_MAPPING_PAIRS_PATH,
     codebook_path: Path | str = DEFAULT_CODEBOOK_PATH,
@@ -4189,8 +4183,8 @@ def _extract_balance_workbook(
 
 def load_balance_leap_long(
     *,
-    ref_workbook_path: Path | str = DEFAULT_REF_WORKBOOK_PATH,
-    tgt_workbook_path: Path | str = DEFAULT_TGT_WORKBOOK_PATH,
+    ref_workbook_path: Path | str | None = DEFAULT_REF_WORKBOOK_PATH,
+    tgt_workbook_path: Path | str | None = DEFAULT_TGT_WORKBOOK_PATH,
     template_sheet: str = "EBal|2060",
     mapping_pairs_path: ConfigTableRef = DEFAULT_MAPPING_PAIRS_PATH,
     codebook_path: Path | str = DEFAULT_CODEBOOK_PATH,
@@ -4209,6 +4203,17 @@ def load_balance_leap_long(
     structure = structure_config or {}
     issues_cfg = known_issues or {}
 
+    if ref_workbook_path is None and tgt_workbook_path is None:
+        ref_workbook_path = resolve_balance_export_workbook(
+            economy=DEFAULT_BALANCE_EXPORT_ECONOMY,
+            scenario="REF",
+            date_id=DEFAULT_REF_BALANCE_EXPORT_DATE_ID,
+        )
+        tgt_workbook_path = resolve_balance_export_workbook(
+            economy=DEFAULT_BALANCE_EXPORT_ECONOMY,
+            scenario="TGT",
+            date_id=DEFAULT_TGT_BALANCE_EXPORT_DATE_ID,
+        )
     ref_path = _resolve(ref_workbook_path)
     tgt_path = _resolve(tgt_workbook_path)
     mapping_pairs = _resolve_config_table_ref(mapping_pairs_path)
@@ -8064,8 +8069,8 @@ def _resolve_esto_structure(
 
 def load_balance_leap_long_esto_axis(
     *,
-    ref_workbook_path: Path | str = DEFAULT_REF_WORKBOOK_PATH,
-    tgt_workbook_path: Path | str = DEFAULT_TGT_WORKBOOK_PATH,
+    ref_workbook_path: Path | str | None = DEFAULT_REF_WORKBOOK_PATH,
+    tgt_workbook_path: Path | str | None = DEFAULT_TGT_WORKBOOK_PATH,
     template_sheet: str = "EBal|2060",
     mapping_pairs_path: ConfigTableRef = DEFAULT_MAPPING_PAIRS_PATH,
     codebook_path: Path | str = DEFAULT_CODEBOOK_PATH,
@@ -8080,11 +8085,30 @@ def load_balance_leap_long_esto_axis(
     structure = structure_config or {}
     issues_cfg = known_issues or {}
 
-    ref_path = _resolve(ref_workbook_path)
-    tgt_path = _resolve(tgt_workbook_path)
+    if ref_workbook_path is None and tgt_workbook_path is None:
+        ref_workbook_path = resolve_balance_export_workbook(
+            economy=DEFAULT_BALANCE_EXPORT_ECONOMY,
+            scenario="REF",
+            date_id=DEFAULT_REF_BALANCE_EXPORT_DATE_ID,
+        )
+        tgt_workbook_path = resolve_balance_export_workbook(
+            economy=DEFAULT_BALANCE_EXPORT_ECONOMY,
+            scenario="TGT",
+            date_id=DEFAULT_TGT_BALANCE_EXPORT_DATE_ID,
+        )
+    workbook_paths = [
+        (scenario, _resolve(path))
+        for scenario, path in (
+            ("ref", ref_workbook_path),
+            ("tgt", tgt_workbook_path),
+        )
+        if path is not None
+    ]
+    if not workbook_paths:
+        raise ValueError("At least one REF or TGT balance workbook is required.")
     mapping_pairs = _resolve_config_table_ref(mapping_pairs_path)
     codebook = _resolve(codebook_path)
-    for candidate in [ref_path, tgt_path]:
+    for _, candidate in workbook_paths:
         if not candidate.exists():
             raise FileNotFoundError(f"Missing required input: {candidate}")
     mapping_pairs_file, mapping_pairs_sheet = split_config_table_ref(mapping_pairs)
@@ -8093,24 +8117,22 @@ def load_balance_leap_long_esto_axis(
     if not config_table_exists(codebook, sheet_name="leap_display_names"):
         raise FileNotFoundError(f"Missing required input: {codebook}")
 
-    extracted_ref = _extract_balance_workbook(
-        ref_path,
-        template_sheet=template_sheet,
-        mapping_pairs_path=mapping_pairs,
-        codebook_path=codebook,
-        explicit_pair_mappings_only=explicit_pair_mappings_only,
-        allow_descendant_mapping_expansion=allow_descendant_mapping_expansion,
+    extracted = {
+        scenario: _extract_balance_workbook(
+            path,
+            template_sheet=template_sheet,
+            mapping_pairs_path=mapping_pairs,
+            codebook_path=codebook,
+            explicit_pair_mappings_only=explicit_pair_mappings_only,
+            allow_descendant_mapping_expansion=allow_descendant_mapping_expansion,
+        )
+        for scenario, path in workbook_paths
+    }
+    combined = pd.concat(
+        [item["mapped_long"] for item in extracted.values()],
+        ignore_index=True,
+        sort=False,
     )
-    extracted_tgt = _extract_balance_workbook(
-        tgt_path,
-        template_sheet=template_sheet,
-        mapping_pairs_path=mapping_pairs,
-        codebook_path=codebook,
-        explicit_pair_mappings_only=explicit_pair_mappings_only,
-        allow_descendant_mapping_expansion=allow_descendant_mapping_expansion,
-    )
-
-    combined = pd.concat([extracted_ref["mapped_long"], extracted_tgt["mapped_long"]], ignore_index=True, sort=False)
     if combined.empty:
         raise RuntimeError("Balance extraction produced no rows.")
 
@@ -8298,12 +8320,20 @@ def load_balance_leap_long_esto_axis(
         "override_report": override_report,
         "pre_group_leap_mapped": pre_group_leap_mapped,
         "pre_group_incomplete_rows": incomplete_rows.copy(),
-        "unit_diagnostics": pd.concat([extracted_ref["unit_diag"], extracted_tgt["unit_diag"]], ignore_index=True, sort=False),
-        "coverage": pd.concat([extracted_ref["coverage"], extracted_tgt["coverage"]], ignore_index=True, sort=False),
+        "unit_diagnostics": pd.concat(
+            [item["unit_diag"] for item in extracted.values()],
+            ignore_index=True,
+            sort=False,
+        ),
+        "coverage": pd.concat(
+            [item["coverage"] for item in extracted.values()],
+            ignore_index=True,
+            sort=False,
+        ),
         "matching_diagnostics": pd.concat(
             [
-                extracted_ref["report"].get("matching_diagnostics", pd.DataFrame()),
-                extracted_tgt["report"].get("matching_diagnostics", pd.DataFrame()),
+                item["report"].get("matching_diagnostics", pd.DataFrame())
+                for item in extracted.values()
             ],
             ignore_index=True,
             sort=False,
@@ -8311,10 +8341,10 @@ def load_balance_leap_long_esto_axis(
         "resolved_structure": resolved_structure,
         "auto_sheet_rows": auto_sheet_rows,
         "extraction_summary": {
-            "ref": extracted_ref["report"].get("summary", {}),
-            "tgt": extracted_tgt["report"].get("summary", {}),
-            "selected_template_ref": extracted_ref["template_sheet"],
-            "selected_template_tgt": extracted_tgt["template_sheet"],
+            "ref": extracted.get("ref", {}).get("report", {}).get("summary", {}),
+            "tgt": extracted.get("tgt", {}).get("report", {}).get("summary", {}),
+            "selected_template_ref": extracted.get("ref", {}).get("template_sheet"),
+            "selected_template_tgt": extracted.get("tgt", {}).get("template_sheet"),
             "leap_rows_after_filters": int(len(leap_long)),
             "mapping_rows": int(len(mapping_status)),
             "issue_rows": int(len(issues_df)),

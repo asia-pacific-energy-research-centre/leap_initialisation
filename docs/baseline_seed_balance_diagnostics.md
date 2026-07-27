@@ -45,6 +45,13 @@ baseline_seed_balance_diagnostics/leap_balance_source_differences.csv
 If conversion finds unmapped LEAP rows, a second
 `leap_balance_mapping_issues.csv` is written beside it.
 
+`leap_balance_source_review.csv` is the human-facing review surface. It adds a
+materiality flag, preliminary owner/classification, evidence note, and next
+action while retaining the full numerical and cardinality columns. The run
+summary separately counts value mismatches, missing sides, unmapped rows,
+total-balance failures, direct comparisons, and aggregate/shared comparisons
+unsafe for a direct update.
+
 ### Difference convention
 
 ```text
@@ -99,6 +106,19 @@ DATE_IDS_BY_ECONOMY = {
     "20_USA": {"REF": "23072026", "TGT": "23072026"},
 }
 ```
+
+To run one explicit Reference-only workbook:
+
+```python
+WORKBOOK_PATHS_BY_ECONOMY = {
+    "01_AUS": r"C:\Users\Work\github\leap_initialisation\data\leap balances exports - testing\01_AUS\2022.xlsx",
+}
+```
+
+For an explicit workbook, scenario, year, and units are read from each sheet's
+metadata. The diagnostic does not require or fabricate the other scenario.
+Every sheet must report Petajoule and the workbook must pass Level 2+ detail
+inspection before source tables are loaded.
 
 The normal filename and Level 2 detail rules in
 `data/leap balances exports/README.md` still apply.

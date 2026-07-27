@@ -3,7 +3,9 @@
 ## [21] Cyclical baseline-seed LEAP balance diagnostics
 
 **Status: Step 1 implemented and real-data verified 2026-07-27 in the
-`codex/baseline-seed-export-diagnostics` worktree.**
+`codex/baseline-seed-export-diagnostics` worktree. AUS Reference 2022 direct
+workbook investigation completed code-side; a fresh LEAP cycle is required to
+verify the already-landed thermal-coal producer fix.**
 
 Build a limited-year feedback loop that generates a baseline seed, imports and
 recalculates it in LEAP, reads REF/TGT Energy Balance exports back, diagnoses
@@ -41,6 +43,16 @@ The representative limited-year workbook
 `data/leap balances exports - testing/01_AUS/2022.xlsx` passes the new detail
 check as `Level 2+`. The file proves the required minimum through indented
 child rows; it cannot reliably distinguish exact settings above Level 2.
+
+The AUS investigation produced 193 direct ESTO-pair rows. After correcting
+missing raw ESTO pairs so they report unavailable rather than numeric zero:
+102 rows were value mismatches, 36 lacked a valid raw comparator, 55 matched,
+107 scoped extraction rows were unmapped, and all three aggregate total checks
+failed because rollup/comparison boundaries are not yet applied consistently.
+There were 67 material rows at 1 PJ. The largest six form one proven pre-fix
+thermal-coal producer cluster; current code already fixes it in `778f649`, but
+the supplied LEAP export was generated from the older seed. Findings:
+[aus_2022_balance_export_investigation_findings.md](aus_2022_balance_export_investigation_findings.md).
 
 The smoke took about five minutes because the existing reference loader still
 prepares the full 288 MB 9th table before selecting two years. Push

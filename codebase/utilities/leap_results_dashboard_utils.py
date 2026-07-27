@@ -1493,6 +1493,8 @@ def pull_base_year_value(
             else:
                 fallback = fallback[fallback["flows"].astype(str).str.lower().str.startswith(parent + ".")]
         working = fallback
+    if working.empty:
+        return float("nan")
     sign_role = str(value_sign_role or "").strip().lower()
     is_directional_balance_flow = str(esto_flow or "").strip().lower().startswith(("08", "09"))
     if sign_role in {"input", "output"} and is_directional_balance_flow:

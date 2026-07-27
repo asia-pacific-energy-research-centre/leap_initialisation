@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 
 from codebase.utilities.leap_results_dashboard_balance import _load_active_balance_mapping_crosswalk
+from codebase.utilities.leap_results_dashboard_utils import pull_base_year_value
 
 
 def test_active_balance_mapping_crosswalk_does_not_require_many_to_many_is_ok(tmp_path: Path) -> None:
@@ -45,3 +46,26 @@ def test_active_balance_mapping_crosswalk_does_not_require_many_to_many_is_ok(tm
     assert "ninth_many_to_many_is_ok" not in crosswalk.columns
     assert crosswalk.loc[0, "esto_pair_mapping_cardinality"] == "many_to_many"
     assert crosswalk.loc[0, "ninth_pair_mapping_cardinality"] == "many_to_many"
+
+
+def test_missing_base_pair_is_unavailable_instead_of_zero() -> None:
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "01AUS",
+                "flows": "09.08.01 Coke ovens",
+                "products": "02.01 Coke oven coke",
+                "2022": 62.127,
+            }
+        ]
+    )
+
+    value = pull_base_year_value(
+        esto_df=esto,
+        base_year=2022,
+        economy_code="01AUS",
+        esto_flow="09.08.01 Coke ovens (including own use)",
+        esto_product="02.01 Coke oven coke",
+    )
+
+    assert pd.isna(value)

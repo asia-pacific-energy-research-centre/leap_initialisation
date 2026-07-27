@@ -9,6 +9,7 @@ allocation rule before a later update workflow could act on them.
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -103,6 +104,16 @@ DIFFERENCE_OUTPUT_COLUMNS = [
     "fuel_label",
 ]
 
+REVIEW_ADDED_COLUMNS = [
+    "leap_balance_row",
+    "leap_balance_fuel",
+    "material_for_review",
+    "preliminary_owner",
+    "primary_classification",
+    "evidence_note",
+    "next_action",
+]
+
 
 def _resolve(path: Path | str) -> Path:
     """Resolve a notebook-friendly path against this repository."""
@@ -183,6 +194,56 @@ def _validate_years(years: Sequence[int], *, base_year: int) -> list[int]:
             f"projection years. Pre-base historical years are not yet supported: {historical}."
         )
     return normalized
+
+
+def _read_direct_workbook_scope(
+    workbook_path: Path | str,
+    *,
+    base_year: int,
+) -> tuple[Path, list[int], list[str]]:
+    """Read the diagnostic year/scenario from one explicit balance workbook."""
+    path = _resolve(workbook_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Direct LEAP balance workbook does not exist: {path}")
+
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    metadata_rows: list[tuple[str, int, str]] = []
+    try:
+        for sheet in workbook.worksheets:
+            metadata = str(sheet.cell(2, 1).value or "").strip()
+            scenario_match = re.search(
+                r"Scenario:\s*([^,]+)",
+                metadata,
+                flags=re.IGNORECASE,
+            )
+            year_match = re.search(r"Year:\s*(\d{4})", metadata, flags=re.IGNORECASE)
+            units_match = re.search(r"Units:\s*(.+)$", metadata, flags=re.IGNORECASE)
+            if not scenario_match or not year_match or not units_match:
+                raise ValueError(
+                    "Direct LEAP balance workbook metadata must declare Scenario, "
+                    f"Year, and Units on every sheet: {path} [{sheet.title}]"
+                )
+            metadata_rows.append(
+                (
+                    scenario_match.group(1).strip(),
+                    int(year_match.group(1)),
+                    units_match.group(1).strip().rstrip("."),
+                )
+            )
+    finally:
+        workbook.close()
+
+    units = sorted({unit.lower() for _, _, unit in metadata_rows})
+    if units != ["petajoule"]:
+        raise ValueError(
+            "Direct LEAP balance diagnostics currently require Petajoule workbook "
+            f"metadata; found {units} in {path}."
+        )
+    scenarios = _normalize_scenarios([scenario for scenario, _, _ in metadata_rows])
+    years = _validate_years([year for _, year, _ in metadata_rows], base_year=base_year)
+    return path, years, scenarios
 
 
 def _load_optional_json(path: Path | str | None) -> dict[str, Any]:
@@ -277,6 +338,132 @@ def _scope_rows_to_diagnostic_window(
             scoped["scenario"].fillna("").astype(str).str.strip().str.lower().isin(wanted)
         ].copy()
     return scoped.reset_index(drop=True)
+
+
+def _preliminary_owner(esto_flow: object) -> str:
+    """Return the likely workflow owner from the ESTO flow family."""
+    flow = _clean_token(esto_flow)
+    if flow.startswith(("01 ", "02 ", "03 ", "04 ", "05 ", "06 ", "07 ")):
+        return "supply"
+    if flow.startswith("08"):
+        return "transfers"
+    if flow.startswith("09"):
+        return "transformation"
+    if flow.startswith("10"):
+        return "other_loss_and_own_use"
+    if flow.startswith(("12 ", "13 ", "14 ", "15 ", "16 ", "17 ")):
+        return "aggregated_demand"
+    return "mapping_or_diagnostic"
+
+
+def build_balance_review_table(
+    differences: pd.DataFrame,
+    *,
+    material_threshold_pj: float = 1.0,
+) -> pd.DataFrame:
+    """Add concise review fields without pretending unresolved rows are defects."""
+    review = differences.copy()
+    for column in DIFFERENCE_OUTPUT_COLUMNS:
+        if column not in review.columns:
+            review[column] = pd.NA
+    review["leap_balance_row"] = review["leap_sector_names"].fillna("")
+    review["leap_balance_fuel"] = review["leap_fuel_names"].fillna("")
+    review["material_for_review"] = (
+        pd.to_numeric(review["absolute_difference_pj"], errors="coerce")
+        .fillna(0.0)
+        .ge(float(material_threshold_pj))
+    )
+    review["preliminary_owner"] = review["esto_flow"].map(_preliminary_owner)
+    review["primary_classification"] = ""
+    review["evidence_note"] = ""
+    review["next_action"] = ""
+
+    discrepancy_mask = review["status"].ne("match")
+    review.loc[discrepancy_mask, "primary_classification"] = "unresolved"
+    review.loc[discrepancy_mask, "evidence_note"] = (
+        "Direct ESTO-axis comparison; trace the producer and post-boundary seed "
+        "before treating this as a code defect."
+    )
+    review.loc[discrepancy_mask, "next_action"] = "Review in descending PJ magnitude."
+
+    total_final_boundary = (
+        discrepancy_mask
+        & review["esto_flow"].fillna("").eq("13 Total final energy consumption")
+        & review["leap_sector_names"]
+        .fillna("")
+        .str.lower()
+        .eq("total final energy consumption")
+    )
+    review.loc[total_final_boundary, "primary_classification"] = "diagnostic_bug"
+    review.loc[total_final_boundary, "preliminary_owner"] = "mapping_or_diagnostic"
+    review.loc[total_final_boundary, "evidence_note"] = (
+        "LEAP Total Final Energy Demand includes the separate Other loss and own "
+        "use demand branch, so it is not a direct ESTO flow-13 comparator."
+    )
+    review.loc[total_final_boundary, "next_action"] = (
+        "Define a rollup-aware comparison boundary; do not update seed rows from "
+        "this aggregate difference."
+    )
+
+    missing_rollup = (
+        review["status"].eq("reference_unavailable")
+        & review["esto_flow"].fillna("").str.contains(
+            r"\(including own use\)",
+            regex=True,
+        )
+    )
+    review.loc[
+        missing_rollup,
+        "primary_classification",
+    ] = "mapping_grain_or_allocation_required"
+    review.loc[missing_rollup, "preliminary_owner"] = "mapping_or_diagnostic"
+    review.loc[missing_rollup, "evidence_note"] = (
+        "The named ESTO comparison row is a synthetic own-use boundary rollup, "
+        "not a literal row in the raw ESTO table."
+    )
+    review.loc[missing_rollup, "next_action"] = (
+        "Apply the maintained rollup components before numerical comparison."
+    )
+
+    return review[[*DIFFERENCE_OUTPUT_COLUMNS, *REVIEW_ADDED_COLUMNS]].reset_index(
+        drop=True
+    )
+
+
+def build_balance_diagnostic_counts(
+    differences: pd.DataFrame,
+    mapping_issues: pd.DataFrame,
+) -> dict[str, int]:
+    """Return the separate review counts required before prioritisation."""
+    statuses = differences.get("status", pd.Series(dtype=str)).fillna("").astype(str)
+    issue_reasons = mapping_issues.get("reason", pd.Series(dtype=str)).fillna("").astype(str)
+    issue_severity = (
+        mapping_issues.get("severity", pd.Series(dtype=str)).fillna("").astype(str)
+    )
+    direct_mask = differences.get(
+        "comparison_grain",
+        pd.Series("", index=differences.index, dtype=str),
+    ).eq("direct_leap_to_esto_pair")
+    unsafe_mask = differences.get(
+        "update_allocation_required",
+        pd.Series(False, index=differences.index, dtype=bool),
+    ).fillna(False).astype(bool)
+    return {
+        "value_mismatches": int(statuses.eq("value_mismatch").sum()),
+        "rows_missing_from_leap": int(statuses.eq("missing_in_leap").sum()),
+        "rows_missing_from_comparator": int(
+            statuses.isin(["reference_unavailable", "missing_in_source"]).sum()
+        ),
+        "unmapped_rows": int(issue_reasons.eq("missing_esto_pair").sum()),
+        "total_balance_check_failures": int(
+            (
+                issue_reasons.eq("total_balance_mapping_check")
+                & issue_severity.eq("error")
+            ).sum()
+        ),
+        "direct_one_to_one_comparisons": int(direct_mask.sum()),
+        "aggregate_or_shared_unsafe_comparisons": int(unsafe_mask.sum()),
+    }
 
 
 def _write_esto_axis_extraction_mapping_workbook(
@@ -596,10 +783,11 @@ def build_leap_source_difference_table(
 def run_economy_balance_diagnostic(
     *,
     economy: str,
-    years: Sequence[int],
-    scenarios: Sequence[str] = ("Reference", "Target"),
+    years: Sequence[int] | None,
+    scenarios: Sequence[str] | None = ("Reference", "Target"),
     base_year: int = DEFAULT_BASE_YEAR,
     exports_root: Path | str = DEFAULT_EXPORTS_ROOT,
+    workbook_path: Path | str | None = None,
     ref_date_id: str | None = None,
     tgt_date_id: str | None = None,
     template_sheet: str = DEFAULT_TEMPLATE_SHEET,
@@ -619,24 +807,45 @@ def run_economy_balance_diagnostic(
     resolved_codebook_path = _resolve(codebook_path)
     resolved_sheet_map_path = _resolve(sheet_map_path)
 
-    selected_years = _validate_years(years, base_year=base_year)
-    selected_scenarios = _normalize_scenarios(scenarios)
+    if workbook_path is not None:
+        direct_path, selected_years, selected_scenarios = _read_direct_workbook_scope(
+            workbook_path,
+            base_year=base_year,
+        )
+        ref_path = direct_path if "Reference" in selected_scenarios else None
+        tgt_path = direct_path if "Target" in selected_scenarios else None
+    else:
+        if years is None or scenarios is None:
+            raise ValueError(
+                "years and scenarios are required when no direct workbook_path is supplied."
+            )
+        selected_years = _validate_years(years, base_year=base_year)
+        selected_scenarios = _normalize_scenarios(scenarios)
+        ref_path = (
+            resolve_balance_export_workbook(
+                economy=economy,
+                scenario="REF",
+                date_id=ref_date_id,
+                exports_root=exports_root,
+            )
+            if "Reference" in selected_scenarios
+            else None
+        )
+        tgt_path = (
+            resolve_balance_export_workbook(
+                economy=economy,
+                scenario="TGT",
+                date_id=tgt_date_id,
+                exports_root=exports_root,
+            )
+            if "Target" in selected_scenarios
+            else None
+        )
     projection_years = [year for year in selected_years if year > int(base_year)]
     scenario_map = {scenario: scenario.lower() for scenario in selected_scenarios}
 
-    ref_path = resolve_balance_export_workbook(
-        economy=economy,
-        scenario="REF",
-        date_id=ref_date_id,
-        exports_root=exports_root,
-    )
-    tgt_path = resolve_balance_export_workbook(
-        economy=economy,
-        scenario="TGT",
-        date_id=tgt_date_id,
-        exports_root=exports_root,
-    )
-    detail_inspections = require_level2_balance_export_detail([ref_path, tgt_path])
+    workbook_paths = [path for path in (ref_path, tgt_path) if path is not None]
+    detail_inspections = require_level2_balance_export_detail(workbook_paths)
     known_issues = _load_optional_json(known_issues_path)
 
     with _temporary_balance_runtime_paths(
@@ -725,11 +934,12 @@ def run_economy_balance_diagnostic(
 def run_baseline_seed_balance_diagnostics(
     *,
     economies: Sequence[str],
-    years: Sequence[int],
-    scenarios: Sequence[str] = ("Reference", "Target"),
+    years: Sequence[int] | None,
+    scenarios: Sequence[str] | None = ("Reference", "Target"),
     output_dir: Path | str = DEFAULT_OUTPUT_DIR,
     exports_root: Path | str = DEFAULT_EXPORTS_ROOT,
     date_ids_by_economy: dict[str, dict[str, str | None]] | None = None,
+    workbook_paths_by_economy: dict[str, Path | str] | None = None,
     base_year: int = DEFAULT_BASE_YEAR,
     tolerance_pj: float = DEFAULT_TOLERANCE_PJ,
     **diagnostic_paths: Any,
@@ -746,12 +956,14 @@ def run_baseline_seed_balance_diagnostics(
     issue_parts: list[pd.DataFrame] = []
     for economy in economy_list:
         date_ids = (date_ids_by_economy or {}).get(economy, {})
+        direct_workbook_path = (workbook_paths_by_economy or {}).get(economy)
         result = run_economy_balance_diagnostic(
             economy=economy,
-            years=years,
-            scenarios=scenarios,
+            years=None if direct_workbook_path is not None else years,
+            scenarios=None if direct_workbook_path is not None else scenarios,
             base_year=base_year,
             exports_root=exports_root,
+            workbook_path=direct_workbook_path,
             ref_date_id=date_ids.get("REF"),
             tgt_date_id=date_ids.get("TGT"),
             tolerance_pj=tolerance_pj,
@@ -779,6 +991,11 @@ def run_baseline_seed_balance_diagnostics(
         mapping_issues_path = resolved_output_dir / "leap_balance_mapping_issues.csv"
         mapping_issues.to_csv(mapping_issues_path, index=False)
 
+    review = build_balance_review_table(differences)
+    review_path = resolved_output_dir / "leap_balance_source_review.csv"
+    review.to_csv(review_path, index=False)
+    diagnostic_counts = build_balance_diagnostic_counts(differences, mapping_issues)
+
     mismatch_count = int(differences["is_mismatch"].fillna(False).astype(bool).sum())
     allocation_count = int(
         differences["update_allocation_required"].fillna(False).astype(bool).sum()
@@ -789,12 +1006,15 @@ def run_baseline_seed_balance_diagnostics(
         f"{allocation_count:,} rows needing a future allocation rule."
     )
     print(f"[INFO] Wrote {differences_path}")
+    print(f"[INFO] Wrote {review_path}")
     if mapping_issues_path is not None:
         print(f"[INFO] Wrote {mapping_issues_path}")
 
     return {
         "differences": differences,
         "differences_path": differences_path,
+        "review": review,
+        "review_path": review_path,
         "mapping_issues": mapping_issues,
         "mapping_issues_path": mapping_issues_path,
         "economy_results": results,
@@ -803,5 +1023,6 @@ def run_baseline_seed_balance_diagnostics(
             "mismatch_rows": mismatch_count,
             "future_allocation_rule_rows": allocation_count,
             "mapping_issue_rows": int(len(mapping_issues)),
+            **diagnostic_counts,
         },
     }
