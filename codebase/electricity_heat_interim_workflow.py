@@ -79,14 +79,12 @@ EXPORT_FILENAME_TEMPLATE = "electricity_heat_interim_{economy}_{scenario}.xlsx"
 EXPORT_FILENAME_FALLBACK = "electricity_heat_interim_export.xlsx"
 DEFAULT_SCENARIOS = list(workflow_cfg.TRANSFORMATION_WORKFLOW_DEFAULT_SCENARIOS)
 # FALLBACK ONLY — not the ID lookup. Each economy resolves its own LEAP export
-# template (each economy is a separate area with its own BranchIDs); this legacy
-# single export is used only for aggregate sentinels and economies with no
+# template (each economy is a separate area with its own BranchIDs); the current
+# USA export is used only for aggregate sentinels and economies with no
 # template yet. Do not pass it as id_lookup_path to "be explicit": that is the
 # `073c489` bypass, which made a routing fix a no-op in production for a day
 # while its tests passed, because they pinned the template too.
-EXPORT_ID_LOOKUP_PATH = (
-    REPO_ROOT / "data" / "leap_export_templates" / "leap_export_template 20_USA.xlsx"
-)
+EXPORT_ID_LOOKUP_PATH = leap_export_template_resolver.resolve_leap_export_template("20_USA")
 
 # ---------------------------------------------------------------------------
 # Module definitions
@@ -168,9 +166,7 @@ ALL_POWER_ESTO_FLOWS: list[str] = [
 
 # Legacy fallback only. Normal export generation resolves and validates each
 # economy against its own LEAP template.
-POWER_INTERIM_REFERENCE_WORKBOOK_PATH = (
-    REPO_ROOT / "data" / "leap_export_templates" / "leap_export_template 20_USA.xlsx"
-)
+POWER_INTERIM_REFERENCE_WORKBOOK_PATH = EXPORT_ID_LOOKUP_PATH
 POWER_INTERIM_REFERENCE_SHEET_NAME = "Export"
 POWER_INTERIM_FUEL_VALIDATION_REPORT_PATH = (
     REPO_ROOT / "outputs" / "electricity_heat_interim" / "power_interim_fuel_validation_report.csv"

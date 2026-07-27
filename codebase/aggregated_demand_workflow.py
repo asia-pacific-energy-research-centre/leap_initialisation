@@ -55,6 +55,7 @@ from codebase.functions.ninth_projection_mapping import (
 from codebase.utilities.output_paths import STANDALONE_LEAP_EXPORTS_ROOT
 from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
 from codebase.utilities import workflow_common
+from codebase.utilities import leap_export_template_resolver
 from codebase.utilities.workflow_utils import load_esto_csv, load_ninth_outlook_csv
 
 # ── Data sources ──────────────────────────────────────────────────────────────
@@ -259,10 +260,11 @@ DEMAND_OTHER_LOSS_OWN_USE_BRANCH_PREFIX = "Demand\\Other loss and own use"
 OWN_USE_SECTORS: frozenset[str] = frozenset({"10_01_own_use"})
 TD_LOSSES_SECTORS: frozenset[str] = frozenset({"10_02_transmission_and_distribution_losses"})
 
-# Default source for zeroing: the full model export in data/
-FULL_MODEL_EXPORT_PATH = (
-    DATA_DIR / "leap_export_templates" / "leap_export_template 20_USA.xlsx"
-)
+# Default source for aggregate-sentinel ID lookup and zeroing: the currently
+# resolved USA full-model export. Template filenames are intentionally not
+# stable, so resolving here avoids silently dropping IDs after a template
+# refresh.
+FULL_MODEL_EXPORT_PATH = leap_export_template_resolver.resolve_leap_export_template("20_USA")
 FULL_MODEL_EXPORT_SHEET = "Export"
 
 

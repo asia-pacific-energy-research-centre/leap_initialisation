@@ -57,9 +57,10 @@ def test_no_entry_point_defaults_to_the_pinned_export(name, module):
 
 
 @pytest.mark.parametrize("name,module", sorted(MODULES.items()))
-def test_pinned_constant_is_only_a_fallback(name, module):
-    """The constant must survive as the aggregate/no-template fallback."""
-    assert module.EXPORT_ID_LOOKUP_PATH.name == "leap_export_template 20_USA.xlsx"
+def test_fallback_tracks_the_current_usa_template(name, module):
+    """Aggregate fallback must survive template filename refreshes."""
+    expected = leap_export_template_resolver.resolve_leap_export_template("20_USA")
+    assert module.EXPORT_ID_LOOKUP_PATH == expected
 
 
 @pytest.mark.parametrize(
@@ -93,6 +94,7 @@ def test_aggregated_demand_auto_resolves_the_economys_own_template():
 def test_aggregated_demand_auto_falls_back_for_aggregate_sentinels():
     resolved = aggregated_demand._resolve_export_id_lookup("00_APEC")
     assert resolved == aggregated_demand.FULL_MODEL_EXPORT_PATH
+    assert resolved == leap_export_template_resolver.resolve_leap_export_template("20_USA")
 
 
 def test_aggregated_demand_none_still_means_skip_the_id_merge():

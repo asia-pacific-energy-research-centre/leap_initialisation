@@ -47,13 +47,11 @@ EXPORT_FILENAME_PREFIX = workflow_cfg.TRANSFORMATION_WORKFLOW_EXPORT_FILENAME_PR
 DEFAULT_SCENARIOS = list(workflow_cfg.TRANSFORMATION_WORKFLOW_DEFAULT_SCENARIOS)
 # FALLBACK ONLY — not the ID lookup. The workbook's economy resolves its own LEAP
 # export template (each economy is a separate area with its own BranchIDs); this
-# legacy single export is used only for aggregate sentinels and economies with no
+# current USA export is used only for aggregate sentinels and economies with no
 # template yet. Do not pass it as id_lookup_path to "be explicit": that is the
 # `073c489` bypass, which made a routing fix a no-op in production for a day
 # while its tests passed, because they pinned the template too.
-EXPORT_ID_LOOKUP_PATH = (
-    REPO_ROOT / "data" / "leap_export_templates" / "leap_export_template 20_USA.xlsx"
-)
+EXPORT_ID_LOOKUP_PATH = leap_export_template_resolver.resolve_leap_export_template("20_USA")
 # Projection allocation behavior is configured in
 # `codebase/transformation_analysis_utils.py`:
 # - `PROJECTION_SIGN_STABLE_MODE`: "all" | "selected" | "off"
