@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from openpyxl import Workbook
 
 import codebase.functions.baseline_seed_balance_diagnostics as diagnostics
 
@@ -200,6 +201,38 @@ def test_missing_reference_is_visible_but_not_called_a_mismatch() -> None:
 def test_pre_base_historical_years_are_rejected_explicitly() -> None:
     with pytest.raises(ValueError, match="Pre-base historical years"):
         diagnostics._validate_years([2021, 2022], base_year=2022)
+
+
+def test_economy_diagnostic_rejects_level1_before_conversion(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    level1_path = tmp_path / "level1.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Energy Balance"
+    sheet.append(['Energy Balance for Area "Test"', None])
+    sheet.append(["Scenario: Reference, Year: 2022, Units: Petajoule", None])
+    sheet.append([None, "Electricity"])
+    sheet.append(["Production", 1.0])
+    workbook.save(level1_path)
+
+    monkeypatch.setattr(
+        diagnostics,
+        "resolve_balance_export_workbook",
+        lambda **kwargs: level1_path,
+    )
+    monkeypatch.setattr(
+        diagnostics,
+        "_load_optional_json",
+        lambda path: pytest.fail("conversion setup ran before detail validation"),
+    )
+
+    with pytest.raises(ValueError, match="at least Level 2 detail"):
+        diagnostics.run_economy_balance_diagnostic(
+            economy="01_AUS",
+            years=[2022],
+        )
 
 
 def test_supporting_issues_are_scoped_to_selected_years_and_scenarios() -> None:

@@ -23,6 +23,8 @@ point. Its supporting functions live in
 
 - resolves the latest REF and TGT workbooks from
   `data/leap balances exports/<economy>/`;
+- inspects both workbooks before extraction and stops with a clear error when
+  either is a Level 1 export without indented branch rows;
 - accepts only the selected years, so a workbook may contain a small diagnostic
   horizon;
 - reuses the same canonical LEAP-to-ESTO conversion and ESTO-to-9th comparison
@@ -100,6 +102,22 @@ DATE_IDS_BY_ECONOMY = {
 
 The normal filename and Level 2 detail rules in
 `data/leap balances exports/README.md` still apply.
+
+### Minimum export detail
+
+Level 2 is sufficient for the update backbone: it exposes the transformation
+module/process rows used by the mappings without requiring the much larger
+Level 4 demand-detail export. The diagnostic now applies the same minimum
+detail check as `results_update` before loading ESTO or 9th data.
+
+`data/leap balances exports - testing/01_AUS/2022.xlsx` is the representative
+limited-year input checked on 2026-07-27. It contains indented child rows and
+is detected as `Level 2+`, so it passes.
+
+The workbook does not store a dependable setting that distinguishes Levels
+2, 3, 4, and 5 after export. The check therefore reports either `Level 1` or
+`Level 2+`; this is enough to enforce the update method's minimum without
+claiming an exact higher detail level.
 
 ## Current boundary
 

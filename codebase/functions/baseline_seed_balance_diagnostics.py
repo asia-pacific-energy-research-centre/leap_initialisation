@@ -19,6 +19,7 @@ import pandas as pd
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.mappings.canonical_mapping import ConfigTableRef
 from codebase.utilities.leap_balance_export_resolver import (
+    require_level2_balance_export_detail,
     resolve_balance_export_workbook,
 )
 
@@ -635,6 +636,7 @@ def run_economy_balance_diagnostic(
         date_id=tgt_date_id,
         exports_root=exports_root,
     )
+    detail_inspections = require_level2_balance_export_detail([ref_path, tgt_path])
     known_issues = _load_optional_json(known_issues_path)
 
     with _temporary_balance_runtime_paths(
@@ -710,6 +712,7 @@ def run_economy_balance_diagnostic(
         "scenarios": selected_scenarios,
         "ref_workbook_path": ref_path,
         "tgt_workbook_path": tgt_path,
+        "detail_inspections": detail_inspections,
         "difference_table": difference_table,
         "mapping_issues": mapping_issues,
         "total_balance_checks": total_balance_checks,

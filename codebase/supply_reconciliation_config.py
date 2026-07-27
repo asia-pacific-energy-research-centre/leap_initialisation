@@ -239,7 +239,8 @@ RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT = False
 # All LEAP balance exports must use at least Level 2 detail so module branch
 # rows (e.g. 'Oil Refining/Oil Refining', hydrogen process rows) are visible.
 # The readiness check rejects flat Level 1 exports for every economy; see
-# _workbook_has_level2_detail in codebase/functions/supply_demand_mapping.py.
+# inspect_balance_export_detail in
+# codebase/utilities/leap_balance_export_resolver.py.
 # Set to False only for a deliberate temporary bypass, such as working with a
 # legacy flat export while diagnosing a separate workflow issue.
 REQUIRE_LEVEL2_BALANCE_EXPORT_DETAIL = True

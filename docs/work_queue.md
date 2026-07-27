@@ -15,6 +15,8 @@ Step 1 is read-only:
 - `codebase/baseline_seed_balance_diagnostics_workflow.py` is the slim notebook
   entry point and `codebase/functions/baseline_seed_balance_diagnostics.py`
   reuses the canonical LEAP-to-ESTO and ESTO-to-9th comparison backbone;
+- the shared balance-export inspection now blocks Level 1 workbooks before
+  extraction; Level 2 is the minimum and is sufficient for the update backbone;
 - ESTO is the reference for the configured base year and the 9th Outlook for
   later selected years;
 - the primary CSV reports `LEAP - source` and `source - LEAP`;
@@ -34,6 +36,11 @@ Real `20_USA` smoke, latest REF/TGT exports, years 2022-2023:
 - 625 selected-window mapping/check rows were retained (613 missing ESTO pairs,
   12 total-balance checks), rather than the 11,792 all-horizon rows produced
   before supporting diagnostics were scoped to the selected years.
+
+The representative limited-year workbook
+`data/leap balances exports - testing/01_AUS/2022.xlsx` passes the new detail
+check as `Level 2+`. The file proves the required minimum through indented
+child rows; it cannot reliably distinguish exact settings above Level 2.
 
 The smoke took about five minutes because the existing reference loader still
 prepares the full 288 MB 9th table before selecting two years. Push

@@ -5,7 +5,9 @@ from pathlib import Path
 from openpyxl import Workbook
 
 from codebase.utilities.leap_balance_export_resolver import (
+    inspect_balance_export_detail,
     load_leap_balance_activity_table,
+    require_level2_balance_export_detail,
     resolve_balance_export_workbook,
 )
 
@@ -70,6 +72,50 @@ def _write_balance_workbook(path: Path, *, units: str, electricity_value: float)
     sheet.append(["Imports", electricity_value, 2.0])
     sheet.append(["Production", 3.0, 4.0])
     workbook.save(path)
+
+
+def test_inspect_balance_export_detail_distinguishes_level1_and_level2(
+    tmp_path: Path,
+) -> None:
+    level1_path = tmp_path / "level1.xlsx"
+    level2_path = tmp_path / "level2.xlsx"
+    _write_balance_workbook(
+        level1_path,
+        units="Petajoule",
+        electricity_value=1.0,
+    )
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Energy Balance"
+    sheet.append(['Energy Balance for Area "Test"', None])
+    sheet.append(["Scenario: Reference, Year: 2022, Units: Petajoule", None])
+    sheet.append([None, "Electricity"])
+    sheet.append(["Oil Refining", 1.0])
+    sheet.append(["   Refinery process", 1.0])
+    workbook.save(level2_path)
+
+    level1 = inspect_balance_export_detail(level1_path)
+    level2 = inspect_balance_export_detail(level2_path)
+
+    assert level1.detected_level_label == "Level 1"
+    assert level1.has_level2_detail is False
+    assert level2.detected_level_label == "Level 2+"
+    assert level2.has_level2_detail is True
+    assert level2.sample_indented_label == "Refinery process"
+
+
+def test_require_level2_balance_export_detail_rejects_level1(tmp_path: Path) -> None:
+    path = tmp_path / "level1.xlsx"
+    _write_balance_workbook(path, units="Petajoule", electricity_value=1.0)
+
+    try:
+        require_level2_balance_export_detail([path])
+    except ValueError as exc:
+        assert "Level 1" in str(exc)
+        assert "at least Level 2" in str(exc)
+        assert str(path) in str(exc)
+    else:
+        raise AssertionError("Level 1 balance export did not raise")
 
 
 def test_load_leap_balance_activity_table_normalizes_thousand_petajoule_to_pj(tmp_path: Path) -> None:
