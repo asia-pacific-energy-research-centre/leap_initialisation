@@ -72,8 +72,10 @@ Two additional findings were confirmed:
   seed validator does not compare `Scale`, `Units`, or `Per...`; this is a
   live-area metadata validation gap, not a seed-row value defect.
 
-A Current Accounts-only seed is structurally supported, but selecting only
-that scenario is not yet a true fast path: the runner still builds the 9th
+A Current Accounts-only seed is structurally supported. When no Reference or
+Target scenario is requested, the baseline runner now uses Reference only for
+its internal balance/reconciliation inputs while writing only Current Accounts
+rows. This is not yet a true fast path: the runner still builds the 9th
 projection inputs. The current seed would shrink from 5,451 rows to 1,793.
 Historical one-economy, three-scenario runs have a median of 17.8 minutes; a
 configuration-only one-scenario run is estimated at 9–11 minutes, while a

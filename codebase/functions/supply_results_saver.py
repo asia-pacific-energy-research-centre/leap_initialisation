@@ -3227,6 +3227,27 @@ def run_results_linked_transformation_supply_workflow(
             )
         export_scenario_list = expanded
     balance_scenario_list = _filter_balance_scenarios(scenario_list)
+    if (
+        not balance_scenario_list
+        and _is_capacity_unmet_baseline_seed_pass()
+        and any(
+            str(scenario or "").strip().lower()
+            in {"current accounts", "current account"}
+            for scenario in scenario_list
+        )
+    ):
+        # Current Accounts is a base-year export scenario rather than a LEAP
+        # balance/projection scenario. The baseline workflow still needs one
+        # projection scenario internally to assemble its reconciliation tables.
+        # Reference is the established fallback used when Current Accounts
+        # records consume those tables; only the requested Current Accounts rows
+        # are written to the final seed.
+        balance_scenario_list = ["Reference"]
+        print(
+            "[INFO] Current Accounts-only baseline seed: using Reference "
+            "internally for balance/reconciliation inputs while exporting only "
+            "Current Accounts."
+        )
     economy_list = workflow_common.normalize_economies(economies or ECONOMIES)
     timer.set_metadata(
         economies=economy_list,
