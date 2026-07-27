@@ -124,10 +124,9 @@ are not symmetric: the current code can route them to exports only when exports
 are not pinned, and it does not yet safely decrease production or
 transformation capacity/output.
 
-Add a separate, most-specific-match configuration table when this behavior is
-connected to the diagnostic, proposed as
-`config/runtime_tables/results_update_adjustment_strategy_rules.csv`. It should
-select, by economy/scenario/ESTO product:
+The preview now consumes the separate, most-specific-match configuration table
+`config/runtime_tables/results_update_adjustment_strategy_rules.csv`. It
+selects, by economy/scenario/ESTO product:
 
 - positive-gap strategy:
   `residual_only`, `configured_levers_then_residual`, or `review_required`;
@@ -137,16 +136,26 @@ select, by economy/scenario/ESTO product:
 - the residual error signal (normally imports); and
 - a reviewed reason and enabled flag.
 
-Do not duplicate module lists or numeric caps in that table. Those remain the
+The tracked default preserves the existing positive-gap behavior
+(`configured_levers_then_residual`) and leaves negative gaps to imports
+(`residual_only`). More-specific reviewed rows can override either direction.
+
+The table does not duplicate module lists or numeric caps. Those remain the
 lever catalogue used by the allocator; the strategy table decides whether the
 catalogue may be used for this product and direction.
 
-Each cycle should also write an execution ledger, separate from configuration,
-with the signal before the update, chosen strategy, proposed and applied lever,
-signed change, residual left to imports, next-cycle signal, decision status,
-and reason. This is especially important for electricity/heat adjustments:
-changing their provision changes transformation fuel use and can create a
-second-order import gap that is only visible after recalculation.
+The preview CSV is now the first cycle-facing execution ledger. It records the
+signal before the update, selected strategy and reason, whether the proposal is
+allowed, how the residual is handled, and a placeholder for the next-cycle
+signal. A nonzero import gap with no allocator proposal is retained as a
+`residual_signal` row instead of disappearing. Electricity/heat adjustments
+remain especially important to track because changing their provision changes
+transformation fuel use and can create a second-order import gap after
+recalculation.
+
+`configured_decrease_then_residual` is a valid review state but is blocked as
+`blocked_decrease_not_implemented`: the current allocator does not safely
+decrease production or transformation capacity/output.
 
 ## Notebook-oriented use
 

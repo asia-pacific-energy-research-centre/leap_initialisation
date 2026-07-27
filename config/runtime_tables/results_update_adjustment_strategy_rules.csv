@@ -1,0 +1,2 @@
+economy,scenario,esto_product,positive_gap_strategy,negative_gap_strategy,residual_error_signal,reason,enabled
+*,*,*,configured_levers_then_residual,residual_only,imports_gap,Preserve the current positive-gap allocator behavior while leaving negative gaps to the imports residual unless a reviewed product-specific rule says otherwise,True

@@ -649,3 +649,177 @@ def test_balance_contract_allows_import_signal_and_blocks_export_difference() ->
     assert exports["diagnostic_balance_contract_issues"] == (
         "protected_flow_difference"
     )
+
+
+def test_adjustment_strategy_specific_rule_can_leave_gap_to_imports() -> None:
+    summary = {
+        "comparison_rows": [
+            {
+                "economy": "01_AUS",
+                "scenario": "reference",
+                "esto_product": "17 Electricity",
+                "year": 2023,
+                "baseline_imports_pj": 2.0,
+                "observed_imports_pj": 7.0,
+                "import_gap_pj": 5.0,
+            }
+        ],
+        "allocation_rows": [
+            {
+                "economy": "01_AUS",
+                "scenario": "reference",
+                "esto_product": "17 Electricity",
+                "year": 2023,
+                "allocation_type": "transformation",
+                "module": "Electricity generation",
+                "process": "Gas plants",
+                "allocated_output_uplift": 5.0,
+                "capacity_increment": 10.0,
+            }
+        ],
+        "export_rows": [],
+        "clipping_rows": [],
+        "unresolved_positive_rows": [],
+        "fatal_unresolved_positive_rows": [],
+    }
+    rules = pd.DataFrame(
+        [
+            {
+                "economy": "*",
+                "scenario": "*",
+                "esto_product": "*",
+                "positive_gap_strategy": "configured_levers_then_residual",
+                "negative_gap_strategy": "residual_only",
+                "residual_error_signal": "imports_gap",
+                "reason": "Default.",
+                "enabled": True,
+            },
+            {
+                "economy": "01_AUS",
+                "scenario": "reference",
+                "esto_product": "17 Electricity",
+                "positive_gap_strategy": "residual_only",
+                "negative_gap_strategy": "review_required",
+                "residual_error_signal": "imports_gap",
+                "reason": "Keep electricity imports as the reviewed residual.",
+                "enabled": True,
+            },
+        ]
+    )
+
+    table = preview.build_results_update_preview_table(summary)
+    resolved = preview.apply_results_update_adjustment_strategies(
+        table,
+        strategy_rules=rules,
+    )
+
+    row = resolved.iloc[0]
+    assert row["gap_direction"] == "positive"
+    assert row["selected_adjustment_strategy"] == "residual_only"
+    assert row["residual_error_signal"] == "imports_gap"
+    assert row["error_signal_before_pj"] == pytest.approx(5.0)
+    assert bool(row["strategy_allows_proposal"]) is False
+    assert bool(row["safe_to_apply"]) is False
+    assert row["update_disposition"] == "residual_only_no_model_adjustment"
+    assert row["residual_signal_status"] == "leave_full_signal_to_imports"
+
+
+def test_tracked_adjustment_strategy_config_is_loadable() -> None:
+    rules = preview.load_results_update_adjustment_strategy_rules()
+
+    assert len(rules) == 1
+    assert rules.loc[0, "positive_gap_strategy"] == (
+        "configured_levers_then_residual"
+    )
+    assert rules.loc[0, "negative_gap_strategy"] == "residual_only"
+    assert rules.loc[0, "residual_error_signal"] == "imports_gap"
+
+
+def test_negative_gap_without_allocator_proposal_remains_visible() -> None:
+    summary = {
+        "comparison_rows": [
+            {
+                "economy": "20_USA",
+                "scenario": "reference",
+                "esto_product": "17 Electricity",
+                "year": 2030,
+                "baseline_imports_pj": 5.0,
+                "observed_imports_pj": 2.0,
+                "import_gap_pj": -3.0,
+            }
+        ],
+        "allocation_rows": [],
+        "export_rows": [],
+        "clipping_rows": [],
+        "unresolved_positive_rows": [],
+        "fatal_unresolved_positive_rows": [],
+    }
+
+    table = preview.build_results_update_preview_table(summary)
+    resolved = preview.apply_results_update_adjustment_strategies(table)
+
+    assert len(resolved) == 1
+    row = resolved.iloc[0]
+    assert row["proposal_type"] == "residual_signal"
+    assert row["gap_direction"] == "negative"
+    assert row["selected_adjustment_strategy"] == "residual_only"
+    assert row["update_disposition"] == "residual_only_no_model_adjustment"
+    assert row["residual_signal_status"] == "leave_full_signal_to_imports"
+    assert bool(row["safe_to_apply"]) is False
+
+
+def test_configured_decrease_strategy_is_explicitly_blocked() -> None:
+    summary = {
+        "comparison_rows": [
+            {
+                "economy": "20_USA",
+                "scenario": "reference",
+                "esto_product": "17 Electricity",
+                "year": 2030,
+                "baseline_imports_pj": 5.0,
+                "observed_imports_pj": 2.0,
+                "import_gap_pj": -3.0,
+            }
+        ],
+        "allocation_rows": [],
+        "export_rows": [
+            {
+                "economy": "20_USA",
+                "scenario": "reference",
+                "esto_product": "17 Electricity",
+                "year": 2030,
+                "extra_exports": 3.0,
+            }
+        ],
+        "clipping_rows": [],
+        "unresolved_positive_rows": [],
+        "fatal_unresolved_positive_rows": [],
+    }
+    rules = pd.DataFrame(
+        [
+            {
+                "economy": "*",
+                "scenario": "*",
+                "esto_product": "*",
+                "positive_gap_strategy": "configured_levers_then_residual",
+                "negative_gap_strategy": "configured_decrease_then_residual",
+                "residual_error_signal": "imports_gap",
+                "reason": "Test an unavailable signed decrease.",
+                "enabled": True,
+            }
+        ]
+    )
+
+    table = preview.build_results_update_preview_table(summary)
+    resolved = preview.apply_results_update_adjustment_strategies(
+        table,
+        strategy_rules=rules,
+    )
+
+    row = resolved.iloc[0]
+    assert row["selected_adjustment_strategy"] == (
+        "configured_decrease_then_residual"
+    )
+    assert row["update_disposition"] == "blocked_decrease_not_implemented"
+    assert "not implemented" in row["blocked_reason"]
+    assert bool(row["safe_to_apply"]) is False

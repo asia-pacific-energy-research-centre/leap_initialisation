@@ -34,6 +34,9 @@ review. Positive and negative gaps need separate strategies because the current
 allocator can increase production/capacity but cannot yet safely perform the
 corresponding decreases. Configuration and per-cycle execution history are
 specified in [results_update_dry_run_preview.md](results_update_dry_run_preview.md).
+The strategy table and preview enforcement are implemented on
+`codex/results-update-dry-run-preview`; safe signed decrease behavior remains
+open.
 
 Step 1 is read-only:
 
@@ -49,7 +52,7 @@ Step 1 is read-only:
 - LEAP/9th mapping cardinality is retained so an aggregate difference is never
   misrepresented as a safe row-level update.
 
-Real `20_USA` smoke, latest REF/TGT exports, years 2022-2023:
+Initial real `20_USA` smoke, latest REF/TGT exports, years 2022-2023:
 
 - 996 comparison rows: 463 ESTO-referenced, 325 9th-referenced, and 208 with no
   available source comparator;
@@ -57,10 +60,9 @@ Real `20_USA` smoke, latest REF/TGT exports, years 2022-2023:
   9th value mismatches, and 15 9th rows missing in LEAP;
 - 15 9th sector/fuel pairs are shared by multiple ESTO pairs, affecting 30
   future-year comparison rows (27 mismatches, two missing in LEAP, one match);
-  the current raw-cardinality gate flags them, but all 30 have exactly one LEAP
-  component. The problem is comparison-side 9th fan-out and should be resolved
-  by reusing the baseline seed's canonical 9th-to-ESTO projection allocation,
-  not by inventing a reverse LEAP allocation rule; and
+  the old raw-cardinality gate flagged them, but all 30 have exactly one LEAP
+  component. The problem was comparison-side 9th fan-out rather than a need
+  for a reverse LEAP allocation rule; and
 - 625 selected-window mapping/check rows were retained (613 missing ESTO pairs,
   12 total-balance checks), rather than the 11,792 all-horizon rows produced
   before supporting diagnostics were scoped to the selected years.
@@ -86,21 +88,25 @@ economy/scenario/year column filtering down into the loader before treating the
 limited-year path as fast; this is a performance follow-up, not a correctness
 blocker.
 
+Canonical allocation verification on the same exports and years produced 1,056
+comparison rows and 465 canonical allocated projection rows. It reduced the
+blocked set from 32 rows to two genuine multiple-LEAP-component cases. The
+preview now also consumes the tracked adjustment-strategy table and retains
+unresolved residual signals, including negative gaps for which safe decrease
+behavior is not yet implemented.
+
 Next work, in order:
 
 1. review and classify the largest Step 1 differences and selected-window
    mapping issues;
 2. push economy/scenario/year filtering into the large source loader;
 3. add pre-base historical ESTO-year comparisons;
-4. add a dry-run table of the exact changes the current `results_update`
-   allocator would propose;
-5. compare that preview with current baseline-seed rules at the post-boundary
+4. compare the implemented dry-run preview with current baseline-seed rules at
+   the post-boundary
    seed surface and repair drift;
-6. replace the raw 9th-pair cardinality gate with the canonical projected ESTO
-   values and allocation provenance already used by baseline seed generation;
-   retain a defensive multiple-LEAP-component check, but no real example
-   currently requires a reverse update allocation rule; and
-7. retain per-cycle convergence history and issue ownership.
+5. design and verify safe signed decrease behavior for any products configured
+   to use a decrease lever rather than leaving the residual to imports; and
+6. retain per-cycle convergence history and issue ownership.
 
 Design and notebook usage:
 [baseline_seed_balance_diagnostics.md](baseline_seed_balance_diagnostics.md).

@@ -196,6 +196,89 @@ def test_shared_ninth_pair_across_esto_rows_requires_allocation() -> None:
     )
 
 
+def test_canonical_projection_allocation_resolves_shared_ninth_pair() -> None:
+    comparison = _comparison_rows(
+        scenario="Reference",
+        year=2023,
+        leap_value=42.0,
+        source="projection",
+        source_value=100.0,
+    )
+    mapping_status = _mapping_status(
+        ninth_pairs=[("09_06_gas_processing_plants", "08_01_natural_gas")]
+    )
+    shared = mapping_status.iloc[0].copy()
+    shared["sheet"] = "02 Imports"
+    shared["fuel_label"] = "06.08 Other hydrocarbons"
+    shared["esto_flow"] = "02 Imports"
+    shared["esto_product"] = "06.08 Other hydrocarbons"
+    mapping_status = pd.concat(
+        [mapping_status, shared.to_frame().T],
+        ignore_index=True,
+    )
+    projection_tables = pd.DataFrame(
+        [
+            {
+                "scenario": "Reference",
+                "economy_key": "20USA",
+                "esto_flow": "09.06 Gas processing plants",
+                "esto_product": "08.01 Natural gas",
+                2023: 40.0,
+            },
+            {
+                "scenario": "Reference",
+                "economy_key": "20USA",
+                "esto_flow": "02 Imports",
+                "esto_product": "06.08 Other hydrocarbons",
+                2023: 60.0,
+            },
+        ]
+    )
+    provenance = pd.DataFrame(
+        [
+            {
+                "scenario": "Reference",
+                "year": 2023,
+                "esto_flow": "09.06 Gas processing plants",
+                "esto_product": "08.01 Natural gas",
+                "allocation_method": "proportional_esto_base_year",
+                "share_source": "economy",
+            }
+        ]
+    )
+
+    allocated, allocation_status = (
+        diagnostics.apply_canonical_projection_comparators(
+            comparison_long=comparison,
+            mapping_status=mapping_status,
+            projection_tables=projection_tables,
+            allocation_provenance=provenance,
+        )
+    )
+    table = diagnostics.build_leap_source_difference_table(
+        comparison_long=allocated,
+        mapping_status=mapping_status,
+        leap_long=_leap_long(components=[("Gas processing", "Natural gas")]),
+        projection_allocation_status=allocation_status,
+        economy="20_USA",
+        years=[2023],
+        scenarios=["Reference"],
+    )
+
+    row = table.iloc[0]
+    assert row["source_value_pj"] == pytest.approx(40.0)
+    assert row["difference_pj"] == pytest.approx(2.0)
+    assert bool(row["projection_allocation_complete"]) is True
+    assert row["projection_target_pair_count"] == 1
+    assert row["projection_matched_pair_count"] == 1
+    assert row["projection_allocation_methods"] == (
+        "proportional_esto_base_year"
+    )
+    assert row["comparison_grain"] == "canonical_allocated_ninth_to_esto_pair"
+    assert bool(row["update_allocation_required"]) is False
+    assert row["update_allocation_reason"] == ""
+
+
 def test_missing_reference_is_visible_but_not_called_a_mismatch() -> None:
     comparison = _comparison_rows(
         scenario="Reference",

@@ -19,6 +19,31 @@ from codebase.utilities.workflow_utils import _resolve
 DEFAULT_RESULTS_UPDATE_ISSUE_DECISIONS_PATH = Path(
     "config/runtime_tables/results_update_issue_decisions.csv"
 )
+DEFAULT_RESULTS_UPDATE_ADJUSTMENT_STRATEGIES_PATH = Path(
+    "config/runtime_tables/results_update_adjustment_strategy_rules.csv"
+)
+
+ADJUSTMENT_STRATEGY_RULE_COLUMNS = [
+    "economy",
+    "scenario",
+    "esto_product",
+    "positive_gap_strategy",
+    "negative_gap_strategy",
+    "residual_error_signal",
+    "reason",
+    "enabled",
+]
+POSITIVE_GAP_STRATEGIES = {
+    "residual_only",
+    "configured_levers_then_residual",
+    "review_required",
+}
+NEGATIVE_GAP_STRATEGIES = {
+    "residual_only",
+    "configured_decrease_then_residual",
+    "exports_then_residual",
+    "review_required",
+}
 
 RESULTS_UPDATE_PREVIEW_COLUMNS = [
     "economy",
@@ -31,6 +56,14 @@ RESULTS_UPDATE_PREVIEW_COLUMNS = [
     "baseline_imports_pj",
     "observed_imports_pj",
     "import_gap_pj",
+    "gap_direction",
+    "error_signal_before_pj",
+    "selected_adjustment_strategy",
+    "strategy_rule_reason",
+    "residual_error_signal",
+    "strategy_allows_proposal",
+    "residual_signal_status",
+    "next_cycle_error_signal_pj",
     "allocated_output_uplift_pj",
     "capacity_increment_output_equivalent_pj",
     "extra_exports_pj",
@@ -60,6 +93,34 @@ def load_results_update_issue_decisions(
     return pd.read_csv(resolved_path)
 
 
+def load_results_update_adjustment_strategy_rules(
+    path: Path | str = DEFAULT_RESULTS_UPDATE_ADJUSTMENT_STRATEGIES_PATH,
+) -> pd.DataFrame:
+    """Load enabled residual-versus-model-lever strategy rules."""
+    rules = pd.read_csv(_resolve(path))
+    missing = sorted(set(ADJUSTMENT_STRATEGY_RULE_COLUMNS) - set(rules.columns))
+    if missing:
+        raise KeyError(f"Adjustment strategy rules are missing columns: {missing}")
+    enabled = rules["enabled"].fillna(False).astype(str).str.lower().isin(
+        {"true", "1", "yes"}
+    )
+    rules = rules[enabled].reset_index(drop=True)
+    invalid_positive = sorted(
+        set(rules["positive_gap_strategy"].fillna("").astype(str).str.strip())
+        - POSITIVE_GAP_STRATEGIES
+    )
+    invalid_negative = sorted(
+        set(rules["negative_gap_strategy"].fillna("").astype(str).str.strip())
+        - NEGATIVE_GAP_STRATEGIES
+    )
+    if invalid_positive or invalid_negative:
+        raise ValueError(
+            "Unsupported adjustment strategies: "
+            f"positive={invalid_positive}, negative={invalid_negative}"
+        )
+    return rules
+
+
 def _clean_text(value: object) -> str:
     return "" if value is None or pd.isna(value) else str(value).strip()
 
@@ -79,6 +140,59 @@ def _comparison_key(row: dict[str, object]) -> tuple[str, str, str, int]:
         _clean_text(row.get("esto_product")),
         int(row.get("year")),
     )
+
+
+def classify_results_update_adjustment_strategy(
+    *,
+    economy: object,
+    scenario: object,
+    esto_product: object,
+    gap_direction: str,
+    rules: pd.DataFrame,
+) -> dict[str, str]:
+    """Resolve the most-specific configured strategy for one error signal."""
+    values = {
+        "economy": _clean_text(economy),
+        "scenario": _clean_text(scenario).lower(),
+        "esto_product": _clean_text(esto_product),
+    }
+    matches: list[tuple[int, int, pd.Series]] = []
+    for index, rule in rules.iterrows():
+        specificity = 0
+        matched = True
+        for column, value in values.items():
+            rule_value = _clean_text(rule.get(column))
+            if column == "scenario":
+                rule_value = rule_value.lower()
+            if rule_value == "*":
+                continue
+            if rule_value != value:
+                matched = False
+                break
+            specificity += 1
+        if matched:
+            matches.append((specificity, int(index), rule))
+    if not matches:
+        return {
+            "selected_adjustment_strategy": "review_required",
+            "residual_error_signal": "imports_gap",
+            "strategy_rule_reason": (
+                "No adjustment-strategy rule applies; review is required by default."
+            ),
+        }
+    _, _, selected = sorted(matches, key=lambda item: (-item[0], item[1]))[0]
+    strategy_column = (
+        "positive_gap_strategy"
+        if gap_direction == "positive"
+        else "negative_gap_strategy"
+    )
+    return {
+        "selected_adjustment_strategy": _clean_text(selected.get(strategy_column)),
+        "residual_error_signal": _clean_text(
+            selected.get("residual_error_signal")
+        ),
+        "strategy_rule_reason": _clean_text(selected.get("reason")),
+    }
 
 
 def build_results_update_preview_table(
@@ -103,6 +217,14 @@ def build_results_update_preview_table(
             "baseline_imports_pj": comparison.get("baseline_imports_pj", pd.NA),
             "observed_imports_pj": comparison.get("observed_imports_pj", pd.NA),
             "import_gap_pj": comparison.get("import_gap_pj", pd.NA),
+            "gap_direction": "",
+            "error_signal_before_pj": comparison.get("import_gap_pj", pd.NA),
+            "selected_adjustment_strategy": "",
+            "strategy_rule_reason": "",
+            "residual_error_signal": "",
+            "strategy_allows_proposal": False,
+            "residual_signal_status": "",
+            "next_cycle_error_signal_pj": pd.NA,
             "allocated_output_uplift_pj": 0.0,
             "capacity_increment_output_equivalent_pj": 0.0,
             "extra_exports_pj": 0.0,
@@ -192,6 +314,30 @@ def build_results_update_preview_table(
             row[output_name] = float(source.get(value_name) or 0.0)
             rows.append(row)
 
+    represented_keys = {
+        _comparison_key(row)
+        for row in rows
+        if row.get("year") is not None
+    }
+    for comparison_key, comparison in comparison_lookup.items():
+        import_gap = pd.to_numeric(comparison.get("import_gap_pj"), errors="coerce")
+        if (
+            comparison_key in represented_keys
+            or pd.isna(import_gap)
+            or abs(float(import_gap)) <= 1e-9
+        ):
+            continue
+        row = _base_row(comparison)
+        row.update(
+            proposal_type="residual_signal",
+            leap_branch_hint="",
+            leap_variable="",
+            safe_to_apply=False,
+            update_disposition="residual_signal",
+            blocked_reason="",
+        )
+        rows.append(row)
+
     if not rows:
         return pd.DataFrame(columns=RESULTS_UPDATE_PREVIEW_COLUMNS)
     frame = pd.DataFrame(rows)
@@ -207,6 +353,139 @@ def build_results_update_preview_table(
         ascending=[True, True, True, True, True, True],
         kind="mergesort",
     ).reset_index(drop=True)
+
+
+def apply_results_update_adjustment_strategies(
+    preview_table: pd.DataFrame,
+    *,
+    strategy_rules: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Apply residual-only, configured-lever, and review-required policies."""
+    if preview_table.empty:
+        return preview_table.copy()
+    rules = (
+        load_results_update_adjustment_strategy_rules()
+        if strategy_rules is None
+        else strategy_rules.copy()
+    )
+    output = preview_table.copy()
+    output["safe_to_apply"] = _truthy_series(output["safe_to_apply"])
+    output["strategy_allows_proposal"] = False
+    for index, row in output.iterrows():
+        gap = pd.to_numeric(row.get("import_gap_pj"), errors="coerce")
+        if pd.isna(gap) or abs(float(gap)) <= 1e-9:
+            gap_direction = "zero_or_unavailable"
+        elif float(gap) > 0.0:
+            gap_direction = "positive"
+        else:
+            gap_direction = "negative"
+        output.at[index, "gap_direction"] = gap_direction
+        output.at[index, "error_signal_before_pj"] = gap
+        output.at[index, "safety_scope"] = "allocator_plus_adjustment_strategy"
+
+        if gap_direction == "zero_or_unavailable":
+            output.at[index, "selected_adjustment_strategy"] = "review_required"
+            output.at[index, "residual_error_signal"] = "imports_gap"
+            output.at[index, "strategy_rule_reason"] = (
+                "The error signal is zero or unavailable."
+            )
+            output.at[index, "residual_signal_status"] = "not_actionable"
+            if bool(row.get("safe_to_apply")):
+                output.at[index, "safe_to_apply"] = False
+                output.at[index, "update_disposition"] = (
+                    "blocked_adjustment_strategy_review"
+                )
+                output.at[index, "blocked_reason"] = (
+                    "The imports error signal is unavailable; the proposed "
+                    "adjustment cannot be assessed."
+                )
+            continue
+
+        classification = classify_results_update_adjustment_strategy(
+            economy=row.get("economy"),
+            scenario=row.get("scenario"),
+            esto_product=row.get("esto_product"),
+            gap_direction=gap_direction,
+            rules=rules,
+        )
+        strategy = classification["selected_adjustment_strategy"]
+        output.at[index, "selected_adjustment_strategy"] = strategy
+        output.at[index, "residual_error_signal"] = classification[
+            "residual_error_signal"
+        ]
+        output.at[index, "strategy_rule_reason"] = classification[
+            "strategy_rule_reason"
+        ]
+
+        proposal_type = _clean_text(row.get("proposal_type"))
+        existing_safe = bool(row.get("safe_to_apply"))
+        allowed = False
+        blocked_disposition = ""
+        blocked_reason = ""
+        residual_status = ""
+        if gap_direction == "positive":
+            if strategy == "configured_levers_then_residual":
+                allowed = proposal_type in {
+                    "primary_production",
+                    "transformation_capacity",
+                }
+                residual_status = (
+                    "no_configured_lever_proposal_residual_to_imports"
+                    if proposal_type == "residual_signal"
+                    else "recalculate_after_configured_levers"
+                )
+            elif strategy == "residual_only":
+                residual_status = "leave_full_signal_to_imports"
+                blocked_disposition = "residual_only_no_model_adjustment"
+                blocked_reason = (
+                    "The adjustment strategy leaves this positive gap to the "
+                    "configured imports residual."
+                )
+            else:
+                residual_status = "review_required"
+                blocked_disposition = "blocked_adjustment_strategy_review"
+                blocked_reason = "The positive-gap adjustment strategy requires review."
+        else:
+            if strategy == "exports_then_residual":
+                allowed = proposal_type == "extra_exports"
+                residual_status = (
+                    "no_export_proposal_residual_to_imports"
+                    if proposal_type == "residual_signal"
+                    else "recalculate_after_exports"
+                )
+            elif strategy == "configured_decrease_then_residual":
+                residual_status = "decrease_logic_not_implemented"
+                blocked_disposition = "blocked_decrease_not_implemented"
+                blocked_reason = (
+                    "Safe production/transformation decrease logic is not implemented."
+                )
+            elif strategy == "residual_only":
+                residual_status = "leave_full_signal_to_imports"
+                blocked_disposition = "residual_only_no_model_adjustment"
+                blocked_reason = (
+                    "The adjustment strategy leaves this negative gap to the "
+                    "configured imports residual."
+                )
+            else:
+                residual_status = "review_required"
+                blocked_disposition = "blocked_adjustment_strategy_review"
+                blocked_reason = "The negative-gap adjustment strategy requires review."
+
+        output.at[index, "strategy_allows_proposal"] = bool(allowed)
+        output.at[index, "residual_signal_status"] = residual_status
+        if existing_safe and not allowed:
+            output.at[index, "safe_to_apply"] = False
+            output.at[index, "update_disposition"] = blocked_disposition
+            existing_reason = _clean_text(row.get("blocked_reason"))
+            output.at[index, "blocked_reason"] = (
+                f"{existing_reason} {blocked_reason}".strip()
+                if existing_reason
+                else blocked_reason
+            )
+        elif proposal_type == "residual_signal" and blocked_disposition:
+            output.at[index, "update_disposition"] = blocked_disposition
+            output.at[index, "blocked_reason"] = blocked_reason
+    return output[RESULTS_UPDATE_PREVIEW_COLUMNS]
 
 
 def apply_balance_review_safety(
@@ -400,7 +679,11 @@ def apply_balance_review_safety(
             esto_flow=key[3],
             rules=effective_rules,
         )
-        output.at[index, "safety_scope"] = "allocator_plus_balance_review"
+        output.at[index, "safety_scope"] = (
+            "allocator_plus_strategy_plus_balance_review"
+            if _clean_text(row.get("selected_adjustment_strategy"))
+            else "allocator_plus_balance_review"
+        )
         output.at[index, "diagnostic_flow_scope"] = diagnostic_flow
         output.at[index, "diagnostic_balance_variable_roles"] = proposal_contract[
             "balance_variable_role"
@@ -430,20 +713,31 @@ def apply_balance_review_safety(
         elif proposal_contract["balance_variable_role"] == "error_signal":
             output.at[index, "diagnostic_update_signal_eligible"] = True
 
+        if summary is not None and set(summary["classification_set"]) & excluded:
+            existing = _clean_text(row.get("blocked_reason"))
+            reason = (
+                "A reviewed upstream issue should be fixed before results_update: "
+                f"{summary['classifications']}."
+            )
+            output.at[index, "safe_to_apply"] = False
+            output.at[index, "update_disposition"] = "excluded_upstream_issue"
+            output.at[index, "blocked_reason"] = (
+                f"{existing} {reason}".strip() if existing else reason
+            )
+            continue
+
         if not bool(row.get("safe_to_apply")):
-            output.at[index, "update_disposition"] = "allocator_blocked"
+            if _clean_text(row.get("update_disposition")) in {
+                "",
+                "allocator_candidate",
+            }:
+                output.at[index, "update_disposition"] = "allocator_blocked"
             continue
 
         reason = ""
         if summary is not None and bool(summary["allocation_required"]):
             reason = "The diagnostic comparison requires a reviewed allocation rule."
             output.at[index, "update_disposition"] = "blocked_allocation_rule"
-        elif summary is not None and set(summary["classification_set"]) & excluded:
-            reason = (
-                "A reviewed upstream issue should be fixed before results_update: "
-                f"{summary['classifications']}."
-            )
-            output.at[index, "update_disposition"] = "excluded_upstream_issue"
         elif (
             proposal_contract["balance_variable_role"] != "error_signal"
             or (
@@ -497,6 +791,7 @@ def run_results_update_allocation_preview(
     balance_review: pd.DataFrame | None = None,
     reviewed_decisions: pd.DataFrame | None = None,
     balance_variable_rules: pd.DataFrame | None = None,
+    adjustment_strategy_rules: pd.DataFrame | None = None,
     require_fresh_leap_cycle: bool = False,
 ) -> dict[str, object]:
     """Run the current balanced allocator without mutating iterative state."""
@@ -521,6 +816,10 @@ def run_results_update_allocation_preview(
         iteration_run_mode="results_update",
     )
     preview_table = build_results_update_preview_table(summary)
+    preview_table = apply_results_update_adjustment_strategies(
+        preview_table,
+        strategy_rules=adjustment_strategy_rules,
+    )
     if balance_review is not None:
         effective_decisions = (
             load_results_update_issue_decisions()
