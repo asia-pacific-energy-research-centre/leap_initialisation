@@ -1,7 +1,8 @@
 # Investigate the AUS 2022 LEAP balance export and improve baseline seeds
 
 Type: investigation, targeted implementation, and verification.
-Status: ready to execute.
+Status: completed code-side 2026-07-27; fresh LEAP cycle remains a manual
+verification follow-up.
 
 ## Short version
 
