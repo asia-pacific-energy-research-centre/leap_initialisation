@@ -59,6 +59,7 @@ from codebase.functions.analysis_input_write_dispatcher import (
     reset_is_effective,
 )
 from codebase.functions.baseline_seed_validation import (
+    AGGREGATED_DEMAND_BRANCH_PREFIX,
     apply_template_ids,
     build_template_id_lookup,
     is_temporary_unresolved_branch_path,
@@ -1484,12 +1485,17 @@ def _resolve_ids_and_filter_unmatched_export_rows(
 
 
 def _filter_blocking_nonzero_missing_id_rows(rows: pd.DataFrame) -> pd.DataFrame:
-    """Exclude only reviewed, temporary balance roots from the fatal ID gate."""
+    """Apply documented warning-only exceptions to the fatal missing-ID gate."""
     if rows is None or rows.empty or "Branch Path" not in rows.columns:
         return rows.copy() if isinstance(rows, pd.DataFrame) else pd.DataFrame()
-    return rows[
-        ~rows["Branch Path"].map(is_temporary_unresolved_branch_path)
-    ].copy()
+    branch_paths = rows["Branch Path"].fillna("").astype(str)
+    reviewed_warning_mask = (
+        branch_paths.str.casefold().str.startswith(
+            AGGREGATED_DEMAND_BRANCH_PREFIX
+        )
+        | branch_paths.map(is_temporary_unresolved_branch_path)
+    )
+    return rows[~reviewed_warning_mask].copy()
 
 
 def _economy_for_region_label(region_value: object) -> str | None:

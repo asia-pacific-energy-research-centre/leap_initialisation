@@ -159,14 +159,20 @@ def test_only_temporary_balance_roots_are_excluded_from_fatal_missing_id_gate() 
                 "Branch Path": "Statistical Differences\\Primary\\Gas",
                 "2022": -2.0,
             },
+            {
+                "Branch Path": "Demand\\All demand aggregated\\Buildings\\Gas",
+                "2022": 4.0,
+            },
             {"Branch Path": "Resources\\Primary\\Unknown", "2022": 3.0},
+            {"Branch Path": "Demand\\Unreviewed\\Unknown", "2022": 5.0},
         ]
     )
 
     blocking = _filter_blocking_nonzero_missing_id_rows(rows)
 
     assert blocking["Branch Path"].tolist() == [
-        "Resources\\Primary\\Unknown"
+        "Resources\\Primary\\Unknown",
+        "Demand\\Unreviewed\\Unknown",
     ]
 
 
