@@ -68,6 +68,15 @@ Design and notebook usage:
 Execution prompt for the first evidence-led AUS investigation:
 [investigate_aus_2022_balance_export_for_seed_improvements.md](prompts/investigate_aus_2022_balance_export_for_seed_improvements.md).
 
+Parallel update-method checkpoint (2026-07-27): the current balanced allocator
+now has a side-effect-free execution mode and normalized proposal table on
+`codex/results-update-dry-run-preview`. It reports transformation-capacity,
+primary-production, export, clipping, and unresolved proposals without updating
+state/history or the runtime ledger. Its safety verdict is deliberately scoped
+to current allocator behavior. Integration with the AUS discrepancy lineage,
+mapping cardinality, and exact final workbook values remains open. See
+[results_update_dry_run_preview.md](results_update_dry_run_preview.md).
+
 ## [20] General opt-in projection of ESTO-active sectors missing from 9th
 
 **Status: planned; first narrow 09.06 implementation landed 2026-07-27.**

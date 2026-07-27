@@ -198,6 +198,36 @@ def _build_positive_gap_rows(
     return out
 
 
+def _build_results_update_comparison_rows(
+    delta: pd.DataFrame,
+) -> list[dict[str, object]]:
+    """Return compact observed-vs-baseline import rows for update previews."""
+    if delta.empty:
+        return []
+
+    def _numeric_or_zero(value: object) -> float:
+        numeric = pd.to_numeric(value, errors="coerce")
+        return 0.0 if pd.isna(numeric) else float(numeric)
+
+    out: list[dict[str, object]] = []
+    for _, row in delta.iterrows():
+        year = pd.to_numeric(row.get("year"), errors="coerce")
+        if pd.isna(year):
+            continue
+        out.append(
+            {
+                "economy": str(row.get("economy") or "").strip(),
+                "scenario": str(row.get("scenario") or "").strip(),
+                "esto_product": str(row.get("esto_product") or "").strip(),
+                "year": int(year),
+                "baseline_imports_pj": _numeric_or_zero(row.get("adjusted_imports")),
+                "observed_imports_pj": _numeric_or_zero(row.get("observed_imports")),
+                "import_gap_pj": _numeric_or_zero(row.get("imports_gap")),
+            }
+        )
+    return out
+
+
 def _compute_convergence_metrics(passes: list[dict]) -> dict[str, object]:
     """Compute gap-closure metrics from the pass history list stored in state."""
     if not passes:
@@ -1337,9 +1367,18 @@ def _run_capacity_unmet_iterative_balanced_pass(
     allow_same_results_reuse: bool = CAPACITY_UNMET_ALLOW_SAME_RESULTS_REUSE,
     run_id: str | None = None,
     allocation_ledger: CapacityUnmetAllocationLedger | None = None,
+    preview_only: bool = False,
+    iteration_run_mode: str | None = None,
 ) -> dict[str, object]:
-    """Compute one iterative pass using observed imports gaps as unmet proxy."""
-    allocation_ledger = _resolve_capacity_unmet_allocation_ledger(allocation_ledger)
+    """Compute one iterative pass using observed imports gaps as unmet proxy.
+
+    ``preview_only`` executes the same allocation rules without writing state,
+    convergence history, manifests, or unresolved-residual artifacts.
+    """
+    if preview_only:
+        allocation_ledger = CapacityUnmetAllocationLedger({}, {}, {})
+    else:
+        allocation_ledger = _resolve_capacity_unmet_allocation_ledger(allocation_ledger)
     if reconciliation_table.empty:
         raise ValueError("Cannot run capacity_unmet_iterative_balanced with empty reconciliation table.")
 
@@ -1358,7 +1397,7 @@ def _run_capacity_unmet_iterative_balanced_pass(
 
     _validate_capacity_priority_coverage(process_catalog)
 
-    run_mode = _resolve_capacity_unmet_pass_mode()
+    run_mode = _resolve_capacity_unmet_pass_mode(iteration_run_mode)
     state = _read_capacity_unmet_state(state_path=state_path, run_mode=run_mode)
     cumulative_capacity_map = _parse_runtime_capacity_additions_from_state(
         state.get("cumulative_capacity_additions")
@@ -1416,8 +1455,13 @@ def _run_capacity_unmet_iterative_balanced_pass(
     if not scenario_pairs:
         raise ValueError("capacity_unmet_iterative_balanced needs at least one economy/scenario pair.")
 
-    manifest_input_paths = _convergence_manifest_input_paths()
-    manifest_starting_fingerprints = build_convergence_input_fingerprints(manifest_input_paths)
+    manifest_input_paths: dict[str, Path | str] = {}
+    manifest_starting_fingerprints: dict[str, dict[str, object]] = {}
+    if not preview_only:
+        manifest_input_paths = _convergence_manifest_input_paths()
+        manifest_starting_fingerprints = build_convergence_input_fingerprints(
+            manifest_input_paths
+        )
 
     label_to_product = _build_label_to_esto_product_lookup()
     observed_trade, signature_map, unmatched_result_fuels = _collect_observed_trade_from_supply_results(
@@ -1844,7 +1888,7 @@ def _run_capacity_unmet_iterative_balanced_pass(
     )
     unresolved_csv_path: Path | None = None
     unresolved_json_path: Path | None = None
-    if handled_unresolved_rows:
+    if handled_unresolved_rows and not preview_only:
         unresolved_csv_path, unresolved_json_path = _save_unresolved_positive_report(
             mode="capacity_unmet_iterative_balanced",
             unresolved_rows=handled_unresolved_rows,
@@ -1854,7 +1898,7 @@ def _run_capacity_unmet_iterative_balanced_pass(
             f"'{unresolved_policy}': {len(handled_unresolved_rows)} "
             f"(csv={unresolved_csv_path}, json={unresolved_json_path})"
         )
-    if fatal_unresolved_rows:
+    if fatal_unresolved_rows and not preview_only:
         preview = fatal_unresolved_rows[:12]
         raise RuntimeError(
             "capacity_unmet_iterative_balanced could not allocate positive residuals to "
@@ -1870,15 +1914,16 @@ def _run_capacity_unmet_iterative_balanced_pass(
     for key, value in pass_export_adjustments.items():
         cumulative_export_map[key] = cumulative_export_map.get(key, 0.0) + float(value)
 
-    allocation_ledger.capacity_additions = dict(cumulative_capacity_map)
-    allocation_ledger.primary_additions = dict(cumulative_primary_map)
-    allocation_ledger.export_adjustments = dict(cumulative_export_map)
-    _refresh_legacy_allocation_ledger_views(allocation_ledger)
-    state["cumulative_capacity_additions"] = cumulative_capacity_map
-    state["cumulative_output_additions"] = cumulative_output_map
-    state["cumulative_primary_additions"] = cumulative_primary_map
-    state["cumulative_export_adjustments"] = cumulative_export_map
-    state["last_results_signatures"] = signature_map
+    if not preview_only:
+        allocation_ledger.capacity_additions = dict(cumulative_capacity_map)
+        allocation_ledger.primary_additions = dict(cumulative_primary_map)
+        allocation_ledger.export_adjustments = dict(cumulative_export_map)
+        _refresh_legacy_allocation_ledger_views(allocation_ledger)
+        state["cumulative_capacity_additions"] = cumulative_capacity_map
+        state["cumulative_output_additions"] = cumulative_output_map
+        state["cumulative_primary_additions"] = cumulative_primary_map
+        state["cumulative_export_adjustments"] = cumulative_export_map
+        state["last_results_signatures"] = signature_map
 
     positive_total = float(positive_rows["imports_gap"].sum()) if not positive_rows.empty else 0.0
     negative_total = float((-negative_rows["imports_gap"]).sum()) if not negative_rows.empty else 0.0
@@ -1918,46 +1963,67 @@ def _run_capacity_unmet_iterative_balanced_pass(
         "unresolved_positive_json": str(unresolved_json_path) if unresolved_json_path else "",
         "unmatched_results_fuels": unmatched_result_fuels,
         "next_manual_step": (
-            "Import generated workbook into LEAP, recalculate, refresh results tables, then rerun."
+            "Review this preview; no iterative state or workbook was changed."
+            if preview_only
+            else "Import generated workbook into LEAP, recalculate, refresh results tables, then rerun."
         ),
     }
+    if preview_only:
+        pass_summary.update(
+            {
+                "preview_only": True,
+                "comparison_rows": _build_results_update_comparison_rows(delta),
+                "fatal_unresolved_positive_rows": fatal_unresolved_rows,
+            }
+        )
     pass_history = state.get("passes")
     if not isinstance(pass_history, list):
         pass_history = []
-    pass_history.append(pass_summary)
-    state["passes"] = pass_history[-50:]
-    convergence = _compute_convergence_metrics(state["passes"])
+    preview_history = [*pass_history, pass_summary][-50:]
+    convergence = _compute_convergence_metrics(preview_history)
     pass_summary["convergence"] = convergence
-    convergence_csv = _write_convergence_csv(pass_summary=pass_summary, convergence=convergence)
-    pass_delta = {
-        "pass_index": len(state["passes"]) - 1,
-        "run_id": resolved_run_id,
-        "timestamp_utc": pass_summary.get("timestamp_utc", ""),
-        "mode": pass_summary.get("mode", ""),
-        "pre_pass_signatures": last_signatures,
-        "capacity_additions": dict(pass_capacity_additions),
-        "output_additions": dict(pass_output_additions),
-        "primary_additions": dict(pass_primary_additions),
-        "export_adjustments": dict(pass_export_adjustments),
-    }
-    _delta_history = state.get("pass_deltas")
-    if not isinstance(_delta_history, list):
-        _delta_history = []
-    _delta_history.append(pass_delta)
-    state["pass_deltas"] = _delta_history[-50:]
-    persisted_path = _write_capacity_unmet_state(state, state_path=state_path)
-    _record_convergence_manifest(
-        run_id=resolved_run_id,
-        scenario_pairs=scenario_pairs,
-        mode=pass_summary["mode"],
-        iteration_run_mode=run_mode,
-        input_paths=manifest_input_paths,
-        starting_fingerprints=manifest_starting_fingerprints,
-    )
+    convergence_csv: Path | None = None
+    persisted_path: Path | None = None
+    if not preview_only:
+        pass_history.append(pass_summary)
+        state["passes"] = pass_history[-50:]
+        convergence_csv = _write_convergence_csv(
+            pass_summary=pass_summary,
+            convergence=convergence,
+        )
+        pass_delta = {
+            "pass_index": len(state["passes"]) - 1,
+            "run_id": resolved_run_id,
+            "timestamp_utc": pass_summary.get("timestamp_utc", ""),
+            "mode": pass_summary.get("mode", ""),
+            "pre_pass_signatures": last_signatures,
+            "capacity_additions": dict(pass_capacity_additions),
+            "output_additions": dict(pass_output_additions),
+            "primary_additions": dict(pass_primary_additions),
+            "export_adjustments": dict(pass_export_adjustments),
+        }
+        _delta_history = state.get("pass_deltas")
+        if not isinstance(_delta_history, list):
+            _delta_history = []
+        _delta_history.append(pass_delta)
+        state["pass_deltas"] = _delta_history[-50:]
+        persisted_path = _write_capacity_unmet_state(state, state_path=state_path)
+        _record_convergence_manifest(
+            run_id=resolved_run_id,
+            scenario_pairs=scenario_pairs,
+            mode=pass_summary["mode"],
+            iteration_run_mode=run_mode,
+            input_paths=manifest_input_paths,
+            starting_fingerprints=manifest_starting_fingerprints,
+        )
 
     print("\n" + "=" * 96)
-    print("[CAPACITY_UNMET_ITERATIVE_BALANCED] Pass summary")
-    print(f"[CAPACITY_UNMET_ITERATIVE_BALANCED] State file: {persisted_path}")
+    summary_label = "Preview summary" if preview_only else "Pass summary"
+    print(f"[CAPACITY_UNMET_ITERATIVE_BALANCED] {summary_label}")
+    if preview_only:
+        print("[CAPACITY_UNMET_ITERATIVE_BALANCED] Preview only: no state/history writes.")
+    else:
+        print(f"[CAPACITY_UNMET_ITERATIVE_BALANCED] State file: {persisted_path}")
     print(
         "[CAPACITY_UNMET_ITERATIVE_BALANCED] Baseline imports="
         f"{pass_summary['baseline_import_total']:.3f}, observed imports={pass_summary['observed_import_total']:.3f}"
@@ -1984,11 +2050,9 @@ def _run_capacity_unmet_iterative_balanced_pass(
         f"closure={convergence['gap_closure_pct']:.1f}%, trend={convergence['trend']}"
         + (f", convergence CSV: {convergence_csv}" if convergence_csv else "")
     )
-    print(
-        "[CAPACITY_UNMET_ITERATIVE_BALANCED] Next step: "
-        "Import workbook into LEAP, recalc, refresh results tables, rerun this workflow."
-    )
+    print(f"[CAPACITY_UNMET_ITERATIVE_BALANCED] Next step: {pass_summary['next_manual_step']}")
     print("=" * 96 + "\n")
-    allocation_ledger.pass_summary = pass_summary
-    _refresh_legacy_allocation_ledger_views(allocation_ledger)
+    if not preview_only:
+        allocation_ledger.pass_summary = pass_summary
+        _refresh_legacy_allocation_ledger_views(allocation_ledger)
     return pass_summary
