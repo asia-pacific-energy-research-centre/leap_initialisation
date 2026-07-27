@@ -12,6 +12,16 @@ recalculates it in LEAP, reads REF/TGT Energy Balance exports back, diagnoses
 source differences, previews the existing results-update changes, and repeats
 until differences converge or are classified.
 
+Governing design recorded 2026-07-27: update eligibility is based on a
+balance-variable contract, not a discrepancy-by-discrepancy allowlist.
+`02 Imports` is initially the default allowed balancing variable and
+`imports_gap` error signal. Differences in protected flows raise a baseline
+seed / LEAP balancing-rule / contract-expectation issue. Aggregate totals are
+derived checks. Interim/placeholder scopes are labelled but not automatically
+excluded; an exclusion requires a named placeholder-to-replacement group and a
+combined conservation comparison so genuine placeholder bugs are not hidden.
+See [baseline_seed_balance_diagnostics.md](baseline_seed_balance_diagnostics.md).
+
 Step 1 is read-only:
 
 - `codebase/baseline_seed_balance_diagnostics_workflow.py` is the slim notebook

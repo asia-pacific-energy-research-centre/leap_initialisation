@@ -52,6 +52,58 @@ summary separately counts value mismatches, missing sides, unmapped rows,
 total-balance failures, direct comparisons, and aggregate/shared comparisons
 unsafe for a direct update.
 
+### Governing balance-variable contract
+
+The diagnostic must not decide update eligibility by maintaining a list of
+individual discrepancies. It first asks which balance variable LEAP is allowed
+to move for each economy/scenario/fuel.
+
+The maintained contract is
+`config/runtime_tables/balance_error_signal_rules.csv`. Its initial rule is:
+
+- `02 Imports` is the default allowed balancing variable for every fuel and is
+  the `imports_gap` error signal;
+- all unlisted direct flows are protected by default; and
+- total primary supply and total final energy consumption are derived checks,
+  not independently adjustable variables.
+
+Rules may be narrowed by economy, scenario, or ESTO product. A more-specific
+rule can therefore allow another variable for a reviewed exception, but the
+default remains imports-only.
+
+Every comparison row receives:
+
+- `balance_variable_role`: `error_signal`, `protected`, or `derived_check`;
+- `allowed_to_change`, `error_signal_name`, and the matched rule reason;
+- `balance_contract_issue`;
+- `requires_issue_review`; and
+- `update_signal_eligible`.
+
+A difference in an allowed error signal is updater input. A difference in a
+protected or derived flow raises an issue whose initial hypotheses are:
+
+1. the baseline seed recorded that flow incorrectly;
+2. LEAP balancing/module rules moved something that was expected to remain
+   fixed; or
+3. the maintained balance-variable contract is wrong for that fuel.
+
+Unavailable comparisons, unmapped rows, unexpected flow names, and mapping
+cardinality problems remain issues rather than being silently treated as
+updates.
+
+### Placeholder and replacement sectors
+
+Interim/placeholder sectors can legitimately be replaced by more detailed
+sectors without preserving each sector-level row. The diagnostic marks known
+placeholder scopes (`Electricity interim`, `CHP interim`, `Heat plant interim`,
+and `All demand aggregated`) with `placeholder_scope=True`.
+
+This does **not** automatically exclude their fuel/flow differences. A blanket
+exclusion would have hidden the confirmed AUS thermal-coal seed defect inside
+`Electricity interim`. A future exclusion must name a reviewed
+placeholder-to-replacement group and compare the combined group at a
+conservation boundary before suppressing its internal redistribution.
+
 ### Difference convention
 
 ```text
@@ -164,14 +216,16 @@ filtering is the next performance task.
 
 ## Later phases
 
-1. Add a dry-run update preview showing the exact supply-side settings the
-   current `results_update` allocator would change, before writing a workbook.
-2. Reconcile the update path with current baseline-seed rules and require both
+1. Connect the dry-run update preview directly to `update_signal_eligible`
+   imports-gap rows and keep protected-flow issues out of numeric updates.
+2. Add reviewed placeholder-to-replacement comparison groups that prove
+   combined conservation before excluding internal sector redistribution.
+3. Reconcile the update path with current baseline-seed rules and require both
    paths to cross the same post-boundary seed validation/completion logic.
-3. Define explicit allocation policies for aggregate comparisons, especially
+4. Define explicit allocation policies for aggregate comparisons, especially
    LEAP-to-9th many-to-one and one-to-many cases. Aggregate differences must not
    be divided silently.
-4. Add issue classification by likely owner: demand, supply, transformation,
+5. Add issue classification by likely owner: demand, supply, transformation,
    transfers, own use/losses, mapping, or LEAP structure.
-5. Add convergence history across repeated limited-year LEAP export/update
+6. Add convergence history across repeated limited-year LEAP export/update
    cycles, then graduate a clean economy to a full-horizon verification run.

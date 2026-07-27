@@ -9,6 +9,10 @@ from typing import Callable, Iterable
 import pandas as pd
 
 from codebase import supply_reconciliation_allocation as allocation
+from codebase.functions.baseline_seed_balance_diagnostics import (
+    classify_balance_variable,
+    load_balance_variable_rules,
+)
 from codebase.utilities.workflow_utils import _resolve
 
 
@@ -39,6 +43,9 @@ RESULTS_UPDATE_PREVIEW_COLUMNS = [
     "diagnostic_flow_scope",
     "diagnostic_provenance_status",
     "diagnostic_material_rows",
+    "diagnostic_balance_variable_roles",
+    "diagnostic_balance_contract_issues",
+    "diagnostic_update_signal_eligible",
     "diagnostic_classifications",
     "diagnostic_update_allocation_required",
     "diagnostic_next_actions",
@@ -108,6 +115,9 @@ def build_results_update_preview_table(
             "diagnostic_flow_scope": "",
             "diagnostic_provenance_status": "not_assessed",
             "diagnostic_material_rows": 0,
+            "diagnostic_balance_variable_roles": "",
+            "diagnostic_balance_contract_issues": "",
+            "diagnostic_update_signal_eligible": False,
             "diagnostic_classifications": "",
             "diagnostic_update_allocation_required": False,
             "diagnostic_next_actions": "",
@@ -204,6 +214,7 @@ def apply_balance_review_safety(
     balance_review: pd.DataFrame,
     *,
     reviewed_decisions: pd.DataFrame | None = None,
+    balance_variable_rules: pd.DataFrame | None = None,
     require_fresh_leap_cycle: bool = False,
     approved_classifications: Iterable[str] = ("approved_results_update",),
     excluded_classifications: Iterable[str] = (
@@ -234,6 +245,13 @@ def apply_balance_review_safety(
         raise KeyError(f"balance_review is missing required columns: {missing}")
 
     review = balance_review.copy()
+    contract_columns = {
+        "balance_variable_role",
+        "balance_contract_issue",
+        "update_signal_eligible",
+    }
+    contract_available = contract_columns.issubset(review.columns)
+    review["_reviewed_decision"] = False
     if reviewed_decisions is not None and not reviewed_decisions.empty:
         decision_required = {
             "economy",
@@ -251,17 +269,11 @@ def apply_balance_review_safety(
                 f"{decision_missing}"
             )
         decisions = reviewed_decisions.copy()
+        decisions["_reviewed_decision"] = True
         if "material_for_review" not in decisions:
             decisions["material_for_review"] = True
         if "update_allocation_required" not in decisions:
             decisions["update_allocation_required"] = False
-        decision_keys = [
-            "economy",
-            "scenario",
-            "year",
-            "esto_flow",
-            "esto_product",
-        ]
         for frame in (review, decisions):
             frame["economy"] = frame["economy"].fillna("").astype(str).str.strip()
             frame["scenario"] = (
@@ -274,9 +286,6 @@ def apply_balance_review_safety(
             frame["year"] = pd.to_numeric(frame["year"], errors="coerce").astype(
                 "Int64"
             )
-        decision_index = pd.MultiIndex.from_frame(decisions[decision_keys])
-        review_index = pd.MultiIndex.from_frame(review[decision_keys])
-        review = review[~review_index.isin(decision_index)].copy()
         review = pd.concat([review, decisions], ignore_index=True, sort=False)
 
     review["economy"] = review["economy"].fillna("").astype(str).str.strip()
@@ -284,23 +293,27 @@ def apply_balance_review_safety(
     review["esto_flow"] = review["esto_flow"].fillna("").astype(str).str.strip()
     review["esto_product"] = review["esto_product"].fillna("").astype(str).str.strip()
     review["year"] = pd.to_numeric(review["year"], errors="coerce").astype("Int64")
-    material = _truthy_series(review["material_for_review"])
-    review = review[material & review["year"].notna()].copy()
+    review["_material_for_review"] = _truthy_series(review["material_for_review"])
+    review = review[review["year"].notna()].copy()
 
     key_columns = ["economy", "scenario", "year", "esto_flow", "esto_product"]
     summaries: dict[tuple[str, str, int, str, str], dict[str, object]] = {}
     for key, group in review.groupby(key_columns, dropna=False, sort=False):
+        decision_group = group[_truthy_series(group["_reviewed_decision"])]
+        classification_group = (
+            decision_group if not decision_group.empty else group
+        )
         classifications = sorted(
             {
                 _clean_text(value)
-                for value in group["primary_classification"]
+                for value in classification_group["primary_classification"]
                 if _clean_text(value)
             }
         )
         next_actions = sorted(
             {
                 _clean_text(value)
-                for value in group["next_action"]
+                for value in classification_group["next_action"]
                 if _clean_text(value)
             }
         )
@@ -311,11 +324,38 @@ def apply_balance_review_safety(
             (str(key[0]), str(key[1]), int(key[2]), str(key[3]), str(key[4]))
         ] = {
             "rows": int(len(group)),
+            "material_rows": int(group["_material_for_review"].sum()),
             "classifications": "|".join(classifications),
             "classification_set": set(classifications),
             "allocation_required": bool(allocation_required),
             "next_actions": "|".join(next_actions),
         }
+        if contract_available:
+            roles = sorted(
+                {
+                    _clean_text(value)
+                    for value in group["balance_variable_role"]
+                    if _clean_text(value)
+                }
+            )
+            contract_issues = sorted(
+                {
+                    _clean_text(value)
+                    for value in group["balance_contract_issue"]
+                    if _clean_text(value)
+                }
+            )
+            summaries[
+                (str(key[0]), str(key[1]), int(key[2]), str(key[3]), str(key[4]))
+            ].update(
+                balance_variable_roles="|".join(roles),
+                balance_variable_role_set=set(roles),
+                balance_contract_issues="|".join(contract_issues),
+                balance_contract_issue_set=set(contract_issues),
+                update_signal_eligible=bool(
+                    _truthy_series(group["update_signal_eligible"]).any()
+                ),
+            )
 
     approved = {
         _clean_text(value)
@@ -327,7 +367,18 @@ def apply_balance_review_safety(
         for value in excluded_classifications
         if _clean_text(value)
     }
+    effective_rules = (
+        load_balance_variable_rules()
+        if balance_variable_rules is None
+        else balance_variable_rules.copy()
+    )
     output = preview_table.copy()
+    for boolean_column in [
+        "safe_to_apply",
+        "diagnostic_update_allocation_required",
+        "diagnostic_update_signal_eligible",
+    ]:
+        output[boolean_column] = _truthy_series(output[boolean_column])
     for index, row in output.iterrows():
         diagnostic_flow = (
             "03 Exports"
@@ -342,20 +393,42 @@ def apply_balance_review_safety(
             _clean_text(row.get("esto_product")),
         )
         summary = summaries.get(key)
+        proposal_contract = classify_balance_variable(
+            economy=key[0],
+            scenario=key[1],
+            esto_product=key[4],
+            esto_flow=key[3],
+            rules=effective_rules,
+        )
         output.at[index, "safety_scope"] = "allocator_plus_balance_review"
         output.at[index, "diagnostic_flow_scope"] = diagnostic_flow
+        output.at[index, "diagnostic_balance_variable_roles"] = proposal_contract[
+            "balance_variable_role"
+        ]
         output.at[index, "diagnostic_provenance_status"] = (
             "predates_known_seed_fix"
             if require_fresh_leap_cycle
             else "current_or_unspecified"
         )
         if summary is not None:
-            output.at[index, "diagnostic_material_rows"] = summary["rows"]
+            output.at[index, "diagnostic_material_rows"] = summary["material_rows"]
             output.at[index, "diagnostic_classifications"] = summary["classifications"]
             output.at[index, "diagnostic_update_allocation_required"] = summary[
                 "allocation_required"
             ]
             output.at[index, "diagnostic_next_actions"] = summary["next_actions"]
+            if contract_available:
+                output.at[index, "diagnostic_balance_variable_roles"] = summary[
+                    "balance_variable_roles"
+                ]
+                output.at[index, "diagnostic_balance_contract_issues"] = summary[
+                    "balance_contract_issues"
+                ]
+                output.at[index, "diagnostic_update_signal_eligible"] = summary[
+                    "update_signal_eligible"
+                ]
+        elif proposal_contract["balance_variable_role"] == "error_signal":
+            output.at[index, "diagnostic_update_signal_eligible"] = True
 
         if not bool(row.get("safe_to_apply")):
             output.at[index, "update_disposition"] = "allocator_blocked"
@@ -371,6 +444,26 @@ def apply_balance_review_safety(
                 f"{summary['classifications']}."
             )
             output.at[index, "update_disposition"] = "excluded_upstream_issue"
+        elif (
+            proposal_contract["balance_variable_role"] != "error_signal"
+            or (
+                contract_available
+                and summary is not None
+                and not bool(summary["update_signal_eligible"])
+            )
+        ):
+            issue = (
+                summary["balance_contract_issues"]
+                if contract_available and summary is not None
+                else ""
+            )
+            reason = (
+                "The proposal flow is not an allowed balance error signal"
+                f"{f': {issue}' if issue else ''}."
+            )
+            output.at[index, "update_disposition"] = (
+                "blocked_balance_contract_issue"
+            )
         elif (
             summary is not None
             and summary["classification_set"]
@@ -403,6 +496,7 @@ def run_results_update_allocation_preview(
     output_path: Path | str | None = None,
     balance_review: pd.DataFrame | None = None,
     reviewed_decisions: pd.DataFrame | None = None,
+    balance_variable_rules: pd.DataFrame | None = None,
     require_fresh_leap_cycle: bool = False,
 ) -> dict[str, object]:
     """Run the current balanced allocator without mutating iterative state."""
@@ -437,6 +531,7 @@ def run_results_update_allocation_preview(
             preview_table,
             balance_review,
             reviewed_decisions=effective_decisions,
+            balance_variable_rules=balance_variable_rules,
             require_fresh_leap_cycle=require_fresh_leap_cycle,
         )
     resolved_output_path: Path | None = None

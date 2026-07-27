@@ -56,33 +56,42 @@ current allocator behavior, not approval to write or import the changes.
 
 ## Balance-review safety gate
 
-`apply_balance_review_safety()` joins material diagnostic evidence at the flow
-used by each proposal: imports for positive-gap capacity/production proposals
-and exports for additional-export proposals. This avoids blocking an import
-proposal because an unrelated final-demand diagnostic is wrong.
+`apply_balance_review_safety()` applies the balance-variable contract from
+`config/runtime_tables/balance_error_signal_rules.csv` at the flow used by each
+proposal: imports for positive-gap capacity/production proposals and exports
+for additional-export proposals. This avoids blocking an import proposal
+because an unrelated final-demand diagnostic is wrong.
 
-The gate is selective:
+The contract is the primary gate:
 
-- confirmed baseline-seed, post-boundary, diagnostic, mapping, and LEAP
-  structure/export defects are excluded;
+- imports are initially the default allowed `imports_gap` error signal;
+- exports and every other unlisted direct flow are protected by default;
+- protected-flow differences raise an issue rather than becoming numeric
+  updates;
+- total primary supply and total final energy consumption are derived checks;
 - aggregate/cardinality warnings remain blocked until an allocation rule is
   reviewed;
 - allocator clipping and fatal residuals remain blocked;
 - explicitly approved rows are labelled `approved_update_candidate`; and
-- unresolved, model-behavior, and unmatched rows remain visible as
-  `provisional_update_candidate`.
+- eligible imports-gap rows remain visible as `provisional_update_candidate`.
 
 Provisional means suitable for exercising and reviewing the updater, not proof
 that the change should be imported. A stale export is recorded as provenance
 (`predates_known_seed_fix`) rather than used as a global veto.
 
-Reviewed decisions can override preliminary diagnostic classifications. The
+Reviewed decisions are a secondary override for proven upstream defects. The
 tracked `config/runtime_tables/results_update_issue_decisions.csv` records the
 AUS 2022 thermal-coal cluster as a baseline-seed defect fixed by `778f649`,
-even though the original review CSV still labels those rows `unresolved`. The
+even when an imports difference would otherwise be an eligible error signal. The
 public preview runner loads this table automatically when a balance review is
 provided. Pass an explicit empty DataFrame only when deliberately testing
 without reviewed decisions.
+
+Known placeholder/interim sectors are labelled in the diagnostic, but are not
+blanket-excluded. A future exclusion must define a placeholder/replacement
+group and prove that the combined boundary conserves energy. This prevents a
+sector substitution from creating false alarms without hiding fuel-allocation
+bugs inside the placeholder.
 
 ## Notebook-oriented use
 

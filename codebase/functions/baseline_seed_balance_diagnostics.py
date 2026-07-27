@@ -71,6 +71,9 @@ DEFAULT_EXPLICIT_REASSIGNMENTS_PATH = (
 DEFAULT_SYNTHETIC_REFERENCE_ROWS_PATH = (
     REPO_ROOT / "config" / "runtime_tables" / "synthetic_reference_rows.csv"
 )
+DEFAULT_BALANCE_VARIABLE_RULES_PATH = (
+    REPO_ROOT / "config" / "runtime_tables" / "balance_error_signal_rules.csv"
+)
 DEFAULT_BASE_TABLE_PATH = workflow_cfg.get_energy_source_config().esto_base_table_path
 DEFAULT_PROJECTION_TABLE_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 
@@ -108,11 +111,37 @@ REVIEW_ADDED_COLUMNS = [
     "leap_balance_row",
     "leap_balance_fuel",
     "material_for_review",
+    "balance_variable_role",
+    "allowed_to_change",
+    "error_signal_name",
+    "balance_variable_rule_reason",
+    "balance_contract_issue",
+    "requires_issue_review",
+    "update_signal_eligible",
+    "placeholder_scope",
+    "placeholder_scope_reason",
     "preliminary_owner",
     "primary_classification",
     "evidence_note",
     "next_action",
 ]
+
+BALANCE_VARIABLE_RULE_COLUMNS = [
+    "economy",
+    "scenario",
+    "esto_product",
+    "esto_flow",
+    "balance_variable_role",
+    "error_signal_name",
+    "reason",
+    "enabled",
+]
+
+PLACEHOLDER_SECTOR_PATTERN = re.compile(
+    r"(?:^|\|)(?:Electricity interim/|CHP interim/|Heat plant interim/|"
+    r"All demand aggregated(?:/|$))",
+    flags=re.IGNORECASE,
+)
 
 
 def _resolve(path: Path | str) -> Path:
@@ -126,6 +155,69 @@ def _clean_token(value: object) -> str:
     if value is None or value is pd.NA:
         return ""
     return str(value).strip()
+
+
+def load_balance_variable_rules(
+    path: Path | str = DEFAULT_BALANCE_VARIABLE_RULES_PATH,
+) -> pd.DataFrame:
+    """Load the explicit balance-variable/error-signal contract."""
+    rules = pd.read_csv(_resolve(path))
+    missing = sorted(set(BALANCE_VARIABLE_RULE_COLUMNS) - set(rules.columns))
+    if missing:
+        raise KeyError(f"Balance-variable rules are missing columns: {missing}")
+    enabled = rules["enabled"].fillna(False).astype(str).str.lower().isin(
+        {"true", "1", "yes"}
+    )
+    return rules[enabled].reset_index(drop=True)
+
+
+def classify_balance_variable(
+    *,
+    economy: object,
+    scenario: object,
+    esto_product: object,
+    esto_flow: object,
+    rules: pd.DataFrame,
+) -> dict[str, str]:
+    """Resolve the most-specific rule, defaulting unlisted flows to protected."""
+    values = {
+        "economy": _clean_token(economy),
+        "scenario": _clean_token(scenario).lower(),
+        "esto_product": _clean_token(esto_product),
+        "esto_flow": _clean_token(esto_flow),
+    }
+    matches: list[tuple[int, int, pd.Series]] = []
+    for index, rule in rules.iterrows():
+        specificity = 0
+        matched = True
+        for column, value in values.items():
+            rule_value = _clean_token(rule.get(column))
+            if column == "scenario":
+                rule_value = rule_value.lower()
+            if rule_value == "*":
+                continue
+            if rule_value != value:
+                matched = False
+                break
+            specificity += 1
+        if matched:
+            matches.append((specificity, int(index), rule))
+    if not matches:
+        return {
+            "balance_variable_role": "protected",
+            "error_signal_name": "",
+            "balance_variable_rule_reason": (
+                "No allowed-change rule applies; differences are protected by default."
+            ),
+        }
+    _, _, selected = sorted(matches, key=lambda item: (-item[0], item[1]))[0]
+    return {
+        "balance_variable_role": _clean_token(
+            selected.get("balance_variable_role")
+        ),
+        "error_signal_name": _clean_token(selected.get("error_signal_name")),
+        "balance_variable_rule_reason": _clean_token(selected.get("reason")),
+    }
 
 
 def _split_pipe_tokens(value: object) -> list[str]:
@@ -360,8 +452,9 @@ def build_balance_review_table(
     differences: pd.DataFrame,
     *,
     material_threshold_pj: float = 1.0,
+    balance_variable_rules: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Add concise review fields without pretending unresolved rows are defects."""
+    """Classify differences using the explicit allowed balance-variable contract."""
     review = differences.copy()
     for column in DIFFERENCE_OUTPUT_COLUMNS:
         if column not in review.columns:
@@ -373,18 +466,132 @@ def build_balance_review_table(
         .fillna(0.0)
         .ge(float(material_threshold_pj))
     )
+    rules = (
+        load_balance_variable_rules()
+        if balance_variable_rules is None
+        else balance_variable_rules.copy()
+    )
+    variable_classifications = [
+        classify_balance_variable(
+            economy=row.get("economy"),
+            scenario=row.get("scenario"),
+            esto_product=row.get("esto_product"),
+            esto_flow=row.get("esto_flow"),
+            rules=rules,
+        )
+        for row in review.to_dict("records")
+    ]
+    review["balance_variable_role"] = [
+        row["balance_variable_role"] for row in variable_classifications
+    ]
+    review["allowed_to_change"] = review["balance_variable_role"].eq("error_signal")
+    review["error_signal_name"] = [
+        row["error_signal_name"] for row in variable_classifications
+    ]
+    review["balance_variable_rule_reason"] = [
+        row["balance_variable_rule_reason"] for row in variable_classifications
+    ]
+    review["balance_contract_issue"] = ""
+    review["requires_issue_review"] = False
+    review["update_signal_eligible"] = False
+    review["placeholder_scope"] = (
+        review["leap_sector_names"]
+        .fillna("")
+        .astype(str)
+        .str.contains(PLACEHOLDER_SECTOR_PATTERN, regex=True)
+    )
+    review["placeholder_scope_reason"] = ""
+    review.loc[review["placeholder_scope"], "placeholder_scope_reason"] = (
+        "Interim/placeholder activity may need a combined placeholder-and-replacement "
+        "comparison boundary; it is not automatically excluded."
+    )
     review["preliminary_owner"] = review["esto_flow"].map(_preliminary_owner)
     review["primary_classification"] = ""
     review["evidence_note"] = ""
     review["next_action"] = ""
 
     discrepancy_mask = review["status"].ne("match")
-    review.loc[discrepancy_mask, "primary_classification"] = "unresolved"
-    review.loc[discrepancy_mask, "evidence_note"] = (
-        "Direct ESTO-axis comparison; trace the producer and post-boundary seed "
-        "before treating this as a code defect."
+    unavailable = discrepancy_mask & review["status"].isin(
+        {"reference_unavailable", "missing_in_reference", "missing_in_leap"}
     )
-    review.loc[discrepancy_mask, "next_action"] = "Review in descending PJ magnitude."
+    allocation_required = discrepancy_mask & review[
+        "update_allocation_required"
+    ].fillna(False).astype(bool)
+    error_signal_difference = (
+        discrepancy_mask
+        & ~unavailable
+        & ~allocation_required
+        & review["balance_variable_role"].eq("error_signal")
+    )
+    derived_difference = (
+        discrepancy_mask
+        & ~unavailable
+        & ~allocation_required
+        & review["balance_variable_role"].eq("derived_check")
+    )
+    protected_difference = (
+        discrepancy_mask
+        & ~unavailable
+        & ~allocation_required
+        & review["balance_variable_role"].eq("protected")
+    )
+
+    review.loc[unavailable, "balance_contract_issue"] = (
+        "comparison_unavailable_or_mapping_issue"
+    )
+    review.loc[allocation_required, "balance_contract_issue"] = (
+        "mapping_allocation_rule_required"
+    )
+    review.loc[error_signal_difference, "balance_contract_issue"] = (
+        "expected_error_signal_difference"
+    )
+    review.loc[derived_difference, "balance_contract_issue"] = (
+        "derived_balance_difference"
+    )
+    review.loc[protected_difference, "balance_contract_issue"] = (
+        "protected_flow_difference"
+    )
+    review.loc[
+        unavailable | allocation_required | derived_difference | protected_difference,
+        "requires_issue_review",
+    ] = True
+    review.loc[error_signal_difference, "update_signal_eligible"] = True
+
+    review.loc[discrepancy_mask, "primary_classification"] = "unresolved"
+    review.loc[error_signal_difference, "primary_classification"] = (
+        "expected_error_signal"
+    )
+    review.loc[derived_difference, "primary_classification"] = (
+        "derived_balance_difference"
+    )
+    review.loc[protected_difference, "primary_classification"] = (
+        "protected_flow_difference"
+    )
+    review.loc[discrepancy_mask, "evidence_note"] = (
+        "Classified against the allowed balance-variable contract."
+    )
+    review.loc[error_signal_difference, "evidence_note"] = (
+        "Imports are the configured balancing error signal for this fuel."
+    )
+    review.loc[error_signal_difference, "next_action"] = (
+        "Use this difference as updater input, subject to allocator and mapping checks."
+    )
+    review.loc[
+        protected_difference | derived_difference,
+        "evidence_note",
+    ] = (
+        "This variable is not configured as an allowed balancing signal. Investigate "
+        "the baseline seed, LEAP balancing rules, or the variable contract."
+    )
+    review.loc[
+        protected_difference | derived_difference,
+        "next_action",
+    ] = (
+        "Raise an issue; do not convert this row directly into a numeric update."
+    )
+    review.loc[unavailable | allocation_required, "next_action"] = (
+        "Resolve comparison coverage or allocation grain before using this row."
+    )
 
     total_final_boundary = (
         discrepancy_mask
@@ -395,6 +602,11 @@ def build_balance_review_table(
         .eq("total final energy consumption")
     )
     review.loc[total_final_boundary, "primary_classification"] = "diagnostic_bug"
+    review.loc[total_final_boundary, "balance_contract_issue"] = (
+        "diagnostic_comparison_boundary_bug"
+    )
+    review.loc[total_final_boundary, "requires_issue_review"] = True
+    review.loc[total_final_boundary, "update_signal_eligible"] = False
     review.loc[total_final_boundary, "preliminary_owner"] = "mapping_or_diagnostic"
     review.loc[total_final_boundary, "evidence_note"] = (
         "LEAP Total Final Energy Demand includes the separate Other loss and own "

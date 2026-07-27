@@ -570,3 +570,82 @@ def test_non_import_diagnostic_does_not_block_import_gap_proposal() -> None:
     assert bool(gated.iloc[0]["safe_to_apply"]) is True
     assert gated.iloc[0]["update_disposition"] == "provisional_update_candidate"
     assert gated.iloc[0]["diagnostic_flow_scope"] == "02 Imports"
+
+
+def test_balance_contract_allows_import_signal_and_blocks_export_difference() -> None:
+    summary = {
+        "comparison_rows": [],
+        "allocation_rows": [
+            {
+                "economy": "01_AUS",
+                "scenario": "reference",
+                "esto_product": "17 Electricity",
+                "year": 2022,
+                "allocation_type": "primary_production",
+                "allocated_output_uplift": 5.0,
+                "capacity_increment": 5.0,
+            }
+        ],
+        "export_rows": [
+            {
+                "economy": "01_AUS",
+                "scenario": "reference",
+                "esto_product": "07.09 LPG",
+                "year": 2022,
+                "extra_exports": 5.0,
+            }
+        ],
+        "clipping_rows": [],
+        "unresolved_positive_rows": [],
+        "fatal_unresolved_positive_rows": [],
+    }
+    preview_table = preview.build_results_update_preview_table(summary)
+    review = pd.DataFrame(
+        [
+            {
+                "economy": "01_AUS",
+                "scenario": "Reference",
+                "year": 2022,
+                "esto_flow": "02 Imports",
+                "esto_product": "17 Electricity",
+                "material_for_review": True,
+                "primary_classification": "expected_error_signal",
+                "update_allocation_required": False,
+                "next_action": "Use as updater input.",
+                "balance_variable_role": "error_signal",
+                "balance_contract_issue": "expected_error_signal_difference",
+                "update_signal_eligible": True,
+            },
+            {
+                "economy": "01_AUS",
+                "scenario": "Reference",
+                "year": 2022,
+                "esto_flow": "03 Exports",
+                "esto_product": "07.09 LPG",
+                "material_for_review": True,
+                "primary_classification": "protected_flow_difference",
+                "update_allocation_required": False,
+                "next_action": "Raise an issue.",
+                "balance_variable_role": "protected",
+                "balance_contract_issue": "protected_flow_difference",
+                "update_signal_eligible": False,
+            },
+        ]
+    )
+
+    gated = preview.apply_balance_review_safety(
+        preview_table,
+        review,
+        reviewed_decisions=pd.DataFrame(),
+    )
+
+    imports = gated[gated["esto_product"].eq("17 Electricity")].iloc[0]
+    exports = gated[gated["esto_product"].eq("07.09 LPG")].iloc[0]
+    assert bool(imports["safe_to_apply"]) is True
+    assert imports["update_disposition"] == "provisional_update_candidate"
+    assert bool(imports["diagnostic_update_signal_eligible"]) is True
+    assert bool(exports["safe_to_apply"]) is False
+    assert exports["update_disposition"] == "blocked_balance_contract_issue"
+    assert exports["diagnostic_balance_contract_issues"] == (
+        "protected_flow_difference"
+    )
