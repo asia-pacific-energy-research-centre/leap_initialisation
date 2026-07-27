@@ -291,7 +291,9 @@ def _demand_branch_from_esto_flow(flow: object) -> str:
     flow_text = str(flow or "").strip()
     if flow_text.startswith("15.02"):
         return "Road"
-    if flow_text.startswith(("04", "05", "15")):
+    if flow_text.startswith(("04", "05")):
+        return "International transport"
+    if flow_text.startswith("15"):
         return "Transport non road"
     if flow_text.startswith("14"):
         return "Industry"

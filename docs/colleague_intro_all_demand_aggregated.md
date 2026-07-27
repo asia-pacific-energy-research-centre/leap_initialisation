@@ -14,7 +14,7 @@ workbooks for this LEAP structure task.
 
 ## The structure to create
 
-The existing `All demand aggregated` branch is a container. Create the five
+The existing `All demand aggregated` branch is a container. Create the six
 sector branches inside it, and create the listed fuel leaves inside each
 sector branch:
 
@@ -24,6 +24,8 @@ Demand
     ├── Road
     │   └── fuel leaves from the CSV
     ├── Transport non road
+    │   └── fuel leaves from the CSV
+    ├── International transport
     │   └── fuel leaves from the CSV
     ├── Industry
     │   └── fuel leaves from the CSV
@@ -39,9 +41,10 @@ The exact full paths are in
 ## What you need to do in LEAP
 
 1. Open the relevant economy area.
-2. Create the five sector branches under `Demand\All demand aggregated`.
+2. Create the six sector branches under `Demand\All demand aggregated`.
 3. Create each fuel leaf as a direct child of the correct sector branch.
-4. Use the CSV spellings exactly, including `Transport non road`.
+4. Use the CSV spellings exactly, including `Road`, `Transport non road`, and
+   `International transport`.
 5. Do not enter data, expressions, scenarios, or formulas as part of this
    structure handoff.
 

@@ -699,6 +699,7 @@ def _infer_active_demand_branch_groups(sector_table: pd.DataFrame) -> list[str]:
         "passenger road": "Road",
         "transport non road": "Transport non road",
         "transport non-road": "Transport non road",
+        "international transport": "International transport",
         "industry": "Industry",
         "industry sector": "Industry",
         "other sector": "Other sector",

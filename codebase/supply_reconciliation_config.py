@@ -1132,6 +1132,8 @@ LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP: dict[str, list[str]] = {
         "15_04_domestic_navigation",
         "15_05_pipeline_transport",
         "15_06_nonspecified_transport",
+    ],
+    "International transport": [
         "04_international_marine_bunkers",
         "05_international_aviation_bunkers",
     ],

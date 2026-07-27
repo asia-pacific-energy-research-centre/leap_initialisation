@@ -430,10 +430,19 @@ class TestResolveActiveBranchExcludedSectors:
             "15_04_domestic_navigation",
             "15_05_pipeline_transport",
             "15_06_nonspecified_transport",
+        }
+        assert set(result) == expected
+
+    def test_international_transport_excludes_bunkers(self):
+        result = resolve_active_branch_excluded_sectors(
+            active_branches=["International transport"],
+            sector_map=self.SECTOR_MAP,
+            base_excluded=None,
+        )
+        assert set(result) == {
             "04_international_marine_bunkers",
             "05_international_aviation_bunkers",
         }
-        assert set(result) == expected
 
     def test_other_sector_excludes_agriculture_and_fishing_and_nonspecified(self):
         result = resolve_active_branch_excluded_sectors(
@@ -498,6 +507,7 @@ class TestLeapDemandGroupEstoSectorMapConfig:
         expected_groups = {
             "Road",
             "Transport non road",
+            "International transport",
             "Industry",
             "Other sector",
             "Buildings",
@@ -524,12 +534,11 @@ class TestLeapDemandGroupEstoSectorMapConfig:
         # Should not accidentally include buildings
         assert "16_01_buildings" not in other_codes
 
-    def test_transport_non_road_includes_international_bunkers(self):
-        non_road = set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Transport non road"])
-        assert "04_international_marine_bunkers" in non_road
-        assert "05_international_aviation_bunkers" in non_road
-        # Road must NOT be in non-road transport
-        assert "15_02_road" not in non_road
+    def test_international_transport_includes_bunkers(self):
+        international = set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["International transport"])
+        assert "04_international_marine_bunkers" in international
+        assert "05_international_aviation_bunkers" in international
+        assert "15_02_road" not in international
 
     def test_all_esto_codes_are_valid_strings(self):
         for group, codes in LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP.items():
@@ -792,6 +801,8 @@ class TestAggregatedDemandWorkbookModes:
         ("flow", "expected_branch"),
         [
             ("15.02 Road", "Road"),
+            ("04 International marine bunkers", "International transport"),
+            ("05 International aviation bunkers", "International transport"),
             ("15.01 Domestic aviation", "Transport non road"),
             ("14.03 Manufacturing", "Industry"),
             ("16.01 Buildings", "Buildings"),
