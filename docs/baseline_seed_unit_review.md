@@ -3,10 +3,10 @@
 ## Purpose
 
 The baseline-seed workflow checks the unit metadata on generated LEAP import
-rows against the canonical full-model export. This is useful when reviewing
-transformation rules from a clean slate: energy fuel/product rows should
-normally use `Petajoule`, while a template row configured as `Gigajoule` needs
-human review.
+rows against the selected economy's reviewed LEAP export template. This is
+useful when reviewing transformation rules from a clean slate: energy
+fuel/product rows should normally use `Petajoule`, while a template row
+configured as `Gigajoule` needs human review.
 
 ## Where the diagnostic is implemented
 
@@ -55,4 +55,3 @@ review list for deciding whether a fuel/product branch in the LEAP model
 should be changed from `Gigajoule` to `Petajoule`. After making that model
 change, rerun the baseline-seed workflow and confirm that the relevant rows no
 longer appear as `template_uses_gigajoule`.
-

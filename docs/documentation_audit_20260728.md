@@ -9,6 +9,15 @@ file-by-file decisions are in
 Every claim was checked against `git` and current code, not only against the
 documents' own self-reported status.
 
+**Cross-repository correction after the file-by-file pass.** The final
+contract check found that CROSS-001, INIT-003, the baseline rule inventory, and
+the modeller runbook still called the retired
+`data/full model export.xlsx` the live structure authority. Those active
+instructions now point to the template resolved for each economy under
+`data/leap_export_templates/`. The retired filenames remain visible only where
+they are needed to explain history or identify code that still requires
+migration.
+
 **Method note.** This repository has a recorded history of documents that
 describe themselves as done, blocked, or current and are none of those things.
 Section A of `docs/prompts/handoff_20260723_docs_audit_and_cleanup.md` says so

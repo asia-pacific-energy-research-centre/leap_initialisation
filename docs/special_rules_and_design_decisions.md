@@ -64,39 +64,54 @@ After each LEAP recalculation, compare production, transformation inputs/outputs
 
 - 2026-06-27: Recorded the balancing rules documented in the workflow guide.
 
-## CROSS-001: Full-model export and LEAP import ID integrity
+## CROSS-001: LEAP template and import ID integrity
 
 **Status:** Confirmed
 **Owner:** leap_initialisation
 **Type:** Operational invariant
-**Affected areas:** `data/full model export.xlsx`; baseline-seed generation and validation; transformation reset scope; supply root classification; `leap_mappings` LEAP hierarchy maintenance
+**Affected areas:** `data/leap_export_templates/`; baseline-seed generation and validation; transformation reset scope; supply root classification; `leap_mappings` LEAP hierarchy maintenance
 
 ### Situation
 
-Generated workbooks address LEAP through readable keys and model-specific IDs. A stale full-model export can leave a real branch unmatched, attach stale IDs, omit new fuel leaves from reset scope, or misrepresent the LEAP hierarchy used by mapping maintenance. Duplicate logical keys can also conceal conflicting expressions, especially when one copy has valid IDs and another has `-1` sentinels.
+Generated workbooks address LEAP through readable keys and model-specific IDs.
+A stale or wrong-economy export template can leave a real branch unmatched,
+attach stale IDs, omit new fuel leaves from reset scope, or misrepresent the
+LEAP hierarchy. Duplicate logical keys can also conceal conflicting
+expressions, especially when one copy has valid IDs and another has `-1`
+sentinels.
 
 ### Options
 
 - Treat branch names alone as sufficient and tolerate unresolved IDs.
 - Reject only nonzero rows with `BranchID=-1`.
-- Require a current structural export, unique logical keys, and valid required IDs for final import rows, with explicit review of any proven no-op exception.
+- Require the affected economy's current structural template, unique logical
+  keys, and valid required IDs for final import rows, with explicit review of
+  any proven no-op exception.
 
 ### Current rule
 
-Use `data/full model export.xlsx` as the canonical LEAP structure and ID reference. Refresh it after any branch, variable, scenario, Resources-root, process, or fuel-leaf structural change, including deletion and recreation of a branch with the same name. Numerical changes alone do not require refresh.
+Use the template resolved for the affected economy under
+`data/leap_export_templates/` as the LEAP structure and ID reference. The
+retired literal `data/full model export.xlsx` is absent and must not be
+recreated as a shared canonical fallback. Refresh the affected economy
+template after any branch, variable, scenario, Resources-root, process, or
+fuel-leaf structural change, including deletion and recreation of a branch
+with the same name. Numerical changes alone do not require refresh. Never copy
+USA IDs into another real economy merely to fill a template gap.
 
 The logical key `Branch Path + Variable + Scenario + Region` must be unique in a final import workbook. Exact duplicates can be removed deterministically. For conflicting duplicates, a sole row with all four valid IDs is selected only to support diagnostics; the physical duplicate group still blocks final import until corrected. Multiple valid-ID conflicts and possible insufficient-key cases are never resolved from workbook row order. Duplicate resolution must precede share validation.
 
 A `-1` sentinel is acceptable only in an intermediate row or an explicitly reviewed no-op that will not be relied on for import. Nonzero missing-ID rows are errors; zero-valued missing-ID rows must also be reviewed when they are intended to reset existing values. Validate all required ID columns, not only `BranchID`.
 
 There is one deliberate diagnostic exception for `Demand\All demand aggregated`.
-When its source Activity Level is genuinely nonzero but the corresponding branch
-does not exist in the canonical full-model export, retain the complete branch
-group in the generated workbook with `BranchID=-1`. This is not an importable
-row or a validation pass: it is visible evidence that LEAP needs a branch or a
-mapping decision. Remove missing-branch aggregate-demand groups when their
-source Activity Level is zero in every represented year; structural values such
-as `Final Energy Intensity = 1` do not by themselves make the source nonzero.
+When its source Activity Level is genuinely nonzero but the corresponding
+branch does not exist in the selected economy template, retain the complete
+branch group in the generated workbook with `BranchID=-1`. This is not an
+importable row or a validation pass: it is visible evidence that LEAP needs a
+branch or a mapping decision. Remove missing-branch aggregate-demand groups
+when their source Activity Level is zero in every represented year; structural
+values such as `Final Energy Intensity = 1` do not by themselves make the
+source nonzero.
 
 There is also a temporary, narrower migration exception for the native
 `Stock Changes\` and `Statistical Differences\` roots. These rows must be
@@ -109,7 +124,13 @@ the later ID backfill is visible. No other root inherits this exception.
 
 ### Validation
 
-After refreshing the export, compare its branch paths and IDs with the archived version; rebuild catalog/reset scope; run unknown-path, metadata, duplicate-key, and missing-ID checks; validate share totals after duplicate resolution; and compare new baseline seeds with the last accepted set. Rules `SEED-001` through `SEED-005` and `SEED-011` automate the import-integrity checks. The detailed lifecycle and required export contents are documented in `data/README.md`.
+After refreshing an economy template, compare its branch paths and IDs with the
+previous reviewed version; rebuild catalog/reset scope; run unknown-path,
+metadata, duplicate-key, and missing-ID checks; validate share totals after
+duplicate resolution; and compare new baseline seeds with the last accepted
+set. Rules `SEED-001` through `SEED-005` and `SEED-011` automate the
+import-integrity checks. The current template inventory, resolver behavior, and
+retired shared-workbook history are documented in `data/README.md`.
 
 Missing-ID rows remain blocking by default, including zero resets. The final
 writer accepts an optional exact-match exception list for a specifically
@@ -123,6 +144,9 @@ migration rule above. An exception does not make a `-1` row effective in LEAP.
 - 2026-06-27: Recorded the full-model export lifecycle, ID sentinel rules, duplicate-key requirement, and cross-repository mapping dependency after reviewing the June 2026 USA baseline backup.
 - 2026-06-28: Added a narrow rule-and-key exception mechanism for explicitly reviewed findings; missing-ID zero resets continue to block by default.
 - 2026-07-27: Added temporary unresolved-ID handling for generated Stock Changes and Statistical Differences rows while economy templates are refreshed.
+- 2026-07-28: Reconciled this rule with the completed retirement of
+  `data/full model export.xlsx`; per-economy templates are the current structure
+  and ID authority.
 
 ## INIT-003: Share group invariants
 
@@ -145,11 +169,11 @@ LEAP Output Share, Process Share, and Feedstock Fuel Share rows allocate one par
 
 Use the third option. Every Output Share, Process Share, and Feedstock Fuel
 Share group owned and written by a producer must contain the complete set of
-canonical sibling rows from `data/full model export.xlsx`. Write an explicit
+canonical sibling rows from the selected economy template. Write an explicit
 zero for every unused canonical sibling for every applicable scenario and
 year; this applies to each of the three share measures, not only Output Share.
-The template supplies the sibling structure and canonical IDs, while ESTO or
-9th Outlook data supplies the genuine values.
+That economy template supplies the sibling structure and model-specific IDs,
+while ESTO or 9th Outlook data supplies the genuine values.
 
 After duplicate resolution, normalize genuine non-negative sibling values to
 exactly 100% whether their source total is below or above 100%. An isolated

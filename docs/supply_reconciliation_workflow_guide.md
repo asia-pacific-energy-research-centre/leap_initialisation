@@ -886,7 +886,12 @@ top_sources = blocking.groupby(["source_workflow", "source_file"]).size().sort_v
 
 `SEED-006`, `SEED-007`, and `SEED-008` are share-group rules. If these fire, the issue is usually not in the reconciliation step itself. It is normally in the workflow that assembled the output/process/feedstock share table. The useful clue is the `branch` plus the `source_workflow`, which points to the specific sector workflow that needs a logic fix.
 
-`SEED-011` means the branch path is not present in the canonical full-model export. For these rows, do not start by editing the seed file. First confirm whether the branch should exist at all. If it should, the issue is usually an upstream model-structure gap or a naming mismatch. If it should not, the row belongs in the ignore or exclusion path instead.
+`SEED-011` means the branch path is not present in the selected economy's
+reviewed LEAP export template. For these rows, do not start by editing the seed
+file. First confirm whether the branch should exist at all. If it should, the
+issue is usually an upstream model-structure gap, a stale/wrong template, or a
+naming mismatch. If it should not, the row belongs in the ignore or exclusion
+path instead.
 
 `SEED-012` is a producer/economy coverage rule. It means a configured producer workflow did not provide a readable workbook for that economy. The `source_workflow` and `source_file` columns are the first check, but the real fix is usually to confirm whether that workflow is supposed to run for the economy and whether its output was produced in the normal location.
 
@@ -902,7 +907,10 @@ For example, when the findings show rows like:
 
 the problem is usually in `electricity_heat_interim_workflow.py` or its generated workbook, not in the reconciliation writer. The findings tell you which branch is bad; the source workbook shows the bad row and its expression.
 
-For `SEED-011`, compare the branch name against the canonical full-model export. For `SEED-012`, compare the configured producer list against the actual per-economy workbook inventory. Those two rules are often “system-level” failures that explain many downstream rows at once.
+For `SEED-011`, compare the branch name and IDs against the template resolved
+for that economy. For `SEED-012`, compare the configured producer list against
+the actual per-economy workbook inventory. Those two rules are often
+“system-level” failures that explain many downstream rows at once.
 
 If you want a fast workflow, use this order:
 

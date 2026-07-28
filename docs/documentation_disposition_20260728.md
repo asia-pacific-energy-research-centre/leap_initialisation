@@ -19,6 +19,18 @@ Decision meanings:
 
 No document was deleted, and no unique open item was discarded.
 
+## Disposition summary
+
+| Decision | Count |
+|---|---:|
+| Keep-live | 14 |
+| Keep-active | 16 |
+| Keep-reference | 10 |
+| Keep-historical | 27 |
+| Update-live | 19 |
+| Archive-move | 16 |
+| **Total** | **102** |
+
 ## Root, codebase, and data documentation
 
 | Document at audit start | Role / verified status | Evidence and unique information | Decision |
@@ -40,8 +52,8 @@ No document was deleted, and no unique open item was discarded.
 | `docs/aus_2022_balance_export_investigation_findings.md` | Dated findings | Preserves AUS balance evidence and follow-ups; not general instruction. | Keep-reference |
 | `docs/balance_demand_conservation_check.md` | Check design | Current demand-conservation methodology and outputs. | Keep-live |
 | `docs/baseline_seed_balance_diagnostics.md` | Diagnostic runbook | Current cyclical balance diagnostic design and notebook usage. | Keep-live |
-| `docs/baseline_seed_rule_inventory.md` | Rule registry | Unique SEED-C rule definitions used by validation. | Keep-live |
-| `docs/baseline_seed_unit_review.md` | Specialist QA note | Unit/scale review evidence and checking method. | Keep-reference |
+| `docs/baseline_seed_rule_inventory.md` | Rule registry | Unique SEED-C rule definitions used by validation; shared-full-model references were corrected to selected economy templates. | Update-live |
+| `docs/baseline_seed_unit_review.md` | Specialist QA note | Unit/scale review evidence and checking method; template authority wording was corrected. | Update-live |
 | `docs/canonical_mapping_migration_notes.md` | Migration record | Useful C1–C7 evidence; some future-tense sections are historical and routed by the queues. | Keep-reference |
 | `docs/canonical_migration_diagnostics/README.md` | Diagnostic artifact guide | Explains retained migration CSV evidence. | Keep-reference |
 | `docs/check_registry.md` | Enforced check directory | Current F1–F5 ownership and gateability; covered by a repository test. | Keep-live |
@@ -63,9 +75,9 @@ No document was deleted, and no unique open item was discarded.
 | `docs/process_map_human.md` | Modeller orientation | Current plain-English process map. | Keep-live |
 | `docs/refining_workflow_retirement_audit.md` | Retirement evidence | Proves active Oil Refining ownership moved to transformation workflow. | Keep-reference |
 | `docs/results_update_dry_run_preview.md` | Results-update contract/history | Current update-strategy configuration and cycle evidence. | Keep-live |
-| `docs/special_rules_and_design_decisions.md` | Decision log | Unique INIT/SEED/CROSS modelling decisions; authoritative for intentional exceptions. | Keep-live |
+| `docs/special_rules_and_design_decisions.md` | Decision log | Unique INIT/SEED/CROSS modelling decisions; authoritative for intentional exceptions. CROSS-001 and INIT-003 still named the retired shared workbook as current. | Update-live |
 | `docs/supply_conservation_checks.md` | Check methodology | Current supply preservation and closure checks. | Keep-live |
-| `docs/supply_reconciliation_workflow_guide.md` | Main modeller runbook | Current workflow, manual LEAP loop, export procedure, and reconciliation rules. | Keep-live |
+| `docs/supply_reconciliation_workflow_guide.md` | Main modeller runbook | Current workflow, manual LEAP loop, export procedure, and reconciliation rules; SEED-011 guidance was corrected to the selected economy template. | Update-live |
 | `docs/system_overview_for_rewrite.md` | Long-form architecture snapshot | Valuable pre-refactor context; current paths and historical pain points now clearly labeled. | Update-live |
 | `docs/work_queue.md` | Detailed engineering log | Unique traps, evidence, and settled/open technical detail; navigation to moved prompt corrected. | Update-live |
 | `docs/workflow_inventory.md` | Entry-point inventory | Current/legacy boundary; retired minor-demand and refining entrypoints corrected. | Update-live |
