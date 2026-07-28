@@ -853,7 +853,13 @@ def run_economy_balance_diagnostic(
         sheet_map_path=resolved_sheet_map_path,
         exports_root=_resolve(exports_root),
     ) as (build_balance_comparison_esto_axis, convert_leap_balances_to_esto_long_table):
-        with tempfile.TemporaryDirectory(prefix="leap_balance_esto_mapping_") as temp_dir:
+        # Windows can briefly retain the generated mapping workbook after
+        # pandas/openpyxl finishes reading it. Cleanup failure must not discard
+        # a completed diagnostic conversion.
+        with tempfile.TemporaryDirectory(
+            prefix="leap_balance_esto_mapping_",
+            ignore_cleanup_errors=True,
+        ) as temp_dir:
             extraction_mapping_path = _write_esto_axis_extraction_mapping_workbook(
                 output_path=Path(temp_dir) / "esto_axis_extraction_mappings.xlsx",
                 codebook_path=resolved_codebook_path,
