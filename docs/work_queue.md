@@ -1486,8 +1486,12 @@ These are deliberately outside Phase 2: their settings alter model behaviour,
 fallback policy, or an operational run contract. Review and implement each as
 a separate task, in this order:
 
-1. `docs/prompts/refining_workflow_scoped_review.md` - small legacy-wrapper
-   adapter and path/default review.
+1. `docs/prompts/refining_workflow_scoped_review.md` - **decision recorded
+   2026-07-28:** implement and verify the shared LEAP process-boundary
+   normalization, then retire the unused standalone prebuilt-workbook workflow
+   to `codebase/old_workflows/`. Do not build another refining-specific wrapper;
+   `transformation_entry.py` already fills that role. See
+   `docs/refining_workflow_retirement_audit.md`.
 2. `docs/prompts/aggregated_demand_scoped_review.md` - demand definition,
    source filters, zeroing contract, and selective-cache policy.
 3. `docs/prompts/other_loss_own_use_proxy_scoped_review.md` - proxy activity,
