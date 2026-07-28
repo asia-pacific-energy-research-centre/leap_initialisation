@@ -1,17 +1,27 @@
 # leap_initialisation
 
-Focused copy of the LEAP area initialisation workflows from `leap_utilities`.
+This repository is the active home for LEAP area initialisation, supply
+reconciliation, and LEAP import-workbook preparation. It was rebuilt from the
+corresponding workflows in `leap_utilities`.
 
-Primary entry point:
+## Start here
+
+For the connected three-repository ownership and reading route, start with
+[`leap_mappings/docs/start_here.md`](../leap_mappings/docs/start_here.md).
+
+Within this repository:
+
+| Need | Authoritative route |
+|---|---|
+| understand or run supply reconciliation | [`docs/handover/supply_reconciliation_guide.md`](docs/handover/supply_reconciliation_guide.md) |
+| execute safely as an agent | [`docs/handover/supply_reconciliation_agent_guide.md`](docs/handover/supply_reconciliation_agent_guide.md) |
+| interpret validation rules | [`docs/check_registry.md`](docs/check_registry.md) |
+| choose current work | [`docs/handover_work_queue_20260728.md`](docs/handover_work_queue_20260728.md) |
+| inspect detailed engineering history and traps | [`docs/work_queue.md`](docs/work_queue.md) |
+
+The primary entry point is:
 
 - `codebase/supply_reconciliation_workflow.py`
-
-For the current handover route, start with
-[`docs/handover/supply_reconciliation_guide.md`](docs/handover/supply_reconciliation_guide.md).
-Agents should also read
-[`docs/handover/supply_reconciliation_agent_guide.md`](docs/handover/supply_reconciliation_agent_guide.md).
-The cross-repository start page is
-`leap_mappings/docs/handover/README.md`.
 
 Supporting workflows copied with it include supply, transformation, transfers, interim electricity/heat, aggregated demand, loss/own-use proxy, LEAP export helpers, and mapping readers.
 
@@ -19,7 +29,13 @@ Current copied inputs include `config/`, live `data/` inputs, docs, scripts, tes
 
 ---
 
-# Original leap-utilities Notes
+## Historical leap-utilities notes
+
+The material below preserves useful setup history and examples from the
+repository's origin. For current ownership, execution order, and validation
+authority, use the Start-here routes above. Treat old repository names, setup
+commands, and API assumptions below as historical unless a maintained guide
+confirms them.
 
 Shared LEAP helpers (branch utilities, Excel import/export, energy-use reconciliation and LEAP API interactions). It was originally intended to be flexible and reusable but perhaps is just a bit of a grab-bag of utilities that have been built up over time for interacting with LEAP in various ways.
 

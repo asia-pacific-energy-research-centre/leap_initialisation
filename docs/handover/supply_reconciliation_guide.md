@@ -4,6 +4,13 @@
 
 **Audience:** analysts, modellers, and maintainers
 
+**Authority:** Level 1 operating guide for LEAP initialisation and supply
+reconciliation
+
+**Use this when:** preparing, validating, importing, or iterating LEAP seed and
+update workbooks. For cross-repository routing, start at
+[`leap_mappings/docs/start_here.md`](../../../leap_mappings/docs/start_here.md).
+
 This guide is the reader-friendly handover route. The full rule and workflow
 reference remains
 [`../supply_reconciliation_workflow_guide.md`](../supply_reconciliation_workflow_guide.md);
