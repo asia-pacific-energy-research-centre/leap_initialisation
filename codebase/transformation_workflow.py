@@ -206,7 +206,7 @@ def collect_transformation_rows(
             core.PROJECTION_SIGN_STABLE_MODE,
             core.SIGN_STABLE_PROJECTION_FLOWS,
         )
-        projection_df, _ = build_with_conservation_policy(
+        projection_df, projection_diagnostics = build_with_conservation_policy(
             f"transformation projection (projection_scenario={projection_scenario!r})",
             lambda strict_conservation: core.build_esto_projection_table(
                 ninth_data=scenario_ninth,
@@ -219,6 +219,10 @@ def collect_transformation_rows(
                 strict_conservation=strict_conservation,
                 fill_missing_ninth_sectors=core.FILL_IN_MISSING_9TH_SECTORS,
             ),
+        )
+        core.save_unallocated_projection_diagnostics(
+            projection_diagnostics,
+            scenario=normalized_projection_scenario,
         )
         scenario_esto = core.merge_projection_into_esto(
             scenario_esto,

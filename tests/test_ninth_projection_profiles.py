@@ -84,6 +84,201 @@ def test_child_flow_profiles_require_current_run_esto_columns() -> None:
         build_economy_specific_child_flow_profiles(esto, 2022)
 
 
+def test_projection_without_economy_base_values_remains_unallocated_with_context(
+    tmp_path,
+) -> None:
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "20USA",
+                "flows": "09.08 Coal transformation",
+                "products": "02.01 Coke oven coke",
+                "is_subtotal": False,
+                "2021": 10.0,
+                "2022": 0.0,
+            },
+            {
+                "economy": "20USA",
+                "flows": "09.08.01 Coke ovens",
+                "products": "02.01 Coke oven coke",
+                "is_subtotal": False,
+                "2021": 6.0,
+                "2022": 0.0,
+            },
+            {
+                "economy": "20USA",
+                "flows": "09.08.05 Liquefaction (coal to oil)",
+                "products": "02.04 Coal tar",
+                "is_subtotal": False,
+                "2021": 4.0,
+                "2022": 0.0,
+            },
+            {
+                # Another economy has a base-year value. It must not become an
+                # APEC fallback allocation profile for the United States.
+                "economy": "01AUS",
+                "flows": "09.08 Coal transformation",
+                "products": "02.01 Coke oven coke",
+                "is_subtotal": False,
+                "2021": 100.0,
+                "2022": 100.0,
+            },
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy": "20_USA",
+                "scenarios": "reference",
+                "sectors": "09_total_transformation_sector",
+                "sub1sectors": "09_08_coal_transformation",
+                "sub2sectors": "x",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "02_coal_products",
+                "subfuels": "x",
+                "subtotal_results": False,
+                2023: 50.0,
+            }
+        ]
+    )
+    mapping_path = tmp_path / "mapping.xlsx"
+    pd.DataFrame(
+        [
+            {
+                "ninth_sector": "09_08_coal_transformation",
+                "ninth_fuel": "02_coal_products",
+                "esto_flow": "09.08 Coal transformation",
+                "esto_product": "02.01 Coke oven coke",
+            }
+        ]
+    ).to_excel(mapping_path, index=False)
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth,
+        esto,
+        mapping_path,
+        base_year=2022,
+        projection_years=[2023],
+        sign_stable_flows="all",
+    )
+
+    assert projection.empty
+    summary = diagnostics[
+        diagnostics["diagnostic_type"].eq(
+            "unallocated_no_economy_base_year"
+        )
+    ]
+    assert len(summary) == 1
+    assert summary.iloc[0]["share_source"] == (
+        "unallocated_no_economy_base_year"
+    )
+
+    context = diagnostics[
+        diagnostics["diagnostic_type"].eq("unallocated_projection_context")
+    ]
+    assert set(context["diagnostic_record_type"]) == {
+        "unallocated_target_mapping",
+        "unallocated_projection",
+        "historical_flow_family",
+    }
+    unallocated_values = context[
+        context["diagnostic_record_type"].eq("unallocated_projection")
+    ]
+    assert unallocated_values[["year", "value"]].to_dict("records") == [
+        {"year": 2023, "value": 50.0}
+    ]
+    historical = context[
+        context["diagnostic_record_type"].eq("historical_flow_family")
+    ]
+    assert set(historical["esto_flow"]) == {
+        "09.08 Coal transformation",
+        "09.08.01 Coke ovens",
+        "09.08.05 Liquefaction (coal to oil)",
+    }
+    assert set(historical["esto_product"]) == {
+        "02.01 Coke oven coke",
+        "02.04 Coal tar",
+    }
+    assert set(historical["year"]) == {2021, 2022}
+
+
+def test_gas_projection_without_parent_or_child_base_values_is_unallocated(
+    tmp_path,
+) -> None:
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "20USA",
+                "flows": "09.06 Gas processing plants",
+                "products": "08.01 Natural gas",
+                "is_subtotal": True,
+                "2022": 0.0,
+            },
+            {
+                "economy": "20USA",
+                "flows": "09.06.01 Gas works plants",
+                "products": "08.01 Natural gas",
+                "is_subtotal": False,
+                "2022": 0.0,
+            },
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy": "20_USA",
+                "scenarios": "reference",
+                "sectors": "09_total_transformation_sector",
+                "sub1sectors": "09_06_gas_processing_plants",
+                "sub2sectors": "x",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "08_01_natural_gas",
+                "subfuels": "x",
+                "subtotal_results": True,
+                2023: 25.0,
+            }
+        ]
+    )
+    mapping_path = tmp_path / "mapping.xlsx"
+    pd.DataFrame(
+        [
+            {
+                "ninth_sector": "09_06_gas_processing_plants",
+                "ninth_fuel": "08_01_natural_gas",
+                "esto_flow": "09.06 Gas processing plants",
+                "esto_product": "08.01 Natural gas",
+            }
+        ]
+    ).to_excel(mapping_path, index=False)
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth,
+        esto,
+        mapping_path,
+        base_year=2022,
+        projection_years=[2023],
+        sign_stable_flows="all",
+    )
+
+    assert projection.empty
+    unallocated = diagnostics[
+        diagnostics["diagnostic_type"].eq(
+            "unallocated_no_economy_base_year"
+        )
+    ]
+    assert len(unallocated) == 1
+    assert unallocated.iloc[0]["flow_family"] == "09.06"
+    context = diagnostics[
+        diagnostics["diagnostic_type"].eq("unallocated_projection_context")
+    ]
+    projected = context[
+        context["diagnostic_record_type"].eq("unallocated_projection")
+    ]
+    assert projected.iloc[0]["value"] == pytest.approx(25.0)
+
+
 def test_parent_projection_preserves_mixed_signed_child_profile(tmp_path) -> None:
     esto = pd.DataFrame(
         [

@@ -1769,6 +1769,52 @@ PROJECTION_DIAGNOSTICS_PATH = (
 SCENARIO_EXPORT_OVERRIDES = workflow_cfg.TRANSFORMATION_SCENARIO_EXPORT_OVERRIDES
 
 
+def save_unallocated_projection_diagnostics(
+    projection_diagnostics: pd.DataFrame | None,
+    scenario: str,
+    output_dir: Path | str | None = None,
+) -> Path | None:
+    """Write the review CSV for projection aggregates left unallocated."""
+    if projection_diagnostics is None or projection_diagnostics.empty:
+        return None
+    if "diagnostic_type" not in projection_diagnostics.columns:
+        return None
+    context = projection_diagnostics[
+        projection_diagnostics["diagnostic_type"]
+        .astype(str)
+        .eq("unallocated_projection_context")
+    ].copy()
+    if context.empty:
+        return None
+
+    scenario_token = re.sub(
+        r"[^a-z0-9]+",
+        "_",
+        str(scenario or "scenario").strip().lower(),
+    ).strip("_")
+    diagnostics_dir = (
+        Path(output_dir or EXPORT_OUTPUT_DIR)
+        / "supporting_files"
+        / "diagnostics"
+    )
+    diagnostics_dir.mkdir(parents=True, exist_ok=True)
+    output_path = (
+        diagnostics_dir
+        / f"transformation_unallocated_projection_values_{scenario_token}.csv"
+    )
+    context.to_csv(output_path, index=False)
+    source_pairs = context[
+        context["diagnostic_record_type"].eq("unallocated_projection")
+    ][["economy_key", "ninth_sector", "ninth_fuel"]].drop_duplicates()
+    print(
+        "[WARN] Left "
+        f"{len(source_pairs)} projected aggregate pair(s) unallocated because "
+        "the economy has no nonzero ESTO base-year allocation profile. "
+        f"Review projected values and same-family ESTO history: {output_path}"
+    )
+    return output_path
+
+
 
 
 def prepare_transformation_assets() -> None:
@@ -1850,6 +1896,10 @@ def prepare_transformation_assets() -> None:
             os.makedirs(EXPORT_OUTPUT_DIR, exist_ok=True)
             projection_diagnostics.to_csv(PROJECTION_DIAGNOSTICS_PATH, index=False)
             print(f"Saved projection fallback report to {PROJECTION_DIAGNOSTICS_PATH}")
+    save_unallocated_projection_diagnostics(
+        projection_diagnostics,
+        scenario="reference",
+    )
     code_to_name_mapping = (
         load_code_to_name_mapping(CODE_TO_NAME_PATHS) if USE_CODE_TO_NAME_MAPPING else {}
     )

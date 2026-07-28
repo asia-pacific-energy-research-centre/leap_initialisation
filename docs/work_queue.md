@@ -218,6 +218,13 @@ This is a foundation, **not** a universal imputation rule. Other sectors may
 need fixed base-year values, ratios, capacity assumptions, external drivers, or
 must remain unprojected; add them only with a documented owner and tests.
 
+Projection-allocation guard added 2026-07-28: a nonzero `09.06` or `09.08`
+aggregate with neither parent nor child economy-specific base-year evidence is
+left unallocated rather than borrowing APEC ratios or using an equal split.
+The transformation workflow warns and writes
+`transformation_unallocated_projection_values_<scenario>.csv` with the
+unallocated series and same-family historical/projected ESTO context by fuel.
+
 Required design and implementation work:
 
 - create a diagnostic inventory of candidate missing sector/fuel pairs, with

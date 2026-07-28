@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -38,6 +39,12 @@ NINTH_SECTOR_COLS = [
     "sectors",
 ]
 NINTH_FUEL_COLS = ["subfuels", "fuels"]
+
+
+def _esto_flow_family(value: object) -> str:
+    """Return the dotted parent code shared by an ESTO flow family."""
+    match = re.match(r"^\s*(\d{2}\.\d{2})(?:\.|\s|$)", str(value or ""))
+    return match.group(1) if match else ""
 
 
 def normalize_economy_key(value: str | None) -> str:
@@ -764,10 +771,42 @@ def allocate_ninth_projection_to_esto(
     )
     merged["apec_group_total"] = merged["apec_group_total"].fillna(0.0)
     merged["apec_share"] = merged["apec_share"].fillna(0.0)
+    # A mapped aggregate parent may be zero while its detailed child-flow
+    # profile contains the explicit economy allocation evidence. Treat that
+    # child profile as the parent's base-year allocation magnitude.
+    profile_base_abs: dict[tuple[str, str, str], float] = {}
+    for profile_frame, parent_flow in (
+        (child_flow_profiles, COAL_PARENT_ESTO_FLOW),
+        (gas_child_flow_profiles, GAS_PARENT_ESTO_FLOW),
+    ):
+        if profile_frame is None or profile_frame.empty:
+            continue
+        grouped_profile = profile_frame.groupby(
+            ["economy_key", "esto_product"], dropna=False
+        )["base_value_abs"].sum()
+        for (economy_key, esto_product), value in grouped_profile.items():
+            profile_base_abs[
+                (str(economy_key), str(esto_product), parent_flow)
+            ] = float(value)
+    merged["allocation_base_value_abs"] = merged["base_value_abs"]
+    parent_without_direct_base = merged["allocation_base_value_abs"].le(0.0)
+    if parent_without_direct_base.any() and profile_base_abs:
+        merged.loc[
+            parent_without_direct_base, "allocation_base_value_abs"
+        ] = merged.loc[parent_without_direct_base].apply(
+            lambda row: profile_base_abs.get(
+                (
+                    str(row["economy_key"]),
+                    str(row["esto_product"]),
+                    str(row["esto_flow"]),
+                ),
+                0.0,
+            ),
+            axis=1,
+        )
     merged["group_total"] = merged.groupby(
         ["economy_key", "ninth_sector", "ninth_fuel"], dropna=False
-    )["base_value_abs"].transform("sum")
-    # Equal-share fallback must be per economy + 9th pair (not global across economies).
+    )["allocation_base_value_abs"].transform("sum")
     merged["group_count"] = merged.groupby(
         ["economy_key", "ninth_sector", "ninth_fuel"], dropna=False
     )["esto_flow"].transform("count").astype(float)
@@ -775,18 +814,35 @@ def allocate_ninth_projection_to_esto(
     merged["share_source"] = "economy"
     economy_mask = merged["group_total"] > 0
     merged.loc[economy_mask, "share"] = (
-        merged.loc[economy_mask, "base_value_abs"]
+        merged.loc[economy_mask, "allocation_base_value_abs"]
         / merged.loc[economy_mask, "group_total"]
     )
     fallback_mask = ~economy_mask
-    # Coal parent-to-child reconstruction is deliberately economy-specific.
-    # The APEC aggregate is a validation fixture only and must never supply a
-    # production economy's coal allocation shares.
-    coal_source_mask = merged["ninth_sector"].eq("09_08_coal_transformation")
-    apec_mask = fallback_mask & ~coal_source_mask & (merged["apec_group_total"] > 0)
+    flow_family = merged["esto_flow"].map(_esto_flow_family)
+    protected_flow_pair = flow_family.isin({"09.06", "09.08"}).groupby(
+        [
+            merged["economy_key"],
+            merged["ninth_sector"],
+            merged["ninth_fuel"],
+        ],
+        dropna=False,
+    ).transform("max")
+    # Gas/coal transformation aggregates must not borrow another economy's
+    # profile or use an arbitrary equal split. Preserve legacy APEC/equal
+    # fallback behaviour for other workflow families, whose policies are
+    # independently owned.
+    unallocated_mask = fallback_mask & protected_flow_pair
+    merged.loc[unallocated_mask, "share_source"] = (
+        "unallocated_no_economy_base_year"
+    )
+    apec_mask = (
+        fallback_mask
+        & ~protected_flow_pair
+        & merged["apec_group_total"].gt(0.0)
+    )
     merged.loc[apec_mask, "share"] = merged.loc[apec_mask, "apec_share"]
     merged.loc[apec_mask, "share_source"] = "apec"
-    equal_mask = fallback_mask & ~apec_mask
+    equal_mask = fallback_mask & ~protected_flow_pair & ~apec_mask
     merged.loc[equal_mask, "share"] = (
         1.0
         / merged.loc[equal_mask, "group_count"].replace(0, pd.NA)
@@ -834,6 +890,41 @@ def allocate_ninth_projection_to_esto(
         .drop_duplicates(subset=["economy_key", "ninth_sector", "ninth_fuel"])
         .copy()
     )
+    unallocated_targets = merged.loc[
+        unallocated_mask,
+        [
+            "economy_key",
+            "ninth_sector",
+            "ninth_fuel",
+            "esto_flow",
+            "esto_product",
+            "share_source",
+            "group_total",
+        ],
+    ].drop_duplicates()
+    if not unallocated_targets.empty:
+        unallocated_targets = unallocated_targets.merge(
+            source_by_pair,
+            on=["economy_key", "ninth_sector", "ninth_fuel"],
+            how="left",
+        )
+        nonzero_projection = (
+            unallocated_targets[year_cols]
+            .apply(pd.to_numeric, errors="coerce")
+            .fillna(0.0)
+            .abs()
+            .gt(1e-12)
+            .any(axis=1)
+        )
+        unallocated_targets = unallocated_targets.loc[
+            nonzero_projection
+        ].copy()
+        unallocated_targets["flow_family"] = unallocated_targets[
+            "esto_flow"
+        ].map(_esto_flow_family)
+        unallocated_targets["diagnostic_type"] = (
+            "unallocated_no_economy_base_year"
+        )
     for year in year_cols:
         source = merged[year]
         allocated = source * merged["share"]
@@ -854,6 +945,12 @@ def allocate_ninth_projection_to_esto(
                 * merged.loc[src_negative & has_negative_group, "negative_share"]
             )
         merged[year] = allocated
+
+    # Do not emit zero-valued target rows for an aggregate that was deliberately
+    # left unallocated. The source values remain available in diagnostics.
+    merged = merged.loc[
+        ~merged["share_source"].eq("unallocated_no_economy_base_year")
+    ].copy()
 
     merged["coal_allocation_method"] = "not_applicable"
     merged, child_profile_diagnostics = _disaggregate_parent_flow_allocations(
@@ -928,6 +1025,12 @@ def allocate_ninth_projection_to_esto(
     ].copy()
     if not diagnostics.empty:
         diagnostics["diagnostic_type"] = "share_fallback"
+    if not unallocated_targets.empty:
+        diagnostics = pd.concat(
+            [diagnostics, unallocated_targets],
+            ignore_index=True,
+            sort=False,
+        )
 
     conservation_diagnostics = _build_conservation_diagnostics(
         source_by_pair.loc[
@@ -983,6 +1086,178 @@ def allocate_ninth_projection_to_esto(
     if return_allocation_provenance:
         return projection_df, diagnostics, allocation_provenance
     return projection_df, diagnostics
+
+
+def build_unallocated_projection_flow_context(
+    diagnostics: pd.DataFrame,
+    esto_data: pd.DataFrame,
+    projection_df: pd.DataFrame,
+    base_year: int,
+    projection_years: Sequence[int],
+) -> pd.DataFrame:
+    """Return long-form unallocated values plus same-family ESTO context."""
+    if diagnostics is None or diagnostics.empty:
+        return pd.DataFrame()
+    unallocated = diagnostics[
+        diagnostics.get("diagnostic_type", pd.Series(index=diagnostics.index, dtype=str))
+        .astype(str)
+        .eq("unallocated_no_economy_base_year")
+    ].copy()
+    if unallocated.empty:
+        return pd.DataFrame()
+
+    key_columns = ["economy_key", "ninth_sector", "ninth_fuel", "flow_family"]
+    for column in key_columns:
+        if column not in unallocated.columns:
+            unallocated[column] = ""
+    contexts = (
+        unallocated[["economy_key", "flow_family"]]
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+    rows: list[dict] = []
+
+    projected_years = [
+        int(year)
+        for year in projection_years
+        if year in unallocated.columns or str(int(year)) in unallocated.columns
+    ]
+    historical_source = pd.DataFrame()
+    historical_year_columns: dict[int, object] = {}
+    if esto_data is not None and not esto_data.empty:
+        historical_source = esto_data.copy()
+        historical_source["economy_key"] = historical_source["economy"].map(
+            normalize_economy_key
+        )
+        historical_source["flow_family"] = historical_source["flows"].map(
+            _esto_flow_family
+        )
+        historical_year_columns = {
+            int(column): column
+            for column in historical_source.columns
+            if str(column).isdigit() and int(column) <= int(base_year)
+        }
+    projected_source = pd.DataFrame()
+    if projection_df is not None and not projection_df.empty:
+        projected_source = projection_df.copy()
+        projected_source["flow_family"] = projected_source["esto_flow"].map(
+            _esto_flow_family
+        )
+
+    for _, context in contexts.iterrows():
+        economy_key = str(context["economy_key"])
+        flow_family = str(context["flow_family"])
+        context_key = f"{economy_key}|{flow_family}"
+        source_rows = unallocated[
+            unallocated["economy_key"].astype(str).eq(economy_key)
+            & unallocated["flow_family"].astype(str).eq(flow_family)
+        ]
+        for _, target_row in source_rows[
+            ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]
+        ].drop_duplicates().iterrows():
+            rows.append(
+                {
+                    "diagnostic_type": "unallocated_projection_context",
+                    "diagnostic_record_type": "unallocated_target_mapping",
+                    "context_key": context_key,
+                    "economy_key": economy_key,
+                    "flow_family": flow_family,
+                    "ninth_sector": target_row["ninth_sector"],
+                    "ninth_fuel": target_row["ninth_fuel"],
+                    "esto_flow": target_row["esto_flow"],
+                    "esto_product": target_row["esto_product"],
+                    "year": pd.NA,
+                    "value": pd.NA,
+                }
+            )
+        source_pairs = source_rows[
+            ["ninth_sector", "ninth_fuel", *projected_years]
+        ].drop_duplicates(subset=["ninth_sector", "ninth_fuel"])
+        for _, source_row in source_pairs.iterrows():
+            for year in projected_years:
+                rows.append(
+                    {
+                        "diagnostic_type": "unallocated_projection_context",
+                        "diagnostic_record_type": "unallocated_projection",
+                        "context_key": context_key,
+                        "economy_key": economy_key,
+                        "flow_family": flow_family,
+                        "ninth_sector": source_row["ninth_sector"],
+                        "ninth_fuel": source_row["ninth_fuel"],
+                        "esto_flow": "",
+                        "esto_product": "",
+                        "year": year,
+                        "value": float(source_row.get(year, 0.0) or 0.0),
+                    }
+                )
+
+        if not historical_source.empty and flow_family:
+            historical = historical_source[
+                historical_source["economy_key"].eq(economy_key)
+                & historical_source["flow_family"].eq(flow_family)
+            ].copy()
+            historical_years = sorted(historical_year_columns)
+            if not historical.empty and historical_years:
+                source_year_columns = [
+                    historical_year_columns[year] for year in historical_years
+                ]
+                historical = (
+                    historical.groupby(
+                        ["economy_key", "flows", "products"], dropna=False
+                    )[source_year_columns]
+                    .sum()
+                    .reset_index()
+                )
+                for _, history_row in historical.iterrows():
+                    for year in historical_years:
+                        rows.append(
+                            {
+                                "diagnostic_type": "unallocated_projection_context",
+                                "diagnostic_record_type": "historical_flow_family",
+                                "context_key": context_key,
+                                "economy_key": economy_key,
+                                "flow_family": flow_family,
+                                "ninth_sector": "",
+                                "ninth_fuel": "",
+                                "esto_flow": history_row["flows"],
+                                "esto_product": history_row["products"],
+                                "year": year,
+                                "value": float(
+                                    history_row.get(
+                                        historical_year_columns[year],
+                                        0.0,
+                                    )
+                                    or 0.0
+                                ),
+                            }
+                        )
+
+        if not projected_source.empty and flow_family:
+            projected = projected_source[
+                projected_source["economy_key"].astype(str).eq(economy_key)
+                & projected_source["flow_family"].eq(flow_family)
+            ].copy()
+            available_projection_years = [
+                year for year in projected_years if year in projected.columns
+            ]
+            for _, projected_row in projected.iterrows():
+                for year in available_projection_years:
+                    rows.append(
+                        {
+                            "diagnostic_type": "unallocated_projection_context",
+                            "diagnostic_record_type": "allocated_projection_flow_family",
+                            "context_key": context_key,
+                            "economy_key": economy_key,
+                            "flow_family": flow_family,
+                            "ninth_sector": "",
+                            "ninth_fuel": "",
+                            "esto_flow": projected_row["esto_flow"],
+                            "esto_product": projected_row["esto_product"],
+                            "year": year,
+                            "value": float(projected_row.get(year, 0.0) or 0.0),
+                        }
+                    )
+    return pd.DataFrame(rows)
 
 
 def build_esto_projection_table(
@@ -1080,7 +1355,7 @@ def build_esto_projection_table(
         parent_flow=GAS_PARENT_ESTO_FLOW,
         child_flows=GAS_CHILD_ESTO_FLOWS,
     )
-    return allocate_ninth_projection_to_esto(
+    allocation_result = allocate_ninth_projection_to_esto(
         mapping_df,
         ninth_series,
         base_values,
@@ -1092,6 +1367,31 @@ def build_esto_projection_table(
         fill_missing_ninth_sectors=fill_missing_ninth_sectors,
         return_allocation_provenance=return_allocation_provenance,
     )
+    if return_allocation_provenance:
+        projection_df, diagnostics, allocation_provenance = allocation_result
+    else:
+        projection_df, diagnostics = allocation_result
+        allocation_provenance = None
+
+    context = build_unallocated_projection_flow_context(
+        diagnostics,
+        esto_data,
+        projection_df,
+        base_year,
+        projection_years,
+    )
+    if not context.empty:
+        diagnostics = pd.concat(
+            [diagnostics, context],
+            ignore_index=True,
+            sort=False,
+        )
+    if diagnostics is not None and not diagnostics.empty:
+        diagnostics["scenario"] = str(scenario)
+
+    if return_allocation_provenance:
+        return projection_df, diagnostics, allocation_provenance
+    return projection_df, diagnostics
 
 
 def merge_projection_into_esto(
