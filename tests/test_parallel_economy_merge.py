@@ -92,6 +92,11 @@ def test_merge_concatenates_findings_from_every_successful_worker(tmp_path) -> N
     assert set(merged["economy"]) == {"01_AUS", "12_NZ"}
     assert set(merged["rule_id"]) == {"SEED-010", "SEED-011"}
     assert issue_groups_path.exists()
+    branch_summary_path = (
+        findings_path.parent
+        / "baseline_seed_20260723_consolidated_branch_issue_summary.csv"
+    )
+    assert branch_summary_path.exists()
 
 
 def test_merge_orders_rows_by_economies_run_order_then_rule_id(tmp_path) -> None:

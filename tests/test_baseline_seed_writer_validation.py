@@ -8,6 +8,7 @@ import pytest
 
 from codebase.functions.baseline_seed_validation import (
     BaselineSeedValidationError,
+    build_branch_issue_summary,
     build_validation_issue_groups,
     filter_actionable_findings,
     validate_seed_rows,
@@ -434,6 +435,60 @@ def test_grouped_share_issues_collapse_to_one_issue_per_share_group() -> None:
     assert share["member_count"].iloc[0] == 2
     assert share["year_min"].iloc[0] == 2023
     assert share["year_max"].iloc[0] == 2024
+
+
+def test_branch_issue_summary_collapses_rules_variables_and_scenarios() -> None:
+    branch = r"Demand\All demand aggregated\Road\Wind"
+    findings = pd.DataFrame([
+        {
+            "economy": economy,
+            "rule_id": rule_id,
+            "blocking": blocking,
+            "Branch Path": path,
+            "Variable": variable,
+            "Scenario": scenario,
+            "Region": "United States",
+            "year": year,
+            "source_workflow": "aggregated_demand_workflow",
+            "source_file": f"aggregated_demand_{economy}.xlsx",
+        }
+        for economy, rule_id, blocking, path, variable, scenario, year in [
+            ("20_USA", "SEED-003", False, branch, "Activity Level", "Reference", 2023),
+            ("20_USA", "SEED-004", True, branch, "Activity Level", "Target", 2024),
+            ("20_USA", "SEED-011", True, branch, "Final Energy Intensity", "Reference", 2023),
+            ("20_USA", "SEED-009", True, branch, "Activity Level", "Reference", 2025),
+            ("05_PRC", "SEED-003", True, branch, "Activity Level", "Reference", 2023),
+        ]
+    ])
+
+    summary = build_branch_issue_summary(findings)
+
+    assert len(summary) == 3
+    usa_missing = summary[
+        summary["economy"].eq("20_USA")
+        & summary["issue_family"].eq("missing_branch_or_id")
+    ].iloc[0]
+    assert usa_missing["member_rule_ids"] == "SEED-003|SEED-004|SEED-011"
+    assert usa_missing["variables"] == "Activity Level|Final Energy Intensity"
+    assert usa_missing["scenarios"] == "Reference|Target"
+    assert usa_missing["years"] == "2023|2024"
+    assert usa_missing["finding_count"] == 3
+    assert usa_missing["blocking_count"] == 2
+    assert usa_missing["blocking_status"] == "blocking"
+    assert (
+        summary[
+            summary["economy"].eq("20_USA")
+            & summary["issue_family"].eq("series_coverage")
+        ].shape[0]
+        == 1
+    )
+    assert (
+        summary[
+            summary["economy"].eq("05_PRC")
+            & summary["issue_family"].eq("missing_branch_or_id")
+        ].shape[0]
+        == 1
+    )
 
 
 def test_final_writer_exposes_key_scoped_zero_reset_exception(

@@ -62,6 +62,7 @@ from codebase.functions.baseline_seed_validation import (
     BaselineSeedValidationError,
     SOURCE_FILE_COLUMN,
     SOURCE_WORKFLOW_COLUMN,
+    build_branch_issue_summary,
     build_validation_issue_groups,
     check_producer_coverage,
     complete_canonical_share_groups,
@@ -2196,6 +2197,14 @@ def write_per_economy_combined_workbooks(
         consolidated.to_csv(consolidated_path, index=False)
         consolidated_issue_groups_path = diagnostics_dir / f"baseline_seed_{run_stamp}_consolidated_issue_groups.csv"
         build_validation_issue_groups(consolidated).to_csv(consolidated_issue_groups_path, index=False)
+        consolidated_branch_summary_path = (
+            diagnostics_dir
+            / f"baseline_seed_{run_stamp}_consolidated_branch_issue_summary.csv"
+        )
+        build_branch_issue_summary(consolidated).to_csv(
+            consolidated_branch_summary_path,
+            index=False,
+        )
         blocking = consolidated[
             consolidated.get("blocking", pd.Series(False, index=consolidated.index)).fillna(False)
         ] if not consolidated.empty else pd.DataFrame()
@@ -2206,7 +2215,8 @@ def write_per_economy_combined_workbooks(
             raise BaselineSeedValidationError(
                 "No baseline-seed workbooks were written because consolidated "
                 f"blocking findings remain ({summary}). Diagnostics: {consolidated_path}; "
-                f"issue groups: {consolidated_issue_groups_path}"
+                f"issue groups: {consolidated_issue_groups_path}; compact branch summary: "
+                f"{consolidated_branch_summary_path}"
             )
 
         # Economies whose seed still carries blocking findings. Tracked per
@@ -2245,13 +2255,15 @@ def write_per_economy_combined_workbooks(
                 f"but consolidated blocking findings remain for {blocked_economies} ({summary}). "
                 f"These economies' workbooks may contain unresolved -1 BranchID/VariableID/"
                 f"ScenarioID rows or other blocking issues -- review before LEAP import. "
-                f"Diagnostics: {consolidated_path}; issue groups: {consolidated_issue_groups_path}"
+                f"Diagnostics: {consolidated_path}; issue groups: {consolidated_issue_groups_path}; "
+                f"compact branch summary: {consolidated_branch_summary_path}"
             )
             workflow_common.defer_or_raise(
                 BaselineSeedValidationError(
                     "Consolidated blocking findings remain after writing baseline-seed "
                     f"workbooks ({summary}). Diagnostics: {consolidated_path}; "
-                    f"issue groups: {consolidated_issue_groups_path}"
+                    f"issue groups: {consolidated_issue_groups_path}; compact branch summary: "
+                    f"{consolidated_branch_summary_path}"
                 ),
                 context=f"write_per_economy_combined_workbooks:{blocked_economies}",
             )

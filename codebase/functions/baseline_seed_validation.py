@@ -43,6 +43,21 @@ SHARE_ROOT_CAUSE_RULE_IDS = set(SHARE_VARIABLE_RULE_IDS.values())
 MISSING_BRANCH_ROOT_CAUSE_RULE_IDS = {"SEED-003", "SEED-004", "SEED-005", "SEED-011"}
 PRODUCER_COVERAGE_ROOT_CAUSE_RULE_IDS = {"SEED-012"}
 IGNORED_FULL_MODEL_EXPORT_BRANCH_LABELS = {"abc do not use"}
+BRANCH_ISSUE_FAMILY_BY_RULE_ID = {
+    "SEED-001": "logical_key_duplicates",
+    "SEED-002": "logical_key_duplicates",
+    "SEED-003": "missing_branch_or_id",
+    "SEED-004": "missing_branch_or_id",
+    "SEED-005": "missing_branch_or_id",
+    "SEED-006": "share_invariant",
+    "SEED-007": "share_invariant",
+    "SEED-008": "share_invariant",
+    "SEED-009": "series_coverage",
+    "SEED-010": "scenario_coverage",
+    "SEED-011": "missing_branch_or_id",
+    "SEED-012": "producer_coverage",
+    "SEED-013": "process_efficiency",
+}
 
 # When a share group is all-zero in one scenario, borrow the genuine profile from
 # another scenario (first match wins) before falling back to a synthetic anchor.
@@ -478,6 +493,131 @@ def build_validation_issue_groups(findings: pd.DataFrame) -> pd.DataFrame:
     if not frames:
         return pd.DataFrame()
     return pd.concat(frames, ignore_index=True, sort=False)
+
+
+def build_branch_issue_summary(findings: pd.DataFrame) -> pd.DataFrame:
+    """Build a compact human review view without replacing row-level evidence.
+
+    Findings are collapsed to one row per economy, branch path, and semantic
+    issue family. Variables, scenarios, years, rules, provenance, and counts
+    remain visible as delimited aggregates. The detailed findings CSV remains
+    the authoritative audit surface.
+    """
+    columns = [
+        "issue_summary_id",
+        "economy",
+        "Branch Path",
+        "issue_family",
+        "primary_rule_id",
+        "member_rule_ids",
+        "variables",
+        "scenarios",
+        "regions",
+        "years",
+        "source_workflows",
+        "source_files",
+        "finding_count",
+        "member_count",
+        "blocking_count",
+        "blocking",
+        "blocking_status",
+        "summary",
+    ]
+    if findings.empty or "rule_id" not in findings.columns:
+        return pd.DataFrame(columns=columns)
+
+    work = findings.copy()
+    if "economy" not in work.columns:
+        work["economy"] = ""
+    if "Branch Path" not in work.columns:
+        work["Branch Path"] = ""
+    work["issue_family"] = work["rule_id"].map(BRANCH_ISSUE_FAMILY_BY_RULE_ID)
+    missing_family = work["issue_family"].isna()
+    work.loc[missing_family, "issue_family"] = (
+        "rule_" + work.loc[missing_family, "rule_id"].map(_normalized)
+    )
+
+    def _joined_values(group: pd.DataFrame, column: str) -> str:
+        if column not in group.columns:
+            return ""
+        return "|".join(sorted({
+            _text(value)
+            for value in group[column]
+            if _text(value)
+        }))
+
+    def _joined_years(group: pd.DataFrame) -> str:
+        years = {
+            year
+            for value in group.get("year", pd.Series(dtype=object))
+            if (year := _int_or_none(value)) is not None
+        }
+        for _, finding in group[group["rule_id"].eq("SEED-009")].iterrows():
+            for value in _text(finding.get("evidence")).split("|"):
+                if (year := _int_or_none(value)) is not None:
+                    years.add(year)
+        return "|".join(str(year) for year in sorted(years))
+
+    rows: list[dict[str, object]] = []
+    group_columns = ["economy", "Branch Path", "issue_family"]
+    for key, group in work.groupby(group_columns, dropna=False, sort=True):
+        economy, branch_path, issue_family = key
+        rule_ids = sorted({
+            _text(value)
+            for value in group["rule_id"]
+            if _text(value)
+        })
+        primary_rule_id = (
+            "SEED-011"
+            if issue_family == "missing_branch_or_id" and "SEED-011" in rule_ids
+            else (rule_ids[0] if rule_ids else "")
+        )
+        blocking_values = (
+            group["blocking"].fillna(False).astype(bool)
+            if "blocking" in group.columns
+            else pd.Series(True, index=group.index)
+        )
+        blocking_count = int(blocking_values.sum())
+        variables = _joined_values(group, "Variable")
+        scenarios = _joined_values(group, "Scenario")
+        if issue_family == "scenario_coverage":
+            missing_scenarios = {
+                scenario
+                for value in group.get("evidence", pd.Series(dtype=object))
+                for scenario in _text(value).split("|")
+                if scenario
+            }
+            scenario_values = set(scenarios.split("|")) if scenarios else set()
+            scenario_values.update(missing_scenarios)
+            scenarios = "|".join(sorted(scenario_values))
+        rows.append({
+            "issue_summary_id": "branch_issue::" + "|".join(
+                _normalized(value) for value in key
+            ),
+            "economy": economy,
+            "Branch Path": branch_path,
+            "issue_family": issue_family,
+            "primary_rule_id": primary_rule_id,
+            "member_rule_ids": "|".join(rule_ids),
+            "variables": variables,
+            "scenarios": scenarios,
+            "regions": _joined_values(group, "Region"),
+            "years": _joined_years(group),
+            "source_workflows": _joined_values(group, SOURCE_WORKFLOW_COLUMN),
+            "source_files": _joined_values(group, SOURCE_FILE_COLUMN),
+            "finding_count": len(group),
+            "member_count": len(group),
+            "blocking_count": blocking_count,
+            "blocking": bool(blocking_count),
+            "blocking_status": "blocking" if blocking_count else "warning_only",
+            "summary": (
+                f"{issue_family.replace('_', ' ')}: {len(group)} finding(s), "
+                f"{len(rule_ids)} rule(s), "
+                f"{len(variables.split('|')) if variables else 0} variable(s), "
+                f"{len(scenarios.split('|')) if scenarios else 0} scenario(s)."
+            ),
+        })
+    return pd.DataFrame(rows, columns=columns)
 
 
 def _text(value: object) -> str:
@@ -1898,16 +2038,20 @@ def prepare_seed_rows_for_write(
     findings_path = output_dir / f"{diagnostic_stem}_rule_findings.csv"
     duplicates_path = output_dir / f"{diagnostic_stem}_duplicate_groups.csv"
     issue_groups_path = output_dir / f"{diagnostic_stem}_issue_groups.csv"
+    branch_issue_summary_path = output_dir / f"{diagnostic_stem}_branch_issue_summary.csv"
     filter_actionable_findings(result.findings).to_csv(findings_path, index=False)
     result.duplicate_groups.to_csv(duplicates_path, index=False)
-    build_validation_issue_groups(filter_actionable_findings(result.findings)).to_csv(issue_groups_path, index=False)
+    actionable_findings = filter_actionable_findings(result.findings)
+    build_validation_issue_groups(actionable_findings).to_csv(issue_groups_path, index=False)
+    build_branch_issue_summary(actionable_findings).to_csv(branch_issue_summary_path, index=False)
 
     if raise_on_blocking and not result.blocking_findings.empty:
         rule_counts = result.blocking_findings["rule_id"].value_counts().sort_index()
         summary = ", ".join(f"{rule_id}={count}" for rule_id, count in rule_counts.items())
         raise BaselineSeedValidationError(
             "Baseline-seed workbook was not written because blocking validation "
-            f"findings remain ({summary}). Diagnostics: {findings_path}"
+            f"findings remain ({summary}). Diagnostics: {findings_path}; "
+            f"compact branch summary: {branch_issue_summary_path}"
         )
     return result
 
@@ -1925,6 +2069,7 @@ __all__ = [
     "filter_actionable_findings",
     "is_temporary_unresolved_branch_path",
     "build_missing_branch_issue_groups",
+    "build_branch_issue_summary",
     "build_producer_coverage_issue_groups",
     "build_share_issue_groups",
     "build_validation_issue_groups",

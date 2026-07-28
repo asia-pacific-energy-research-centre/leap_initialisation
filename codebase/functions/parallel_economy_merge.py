@@ -39,7 +39,10 @@ from typing import Sequence
 import pandas as pd
 
 import codebase.supply_reconciliation_config as _supply_reconciliation_config
-from codebase.functions.baseline_seed_validation import build_validation_issue_groups
+from codebase.functions.baseline_seed_validation import (
+    build_branch_issue_summary,
+    build_validation_issue_groups,
+)
 from codebase.functions.leap_excel_io import find_leap_header_row
 from codebase.functions.parallel_economy_runner import EconomyWorkerResult
 
@@ -309,5 +312,9 @@ def merge_consolidated_baseline_seed_findings(
 
     issue_groups_out = out_dir / f"baseline_seed_{run_stamp}_consolidated_issue_groups.csv"
     build_validation_issue_groups(merged).to_csv(issue_groups_out, index=False)
+    branch_summary_out = (
+        out_dir / f"baseline_seed_{run_stamp}_consolidated_branch_issue_summary.csv"
+    )
+    build_branch_issue_summary(merged).to_csv(branch_summary_out, index=False)
 
     return findings_out, issue_groups_out
