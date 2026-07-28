@@ -1,5 +1,15 @@
 # Remaining work queue
 
+> **This is the engineering log, not the handover schedule.** For dated
+> status, priorities, owners, dependencies and the four-week plan, start at
+> [handover_work_queue_20260728.md](handover_work_queue_20260728.md). This
+> file keeps the reasoning, the settled decisions, the recorded traps, and
+> the known pre-existing failures. Items below are **not** in priority or
+> chronological order, and several carry stale figures corrected in
+> [documentation_audit_20260728.md](documentation_audit_20260728.md)
+> (`D-04` full-model-export retirement, `D-05` template census, `D-06`
+> Phase 2). Verify against code before acting on a number here.
+
 ## [21] Cyclical baseline-seed LEAP balance diagnostics
 
 **Status: Step 1 implemented and real-data verified 2026-07-27 in the
@@ -560,7 +570,7 @@ efficiency-value plausibility remains a separate modelling rule.
 
 ## [5] Zero-fill mechanism consolidation (stages 2–3) ✅ Completed 2026-07-16
 
-Not blocked. See `docs/prompts/export_zero_fill_consolidation_execution_prompt.md`
+Not blocked. See `docs/archive/export_zero_fill_consolidation_execution_prompt.md`
   (premise corrected 2026-07-16; stage 1 is the header detector, complete).
   `export_zero_fill.zero_fill_unset_rows` now handles stage 2 (own-use and
   demand-zeroing) while preserving their separate scope and expression styles.
@@ -1906,6 +1916,6 @@ share discrepancy is resolved and the harness passes.
 - [check_registry.md](check_registry.md) — every pre-export check, five families, rules A/B/C, hotspots.
 - [baseline_seed_rule_inventory.md](baseline_seed_rule_inventory.md) — SEED-C rule detail.
 - [prompts/patch_baseline_seeds_module_verification_prompt.md](prompts/patch_baseline_seeds_module_verification_prompt.md) — patch verification recipe + transformation reassessment.
-- [prompts/export_zero_fill_consolidation_execution_prompt.md](prompts/export_zero_fill_consolidation_execution_prompt.md) — F1 consolidation.
+- [prompts/export_zero_fill_consolidation_execution_prompt.md](archive/export_zero_fill_consolidation_execution_prompt.md) — F1 consolidation.
 - [prompts/transformation_multi_output_default_verification_prompt.md](prompts/transformation_multi_output_default_verification_prompt.md) — deferred full-run verification of the confirmed multi-output fix.
 - [prompts/baseline_seed_aus_things_to_check.md](prompts/baseline_seed_aus_things_to_check.md) — focused checks for the next Australia seed refresh.

@@ -143,7 +143,7 @@ hence `read_leap_sheet` / `find_leap_header_row` live in `leap_excel_io`
 (which already owns LEAP sheet I/O) rather than in a new `export_zero_fill.py`.
 Guarded by `tests/test_leap_sheet_header_detection.py`. Zero-fill *mechanism*
 consolidation is still tracked by
-[export_zero_fill_consolidation_execution_prompt.md](prompts/export_zero_fill_consolidation_execution_prompt.md).
+[export_zero_fill_consolidation_execution_prompt.md](archive/export_zero_fill_consolidation_execution_prompt.md).
 
 **Zero-fill mechanism consolidation.** `export_zero_fill.zero_fill_unset_rows`
 now owns the shared universe filtering, de-duplication, anti-join, metadata, and
@@ -418,4 +418,4 @@ Target. Keep the gate until the USA discrepancy is resolved.
 - [baseline_seed_rule_inventory.md](baseline_seed_rule_inventory.md) — full SEED-C rule detail (F2).
 - [special_rules_and_design_decisions.md](special_rules_and_design_decisions.md).
 - [supply_conservation_checks.md](supply_conservation_checks.md), [balance_demand_conservation_check.md](balance_demand_conservation_check.md) — F5.
-- [prompts/export_zero_fill_consolidation_execution_prompt.md](prompts/export_zero_fill_consolidation_execution_prompt.md) — F1 consolidation plan.
+- [prompts/export_zero_fill_consolidation_execution_prompt.md](archive/export_zero_fill_consolidation_execution_prompt.md) — F1 consolidation plan.
