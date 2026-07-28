@@ -1,6 +1,6 @@
 # Current execution roadmap
 
-Status: active as of 2026-07-22. This is the operational roadmap for the
+Status: active, revalidated 2026-07-28. This is the operational roadmap for the
 initialisation workflow. It complements the detailed thread briefs; where an
 older handoff describes a prior state, this document is the current authority.
 
@@ -16,10 +16,13 @@ older handoff describes a prior state, this document is the current authority.
 - A full-horizon run is an explicit release/assurance or useful-output action,
   not routine iteration. Do it only after a sequence of two-year checks, for a
   representative validation set or to produce outputs that will be used.
-- Do not run two economies concurrently from this working tree. Per-economy
-  workflow locks exist, but `ECONOMIES` remains a source-file module literal
-  that a late preflight import can re-read. Safe parallelism waits for the
-  Phase 4 run-context work and per-process configuration overrides.
+- Run concurrent economies only through
+  `codebase/functions/parallel_economy_runner.py`, which supplies isolated
+  per-process snapshots via `LEAP_WORKER_SNAPSHOT_JSON`. Do not edit
+  `ECONOMIES` or `RUN_OUTPUT_LABEL` to launch a second bare workflow while the
+  first is running. Sequential execution remains the default; the parallel
+  path is bounded and verified, but its parent merge still does not recreate
+  the sequential path's single combined workbook.
 - Use a unique `RUN_OUTPUT_LABEL` for every retained test run; restore
   `ECONOMIES = ECONOMIES_RUN_ORDER` and `RUN_OUTPUT_LABEL = "auto"` when the
   run is over. Do not edit workflow code or configuration while a run is live.

@@ -1236,7 +1236,7 @@ per-economy templates" are closed.
 ### Sequenced fix — execution prompt
 
 Full instructions, preconditions and verification plan:
-[prompts/preset_forwarding_fix_execution_prompt.md](prompts/preset_forwarding_fix_execution_prompt.md).
+[archive/preset_forwarding_fix_execution_prompt.md](archive/preset_forwarding_fix_execution_prompt.md).
 Summary of the sequence (after the fleet run, in this order):
 
 1. **`3928a7b codex: deliver preset overrides to the modules that read them`** —

@@ -1,3 +1,10 @@
+# Historical workflow zero-skeleton log — 2026-07-08
+
+> **Archived raw evidence.** This file was formerly the unnamed root file
+> `Untitled-2.md`. It is preserved verbatim below as workflow stdout from the
+> electricity/heat zero-skeleton run; it is not an operating guide or an active
+> error list.
+
 ng zero skeleton.
 
 ==== Chemical heat for electricity production (18_CT) ====

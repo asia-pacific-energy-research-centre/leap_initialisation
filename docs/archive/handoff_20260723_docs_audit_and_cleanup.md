@@ -1,5 +1,10 @@
 # Handoff — docs/ audit, repo cleanup, and post-run follow-ups (2026-07-23)
 
+> **Archived 2026-07-28:** its documentation-audit and prompt-routing work has
+> been executed. Still-open repository cleanup items are preserved in
+> `docs/handover_work_queue_20260728.md`; the broader cleanup plan remains in
+> `docs/prompts/repo_cleanup_and_consolidation_plan_20260723.md`.
+
 Type: handoff / continuation prompt. Written 2026-07-23 while a real
 production run (`BASELINE_SEED_7ECON_REAL_20260723`, 7 economies, full
 horizon, sequential) is in flight. Two work sections below: **A** is safe to

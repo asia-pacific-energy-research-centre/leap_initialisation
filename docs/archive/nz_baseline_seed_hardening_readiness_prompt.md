@@ -1,5 +1,9 @@
 # 12_NZ baseline-seed hardening and readiness prompt
 
+> **Archived 2026-07-28:** completed readiness work is recorded in
+> `docs/nz_baseline_seed_readiness_audit_20260717.md`; later NZ execution
+> evidence is in `docs/nz_target_results_update_20260728.md`.
+
 Type: staged implementation, verification, and gated single-economy run.
 
 ## Start gate

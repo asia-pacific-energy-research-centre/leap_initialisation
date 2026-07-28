@@ -1,5 +1,8 @@
 # Prompt: review unmapped New Zealand LEAP branch/fuel combinations
 
+> **Archived 2026-07-28:** the one-off review is complete. Its durable
+> readiness conclusions live in the NZ audit documents and mapping QA history.
+
 You are working in the APERC repositories. Review the New Zealand LEAP export template:
 
 `C:\Users\Work\github\leap_initialisation\data\leap_export_templates\leap_export_template 12_NZ.xlsx`

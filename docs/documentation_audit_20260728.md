@@ -1,8 +1,13 @@
 # Documentation audit — 2026-07-28
 
-**Scope:** all 93 project-owned tracked Markdown files in `leap_initialisation`
-(`node_modules/` excluded). Every claim below was checked against `git` and
-current code, not against the documents' own self-reported status.
+**Original scope:** the 93 project-owned tracked Markdown files present during
+the first pass (`node_modules/` excluded). A preservation-first follow-up later
+the same day reviewed all 102 tracked Markdown files then present, including
+the archive and nine handover documents added after this census. Its complete
+file-by-file decisions are in
+[`documentation_disposition_20260728.md`](documentation_disposition_20260728.md).
+Every claim was checked against `git` and current code, not only against the
+documents' own self-reported status.
 
 **Method note.** This repository has a recorded history of documents that
 describe themselves as done, blocked, or current and are none of those things.
@@ -339,8 +344,10 @@ links aside), `docs/process_map_agent.md`, `docs/process_map_human.md`,
 `docs/canonical_migration_diagnostics/README.md`, and the four `codebase/`/`data/`
 READMEs.
 
-`docs/archive/` (25 files) was not re-audited. It is a settled historical record
-and this audit did not find a reason to reopen it.
+The first pass did not re-audit the then-25 files under `docs/archive/`. The
+follow-up did: each archive file was inspected as historical evidence, its
+links were checked, and none was promoted back to live instruction. See the
+disposition matrix for the individual results.
 
 ## Actions taken in this audit's commit
 
@@ -355,3 +362,21 @@ and this audit did not find a reason to reopen it.
 Everything else in this audit is recorded, not acted on. No prompt was archived,
 no branch or worktree was touched, no code was changed, and no semantic
 modelling decision was made.
+
+## Follow-up actions completed on 2026-07-28
+
+The exhaustive preservation pass:
+
+1. corrected live parallelism, template, mapping-ownership, and workflow
+   inventory guidance;
+2. archived the unnamed raw log and 15 completed/superseded prompts with status
+   banners, preserving their useful evidence;
+3. rescued the explicit-zero design into the still-active final-owned-seed
+   prompt rather than discarding it;
+4. rebuilt `docs/prompts/AGENTS.md` so every active prompt appears exactly once;
+5. repaired links affected by the moves and removed references to two absent
+   screenshots; and
+6. created the 102-file disposition matrix linked above.
+
+The original D-01–D-13 findings remain above as discovery history; the matrix
+and current queues record their post-fix disposition.

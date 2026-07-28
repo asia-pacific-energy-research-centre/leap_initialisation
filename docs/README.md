@@ -21,9 +21,10 @@ and [`process_map_agent.md`](process_map_agent.md).
 | [`handover/supply_reconciliation_agent_guide.md`](handover/supply_reconciliation_agent_guide.md) | Exact environment, run modes, safety, validation, and diagnostic routing for agents. |
 | [`handover_work_queue_20260728.md`](handover_work_queue_20260728.md) | **Current work starts here.** Dated git/worktree state, prioritized queue INITQ-001…026, and the four-week handover plan. |
 | [`work_queue.md`](work_queue.md) | The detailed engineering log — items `[0]`–`[21]`, recorded traps, and known pre-existing test failures. The reasoning behind the queue above. |
-| [`documentation_audit_20260728.md`](documentation_audit_20260728.md) | File-by-file Markdown audit, findings `D-01`–`D-13`, with keep/update/archive actions. |
+| [`documentation_audit_20260728.md`](documentation_audit_20260728.md) | First-pass findings `D-01`–`D-13` and the follow-up action record. |
+| [`documentation_disposition_20260728.md`](documentation_disposition_20260728.md) | Exhaustive 102-file role/status/evidence/disposition matrix, including prompts and archives. |
 | [`cross_repo_handover_index.md`](cross_repo_handover_index.md) | This repository's half of the cross-repository contract: what it consumes from `leap_mappings`, what it publishes, schemas, refresh order, failure ownership. Parent document is `leap_mappings/docs/cross_repository_handover_index.md`. |
-| [`current_execution_roadmap.md`](current_execution_roadmap.md) | Operational roadmap and run policy. Note `D-02`: its run-policy bullet on parallelism contradicts its own item 2. |
+| [`current_execution_roadmap.md`](current_execution_roadmap.md) | Operational roadmap and run policy, corrected to route concurrent economies through the bounded process runner. |
 
 ## Orientation
 
@@ -32,7 +33,7 @@ and [`process_map_agent.md`](process_map_agent.md).
 | [`process_map_human.md`](process_map_human.md) | What the loop does and why, for a modeller rather than a programmer. |
 | [`process_map_agent.md`](process_map_agent.md) | Module map, stage-by-stage pipeline, config sources, preset delivery, the two parallelism mechanisms, and structural traps. |
 | [`workflow_inventory.md`](workflow_inventory.md) | Navigation guide for `codebase/` — live pipeline vs standalone tools vs legacy. |
-| [`system_overview_for_rewrite.md`](system_overview_for_rewrite.md) | Long-form system overview. **Unverified since 2026-07-17** — see `D-13` and INITQ-026 before relying on its § 11 pain points. |
+| [`system_overview_for_rewrite.md`](system_overview_for_rewrite.md) | Long-form pre-refactor architecture snapshot, preservation-reviewed and explicitly labeled historical where current paths/status differ. |
 
 ## The main workflow
 
@@ -77,12 +78,10 @@ Dated findings. Historical context, not live instruction.
 
 ## `prompts/` and `archive/`
 
-- [`prompts/`](prompts/) — active or pending multi-step agent prompts.
-  [`prompts/AGENTS.md`](prompts/AGENTS.md) is the folder policy and inventory of
-  record. **Its inventory currently covers 15 of 33 files** — see `D-07`. Per
-  `AGENTS.md`, a prompt whose work is complete should move to `archive/` in the
-  same commit that updates the inventory; 14 prompts are overdue for that move
-  (`D-08`, INITQ-008).
+- [`prompts/`](prompts/) — 18 active or pending multi-step agent prompts.
+  [`prompts/AGENTS.md`](prompts/AGENTS.md) is the folder policy and complete
+  inventory of record. Completed and superseded prompts were moved to archive
+  during the 2026-07-28 preservation audit.
 - [`archive/`](archive/) — completed prompt packs with their findings and status
   notes; see `archive/id_verification_consolidation/` for the pattern. Historical
   record, not routine reading.

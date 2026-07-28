@@ -1,5 +1,9 @@
 # Workflow Folder Migration and Reconciliation Verification Prompt
 
+> **Archived 2026-07-28:** invalid and superseded as written because it mixes a
+> workflow-folder refactor with a production reconciliation run. No active work
+> should be launched from this prompt without splitting and rewriting it.
+
 ## Short Version
 
 You are working in the repository:

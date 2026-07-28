@@ -1,127 +1,71 @@
-# Prompt Folder Guide
+# Prompt folder guide
 
 This folder is for active, reusable execution prompts. A prompt belongs here
-only while it describes work that is not yet complete or a run procedure that
-will be reused.
+only while it describes work that is incomplete or a run procedure that will
+be reused. Completed and superseded prompts belong in `docs/archive/`, with a
+short status banner that routes any durable open item to the work queue.
 
-When a prompt's work is implemented, tested, and committed, move the prompt to
-`docs/archive/` with any related status notes. This is required cleanup for
-completed prompts, not optional housekeeping. Do not leave completed prompts in
-this folder. If a prompt is superseded by a newer prompt, archive or delete the
-old one in the same commit that adds the replacement.
+When adding or changing a prompt:
 
-## Adding New Prompts
+- add or update its row in the inventory below;
+- verify paths, presets, flags, function names, and any line-number hints
+  against current code;
+- state purpose, prerequisites, validation, stop conditions, and current
+  status;
+- preserve unrelated working-tree changes and require `git status --short`;
+- for a long workflow run, follow the launch and polling rules in the root
+  `AGENTS.md`;
+- archive the prompt in the same commit when its work is complete or it is
+  superseded.
 
-When adding a prompt:
+## Active prompt inventory
 
-- Add a row to the inventory below in the same commit.
-- Include the prompt's purpose, scope, prerequisites, validation expectation,
-  and current status.
-- Name the file around the work, not the agent. Prefer
-  `thing_to_do_execution_prompt.md` over broad names like `next_prompt.md`.
-- State whether the prompt is for implementation, verification, long-running
-  execution, investigation, or post-run review.
-- Include clear stop conditions: when to ask the user, when to stop and report,
-  and what evidence is needed before making a code or data change.
-- If the prompt mentions paths, presets, flags, or line numbers, include an
-  "update before use" note so future agents verify them against current code.
+Reviewed exhaustively on 2026-07-28. Every Markdown file currently in this
+folder appears exactly once below.
 
-## Removing Prompts
+| Prompt | Type and status | Purpose / evidence | Before use |
+|---|---|---|---|
+| `aggregated_demand_scoped_review.md` | Scoped review; partial | Cache-measurement and any remaining aggregated-demand review work. Earlier implementation slices landed. | Re-check the remaining checklist against `docs/work_queue.md`; do not repeat completed work. |
+| `baseline_seed_aus_things_to_check.md` | Post-run review; active | Focused Australia checklist for the next full seed, including the remaining Bitumen/display-name check. | Use only with a fresh comparable AUS run and record the exact source/template vintages. |
+| `final_owned_seed_completion_execution_prompt.md` | Implementation; active | Template-aware final completion of explicitly owned missing seed keys. | Start diagnostics-only; do not turn this into blanket zero-fill or migrate an ownership domain without equivalence evidence. |
+| `fix_augmented_source_csv_dtype_warnings.md` | Implementation; pending | Removes known augmented-source CSV dtype warnings without changing values. | Confirm the warning still reproduces and no reconciliation run is active before editing shared files. |
+| `initialisation_refactor_continuation.md` | Open-thread register; active | Current T-register for refactor decisions and landed work. | Reconcile against `docs/work_queue.md` and the dated handover queue before selecting a thread. |
+| `initialisation_refactor_thread_execution_prompt.md` | Execution procedure; active | Procedure and evidence standard for executing one refactor thread at a time. | One thread per task; recommendations are not automatic approval for modelling decisions. |
+| `patch_baseline_seeds_module_verification_prompt.md` | Verification; active but partly historical | Durable per-module patch verdicts; transformation-specific ungate work is archived, while final module evidence and losses/own-use strip-scope caveats remain useful. | Treat its status paragraphs independently and re-check the active preset plus current verdict comment. |
+| `phase_2_configuration_standardisation_execution.md` | Implementation; active | Completes wrapper configuration standardisation, now primarily through missing forwarding/default tests. | The wiring largely predates this phase; do not mechanically move modelling rules. See INITQ-019. |
+| `phase_3_canonical_mapping_migration_execution.md` | Verification/decision; partial | Migration implementation landed; D3.4/D3.5 confirmation and final equivalence/ownership evidence remain. | Canonical mapping ownership belongs to `leap_mappings`; local legacy workbooks are not active authorities. |
+| `phase_4_monolith_decomposition_execution.md` | Refactor; partial | Historical split context plus remaining state-boundary decisions. | Re-measure files and use the current roadmap; old LOC figures are not maintained facts. |
+| `phase_5_feature_improvements_execution.md` | Feature plan; partial | Convergence history and parallelism largely landed; remaining independently shippable improvements are tracked in the queues. | Select only a still-open slice and verify its dependency gates first. |
+| `repo_cleanup_and_consolidation_plan_20260723.md` | Cleanup plan; partial | Preserves measured output-size buckets, diagnostics consolidation options, and dead-code review evidence. | Destructive cleanup needs explicit scope; use INITQ-022 through INITQ-024 as the current decisions. |
+| `run_real_template_baseline_seeds_in_three_sequential_batches.md` | Long-running execution; active | Runs the 11 real-template economies in three sequential batches. | Recount real vs `_COMP_GEN` templates immediately before launch and use per-process snapshots; do not infer readiness from filename alone. |
+| `supply_reconciliation_full_baselineseed_run_execution_prompt.md` | Long-running execution; active | Full 21-economy baseline-seed integration run and findings review. | Expensive; verify presets, labels, warning gate, and current template census first. |
+| `supply_reconciliation_presets_scoped_review.md` | Scoped review; active | Reviews preset contracts and forwarding without broad refactoring. | Cross-check against settled work queue item `[17]`; do not reopen the already-fixed forwarding defect. |
+| `supply_reconciliation_results_update_execution_prompt.md` | Long-running execution; active | Runs a targeted results update for a named economy/scenario scope. | Requires current LEAP Energy Balance exports; check mapping/subtotal blockers before launch. |
+| `transformation_multi_output_default_verification_prompt.md` | Post-run verification; active | Broadens verification of the `multi_output=True` correction beyond the USA spot-check. | Bundle with the next suitable full seed; keep it separate from new transformation design. |
+| `transformation_patch_rewire_exploration_prompt.md` | Investigation; active | Explores whether the transformation patch path should be rewired to the workbook producer. | Investigation only until representative equivalence evidence supports a change. |
 
-Remove or archive a prompt when any of these are true:
+## Recently archived by the 2026-07-28 audit
 
-- The work is complete and committed.
-- The prompt describes a one-off run that has already been performed and
-  reported.
-- The prompt is contradicted by current code or newer documentation.
-- The prompt mixes multiple unrelated objectives and cannot be executed safely
-  without rewriting.
+The following completed, superseded, or invalid prompts were moved to
+`docs/archive/` with status banners:
 
-Archive completed prompt packs under `docs/archive/`, ideally with a short
-status note or findings file when the work produced important decisions.
+- `advance_repo_20260722_execution_prompt.md`
+- `centralise_leap_balance_exports_across_repos.md`
+- `continuation_20260722_phase4_parallelism_and_release_readiness.md`
+- `continuation_20260723_next_session.md`
+- `cross_repo_dependency_documentation_prompt.md`
+- `handoff_20260723_docs_audit_and_cleanup.md`
+- `nz_baseline_seed_hardening_readiness_prompt.md`
+- `other_loss_own_use_proxy_scoped_review.md`
+- `preset_forwarding_fix_execution_prompt.md`
+- `review_nz_unmapped_leap_branch_fuel_combinations.md`
+- `session_handoff_20260722.md`
+- `supply_reconciliation_runtime_profiling_execution.md`
+- `transformation_final_handoff_and_verification_prompt.md`
+- `transformation_patch_ungate_final_verification_prompt.md`
+- `workflow_folder_migration_and_reconciliation_verification_prompt.md`
 
-## Prompt Writing Tips
-
-Good prompts in this repo are specific, testable, and conservative.
-
-- Start with a short version that says exactly what to do.
-- Separate context, objective, scope, constraints, validation, and deliverables.
-- Prefer concrete file paths, function names, output paths, and config flags.
-- Say what is out of scope, especially for mapping/data/methodology decisions.
-- Require `git status --short` up front and preservation of unrelated changes.
-- For long workflow runs, require detached execution, timestamped logs, and
-  polling no more frequently than `AGENTS.md` allows.
-- For validation failures, require root-cause classification before fixes.
-- Avoid stale line numbers where a function name or `rg` search will work.
-- Avoid combined prompts that ask for both a refactor and a large production
-  run unless that coupling is essential.
-- Keep instructions ASCII unless the source file already requires non-ASCII.
-
-## Current Inventory
-
-Reviewed on 2026-07-28.
-
-| Prompt | Type | Status | Basic Details | Notes Before Use |
-|---|---|---|---|---|
-| `supply_reconciliation_full_baselineseed_run_execution_prompt.md` | Long-running execution and post-run review | Valid, active | Runs the full `_PRESET_BASELINE_SEED` workflow for all 21 economies and all three scenarios, with detached logs, deferred errors, timestamp-based output checks, and consolidated findings review. | Verify current `ACTIVE_PRESET`, `ECONOMIES`, `SCENARIOS`, and `BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS` before launch. This is expensive and should usually wait until implementation prompts that affect outputs are complete. |
-| `run_real_template_baseline_seeds_in_three_sequential_batches.md` | Long-running execution and scheduled monitoring | Valid, active | Runs all 11 real-template economies in three strictly sequential full-horizon batches, beginning with AUS/USA/PRC. | Use per-process snapshot overrides, keep parallel workers at zero, and create a 30-minute scheduled monitor only after Batch 1 starts. |
-| `supply_reconciliation_results_update_execution_prompt.md` | Targeted long-running execution | Valid, active | Runs `_PRESET_RESULTS_UPDATE` for one provided economy and requested scenario scope using LEAP balance exports as the prerequisite input. | Requires the user to name an economy/scope. Verify the balance workbook exists under `data/leap balances exports/<economy>/` before launch. |
-| `patch_baseline_seeds_module_verification_prompt.md` | Verification / patch workflow | Valid, active | Guides direct use of `run_patch()` and `validate_seed_files()` for module-specific baseline seed refresh and equivalence checks. | Use for patcher verification, not full reconciliation. Some module verdicts remain suspect and should be updated as verification completes. |
-| `id_verification_consolidation_execution_prompt.md` | Implementation and verification | Valid, active, high value | Consolidates duplicated LEAP ID / branch matching logic and shared preflight-state override code, with tests and real-data equivalence checks. | Line numbers are point-in-time and must be rechecked. Item 1 is highest risk; Item 2 Part A is still live because `_apply_preflight_compressed_state` and `_apply_preflight_results_update_state` remain separate. |
-| `workflow_folder_migration_and_reconciliation_verification_prompt.md` | Refactor plus run verification | Invalid as written | The objective is to move workflow entrypoints into `codebase/workflows/`, while the short version describes a baseline-seed run with a specific economy order. | Do not execute without rewriting. It mixes unrelated objectives, contains stale wording/encoding artifacts, and references a `codebase/workflows/` migration that has not been started. Split into separate migration and run prompts if this work is still desired. |
-| `cross_repo_dependency_documentation_prompt.md` | Investigation and documentation | Valid, active | Audits all three repositories and creates a cross-repository data-lineage, ownership, dependency, and refresh guide with Mermaid maps. | Verify sibling paths, archive locations, current workflow names, and existing centralisation documentation before use. |
-| `transformation_multi_output_default_verification_prompt.md` | Verification (post-run, deliberately deferred) | Valid, active | Verifies the 2026-07-16 change defaulting `multi_output=True` for all esto transformation flow sectors (fixes dropped co-product outputs, e.g. AUS coke ovens Coal tar Output Share was a false zero). Only spot-verified for `20_USA` so far. | Wait for the next full baseline-seed run (bundling other fixes) to complete before running broader checks, per user instruction to keep this separate. Re-check `multi_output` default location with `rg` before use. |
-| `baseline_seed_aus_things_to_check.md` | Post-run review | Valid, active | Records specific Australia baseline-seed behaviours to verify on the next full run, including feedstock shares, own-use zero-fill, and the confirmed multi-output correction. | Treat it as a focused review checklist; verify paths and source vintage before use. |
-| `final_owned_seed_completion_execution_prompt.md` | Staged implementation and equivalence verification | Valid, active | Defines the template-aware final completion architecture: merge all producer rows, complete only explicitly owned missing template keys, then retain canonical share and capacity/efficiency validation at the emit boundary. | Start with the ownership inventory and diagnostics-only planner; do not convert this into an early blanket reset or migrate a domain without equivalence evidence. |
-| `nz_baseline_seed_hardening_readiness_prompt.md` | Staged implementation, verification, and gated run | Valid, active | Hardens per-economy template routing, audits 12_NZ readiness, and compares a future post-boundary NZ seed with the prior NZ seed. | Do not launch the baseline-seed workflow without explicit user authorization after the readiness audit; poll a permitted run no more than every 10 minutes. |
-| `preset_forwarding_fix_execution_prompt.md` | Implementation + single-economy verification | Valid, active, **current priority** (added 2026-07-21) | Fixes `work_queue.md` [17]: two preset overrides never reach `supply_results_saver`, so the supply/transformation zero-reset and demand-zeroing workbooks have been silently off in every recent baseline seed while the log reported them on. Five commits — three provably inert, one isolated behaviour flip, one evidence record — verified by a single-economy before/after check. | Brought forward out of phase order because it is a production defect, not a refactor. The modelling decision is already taken (presets are right) — do not reopen it. Do not start Phase 4 state injection inside this task. Verify no long run is in flight first, and leave the operator's `RUN_OUTPUT_LABEL` edit alone. |
-| `initialisation_refactor_thread_execution_prompt.md` | Implementation, multi-session, one thread at a time | Valid, active (added 2026-07-21) | How to pick up and execute any thread T2–T11 from the continuation register: procedure, evidence standards per thread type, stop conditions, and suggested order. Carries the phase framing — Phase 2 is current, Phases 3–5 are future, and three items are deliberately brought forward as urgent. | One thread per session. A recommendation in the register's decision table is not an approval — stop and ask. Recording what the plan got wrong is a required deliverable. Do not bring further items forward without stating why they are urgent rather than merely appealing. |
-| `initialisation_refactor_continuation.md` | Continuation / open-thread register | Valid, active (added 2026-07-21) | **START HERE when resuming the initialisation refactor.** Indexes all eleven open threads from the 2026-07-21 session (T1 [17] preset forwarding, T2-T3 Phase 4, T4 Phase 3, T5-T7 Phase 5, T8 own-use coverage, T9 doc corrections, T10 mapping-owner question, T11 fleet relaunch), with decisions taken, decisions outstanding, and a suggested order. | Update it as each thread closes; archive when all are closed or re-homed. Note the standing rule it carries: while a long run is in flight, commit documentation and new tests only. |
-| `phase_3_canonical_mapping_migration_execution.md` | Implementation and verification | Valid, active (added 2026-07-21) | Re-scoped Phase 3: leap_mappings M2 is done and the initialisation-side canonical migration already landed, so the work is canonical sheet/column contract tests, mapping ownership, a latent `unified_name_lookup` defect, legacy workbook retirement, and the equivalence evidence deferred at migration time. | Read `docs/canonical_mapping_migration_notes.md` first; its C5 section is stale. Do not mechanically repoint workbook paths — that work is complete. Five decisions (D3.1–D3.5) need answers before the output-affecting commit. |
-| `phase_4_monolith_decomposition_execution.md` | Implementation | Valid, active (added 2026-07-21) | Re-scoped Phase 4: the four-way split of `supply_reconciliation_workflow.py` already landed (1,253 LOC). Remaining work is retiring the star-import / `_sync_*` global-mirroring backchannel, then re-deciding `supply_results_saver.py` (4,024 LOC). Includes the own-use incremental-vs-rewrite decision framework. | Characterization tests must land before any code moves. Do not edit `supply_reconciliation_workflow.py` while a fleet run holds its temporary `RUN_OUTPUT_LABEL`. Presets, output paths, logs and run history are contracts. |
-| `phase_5_feature_improvements_execution.md` | Implementation | Valid, active (added 2026-07-21) | Three independently shippable features: 5A convergence/run-history fingerprints and retention, 5B aggregated-demand output improvements, 5C per-economy parallelism. | 5C is blocked on Phase 4 state injection and is **workbook-mode only** — the LEAP COM API is decommissioned and this brief does not claim parallel API writes are safe. Measure cache RSS before changing any loader. |
-
-## Recommended Tackling Order
-
-1. `id_verification_consolidation_execution_prompt.md`
-   - Highest code-risk prompt. Tackle after proxy semantics are stable.
-   - Start with tests around the shared ID-resolution primitive before changing
-     producer output behavior.
-   - Commit Item 1 separately from preflight-state cleanup if possible.
-
-2. `patch_baseline_seeds_module_verification_prompt.md`
-   - Use after ID validation changes so patcher checks use the consolidated
-   behavior.
-   - Work module by module and update module verdicts as each is proven.
-
-3. `supply_reconciliation_results_update_execution_prompt.md`
-   - Run when a specific economy needs a targeted results update or after a
-     targeted fix that should not require the full 21-economy run.
-
-4. `supply_reconciliation_full_baselineseed_run_execution_prompt.md`
-   - Run after implementation and patcher-verification prompts are stable.
-   - This is the full integration check and should produce the consolidated
-     decision table for any remaining findings.
-
-5. `workflow_folder_migration_and_reconciliation_verification_prompt.md`
-   - Do not tackle in its current form.
-   - If still needed, rewrite as two prompts: one for workflow-folder migration,
-     one for post-migration supply reconciliation verification.
-
-## Recently Archived
-
-- `investigate_aus_2022_balance_export_for_seed_improvements.md`
-- `other_loss_own_use_proxy_hardening_prompt.md`
-- `other_loss_own_use_initialisation_post_initialisation_prompt.md`
-- `leap_mappings_prompt_folder_agents_review_prompt.md`
-
-## Known Folder Issues
-
-- Several prompt files contain mojibake encoding artifacts. Clean these when
-  the prompt is next edited.
-- Some prompts include line numbers from earlier code reads. Treat line numbers
-  as hints only; verify function names and call sites with `rg`.
-- There is a deleted prompt tracked in git status:
-  `docs/prompts/supply_reconciliation_full_run_execution_prompt.md`. Confirm
-  whether the newer `supply_reconciliation_full_baselineseed_run_execution_prompt.md`
-  fully supersedes it before committing any prompt cleanup that touches it.
+The explicit-zero-in-seed question from the archived 2026-07-22 continuation
+prompt remains preserved in
+`final_owned_seed_completion_execution_prompt.md`. No open item was discarded
+by the move.

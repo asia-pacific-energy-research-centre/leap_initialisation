@@ -67,39 +67,24 @@ across runs*: for the standard 21 economies it always resolves to
 into the first one's directory and interleave outputs. For any run whose output
 you intend to keep, set an explicit dated label, and restore `"auto"` afterwards.
 
-### Running two economies at once — supported by the workflow, blocked by the config
+### Running more than one economy
 
-The workflow itself supports this. Locks are per-economy, each run gets its own
-labelled output tree, and a second run touching an economy already being written
-stops with a clear error rather than overwriting. See "Concurrent runs" in
-`docs/supply_reconciliation_workflow_guide.md`. For concurrent runs keep
-`RUN_OUTPUT_LABEL = "auto"` — the automatic label encodes the economy scope, so
-two different scopes get two different folders. (The `"auto"` collision trap
-above is the *opposite* case: the **same** scope run twice.)
+Bounded process-based economy parallelism is implemented and was verified on
+2026-07-23. Use `codebase/functions/parallel_economy_runner.py`; it launches one
+OS process per economy and passes an isolated `LEAP_WORKER_SNAPSHOT_JSON`
+snapshot containing the economy, run label, and test horizon. Per-economy locks
+and run-specific output trees prevent two workers from writing the same scope.
+See `docs/current_execution_roadmap.md` and the "Concurrent runs" section of
+`docs/supply_reconciliation_workflow_guide.md`.
 
-**But you cannot currently launch them safely from one working tree**, because
-`ECONOMIES` is a module-level literal in `codebase/supply_reconciliation_workflow.py`
-and there is no per-process override. Launching a second run means editing that
-file while the first is running, and that is not safe here:
-
-When the workflow is run as a script, the entry point is `__main__`, so
-`codebase.supply_reconciliation_workflow` is **not** in `sys.modules`.
-`supply_preflight` then performs a late `from codebase.supply_reconciliation_workflow
-import ...` during the preflight, which **re-reads the source file from disk**.
-Any edit made between launch and that moment is picked up by the *running*
-process. This is the same duplicate-module behaviour recorded under T1 in the
-register — it is observed, not theoretical.
-
-So, in order of preference:
-
-1. **Run economies sequentially.** The default, and correct until the config
-   surface changes.
-2. If you genuinely need parallelism, the fix is small and worth doing properly:
-   give `ECONOMIES` and `RUN_OUTPUT_LABEL` a per-process override — an
-   environment variable or CLI argument read at startup — so two runs need no
-   file edit at all. That change belongs in the Phase 2 configuration work
-   (`work_queue.md` [14]), not improvised the day you need it.
-3. **Do not** edit `ECONOMIES` to launch a second run while one is in flight.
+Do not create parallelism by editing `ECONOMIES` or `RUN_OUTPUT_LABEL` between
+two bare invocations of `supply_reconciliation_workflow.py`. A late import can
+re-read those module literals from disk. Sequential execution remains the
+safest default; use the runner, unique labels, and a deliberately bounded
+`max_workers` value when parallel execution is justified. The deterministic
+parent merge does not yet reconstruct the sequential path's single combined
+workbook, so consume the worker seed workbooks directly unless that limitation
+has subsequently been closed.
 
 ## Prompt docs workflow
 
@@ -129,7 +114,9 @@ Active documentation being developed:
 
 ## When editing draw.io diagrams
 
-- See `AGENTS_DRAWIO.md` for draw.io-specific requirements.
+- No repository-specific `AGENTS_DRAWIO.md` exists in this checkout. Preserve
+  existing diagram source and export conventions, and verify both the editable
+  source and rendered output when changing a diagram.
 
 ## Workflow Timing History
 
@@ -322,9 +309,19 @@ workflow instead.
 
 ---
 
-## Planned workflow improvements
+## Historical planned workflow improvements (superseded)
 
-Core items are mirrored in `docs/supply_reconciliation_workflow_guide.md` — keep in sync.
+> **Historical snapshot only (June–July 2026).** The detailed material below is
+> retained because it records why the refactor and repository split happened,
+> but it is not an active backlog and must not be used to infer current state.
+> Use `docs/work_queue.md`, `docs/handover_work_queue_20260728.md`, and
+> `docs/current_execution_roadmap.md` for initialisation work. Mapping work is
+> owned by `../leap_mappings/docs/work_queue.md`; dashboard work is owned by
+> `../leap_dashboard/docs/work_queue.md`. LOC figures and sibling-repository
+> task statuses below are point-in-time evidence, not maintained facts.
+
+Core items were originally mirrored in
+`docs/supply_reconciliation_workflow_guide.md`.
 
 **⚠️ This section is materially stale (dated June 2026) and several claims
 below are wrong.** Corrected 2026-07-23 with measured numbers (T9,

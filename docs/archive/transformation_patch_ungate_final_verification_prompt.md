@@ -1,7 +1,10 @@
 # Task: the last step to proving the patcher works — ungate transformation
 
+> **Archived 2026-07-28:** superseded by the current module-verification prompt
+> and its recorded transformation verdict. Retained as verification history.
+
 Supersedes the transformation section of
-[patch_baseline_seeds_module_verification_prompt.md](patch_baseline_seeds_module_verification_prompt.md),
+[patch_baseline_seeds_module_verification_prompt.md](../prompts/patch_baseline_seeds_module_verification_prompt.md),
 which remains the reference for every **other** module (transfers, power_interim,
 aggregated_demand, losses_own_use, supply — all already verified) and for the
 general Verification Recipe.

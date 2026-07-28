@@ -1,5 +1,9 @@
 # Supply reconciliation runtime profiling — execution prompt
 
+> **Archived 2026-07-28:** the instrumentation and measured optimisation loop
+> landed; current timing policy is in `AGENTS.md` and
+> `docs/current_execution_roadmap.md`.
+
 Type: investigation and low-risk instrumentation prompt. Status: active.
 
 ## Objective

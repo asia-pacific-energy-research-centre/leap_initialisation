@@ -1,10 +1,13 @@
 # Handoff — 2026-07-22 morning
 
+> **Archived 2026-07-28:** superseded session state. Durable work and remaining
+> tasks are recorded in the current roadmap and queues.
+
 Type: state-of-the-world brief for an agent picking this repo up cold.
 Written by the session that landed [17]'s mechanism fix and its follow-ups.
 
 **Read this first, then
-[`initialisation_refactor_continuation.md`](initialisation_refactor_continuation.md)
+[`initialisation_refactor_continuation.md`](../prompts/initialisation_refactor_continuation.md)
 for the thread register, which is the real backlog.**
 
 ## Why this file exists

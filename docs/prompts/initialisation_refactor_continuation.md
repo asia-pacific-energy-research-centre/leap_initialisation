@@ -12,7 +12,7 @@ in, and which findings are recorded nowhere else.
 ## How to execute from this register
 
 - **T1** has its own prompt:
-  [`preset_forwarding_fix_execution_prompt.md`](preset_forwarding_fix_execution_prompt.md).
+  [`preset_forwarding_fix_execution_prompt.md`](../archive/preset_forwarding_fix_execution_prompt.md).
   It is the current priority.
 - **Every other thread** is executed via
   [`initialisation_refactor_thread_execution_prompt.md`](initialisation_refactor_thread_execution_prompt.md)

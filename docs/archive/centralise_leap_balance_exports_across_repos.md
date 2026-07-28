@@ -1,5 +1,9 @@
 # Prompt: Centralise LEAP balance exports in `leap_initialisation`
 
+> **Archived 2026-07-28:** completed; current ownership is documented in
+> `docs/leap_balance_export_centralisation_audit.md` and the cross-repository
+> handover guides.
+
 ## Objective
 
 Refactor the three-repository workflow so that raw LEAP balance-export workbooks have one canonical home:

@@ -1,5 +1,10 @@
 # Continuation prompt — Phase 4, safe parallelism, and release readiness
 
+> **Archived 2026-07-28:** the parallelism boundary landed and the remaining
+> explicit-zero-in-seed design is preserved by the active
+> `docs/prompts/final_owned_seed_completion_execution_prompt.md`. Do not use
+> this handoff as current run policy.
+
 Status: active handoff created 2026-07-22. **Update 2026-07-23:** the
 "Immediate engineering priority" section below (bounded process-based
 parallelism) is landed and verified — see

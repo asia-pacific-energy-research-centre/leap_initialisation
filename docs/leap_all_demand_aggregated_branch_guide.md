@@ -15,7 +15,7 @@ Create these six branches directly under `Demand\All demand aggregated`:
 - `Demand\All demand aggregated\Buildings`
 
 Under each sector branch, create the fuel leaves listed in
-[leap_all_demand_aggregated_fuels_by_sector.csv](<C:\Users\Work\github\leap_initialisation\docs\leap_all_demand_aggregated_fuels_by_sector.csv>).
+[leap_all_demand_aggregated_fuels_by_sector.csv](leap_all_demand_aggregated_fuels_by_sector.csv).
 The CSV includes the complete LEAP path for every fuel leaf.
 
 ## Important naming rules

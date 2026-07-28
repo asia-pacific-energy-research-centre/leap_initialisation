@@ -1,5 +1,9 @@
 # Task: settle the handoff and finish transformation patcher verification
 
+> **Archived 2026-07-28:** the handoff was settled. Any still-unverified
+> module-level patch behavior remains in the active patch verification prompt
+> and work queue, not this session-specific brief.
+
 This prompt is the next-agent handoff for the final outstanding work in the
 LEAP initialisation export-readiness track.
 

@@ -1,5 +1,8 @@
 # Other loss and own-use proxy - scoped review and implementation brief
 
+> **Archived 2026-07-28:** the scoped review was completed; current remaining
+> coverage or modelling questions are tracked in `docs/work_queue.md`.
+
 ## Purpose
 
 `codebase/other_loss_own_use_proxy_workflow.py` creates values for

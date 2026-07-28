@@ -1,5 +1,8 @@
 # Continuation prompt — next session, 2026-07-23
 
+> **Archived 2026-07-28:** superseded session handoff. Open work is preserved in
+> `docs/work_queue.md` and `docs/handover_work_queue_20260728.md`.
+
 Read `docs/current_execution_roadmap.md` and `docs/work_queue.md` first for
 full context; this is a quick-start pointer, not the detail.
 

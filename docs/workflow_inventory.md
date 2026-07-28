@@ -1,6 +1,6 @@
 # Workflow Inventory
 
-Last reviewed: 2026-07-07
+Last reviewed: 2026-07-28
 
 This is a cleanup-oriented inventory of the active workflow entry scripts in
 `codebase/`. It is meant to answer two questions:
@@ -23,7 +23,6 @@ separately below.
 | `aggregated_demand_workflow.py` | Builds the `Demand\All demand aggregated` placeholder branch from ESTO and 9th inputs. Used while detailed demand sectors are still being developed or when a combined demand proxy is needed. |
 | `electricity_heat_interim_workflow.py` | Builds interim electricity, CHP, and heat transformation modules from ESTO power-sector data and 9th projections. |
 | `other_loss_own_use_proxy_workflow.py` | Builds proxy demand branches for losses and own-use flows that do not fit cleanly in transformation modules. |
-| `minor_demand_workflow.py` | Draft scaffold for Agriculture, Fishing, and Non-specified others. It is used by `full_model_workflow_notebook.py` and is not part of the supply reconciliation loop. |
 | `baseline_seed_comparison_workflow.py` | Compares generated baseline seed workbooks with reviewed references and separates structural, metadata, expression, duplicate-key, and share-total differences. |
 | `outlook_mapping_maintenance_workflow.py` | Maintenance workflow for the Outlook mapping workbook. It recomputes audit columns and produces mapping QA outputs. |
 | `transformation_entry.py` | Convenience entrypoint used by the full-model notebook to run transformation-related workflow pieces together. |
@@ -84,6 +83,11 @@ entry points.
 - `codebase/old_workflows/transformation_leap_probe_workflow.py`
 - `codebase/old_workflows/unmet_requirements_results_probe_workflow.py`
 - `codebase/archive/minor_demand_workflow.py`
+
+The former active `codebase/minor_demand_workflow.py` and
+`codebase/refining_workflow.py` entrypoints have been retired. Minor-demand
+history is under `codebase/archive/`; Oil Refining is handled by
+`transformation_workflow.py`.
 
 ## Layout Note
 

@@ -37,7 +37,8 @@ Known verified/fixed areas:
 - The transformation auto-regen sectors are GATED: `run_patch()` raises
   `NotImplementedError` for them. Refresh those through the full workflow only.
   **They are the last unverified module, and settling them is a task of its own:
-  see [transformation_patch_ungate_final_verification_prompt.md](transformation_patch_ungate_final_verification_prompt.md).**
+  see
+  [transformation_patch_ungate_final_verification_prompt.md](../archive/transformation_patch_ungate_final_verification_prompt.md).**
 - `losses_own_use` is patchable and verified end-to-end (including the Brunei
   retry); see Module Notes.
 
@@ -254,7 +255,7 @@ transformation
 ```
 
 > **➡️ Superseded 2026-07-17 — use
-> [transformation_patch_ungate_final_verification_prompt.md](transformation_patch_ungate_final_verification_prompt.md).**
+> [transformation_patch_ungate_final_verification_prompt.md](../archive/transformation_patch_ungate_final_verification_prompt.md).**
 > Transformation is the last unverified module, the definitive test now has a
 > built harness
 > (`codebase/scrapbook/transformation_ungate_equivalence_harness.py`), and its

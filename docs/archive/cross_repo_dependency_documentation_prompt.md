@@ -1,5 +1,9 @@
 # Prompt: Document cross-repository data dependencies
 
+> **Archived 2026-07-28:** completed by the cross-repository handover document
+> set. Current entrypoints are `docs/cross_repo_handover_index.md` and
+> `docs/handover/`.
+
 ## Short version
 
 Audit `leap_initialisation`, `leap_mappings`, and `leap_dashboard`, then create

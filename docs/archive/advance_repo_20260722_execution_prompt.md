@@ -1,5 +1,8 @@
 # Advance the repo — 2026-07-22 execution prompt
 
+> **Archived 2026-07-28:** superseded by the completed `[18]` safety work and
+> the current execution roadmap. Retained as execution history.
+
 Type: implementation prompt with single-economy verification.
 Status: active. **Single-economy runs only today. Do not launch a 21-economy
 fleet run** — it takes 8–12 hours and forbids committing to `codebase/` while it

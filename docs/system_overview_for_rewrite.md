@@ -1,5 +1,16 @@
 # LEAP Initialisation System Overview
 
+> **Status: architecture snapshot, preservation-reviewed 2026-07-28.** This
+> long-form document preserves the design context that motivated the refactor.
+> It is not the current runbook. The canonical operating guides are
+> `docs/supply_reconciliation_workflow_guide.md`,
+> `docs/handover/supply_reconciliation_guide.md`, and
+> `docs/current_execution_roadmap.md`; open work is tracked in
+> `docs/work_queue.md`. References below to `data/full model export.xlsx`,
+> local `config/master_config.xlsx` / `config/leap_mappings.xlsx`, monolith
+> sizes, and proposed rewrite phases describe the pre-migration state unless a
+> section explicitly says otherwise.
+
 This document explains the current `leap_initialisation` system before any major rewrite or modularisation work. Its purpose is to keep the rewrite aligned with the existing modelling process, preserve the parts that already work, and make handover easier.
 
 The repo is not just a Python package. It is a set of notebook-safe workflow scripts, shared data-processing functions, mapping maintenance tools, LEAP import/export helpers, and human-run LEAP steps. A rewrite should preserve that operating model unless the modelling workflow itself changes.
@@ -97,25 +108,33 @@ Most transformation and supply workflows allocate 9th Outlook projections onto E
 
 LEAP export workbooks provide branch paths, variable names, IDs, units, region metadata, and the workbook shape required for LEAP import.
 
-The most important template is:
+Current workflows resolve an economy-specific template from:
 
 ```text
-data/full model export.xlsx
+data/leap_export_templates/
 ```
 
-Do not treat generated workbooks as schema authorities if a fresh full-model export is available. LEAP import rows with missing IDs can be silently skipped by LEAP, so branch-path/template alignment is a high-risk area.
+`data/full model export.xlsx` was the former shared USA-derived template and has
+been retired from the active data folder. Do not treat generated workbooks as
+schema authorities if a fresh economy export is available. LEAP import rows
+with missing IDs can be silently skipped by LEAP, so branch-path/template
+alignment remains a high-risk area. Files with `_COMP_GEN` in their names are
+provisional USA-derived templates and must not be mistaken for real
+economy-specific exports.
 
 ## 4. Mapping Sources
 
-The system currently has several overlapping mapping sources. This is one of the main rewrite risks.
+The current mapping authority is the sibling `leap_mappings` repository. Older
+local mapping workbooks are retained under `config/legacy/` for historical or
+compatibility work only.
 
 Important files and concepts:
 
-- `config/master_config.xlsx`
-  Consolidated workbook for many code/name and 9th-to-ESTO tables.
+- `config/legacy/master_config.xlsx`
+  Retired consolidated workbook retained for reference.
 
-- `config/leap_mappings.xlsx`
-  LEAP-to-ESTO and LEAP-to-9th mapping workbook used by balance/dashboard/reconciliation paths.
+- `config/legacy/leap_mappings.xlsx`
+  Retired local LEAP mapping workbook retained for reference.
 
 - `config/leap_export_workbook_mappings.xlsx`
   Analysis-view field mapping used to align generated workbooks with LEAP export metadata.
@@ -124,9 +143,11 @@ Important files and concepts:
   Capacity-unmet priority and cap configuration for the iterative supply reconciliation workflow.
 
 - `C:\Users\Work\github\leap_mappings\config\outlook_mappings_master.xlsx`
-  External mapping-maintenance source used by some mapping tools.
+  Canonical mapping-maintenance source used by active mapping-dependent paths.
 
-The rewrite should create one mapping access layer and route all active workflows through it. Until that exists, changing a mapping in only one workbook may not affect every workflow.
+Active code should use the canonical loading layer and must not restore local
+legacy workbooks as competing authorities. Historical sections below explain
+the risk that existed before this migration.
 
 ## 5. Current Code Areas
 
@@ -839,6 +860,12 @@ After each full LEAP recalculation in the initialisation loop, check these befor
 | Module ordering | Do conversion chains run from demand-facing modules to upstream modules? | Reorder modules if LEAP is asking the wrong supply route first. |
 
 ## 11. Current Pain Points
+
+> **Historical diagnosis.** These pain points were captured before the canonical
+> mapping migration, monolith split, process-based parallel runner, and
+> economy-template rollout. Each item is useful as design history but is not an
+> open task unless it also appears in `docs/work_queue.md` or
+> `docs/handover_work_queue_20260728.md`.
 
 These are the problems a rewrite should solve.
 

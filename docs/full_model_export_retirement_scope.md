@@ -1,5 +1,12 @@
 # Scope: retiring / archiving `data/full model export.xlsx`
 
+> **Status: completed historical execution plan.** The active file has been
+> retired; it is absent from `data/`, and economy-specific templates resolve
+> from `data/leap_export_templates/`. This document is retained because it
+> records the dependency inventory and acceptance reasoning. Do not execute its
+> future-tense steps as a current plan. Any remaining literal references must
+> be classified individually as legacy, compatibility, or a defect.
+
 **Goal.** Make `data/full model export.xlsx` safe to archive (move out of `data/`)
 without silently breaking any workflow. Today it *cannot* be archived — it is
 still read at runtime by several live paths. This document scopes the work that

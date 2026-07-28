@@ -199,9 +199,10 @@ year columns.
 - The same pattern works for other sectors—swap in a different export file or build one programmatically (see usage in the APERC `leap_transport` and `power_fish` repos).
 - For percentage/share variables you may need to confirm the Scale in the LEAP GUI after import (e.g., set unit to “share” so LEAP assigns the correct scale).
 
-Image below shows the end result of running the example script to copy data from the LEAP industry model (i.e. USA industry area) to the LEAP transport model (i.e. USA transport area), creating branches as needed and filling in data from the export file. It also shows how the scale and units are set correctly for the variables imported - after a manual fix for the scale issue mentioned above.
-
-![image showing usa transport model with industry model in leap](docs/images/usa-transport-industry.png)
+The original documentation included a screenshot of the resulting USA
+industry-to-transport copy, including the manually corrected scale and units.
+That image is not present in this repository, so the example script and the
+verification notes above are the maintained evidence.
 
 # Balance tables example:
 
@@ -212,7 +213,8 @@ dataset. The retained example is
 workbook or, when the configured write mode permits API use, create/fill LEAP
 branches under Key Assumptions.
 
-![balance table example](docs/images/balance-table-example.png)
+The original balance-table screenshot is not present in this repository. Use
+the retained example script and inspect its generated workbook instead.
 
 # Common issues:
 

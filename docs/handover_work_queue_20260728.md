@@ -1,5 +1,28 @@
 # LEAP initialisation handover work queue
 
+## Documentation-audit closure update — 2026-07-28
+
+This update supersedes the earlier status cells for the documentation-only
+items without deleting their original evidence:
+
+- **INITQ-007 — complete:** the three archived-prompt links are correct, the two
+  absent README images are no longer presented as available, the two malformed
+  CSV links are relative and valid, `AGENTS_DRAWIO.md` is no longer claimed to
+  exist, and the raw `Untitled-2.md` log is preserved under `docs/archive/`.
+- **INITQ-008 — complete:** 15 completed, superseded, or invalid prompts moved
+  to `docs/archive/`; `docs/prompts/` now contains 18 active/pending prompts and
+  its `AGENTS.md` inventories every one exactly once.
+- **INITQ-015 — complete:** live parallelism guidance now routes through
+  `parallel_economy_runner.py`; the duplicated/stale refactor and sibling
+  backlogs are explicitly historical and route readers to their owning queues.
+- **INITQ-026 — preservation review complete:** the overview is retained as an
+  architecture snapshot, current template and mapping paths are corrected, and
+  the pain-points section is explicitly historical. It is no longer a current
+  runbook.
+
+The exhaustive disposition for all 102 pre-existing tracked Markdown files is
+[`documentation_disposition_20260728.md`](documentation_disposition_20260728.md).
+
 **Snapshot date:** 2026-07-28
 
 **Last verified:** 2026-07-28 — git state, worktrees, running processes, run
