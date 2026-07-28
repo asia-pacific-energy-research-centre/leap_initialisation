@@ -13,6 +13,14 @@ recalculates it in LEAP, reads REF/TGT Energy Balance exports back, diagnoses
 source differences, previews the existing results-update changes, and repeats
 until differences converge or are classified.
 
+The corrected AUS Reference 2022 cycle now also has a reusable, balance-shaped
+review surface. `codebase/balance_structure_review_workbook_workflow.mjs`
+preserves the original 39-column by 138-row Energy Balance layout and produces
+side-by-side sheets for the unchanged LEAP values, red `LEAP - source` errors,
+blue source values, and a filtered missing/unavailable-combination audit. The
+generated workbook is written beside the corrected diagnostic CSVs in the main
+repository output tree.
+
 Before the next AUS rerun, the supply exporter now emits native
 `Stock Changes\Primary|Secondary\...` and
 `Statistical Differences\Primary|Secondary\...` rows directly from the balance

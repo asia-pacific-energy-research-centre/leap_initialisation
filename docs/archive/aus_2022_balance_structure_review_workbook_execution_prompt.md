@@ -1,5 +1,8 @@
 # Build an AUS 2022 balance-structure diagnostic workbook
 
+Archived 2026-07-28 after implementation, workbook generation, visual
+verification, and repository validation.
+
 ## Short version
 
 Create a reusable workbook builder that places the AUS 2022 diagnostic results
@@ -321,4 +324,3 @@ Stop and ask the user if:
 
 Do not stop merely because mappings are missing: exposing those missing
 combinations is a required output of this task.
-
