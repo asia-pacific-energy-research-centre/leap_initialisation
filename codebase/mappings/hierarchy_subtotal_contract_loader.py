@@ -64,7 +64,7 @@ def attach_structural_pair_status(
     axis_1_column: str,
     axis_2_column: str,
 ) -> pd.DataFrame:
-    """Attach canonical pair status while leaving period filters separate."""
+    """Attach structural truth and separate declared output treatment."""
     pair_columns = [
         "dataset_id",
         "axis_1_node_id",
@@ -72,12 +72,20 @@ def attach_structural_pair_status(
         "pair_is_subtotal",
         "every_node_resolved",
     ]
+    optional_columns = [
+        column
+        for column in ["declared_output_subtotal", "synthetic_status"]
+        if column in canonical_pairs.columns
+    ]
+    pair_columns.extend(optional_columns)
     lookup = canonical_pairs[pair_columns].copy()
     lookup = lookup[lookup["dataset_id"].astype(str).eq(dataset_id)].rename(columns={
         "axis_1_node_id": axis_1_column,
         "axis_2_node_id": axis_2_column,
         "pair_is_subtotal": "structural_pair_is_subtotal",
         "every_node_resolved": "structural_pair_resolved",
+        "declared_output_subtotal": "declared_output_is_subtotal",
+        "synthetic_status": "structural_pair_synthetic_status",
     })
     result = data.merge(
         lookup.drop(columns="dataset_id"),

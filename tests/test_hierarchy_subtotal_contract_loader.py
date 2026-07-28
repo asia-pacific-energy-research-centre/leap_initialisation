@@ -64,6 +64,8 @@ def test_structural_status_is_attached_without_overwriting_period_flags() -> Non
         "axis_1_node_id": "parent",
         "axis_2_node_id": "leaf",
         "pair_is_subtotal": True,
+        "declared_output_subtotal": True,
+        "synthetic_status": "expanding_rollup",
         "every_node_resolved": True,
     }])
     result = attach_structural_pair_status(
@@ -74,4 +76,6 @@ def test_structural_status_is_attached_without_overwriting_period_flags() -> Non
         axis_2_column="fuels",
     )
     assert bool(result.iloc[0]["structural_pair_is_subtotal"])
+    assert bool(result.iloc[0]["declared_output_is_subtotal"])
+    assert result.iloc[0]["structural_pair_synthetic_status"] == "expanding_rollup"
     assert not bool(result.iloc[0]["subtotal_results"])
