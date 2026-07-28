@@ -345,12 +345,12 @@ diagnostics, and no invalid final workbook is written or substituted.
   why this sat open for a week. The CSV should record what **would** have blocked
   and note that the downgrade was applied.
 
-## INIT-006: Baseline-seed scenario windows and refining capacity policy
+## INIT-006: Baseline-seed scenario windows and transformation process boundary
 
 **Status:** Confirmed
 **Owner:** leap_initialisation
 **Type:** Production configuration
-**Affected areas:** final baseline-seed coverage validation; refining initialisation
+**Affected areas:** final baseline-seed coverage validation; transformation initialisation
 
 ### Current rule
 
@@ -359,14 +359,20 @@ base-year snapshot and must cover 2022. Reference and Target are projection
 scenarios and must cover 2023 through 2060. Configuration is centralized in
 `workflow_config.py`.
 
-Retain the refining capacity heuristic: copy each refining process/scenario's
-Historical Production values to Exogenous Capacity and use `Gigajoules/Year`
-with `Million` scale. This policy can be disabled explicitly for testing or a
-future modelling decision, but is enabled for production.
+Process Efficiency uses gross output divided by feedstock. When a process
+consumes a fuel that is also one of its outputs, deliverable output subtracts
+that same-module auxiliary use, capped at the matching fuel's gross output.
+Any auxiliary energy above that gross output remains an external auxiliary
+input. Exogenous Capacity and Output Share use deliverable output, while
+Auxiliary Fuel Use is rebased to deliverable output. A fully self-consuming
+zero-net process temporarily preserves its gross representation because an
+auxiliary-per-zero-output expression is undefined.
 
 ### History
 
 - 2026-06-28: Confirmed 2022 base year, 2060 final year, and retention of the refining Historical Production capacity heuristic.
+- 2026-07-28: Retired the refining-only capacity heuristic and applied the
+  shared process boundary to Oil Refining and other transformation records.
 
 ## INIT-007: Fixed-technology transformation modules are locked at base-year output
 
@@ -759,7 +765,8 @@ cannot win on projection years alone. Applied fallbacks are recorded in
 
 Pump storage also has a conservative first-run fallback to positive hydro
 electricity output. Oil refining remains disabled in the proxy workflow because
-own-use is produced through auxiliary fuel output in `refining_workflow.py`.
+own-use is produced through auxiliary fuel output in the shared
+`transformation_workflow.py` path.
 
 ### Validation
 

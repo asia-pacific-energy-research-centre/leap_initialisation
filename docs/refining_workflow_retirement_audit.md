@@ -2,6 +2,8 @@
 
 Date: 2026-07-28
 
+Implementation status: completed 2026-07-28.
+
 ## Decision
 
 Retire `codebase/refining_workflow.py` from the active workflow surface and
@@ -99,8 +101,9 @@ not in the standalone workbook mutator:
    `gross output - same-module auxiliary`.
 4. Use deliverable output for Exogenous Capacity and Output Share.
 5. Use total deliverable output as the denominator for Auxiliary Fuel Use.
-6. Assert that deliverable output plus same-module auxiliary reconstructs gross
-   output and reject negative deliverable output.
+6. Cap same-module auxiliary at the matching fuel's gross output, retain any
+   excess as external auxiliary input, and assert that deliverable output plus
+   same-module auxiliary reconstructs gross output.
 
 Oil refining will receive the rule because it creates ordinary process records
 and calls the common exporter. Transfers, interim electricity/heat, hydrogen,
@@ -147,7 +150,8 @@ gross output as capacity, preserving the defect that prompted this review.
 - Output Shares use deliverable output and sum to 100%.
 - Auxiliary Fuel Use uses the deliverable-output denominator.
 - Gross output equals deliverable output plus overlapping auxiliary use.
-- An overlapping auxiliary greater than its matching output raises.
+- An overlapping auxiliary greater than its matching output is split between
+  same-module use and explicit external auxiliary energy.
 - Non-overlap transformation modules are unchanged.
 - Current Accounts, Reference, and Target scenario coverage remains complete.
 - Template IDs, units, scale, and `Per...` metadata pass final seed validation.
