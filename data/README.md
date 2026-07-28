@@ -11,50 +11,41 @@ mapping, dashboard, demand, supply, and transformation workflows.
 
 ### ESTO Historical Tables
 
-- `00APEC_2024_low.csv`
-  - Historical ESTO-style balance data used by older supply, transformation,
-    industry, buildings, power, refining, and minor-demand workflows.
-  - Key columns are `economy`, `flows`, `products`, and year columns such as
-    `1990` through the latest base year in the file.
-
 - `00APEC_2024_low_with_subtotals.csv`
-  - Same 2024 ESTO source with subtotal labels added.
-  - Used where workflows need to identify subtotal rows explicitly, especially
-    transfer, detailed-balance, and older mapping checks.
-
-- `00APEC_2025_low.csv`
-  - Newer ESTO-style historical table.
-  - Keep when comparing behavior across 2024 vs 2025 data vintages.
+  - **Current shared initialisation default**, owned by
+    `codebase/configuration/workflow_config.py`.
+  - Base year is configured separately as 2022; do not infer it from the
+    filename.
+  - Key columns are `economy`, `flows`, `products`, subtotal fields, and year
+    columns.
 
 - `00APEC_2025_low_with_subtotals.csv`
-  - Current preferred ESTO historical source for dashboard and balance-table
-    comparison workflows.
-  - Used by `codebase/leap_results_dashboard*_workflow.py`,
-    `codebase/leap_balance_to_esto_long_workflow.py`,
-    `codebase/leap_results_workflow.py`, and balance-demand logic in
-    `codebase/supply_reconciliation_workflow.py`.
+  - Retained newer-vintage comparison input used by selected utilities, such
+    as the default fallback in `codebase/functions/leap_series_comparison.py`.
+  - It is not the current shared supply-reconciliation default.
+
+The former non-subtotal filenames `00APEC_2024_low.csv` and
+`00APEC_2025_low.csv` are not present in this checkout. Historical and archived
+documents may still name them when describing older workflows.
 
 ### 9th Projection Tables
 
 - `merged_file_energy_ALL_20251106.csv`
-  - Older 9th projection input used by several established transformation,
-    supply, industry, and minor-demand workflows.
-  - Keep this file because some workflow defaults still point to it.
+  - **Current shared initialisation projection default** for exact 9th edition
+    matching, owned by `codebase/configuration/workflow_config.py`.
+  - Used across active reconciliation, comparison, remap, and diagnostic
+    helpers.
 
-- `merged_file_energy_ALL_20251106.csv`
-  - Current preferred 9th projection table for exact 9th edition matching.
-  - Used by the dashboard, balance-table, mapping-refresh, and
-    `supply_reconciliation` balance-demand paths.
-
-- `merged_file_energy_00_APEC_20251106.csv`
+- `9th merged_file_energy_00_APEC_20251106.csv`
   - APEC aggregate version of the current 9th projection data.
-  - Used by mapping and comparison preparation scripts that need aggregate
-    projection rows.
+  - The filename includes the `9th ` prefix in this checkout. Utilities that
+    expect an `apec_aggregate_sources/merged_file_energy_00_APEC_20251106.csv`
+    path need an explicitly published/routed copy; do not silently assume the
+    two paths are interchangeable.
 
 - `merged_file_energy_ALL_20251106 - for chatgpt.csv`
-  - Review/export copy for external inspection.
-  - Do not treat it as the workflow source of truth unless a script is changed
-    to point to it explicitly.
+  - Historical review/export filename; not present in this checkout and not a
+    workflow source of truth.
 
 ## LEAP Import Template Workbooks
 
@@ -71,14 +62,18 @@ be borrowed from another economy: 134 of the 634 branch paths that `12_NZ` and
 `20_USA` share carry a different `BranchID` (21%), in Resources and Demand
 alike. A borrowed ID resolves and imports — into the wrong branch.
 
-```text
-leap_export_templates/leap_export_template 20_USA.xlsx
-leap_export_templates/leap_export_template 12_NZ.xlsx
-leap_export_templates/leap_export_template 05_PRC_COMP_GEN.xlsx
-```
+The resolver matches the economy letter code as a filename token, so final
+exports may carry modeller-friendly names and dates. Current examples include
+`USA clean slate 28_07.xlsx`, `NZ clean slate 27_07.xlsx`, and provisional
+`leap_export_template 03_CDA_COMP_GEN.xlsx`.
 
 Resolved by `codebase/utilities/leap_export_template_resolver.py`; never build
-the path by hand.
+the path by hand or assume the old
+`leap_export_template <economy>.xlsx` filename shape.
+
+**Inventory verified 2026-07-28:** all 21 economies resolve. Eleven have final
+economy exports. Ten remain provisional (`03_CDA`, `04_CHL`, `06_HKC`,
+`07_INA`, `08_JPN`, `09_ROK`, `14_PE`, `16_RUS`, `17_SGP`, `18_CT`).
 
 #### Areas are structurally identical by intent
 
@@ -101,6 +96,12 @@ economy. It does not. `12_NZ` is simply the first area migrated; the branch is
 being removed everywhere.
 
 #### In-flight area migrations (as of 2026-07-17)
+
+The counts and named gaps below are a preserved 2026-07-17 migration snapshot,
+not the current template inventory. By 2026-07-28 many additional
+`* clean slate 28_07.xlsx` exports had been added. Use the resolver inventory
+and fresh structural comparison for current decisions; keep this section for
+the rationale and evidence that motivated per-economy ID handling.
 
 `12_NZ` is the reference/target state. `01_AUS` was migrated to match it on
 2026-07-17. Unique branch paths per area:
@@ -159,15 +160,21 @@ file**, so you can drop real exports in one at a time and delete the
 LEAP area name, which means one was copied rather than exported. Provisional
 templates are exempt — sharing the source area is what being provisional means.
 
-Aggregate sentinels (`00_APEC`, `ALL_ECONOMIES`) span areas and have no
-template; code paths fall back to `full model export.xlsx` for them.
+Aggregate sentinels (`00_APEC`, `ALL_ECONOMIES`) span areas and have no single
+economy template. Active callers must inject an explicit reviewed fallback;
+they must not silently borrow one economy's IDs.
 
-### `full model export.xlsx` (legacy single export)
+### `full model export.xlsx` (retired legacy filename)
 
-The former canonical workbook, equivalent to `20_USA`'s template. Still the
-fallback for aggregate runs and for economies without a template, and still
-read by workflows that have not been routed to the resolver yet (see
-`docs/check_registry.md`). **Prefer `leap_export_templates/` for new code.**
+This former canonical workbook was equivalent to an older `20_USA` template.
+The exact file is no longer present. Active reconciliation resolves the current
+USA template through `leap_export_template_resolver.py` for shared catalog or
+verification uses and resolves real-economy IDs from that economy's own
+template. Archived, scrapbook, and old-workflow code may still name
+`data/full model export.xlsx`; those references are historical or cleanup
+evidence, not instructions to recreate the file. See
+`docs/full_model_export_retirement_scope.md` for the preserved migration
+rationale.
 
 #### Maintaining the export templates
 
@@ -208,9 +215,8 @@ a mapping edit that does not change the LEAP branch structure.
 
 The refreshed Analysis-view export must retain:
 
-- filename `data/leap_export_templates/leap_export_template {economy}.xlsx`,
-  e.g. `leap_export_template 12_NZ.xlsx` (no `_COMP_GEN` suffix — that marks a
-  provisional file);
+- a filename containing the economy's letter code as its own token; no
+  `COMP_GEN` token for a final export (that token marks a provisional file);
 - sheet name `Export`;
 - the two LEAP preamble rows and the header on Excel row 3;
 - all branches and variables used by initialisation;
@@ -262,19 +268,14 @@ intended value are resolved. Do not sum physical duplicate rows when checking
 shares. First resolve duplicate keys and ID validity, then check Output Share,
 Process Share, and Feedstock Fuel Share across the valid sibling leaves.
 
-- `industry export.xlsx`
-  - LEAP import/export template for industry demand branches.
-  - Used by `codebase/industry_workflow.py` and as the template for
-    minor-demand workflows.
-
-- `buildings export.xlsx`, `dummy buildings export.xlsx`,
-  `buildings_dummy_20_USA todo add fuels to buildings export then import as banches into leap.xlsx`
-  - Buildings-sector templates and working variants.
-  - Used by `codebase/buildings_workflow.py` and
-    `codebase/buildings_dummy_workflow.py`.
-
-- `power export.xlsx`
-  - Power-sector import workbook used by `codebase/power_workflow.py`.
+- `industry export.xlsx`, `buildings export.xlsx`, related dummy-building
+  variants, and `power export.xlsx`
+  - Retired prototype/template filenames retained in historical documents and
+    some configuration compatibility constants.
+  - They are not present in this checkout and are not active
+    supply-reconciliation inputs. Current generic import/export examples live
+    under `codebase/examples/`; active demand and electricity/heat generation
+    uses the integrated workflows.
 
 - `refining model export.xlsx`
   - Legacy refining import workbook formerly used by the archived
@@ -300,16 +301,19 @@ leap balances exports/20_USA/full model output all years 04092026 REF.xlsx
 leap balances exports/20_USA/full model output all years 04092026 TGT.xlsx
 ```
 
-The extractor converts balance sheets into long rows, converts values to
-petajoules, then maps LEAP sector/fuel pairs to ESTO flow/product pairs using
-`config/leap_mappings.xlsx`.
+The extractor converts balance sheets into long rows and converts values to
+petajoules. Canonical mapping semantics come from the sibling
+`leap_mappings/config/outlook_mappings_master.xlsx`; the retired local
+`config/leap_mappings.xlsx` name may appear in archived migration notes but is
+not the current mapping authority.
 
 ### `leap results tables/`
 
 Rendered LEAP Results-view workbook templates and refreshed outputs. These were
-the older source for dashboard/result workflows and are still used by
-`codebase/leap_results_workflow.py`, old extraction probes, and some comparison
-utilities.
+the older source for dashboard/result workflows. They remain useful to
+`codebase/old_workflows/` probes and selected comparison/template utilities,
+but the current dashboard consumes Common ESTO outputs and current
+reconciliation uses Energy Balance exports.
 
 Typical active files are:
 

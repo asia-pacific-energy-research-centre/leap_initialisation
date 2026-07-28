@@ -6,12 +6,28 @@
 configuration, template inventory, and code claims all read directly. Per-item
 verification dates are in the **Last verified** column.
 
-**Later documentation validation note:** the handover-set path check also found
-three pre-existing root-README references with no current target:
-`codebase/industry_mapping_workflow.py`,
-`codebase/balance_table_example.py`, and `data/power export.xlsx`. They belong
-under INITQ-007's stale-reference cleanup; this documentation-only task did not
-invent replacement code or data paths.
+**Later documentation validation note / INITQ-007 completion evidence:** the
+handover-set path check found three pre-existing root-README references with no
+current target: `codebase/industry_mapping_workflow.py`,
+`codebase/balance_table_example.py`, and `data/power export.xlsx`. The README
+now preserves the industry/power history while routing runnable examples to
+`codebase/examples/power_mapping_example.py` and
+`codebase/examples/balance_tables_example.py`. It does not invent replacement
+code or data paths.
+
+**INITQ-027 — verify remaining literal USA-template fallbacks:** the
+preservation audit corrected live documentation to the resolver's flexible
+filename contract and current `* clean slate 28_07.xlsx` inventory. Two code
+constants still name the absent literal path
+`data/leap_export_templates/leap_export_template 20_USA.xlsx`:
+`codebase/utilities/fuel_catalog_preflight.py::DEFAULT_FULL_MODEL_EXPORT_PATH`
+and `codebase/functions/patch_baseline_seeds.py::FULL_MODEL_EXPORT_PATH`.
+Normal per-economy routes often resolve or inject a template before reaching
+them, and the work queue records intentional shared/fallback semantics, so do
+not mechanically rename the constants. Trace aggregate, catalog-refresh, and
+patch callers; add focused tests using the current flexible resolver; then
+either route these defaults through the resolver or document a proven
+non-executable compatibility role.
 
 **Planning horizon:** four weeks, through 2026-08-24
 

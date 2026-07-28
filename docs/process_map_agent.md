@@ -10,6 +10,17 @@ module and line number cited below can move. Where the older docs
 this document is the corrected version — the discrepancy is not called out
 line by line, the correct current behaviour is just stated directly.
 
+> **2026-07-28 preservation update:** retain this document for its detailed
+> stage/function explanations, but use the newer
+> [`handover/supply_reconciliation_agent_guide.md`](handover/supply_reconciliation_agent_guide.md)
+> for current run instructions. Template filenames are now resolved by economy
+> token and may look like `USA clean slate 28_07.xlsx`; do not construct
+> `leap_export_template {economy}.xlsx`. The literal
+> `data/full model export*.xlsx` and `config/backup_leap_mappings.xlsx`
+> descriptions below are dated migration history, not current required paths.
+> LOC counts and line numbers are also 2026-07-23 evidence rather than stable
+> API coordinates.
+
 This is the technical companion to `docs/process_map_human.md`. It exists so
 a coding agent picking up this repo cold can find, in one place: which file
 owns which stage, what each stage reads and writes, and where the extracted

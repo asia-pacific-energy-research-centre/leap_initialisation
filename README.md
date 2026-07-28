@@ -71,10 +71,10 @@ The main workflows expect the following files to already be present (they are no
 
 | File | Where used |
 | ---- | ---------- |
-| `data/00APEC_2025_low_with_subtotals.csv` | ESTO historical reference |
+| `data/00APEC_2024_low_with_subtotals.csv` | Current shared ESTO base-table default (`workflow_config.py`); base year is configured separately |
 | `data/merged_file_energy_ALL_20251106.csv` | 9th Outlook projection data |
-| `data/leap_export_templates/leap_export_template <economy>.xlsx` | Per-economy LEAP branch/ID reference (a `_COMP_GEN` suffix marks a provisional copy of another economy's area) |
-| `data/full model export.xlsx` | Legacy single branch-path reference; fallback for aggregate runs and not-yet-routed workflows |
+| `data/leap_export_templates/*.xlsx` with the economy code as a filename token | Per-economy LEAP branch/ID reference (`COMP_GEN` marks a provisional copy); resolve through `leap_export_template_resolver.py` rather than constructing a filename |
+| current resolved USA template | Shared catalog/verification reference where explicitly configured; the retired literal `data/full model export.xlsx` is absent |
 | `data/leap balances exports/<economy>/` | Canonical raw LEAP balance exports (manual export from LEAP) |
 
 See `data/README.md` for full descriptions and `data/leap balances exports/README.md` for the expected filename format of LEAP exports.
@@ -98,7 +98,12 @@ Open the script, check the `ACTIVE_PRESET` at the bottom (either `_PRESET_BASELI
 - `leap_exports`: packaged helpers for export filename formatting, workbook creation, and workbook discovery/validation.
 - `leap_api`: packaged helpers for LEAP API availability checks and workbook import operations.
 - `energy_use_reconciliation`: ESTO/LEAP reconciliation helpers (transport checks optional).
-- `power_workflow`: standalone power import workflow for `data/power export.xlsx` with scenario alignment, ESTO fuel validation, skip reporting, and hardcoded override hooks. > not completed yet but a work in progress.
+- `codebase/examples/power_mapping_example.py`: notebook-style example of
+  export-driven LEAP branch creation/fill. Its editable input currently defaults
+  to `data/USA_power_leap_import_REF.xlsx`, which is not bundled in this
+  checkout—supply a reviewed LEAP-shaped workbook before running it. Supply
+  reconciliation uses its own integrated electricity/heat workflow rather than
+  the retired `data/power export.xlsx` prototype.
 
 ## LEAP / ESTO / 9th balance mapping
 
@@ -115,18 +120,23 @@ Researchers mainly edit these sheets in `C:\Users\Work\github\leap_mappings\conf
 - `esto_rollup_rules`
 - `ninth_rollup_rules`
 
-Generated relationship IDs, effective rolled rows, cardinality summaries, and QA tables are created by code. The intended loop is:
+Generated relationship IDs, effective rolled rows, cardinality summaries, and
+QA tables are created by code. The canonical execution path is now the sibling
+`leap_mappings/codebase/run_mapping_pipeline.py`; the similarly named
+`codebase/mapping_tools/` files retained here are compatibility/reference code
+and do not own mapping semantics. The current editor loop is:
 
 1. Fill in simple source-to-target mappings.
 2. Add rollup rules where detail levels do not align.
-3. Run `codebase/mapping_tools/update_mapping_cardinality.py`.
-4. Review `results/mapping_relationships/qa/qa_many_to_many_after_rollup.csv`.
+3. Run mapping maintenance and Stages 1–3 in `leap_mappings`.
+4. Review
+   `leap_mappings/results/mapping_relationships/qa/qa_many_to_many_after_rollup.csv`.
 5. Fix mappings or add rollups until effective many-to-many rows are resolved.
-6. Run `codebase/mapping_tools/build_energy_balance_relationships.py` and use the compiled outputs.
+6. Rerun the canonical mapping pipeline and use its compiled outputs.
 
 Important distinction: many-to-many before rollup is not automatically bad; it is reported as a warning. Many-to-many after rollup is a high-severity problem that needs mapping or rollup review.
 
-Generated outputs include:
+Canonical generated outputs in `leap_mappings` include:
 
 - `results/mapping_relationships/energy_balance_relationships.csv`
 - `results/mapping_relationships/energy_balance_relationships.xlsx`
@@ -136,13 +146,20 @@ Generated outputs include:
 
 The compiled relationship builder creates rows for LEAP to ESTO, 9th to ESTO, LEAP to 9th, and the separately checked reverse 9th to LEAP initialisation mapping. Rows with `remove_row=True` are preserved but marked excluded for their use case.
 
-The older common-ESTO layer still exists for dashboard-shaped comparison data:
+The current Common ESTO layer is also produced by `leap_mappings` for
+dashboard-shaped comparison data:
 
-1. `codebase/mapping_tools/build_common_esto_structure.py` infers common ESTO rows by comparison scope and writes `results/common_esto/common_esto_rows.csv`, `common_esto_rows.xlsx`, and `esto_to_common_esto_map.csv`.
-2. `codebase/mapping_tools/apply_common_esto_structure.py` converts ESTO-shaped source data into `results/common_esto/common_esto_comparison_data.csv`.
+1. `leap_mappings/codebase/mapping_tools/build_common_esto_structure.py` infers common ESTO rows by comparison scope and writes `results/common_esto/common_esto_rows.csv`, `common_esto_rows.xlsx`, and `esto_to_common_esto_map.csv`.
+2. `leap_mappings/codebase/mapping_tools/apply_common_esto_structure.py` converts source data into `results/common_esto/common_esto_comparison_data.csv` and the versioned output contract on a QA-successful publication.
 3. Dashboards should consume the common ESTO comparison data, not `relationship_id` to graph links.
 
-Supported comparison scopes are `leap_vs_esto`, `leap_vs_ninth`, `leap_vs_esto_vs_ninth`, and `esto_only`. If LEAP or 9th represents several exact ESTO flow/product rows as one aggregate, the common-structure builder keeps those exact ESTO components together for scopes that include that source. Most mappings stay simple; the system exists so aggregation, exclusion, and detail-level mismatches are generated consistently and reviewed through QA outputs.
+Current comparison scopes are `esto_leap`, `esto_extended_leap`,
+`esto_leap_ninth`, and `esto_extended_leap_ninth`. Older documents may use the
+superseded conceptual names `leap_vs_esto`, `leap_vs_ninth`,
+`leap_vs_esto_vs_ninth`, or `esto_only`; do not pass those old labels to current
+workflows. If LEAP or 9th represents several exact ESTO flow/product rows as one
+aggregate, the common-structure builder keeps those exact ESTO components
+together for scopes that include that source.
 
 ## Notes
 
@@ -152,14 +169,29 @@ Supported comparison scopes are `leap_vs_esto`, `leap_vs_ninth`, `leap_vs_esto_v
 
 # Industry example:
 
-Note that this pat of the code is redundant now that Industry model has been fully migrated to the new LEAP structure, but it is left here as an example of how to use the Excel import/export pattern for moving data between LEAP models. The `codebase/industry_mapping_workflow.py` shows the minimal pattern for moving data between LEAP industry models using an Excel export/import mapping (the same format you get from LEAP’s `Analysis > Export to Excel Template`). You can generate that file in LEAP or build it yourself in the same shape (Branch Path, Variable, Scenario, Region, Scale, Units, Per..., years…). Could be applied to other sectors too, but industry was the original use case for this pattern so it’s the example here.
+This is useful historical context for the Excel import/export pattern that was
+used to move data between LEAP models. The original
+`codebase/industry_mapping_workflow.py` is no longer present in this rebuilt
+repository; do not try to run that path. Its central pattern remains supported
+by `create_branches_from_export_file()` and `fill_branches_from_export_file()`
+in `codebase/functions/leap_core.py`, with a current notebook-style example in
+`codebase/examples/power_mapping_example.py`. The export/import shape remains
+the same: Branch Path, Variable, Scenario, Region, Scale, Units, Per..., and
+year columns.
 
 ### How to use the example:
 
-- Open `codebase/industry_mapping_workflow.py` and point `leap_export_filename` to your mapping file (export from source model, or a custom file structured like a LEAP import/export sheet).
-- Set `SCENARIO` and `REGION` to the target values in the destination LEAP area; adjust `sheet_name` if your Excel sheet differs from `"Export"`.
+- Open `codebase/examples/power_mapping_example.py` and point
+  `LEAP_EXPORT_FILENAME` to your mapping file (exported from the source model
+  or constructed in the same LEAP import/export shape).
+- Set `SCENARIO` and `REGION` to the target values in the destination LEAP
+  area; adjust `SHEET_NAME` if your Excel sheet differs from `"Export"`.
 - If you need to create the branch structure in the destination model, set `CREATE_BRANCHES_FROM_EXPORT_FILE = True` (uses `create_branches_from_export_file`).
-- To write the data into existing branches, keep `FILL_BRANCHES_FROM_EXPORT_FILE = True` (uses `fill_branches_from_export_file`) and optional `SET_UNITS=True` to carry over units from the sheet. > note the issue with setting scale values from the sheet that requires a manual fix within LEAP (see code comments).
+- To write data into existing branches, set
+  `FILL_BRANCHES_FROM_EXPORT_FILE = True` (uses
+  `fill_branches_from_export_file`). Unit/scale handling remains something to
+  verify in the generated workbook or LEAP GUI; the current example has no
+  `SET_UNITS` toggle.
 - Run the script after making sure your Python environment is ready (e.g. pywin32 is installed) and LEAP is installed and open in the right area, region and scenario, with the right Fuels set. The helper will connect via `connect_to_leap()`, then create/fill branches based on your file.
 
 ### Notes/ideas:
@@ -173,7 +205,12 @@ Image below shows the end result of running the example script to copy data from
 
 # Balance tables example:
 
-This was a quick project to generate balance tables from the 9th edition energy dataset. See `codebase/balance_table_example.py` for an example of how to use the `copy_energy_spreadsheet_into_leap_import_file` module to build balance tables within LEAP for checking against the ESTO data while modelling. The script connects to LEAP, extracts energy use data, and generates branches and data within the assumptions folder for this.
+This was a quick project to generate balance tables from the 9th edition energy
+dataset. The retained example is
+`codebase/examples/balance_tables_example.py` (plural `tables`). It demonstrates
+`copy_energy_spreadsheet_into_leap_import_file` and can either prepare a
+workbook or, when the configured write mode permits API use, create/fill LEAP
+branches under Key Assumptions.
 
 ![balance table example](docs/images/balance-table-example.png)
 
