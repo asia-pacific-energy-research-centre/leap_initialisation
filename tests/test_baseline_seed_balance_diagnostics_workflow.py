@@ -157,6 +157,64 @@ def test_base_year_uses_esto_and_matches_across_economy_code_formats() -> None:
     assert bool(row["update_allocation_required"]) is False
 
 
+def test_oil_refining_base_comparator_adds_only_configured_own_use_flow() -> None:
+    comparison = _comparison_rows(
+        scenario="Reference",
+        year=2022,
+        leap_value=-8.0,
+        source="base",
+        source_value=-5.0,
+    )
+    comparison["sheet"] = "09.07 Oil refineries"
+    comparison["fuel_label"] = "08.01 Natural gas"
+    mapping_status = pd.DataFrame(
+        [
+            {
+                "sheet": "09.07 Oil refineries",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "08.01 Natural gas",
+                "esto_flow": "09.07 Oil refineries",
+                "esto_product": "08.01 Natural gas",
+                "sector_code_9th": "",
+                "ninth_fuel_code": "",
+            }
+        ]
+    )
+    base_df = pd.DataFrame(
+        [
+            {
+                "economy": "01AUS",
+                "flows": "10.01.11 Oil refineries",
+                "products": "08.01 Natural gas",
+                "is_subtotal": False,
+                "2022": -3.0,
+            },
+            {
+                "economy": "01AUS",
+                "flows": "10.01.12 Petrochemical industry",
+                "products": "08.01 Natural gas",
+                "is_subtotal": False,
+                "2022": -99.0,
+            },
+        ]
+    )
+
+    table = diagnostics.build_leap_source_difference_table(
+        comparison_long=comparison,
+        mapping_status=mapping_status,
+        leap_long=None,
+        base_df=base_df,
+        economy="01_AUS",
+        years=[2022],
+        scenarios=["Reference"],
+    )
+
+    row = table.iloc[0]
+    assert row["source_value_pj"] == pytest.approx(-8.0)
+    assert row["difference_pj"] == pytest.approx(0.0)
+    assert row["status"] == "match"
+
+
 def test_shared_ninth_pair_across_esto_rows_requires_allocation() -> None:
     mapping_status = _mapping_status(
         ninth_pairs=[("09_06_gas_processing_plants", "08_01_natural_gas")]

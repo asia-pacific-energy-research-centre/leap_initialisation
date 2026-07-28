@@ -23,6 +23,7 @@ from codebase.utilities.leap_balance_export_resolver import (
     require_level2_balance_export_detail,
     resolve_balance_export_workbook,
 )
+from codebase.functions.transformation_analysis_utils import MAJOR_SECTOR_CONFIG
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -658,11 +659,93 @@ def _allocation_reason(row: pd.Series) -> str:
     return ";".join(reasons)
 
 
+def _add_refinery_auxiliary_own_use_to_base_reference(
+    *,
+    wide: pd.DataFrame,
+    base_df: pd.DataFrame | None,
+    economy: str,
+) -> pd.DataFrame:
+    """Add the configured refinery own-use flow to its ESTO base comparator.
+
+    The LEAP Oil Refining balance row is the net-by-fuel module boundary. Its
+    source comparator therefore needs the transformation flow plus the exact
+    own-use flow maintained for that module in ``MAJOR_SECTOR_CONFIG``.
+    """
+    if base_df is None or base_df.empty or wide.empty:
+        return wide
+
+    config = MAJOR_SECTOR_CONFIG["oil_refineries"]
+    transformation_flows = list(config.get("transformation_flow_codes", []))
+    auxiliary_flows = list(config.get("loss_flow_codes", []))
+    if len(transformation_flows) != 1 or not auxiliary_flows:
+        raise ValueError(
+            "Oil-refinery diagnostic expects one transformation flow and at "
+            "least one configured own-use flow."
+        )
+
+    required = {"economy", "flows", "products"}
+    missing = sorted(required - set(base_df.columns))
+    if missing:
+        raise KeyError(f"base_df is missing refinery comparison columns: {missing}")
+
+    year_columns = {
+        int(str(column)): column
+        for column in base_df.columns
+        if str(column).strip().isdigit()
+    }
+    scoped = base_df.copy()
+    scoped["_economy_key"] = (
+        scoped["economy"].fillna("").astype(str).str.replace("_", "", regex=False).str.upper()
+    )
+    scoped = scoped[
+        scoped["_economy_key"].eq(_clean_token(economy).replace("_", "").upper())
+        & scoped["flows"].fillna("").astype(str).str.strip().isin(auxiliary_flows)
+    ].copy()
+    if "is_subtotal" in scoped.columns:
+        scoped = scoped[~scoped["is_subtotal"].fillna(False).astype(bool)].copy()
+    if scoped.empty:
+        return wide
+
+    adjustment_rows: list[dict[str, Any]] = []
+    for _, row in scoped.iterrows():
+        product = _clean_token(row.get("products", ""))
+        for year, column in year_columns.items():
+            value = pd.to_numeric(pd.Series([row.get(column)]), errors="coerce").iloc[0]
+            if pd.notna(value):
+                adjustment_rows.append(
+                    {
+                        "esto_product": product,
+                        "year": year,
+                        "_refinery_auxiliary_own_use_pj": float(value),
+                    }
+                )
+    if not adjustment_rows:
+        return wide
+
+    adjustments = (
+        pd.DataFrame(adjustment_rows)
+        .groupby(["esto_product", "year"], as_index=False)["_refinery_auxiliary_own_use_pj"]
+        .sum()
+    )
+    out = wide.merge(adjustments, on=["esto_product", "year"], how="left")
+    refinery_mask = (
+        out["esto_flow"].eq(transformation_flows[0])
+        & out["base"].notna()
+        & out["_refinery_auxiliary_own_use_pj"].notna()
+    )
+    out.loc[refinery_mask, "base"] = (
+        out.loc[refinery_mask, "base"]
+        + out.loc[refinery_mask, "_refinery_auxiliary_own_use_pj"]
+    )
+    return out.drop(columns="_refinery_auxiliary_own_use_pj")
+
+
 def build_leap_source_difference_table(
     *,
     comparison_long: pd.DataFrame,
     mapping_status: pd.DataFrame,
     leap_long: pd.DataFrame | None = None,
+    base_df: pd.DataFrame | None = None,
     economy: str,
     years: Sequence[int],
     scenarios: Sequence[str],
@@ -706,6 +789,14 @@ def build_leap_source_difference_table(
             wide[column] = pd.NA
         wide[column] = pd.to_numeric(wide[column], errors="coerce")
 
+    metadata = _build_mapping_metadata(mapping_status, leap_long)
+    wide = wide.merge(metadata, on=["sheet", "measure", "fuel_label"], how="left")
+    wide = _add_refinery_auxiliary_own_use_to_base_reference(
+        wide=wide,
+        base_df=base_df,
+        economy=economy,
+    )
+
     has_base = wide["base"].notna()
     has_projection = wide["projection"].notna()
     wide["reference_source"] = ""
@@ -740,8 +831,6 @@ def build_leap_source_difference_table(
     wide.loc[has_base & has_projection, "status"] = "ambiguous_reference"
     wide["is_mismatch"] = wide["status"].isin({"value_mismatch", "missing_in_leap"})
 
-    metadata = _build_mapping_metadata(mapping_status, leap_long)
-    wide = wide.merge(metadata, on=["sheet", "measure", "fuel_label"], how="left")
     for column in [
         "esto_flow",
         "esto_product",
@@ -901,6 +990,7 @@ def run_economy_balance_diagnostic(
         comparison_long=comparison["comparison_long"],
         mapping_status=comparison["mapping_status"],
         leap_long=conversion["leap_long"],
+        base_df=comparison.get("base_df"),
         economy=economy,
         years=selected_years,
         scenarios=selected_scenarios,

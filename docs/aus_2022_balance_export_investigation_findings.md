@@ -30,6 +30,28 @@ pre-fix seed while current code contains the fix.
 
 ## Comparison summary
 
+### Comparator correction, 2026-07-28
+
+A follow-up rerun corrected two diagnostic false-positive causes without
+changing the LEAP workbook:
+
+- Oil Refining now compares the net-by-fuel LEAP module boundary with the
+  maintained ESTO boundary `09.07 Oil refineries + 10.01.11 Oil refineries`.
+  Natural gas and electricity therefore move from mismatches to exact matches.
+  Refinery gas, petroleum coke, and other products now expose the real net
+  boundary difference instead of being compared with gross transformation
+  output alone.
+- `Non specified own uses` was the only populated own-use label omitted from
+  the balance extractor's sign-normalization set. Its seven LEAP values were
+  therefore left positive while ESTO was negative. Other own-use rows did not
+  show the problem because their labels were already normalized to negative
+  consumption. Adding both hyphenated and unhyphenated label variants makes
+  all seven rows match to floating-point precision.
+
+For the current 195-row workbook diagnostic this reduces mismatches from 102
+to 93, increases matches from 56 to 65, and reduces material differences from
+62 to 58. The 37 unavailable comparator rows are unchanged.
+
 The corrected diagnostic produced 193 direct ESTO-pair comparison rows:
 
 | Count | Rows |

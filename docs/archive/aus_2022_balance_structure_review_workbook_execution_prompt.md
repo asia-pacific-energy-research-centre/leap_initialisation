@@ -284,14 +284,14 @@ LEAP value - error = correct source value
    - a missing/unavailable comparator.
 6. Workbook summary counts reconcile with the corrected run:
    - 195 comparison rows;
-   - 102 mismatches;
-   - 56 matches;
+   - 93 mismatches;
+   - 65 matches;
    - 37 reference-unavailable rows;
    - 152 mapping/check issue rows;
    - 149 missing ESTO-pair rows; and
    - 3 total-balance mapping-check rows.
 7. No formula errors are present.
-8. Render and visually inspect all four sheets. Also inspect representative
+8. Render and visually inspect all five sheets. Also inspect representative
    regions containing large mismatches, transformations, and own use so colour
    and alignment are legible.
 9. The final workbook opens from the main-repository path.
@@ -324,3 +324,13 @@ Stop and ask the user if:
 
 Do not stop merely because mappings are missing: exposing those missing
 combinations is a required output of this task.
+
+## Follow-up correction completed 2026-07-28
+
+The workbook was rebuilt as `aus_2022_balance_structure_review_v2.xlsx` with a
+fifth `Full Expected Source` sheet. The diagnostic now derives the Oil Refining
+boundary from the maintained transformation configuration (`09.07` plus its
+exact `10.01.11` auxiliary-own-use flow) and recognizes both hyphenated and
+unhyphenated `Non specified own uses` labels as negative consumption rows.
+The corrected result is 93 mismatches, 65 matches, 37 unavailable comparators,
+and 58 material rows. All five sheets were rendered and formula-error checked.

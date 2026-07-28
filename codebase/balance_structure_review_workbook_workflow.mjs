@@ -6,22 +6,28 @@ import path from "node:path";
 import { FileBlob, SpreadsheetFile, Workbook } from "@oai/artifact-tool";
 
 const MAIN_REPO_ROOT = "C:/Users/Work/github/leap_initialisation";
+const WORKTREE_ROOT =
+  `${MAIN_REPO_ROOT}/.claude/worktrees/baseline-seed-export-diagnostics`;
 const ECONOMY = "01_AUS";
 const SCENARIO = "Reference";
 const YEAR = 2022;
 const UNITS = "Petajoule";
 const SOURCE_WORKBOOK = `${MAIN_REPO_ROOT}/data/leap balances exports - testing/${ECONOMY}/${YEAR}.xlsx`;
 const DIAGNOSTICS_DIRECTORY =
-  `${MAIN_REPO_ROOT}/outputs/leap_exports/supply_reconciliation/supporting_files/` +
+  `${WORKTREE_ROOT}/outputs/leap_exports/supply_reconciliation/supporting_files/` +
   "baseline_seed_balance_diagnostics/01_AUS_2022_POST_EFF_FIX_20260728";
-const OUTPUT_WORKBOOK = `${DIAGNOSTICS_DIRECTORY}/aus_2022_balance_structure_review.xlsx`;
+const OUTPUT_WORKBOOK =
+  `${MAIN_REPO_ROOT}/outputs/leap_exports/supply_reconciliation/supporting_files/` +
+  "baseline_seed_balance_diagnostics/01_AUS_2022_POST_EFF_FIX_20260728/" +
+  "aus_2022_balance_structure_review_v2.xlsx";
 const TEMP_DIRECTORY =
-  `${MAIN_REPO_ROOT}/.claude/worktrees/baseline-seed-export-diagnostics/.tmp/aus_balance_review`;
+  `${WORKTREE_ROOT}/.tmp/aus_balance_review`;
 
 const SOURCE_SHEET_NAME = "Energy Balance";
 const LEAP_SHEET_NAME = "LEAP Values";
 const ERROR_SHEET_NAME = "LEAP - Source Error";
 const CORRECT_SHEET_NAME = "Correct Source Values";
+const FULL_EXPECTED_SHEET_NAME = "Full Expected Source";
 const MISSING_SHEET_NAME = "Missing Combinations";
 
 const RED_FONT = "#9C0006";
@@ -324,8 +330,6 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
   const statusCounts = countBy(reviews, "status");
   const issueCounts = countBy(mappingIssues, "reason");
   const expectedCounts = {
-    value_mismatch: 102,
-    match: 56,
     reference_unavailable: 37,
     missing_esto_pair: 149,
     total_balance_mapping_check: 3,
@@ -345,16 +349,27 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
   sourceSheet.freezePanes.freezeColumns(1);
   const errorSheet = workbook.worksheets.add(ERROR_SHEET_NAME);
   const correctSheet = workbook.worksheets.add(CORRECT_SHEET_NAME);
+  const fullExpectedSheet = workbook.worksheets.add(FULL_EXPECTED_SHEET_NAME);
   const missingSheet = workbook.worksheets.add(MISSING_SHEET_NAME);
 
   copyBalanceLayout(sourceSheet, errorSheet, sourceRows, sourceColumns);
   copyBalanceLayout(sourceSheet, correctSheet, sourceRows, sourceColumns);
+  copyBalanceLayout(sourceSheet, fullExpectedSheet, sourceRows, sourceColumns);
   errorSheet.getRangeByIndexes(3, 1, sourceRows - 3, sourceColumns - 1).clear({
     applyTo: "contents",
   });
   correctSheet.getRangeByIndexes(3, 1, sourceRows - 3, sourceColumns - 1).clear({
     applyTo: "contents",
   });
+  fullExpectedSheet.getRangeByIndexes(3, 1, sourceRows - 3, sourceColumns - 1).clear({
+    applyTo: "contents",
+  });
+  fullExpectedSheet.getRangeByIndexes(
+    3,
+    1,
+    sourceRows - 3,
+    sourceColumns - 1,
+  ).format.fill = NEUTRAL_FILL;
   setDiagnosticTitle(
     errorSheet,
     `LEAP - Source Error for Area "${ECONOMY}"`,
@@ -364,6 +379,11 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     correctSheet,
     `Correct Source Values for Area "${ECONOMY}"`,
     `Scenario: ${SCENARIO}, Year: ${YEAR}, Units: ${UNITS} | Blue = source value; yellow blank = no safe comparator`,
+  );
+  setDiagnosticTitle(
+    fullExpectedSheet,
+    `Full Expected Source for Area "${ECONOMY}"`,
+    `Scenario: ${SCENARIO}, Year: ${YEAR}, Units: ${UNITS} | Blue = source-backed expected value; yellow = known comparator unavailable; grey = structurally absent or not comparable`,
   );
 
   const resolver = makeStructureResolver(sourceValues);
@@ -439,6 +459,7 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     const address = cellAddress(resolution.row, resolution.column);
     const errorCell = errorSheet.getRange(address);
     const correctCell = correctSheet.getRange(address);
+    const fullExpectedCell = fullExpectedSheet.getRange(address);
     const leapValue = asNumber(review.leap_value_pj);
     const sourceValue = asNumber(review.source_value_pj);
     const reportedDifference = asNumber(review.difference_pj);
@@ -450,13 +471,18 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
       correctCell.formulas = [
         [`='${LEAP_SHEET_NAME}'!${address}-'${ERROR_SHEET_NAME}'!${address}`],
       ];
+      fullExpectedCell.formulas = [
+        [`='${LEAP_SHEET_NAME}'!${address}-'${ERROR_SHEET_NAME}'!${address}`],
+      ];
     } else {
       styleCell(errorCell, NEUTRAL_FILL, "#666666", false);
       // Match errors intentionally display as zero. Preserve the exact source
       // value numerically so micro-PJ within-tolerance differences are not lost.
       correctCell.values = [[sourceValue]];
+      fullExpectedCell.values = [[sourceValue]];
     }
     styleCell(correctCell, BLUE_FILL, BLUE_FONT, false);
+    styleCell(fullExpectedCell, BLUE_FILL, BLUE_FONT, false);
 
     if (
       reconciliationSamples.length < 50 &&
@@ -508,8 +534,10 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     const address = cellAddress(row, column);
     errorSheet.getRange(address).clear({ applyTo: "contents" });
     correctSheet.getRange(address).clear({ applyTo: "contents" });
+    fullExpectedSheet.getRange(address).clear({ applyTo: "contents" });
     errorSheet.getRange(address).format.fill = YELLOW_FILL;
     correctSheet.getRange(address).format.fill = YELLOW_FILL;
+    fullExpectedSheet.getRange(address).format.fill = YELLOW_FILL;
   }
 
   const accountedComparisonRows = Object.values(comparisonStateCounts).reduce(
@@ -632,6 +660,7 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     LEAP_SHEET_NAME,
     ERROR_SHEET_NAME,
     CORRECT_SHEET_NAME,
+    FULL_EXPECTED_SHEET_NAME,
     MISSING_SHEET_NAME,
   ]) {
     const range =
@@ -665,6 +694,30 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     renders[`error_${name}`] = renderPath;
   }
 
+  const formulaErrorPattern = /#REF!|#DIV\/0!|#VALUE!|#NAME\?|#N\/A/i;
+  const formulaErrorCells = [];
+  for (const sheetName of [
+    ERROR_SHEET_NAME,
+    CORRECT_SHEET_NAME,
+    FULL_EXPECTED_SHEET_NAME,
+  ]) {
+    const sheet = workbook.worksheets.getItem(sheetName);
+    const values = sheet.getUsedRange().values;
+    const formulas = sheet.getUsedRange().formulas;
+    for (let row = 0; row < values.length; row += 1) {
+      for (let column = 0; column < values[row].length; column += 1) {
+        const value = String(values[row][column] ?? "");
+        const formula = String(formulas[row]?.[column] ?? "");
+        if (formulaErrorPattern.test(value) || formulaErrorPattern.test(formula)) {
+          formulaErrorCells.push(`${sheetName}!${cellAddress(row, column)}`);
+        }
+      }
+    }
+  }
+  if (formulaErrorCells.length > 0) {
+    throw new Error(`Formula errors found: ${formulaErrorCells.join(", ")}`);
+  }
+
   const sourceAfter = await fs.readFile(sourceWorkbookPath);
   if (!sourceBefore.equals(sourceAfter)) {
     throw new Error("Source workbook changed during build");
@@ -679,6 +732,7 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     issueCounts,
     comparisonStateCounts,
     missingAuditRows: missingRecords.length,
+    formulaErrorCells,
     formulaPolicy:
       "Mismatch source values use LEAP-minus-error formulas; match source values are numeric because the error sheet intentionally displays within-tolerance differences as zero.",
     reconciliationSamples,

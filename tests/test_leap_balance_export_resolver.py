@@ -5,11 +5,17 @@ from pathlib import Path
 from openpyxl import Workbook
 
 from codebase.utilities.leap_balance_export_resolver import (
+    is_leap_balance_own_use_or_loss_row,
     inspect_balance_export_detail,
     load_leap_balance_activity_table,
     require_level2_balance_export_detail,
     resolve_balance_export_workbook,
 )
+
+
+def test_non_specified_own_use_is_normalized_as_negative_consumption() -> None:
+    assert is_leap_balance_own_use_or_loss_row("Non specified own uses")
+    assert is_leap_balance_own_use_or_loss_row("Non-specified own uses")
 
 
 def _touch(path: Path) -> None:
