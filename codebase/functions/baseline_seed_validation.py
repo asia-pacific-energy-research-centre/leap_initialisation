@@ -199,11 +199,12 @@ def _issue_group_frame(columns: list[str]) -> pd.DataFrame:
 
 
 def build_missing_branch_issue_groups(findings: pd.DataFrame) -> pd.DataFrame:
-    """Summarize missing-branch findings into one row per root cause.
+    """Summarize missing-branch findings into one row per economy and branch.
 
     The raw findings are preserved, but this grouped view makes it easier to
-    see when SEED-003/004/005 are downstream symptoms of the same missing
-    canonical branch that triggers SEED-011.
+    see when variable, scenario, ID, value, and coverage findings are evidence
+    of the same root cause: code generated a branch that is absent from the
+    selected economy's LEAP template.
     """
     if findings.empty:
         return _empty_missing_branch_issue_groups()
@@ -212,15 +213,38 @@ def build_missing_branch_issue_groups(findings: pd.DataFrame) -> pd.DataFrame:
     if not required_columns.issubset(findings.columns):
         return _empty_missing_branch_issue_groups()
 
-    work = findings[findings["rule_id"].isin(MISSING_BRANCH_ROOT_CAUSE_RULE_IDS)].copy()
-    if work.empty:
+    root_findings = findings[
+        findings["rule_id"].isin(MISSING_BRANCH_ROOT_CAUSE_RULE_IDS)
+    ].copy()
+    if root_findings.empty:
         return _empty_missing_branch_issue_groups()
 
-    group_columns = (["economy"] if "economy" in work.columns else []) + [
-        *LOGICAL_KEY_COLUMNS,
-        SOURCE_WORKFLOW_COLUMN,
-        SOURCE_FILE_COLUMN,
+    group_columns = (["economy"] if "economy" in root_findings.columns else []) + [
+        "Branch Path",
     ]
+    missing_branch_keys = root_findings[
+        root_findings["rule_id"].eq("SEED-011")
+    ][group_columns].drop_duplicates()
+    if missing_branch_keys.empty:
+        return _empty_missing_branch_issue_groups()
+
+    # Series/scenario coverage findings are symptoms of the same absent branch,
+    # so include them as evidence once SEED-011 establishes the root cause.
+    work = findings[
+        findings["rule_id"].isin(
+            MISSING_BRANCH_ROOT_CAUSE_RULE_IDS | {"SEED-009", "SEED-010"}
+        )
+    ].merge(missing_branch_keys, on=group_columns, how="inner")
+
+    def _joined_values(group: pd.DataFrame, column: str) -> str:
+        if column not in group.columns:
+            return ""
+        return "|".join(sorted({
+            _text(value)
+            for value in group[column]
+            if _text(value)
+        }))
+
     rows: list[dict[str, object]] = []
     for key, group in work.groupby(group_columns, dropna=False, sort=True):
         rule_ids = sorted({_text(value) for value in group["rule_id"] if _text(value)})
@@ -234,8 +258,9 @@ def build_missing_branch_issue_groups(findings: pd.DataFrame) -> pd.DataFrame:
         context = dict(zip(group_columns, key_values))
         evidence_values = sorted({_text(value) for value in group.get("evidence", pd.Series(dtype=object)) if _text(value)})
         summary = (
-            "Branch is missing from the canonical full-model export; "
-            f"related findings: {'|'.join(rule_ids)}"
+            "Code generated this branch, but it is missing from the selected "
+            "economy's LEAP template. Variable, scenario, ID, value, and "
+            "coverage findings are supporting evidence for this one issue."
         )
         rows.append({
             "issue_group_id": "missing_branch::" + "|".join(
@@ -244,11 +269,11 @@ def build_missing_branch_issue_groups(findings: pd.DataFrame) -> pd.DataFrame:
             "issue_group_type": "missing_branch",
             "economy": context.get("economy", ""),
             "Branch Path": context.get("Branch Path", ""),
-            "Variable": context.get("Variable", ""),
-            "Scenario": context.get("Scenario", ""),
-            "Region": context.get("Region", ""),
-            "source_workflow": context.get(SOURCE_WORKFLOW_COLUMN, ""),
-            "source_file": context.get(SOURCE_FILE_COLUMN, ""),
+            "Variable": _joined_values(group, "Variable"),
+            "Scenario": _joined_values(group, "Scenario"),
+            "Region": _joined_values(group, "Region"),
+            "source_workflow": _joined_values(group, SOURCE_WORKFLOW_COLUMN),
+            "source_file": _joined_values(group, SOURCE_FILE_COLUMN),
             "primary_rule_id": "SEED-011",
             "member_rule_ids": "|".join(rule_ids),
             "member_count": len(group),

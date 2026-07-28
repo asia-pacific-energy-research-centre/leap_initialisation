@@ -395,7 +395,43 @@ def test_final_writer_writes_grouped_missing_branch_issue_summary(
     assert len(grouped) == 1
     assert grouped["primary_rule_id"].iloc[0] == "SEED-011"
     assert grouped["member_rule_ids"].iloc[0] == "SEED-003|SEED-004|SEED-011"
-    assert "canonical full-model export" in grouped["summary"].iloc[0]
+    assert "missing from the selected economy's LEAP template" in grouped["summary"].iloc[0]
+
+
+def test_missing_branch_issue_group_collapses_variables_and_scenarios() -> None:
+    branch = r"Demand\All demand aggregated\International transport\Ammonia"
+    findings = pd.DataFrame([
+        {
+            "economy": "01_AUS",
+            "rule_id": rule_id,
+            "blocking": False,
+            "Branch Path": branch,
+            "Variable": variable,
+            "Scenario": scenario,
+            "Region": "Australia",
+            "source_workflow": "aggregated_demand_workflow",
+            "source_file": "aggregated_demand_01_AUS.xlsx",
+            "evidence": evidence,
+        }
+        for rule_id, variable, scenario, evidence in [
+            ("SEED-003", "Activity Level", "Current Accounts", "BranchID"),
+            ("SEED-004", "Activity Level", "Target", "nonzero"),
+            ("SEED-010", "Final Energy Intensity", "", "Reference"),
+            ("SEED-011", "Final Energy Intensity", "Reference", "template.xlsx"),
+        ]
+    ])
+
+    grouped = build_validation_issue_groups(findings)
+
+    assert len(grouped) == 1
+    issue = grouped.iloc[0]
+    assert issue["issue_group_type"] == "missing_branch"
+    assert issue["Branch Path"] == branch
+    assert issue["Variable"] == "Activity Level|Final Energy Intensity"
+    assert issue["Scenario"] == "Current Accounts|Reference|Target"
+    assert issue["member_rule_ids"] == "SEED-003|SEED-004|SEED-010|SEED-011"
+    assert issue["member_count"] == 4
+    assert "Code generated this branch" in issue["summary"]
 
 
 def test_grouped_share_issues_collapse_to_one_issue_per_share_group() -> None:
