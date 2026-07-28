@@ -778,9 +778,10 @@ def row_has_only_zero_payload(
     if not year_columns:
         return False
     values = pd.to_numeric(row[year_columns], errors="coerce")
+    supplied_values = values.dropna()
     return bool(
-        values.notna().all()
-        and values.abs().le(tolerance).all()
+        not supplied_values.empty
+        and supplied_values.abs().le(tolerance).all()
     )
 
 

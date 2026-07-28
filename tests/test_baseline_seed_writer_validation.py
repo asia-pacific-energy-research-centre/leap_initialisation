@@ -192,6 +192,32 @@ def test_all_zero_optional_roots_do_not_require_template_branches(
     assert result.findings.empty
 
 
+def test_all_zero_optional_root_ignores_years_outside_scenario_payload(
+    tmp_path: Path,
+) -> None:
+    template = tmp_path / "template.xlsx"
+    _write_template(template)
+    row = _row("")
+    row.update({
+        "Branch Path": "Stock Changes\\Primary\\Unused fuel",
+        "Variable": "Stock Change",
+        2022: 0.0,
+        2023: pd.NA,
+        2024: pd.NA,
+    })
+
+    result = prepare_seed_rows_for_write(
+        pd.DataFrame([row]),
+        template_path=template,
+        diagnostics_dir=tmp_path / "diagnostics",
+        diagnostic_stem="optional_zero_partial_horizon",
+        required_years_by_scenario={"Reference": [2022]},
+    )
+
+    assert result.resolved_rows.empty
+    assert result.findings.empty
+
+
 def _write_template(path: Path, *, variable_id: int = 420) -> None:
     row = _row("")
     row.update({"BranchID": 101, "VariableID": variable_id, "ScenarioID": 2, "RegionID": 1})
