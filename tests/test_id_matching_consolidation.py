@@ -147,7 +147,7 @@ def _saver_resolver():
     return _resolve_ids_and_filter_unmatched_export_rows
 
 
-def test_only_temporary_balance_roots_are_excluded_from_fatal_missing_id_gate() -> None:
+def test_only_aggregate_demand_is_excluded_from_fatal_nonzero_missing_id_gate() -> None:
     from codebase.functions.supply_results_saver import (
         _filter_blocking_nonzero_missing_id_rows,
     )
@@ -171,8 +171,48 @@ def test_only_temporary_balance_roots_are_excluded_from_fatal_missing_id_gate() 
     blocking = _filter_blocking_nonzero_missing_id_rows(rows)
 
     assert blocking["Branch Path"].tolist() == [
+        "Stock Changes\\Primary\\Gas",
+        "Statistical Differences\\Primary\\Gas",
         "Resources\\Primary\\Unknown",
         "Demand\\Unreviewed\\Unknown",
+    ]
+
+
+def test_saver_drops_zero_optional_branch_but_retains_nonzero_branch(
+    tmp_path: Path,
+) -> None:
+    resolve = _saver_resolver()
+    template_path = tmp_path / "template.xlsx"
+    _write_template(
+        template_path,
+        [_template_row("Resources\\Primary\\Gas", "Imports")],
+    )
+    rows = pd.DataFrame([
+        _seed_row(
+            "Stock Changes\\Primary\\Unused",
+            "Stock Change",
+            years={"2022": 0.0},
+        ),
+        _seed_row(
+            "Stock Changes\\Primary\\Used",
+            "Stock Change",
+            years={"2022": 1.0},
+        ),
+    ])
+
+    resolved, unmatched = resolve(
+        rows,
+        source_data=pd.DataFrame([
+            _template_row("Resources\\Primary\\Gas", "Imports"),
+        ]),
+        source_path=template_path,
+    )
+
+    assert resolved["Branch Path"].tolist() == [
+        "Stock Changes\\Primary\\Used",
+    ]
+    assert unmatched["Branch Path"].tolist() == [
+        "Stock Changes\\Primary\\Used",
     ]
 
 
@@ -604,7 +644,7 @@ def test_validate_seed_files_case_insensitive_path_match(tmp_path: Path) -> None
     assert total_bad == 0
 
 
-def test_validate_seed_files_allows_temporary_balance_roots(tmp_path: Path) -> None:
+def test_validate_seed_files_allows_all_zero_optional_roots(tmp_path: Path) -> None:
     from codebase.functions import patch_baseline_seeds
 
     template_path = tmp_path / "template.xlsx"
@@ -617,6 +657,7 @@ def test_validate_seed_files_allows_temporary_balance_roots(tmp_path: Path) -> N
             **{
                 "Branch Path": "Stock Changes\\Primary\\Gas",
                 "Variable": "Stock Changes",
+                "Expression": "0",
             },
         ),
         dict(
@@ -626,6 +667,7 @@ def test_validate_seed_files_allows_temporary_balance_roots(tmp_path: Path) -> N
             **{
                 "Branch Path": "Statistical Differences\\Primary\\Gas",
                 "Variable": "Statistical Differences",
+                "Expression": "Data(2023,0)",
             },
         ),
     ]
@@ -641,3 +683,38 @@ def test_validate_seed_files_allows_temporary_balance_roots(tmp_path: Path) -> N
     )
 
     assert total_bad == 0
+
+
+def test_validate_seed_files_rejects_nonzero_optional_root(tmp_path: Path) -> None:
+    from codebase.functions import patch_baseline_seeds
+
+    template_path = tmp_path / "template.xlsx"
+    _write_template(
+        template_path,
+        [_template_row("Resources\\Primary\\Gas", "Imports")],
+    )
+    row = dict(
+        _template_row("Resources\\Primary\\Gas", "Imports"),
+        BranchID=-1,
+        VariableID=-1,
+        **{
+            "Branch Path": "Stock Changes\\Primary\\Gas",
+            "Variable": "Stock Changes",
+            "Expression": "Data(2023,1)",
+        },
+    )
+    seed_dir = tmp_path / "seeds"
+    seed_dir.mkdir()
+    _write_seed_workbook(
+        seed_dir / "leap_import_baseline_seed_01_TST.xlsx",
+        [row],
+    )
+
+    total_bad = patch_baseline_seeds.validate_seed_files(
+        seed_dir=seed_dir,
+        template_path=template_path,
+        ignore_prefixes=frozenset(),
+        ignore_fuel_names=frozenset(),
+    )
+
+    assert total_bad == 1

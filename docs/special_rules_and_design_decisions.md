@@ -116,14 +116,14 @@ when their source Activity Level is zero in every represented year; structural
 values such as `Final Energy Intensity = 1` do not by themselves make the
 source nonzero.
 
-There is also a temporary, narrower migration exception for the native
-`Stock Changes\` and `Statistical Differences\` roots. These rows must be
-generated from the `06 Stock changes` and `11 Statistical discrepancy` balance
-flows and retained even while the current economy templates omit those roots.
-Until the templates are refreshed, unresolved IDs under exactly these two roots
-are warnings rather than blockers. The rows remain non-importable while their
-IDs are unresolved; the unmatched-ID diagnostics are deliberately retained so
-the later ID backfill is visible. No other root inherits this exception.
+`Resources\`, `Stock Changes\`, and `Statistical Differences\` use
+economy-specific fuel leaves: an unused fuel branch normally does not exist in
+that economy's LEAP area. After final ID resolution, an unmatched row under
+exactly these roots is omitted when its complete expression/year payload is
+explicitly zero. It therefore does not require a template branch. An unmatched
+nonzero or unparseable row is retained as evidence and fails the normal
+missing-ID/template checks; the rule must never hide real Stock Changes,
+Statistical Differences, or Resources data.
 
 ### Validation
 
@@ -146,10 +146,14 @@ migration rule above. An exception does not make a `-1` row effective in LEAP.
 - 2026-06-27: Defined order-independent duplicate classification and required duplicate resolution before share validation.
 - 2026-06-27: Recorded the full-model export lifecycle, ID sentinel rules, duplicate-key requirement, and cross-repository mapping dependency after reviewing the June 2026 USA baseline backup.
 - 2026-06-28: Added a narrow rule-and-key exception mechanism for explicitly reviewed findings; missing-ID zero resets continue to block by default.
-- 2026-07-27: Added temporary unresolved-ID handling for generated Stock Changes and Statistical Differences rows while economy templates are refreshed.
+- 2026-07-27: Added temporary unresolved-ID handling for generated Stock Changes and Statistical Differences rows while economy templates were refreshed.
 - 2026-07-28: Reconciled this rule with the completed retirement of
   `data/full model export.xlsx`; per-economy templates are the current structure
   and ID authority.
+- 2026-07-28: Replaced the temporary Stock/Statistical prefix warning with the
+  economy-specific optional-leaf rule: omit only explicitly all-zero unmatched
+  Resources, Stock Changes, and Statistical Differences rows; require a real
+  template branch for every nonzero row.
 
 ## INIT-003: Share group invariants
 

@@ -11,6 +11,7 @@ from codebase.functions.baseline_seed_validation import (
     build_branch_issue_summary,
     build_validation_issue_groups,
     filter_actionable_findings,
+    prepare_seed_rows_for_write,
     validate_seed_rows,
 )
 from codebase.functions.supply_leap_io import (
@@ -139,7 +140,7 @@ def test_unlimited_expression_is_not_a_year_coverage_failure() -> None:
         ),
     ],
 )
-def test_temporary_balance_roots_are_retained_as_nonblocking_warnings(
+def test_nonzero_balance_roots_missing_from_template_are_blocking(
     tmp_path: Path,
     branch_path: str,
     variable: str,
@@ -154,8 +155,41 @@ def test_temporary_balance_roots_are_retained_as_nonblocking_warnings(
         result.findings["rule_id"].isin(["SEED-003", "SEED-004", "SEED-011"])
     ]
 
-    assert set(findings["status"]) == {"warn"}
-    assert not findings["blocking"].any()
+    assert set(findings["status"]) == {"fail"}
+    assert findings["blocking"].all()
+
+
+@pytest.mark.parametrize(
+    "branch_path,variable",
+    [
+        ("Resources\\Primary\\Unused fuel", "Imports"),
+        ("Stock Changes\\Primary\\Unused fuel", "Stock Change"),
+        (
+            "Statistical Differences\\Primary\\Unused fuel",
+            "Statistical Differences",
+        ),
+    ],
+)
+def test_all_zero_optional_roots_do_not_require_template_branches(
+    tmp_path: Path,
+    branch_path: str,
+    variable: str,
+) -> None:
+    template = tmp_path / "template.xlsx"
+    _write_template(template)
+    row = _row("Data(2023,0)")
+    row.update({"Branch Path": branch_path, "Variable": variable})
+
+    result = prepare_seed_rows_for_write(
+        pd.DataFrame([row]),
+        template_path=template,
+        diagnostics_dir=tmp_path / "diagnostics",
+        diagnostic_stem="optional_zero",
+        required_years_by_scenario={"Reference": [2023]},
+    )
+
+    assert result.resolved_rows.empty
+    assert result.findings.empty
 
 
 def _write_template(path: Path, *, variable_id: int = 420) -> None:

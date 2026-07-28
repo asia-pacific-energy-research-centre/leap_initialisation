@@ -23,10 +23,11 @@ from codebase.functions.leap_expressions import parse_expression
 LOGICAL_KEY_COLUMNS = ["Branch Path", "Variable", "Scenario", "Region"]
 ID_COLUMNS = ["BranchID", "VariableID", "ScenarioID", "RegionID"]
 
-# These native LEAP roots were enabled after the current economy export
-# templates were produced. Keep their generated rows visible with unresolved
-# IDs until each template is refreshed; all other missing-ID rows remain fatal.
-TEMPORARY_UNRESOLVED_BRANCH_PREFIXES: tuple[str, ...] = (
+# These roots are economy-specific in LEAP: an unused fuel branch may be
+# structurally absent. All-zero unmatched rows are omitted at the final write
+# boundary; a nonzero unmatched row remains a normal validation failure.
+OPTIONAL_ZERO_ONLY_TEMPLATE_BRANCH_PREFIXES: tuple[str, ...] = (
+    "resources\\",
     "stock changes\\",
     "statistical differences\\",
 )
@@ -743,20 +744,79 @@ def _is_warning_only_aggregated_demand_branch(row: pd.Series) -> bool:
     )
 
 
-def is_temporary_unresolved_branch_path(branch_path: object) -> bool:
-    """Return True for a reviewed branch root awaiting refreshed LEAP IDs."""
+def is_optional_zero_only_template_branch_path(branch_path: object) -> bool:
+    """Return True for economy-specific roots that may omit unused fuel leaves."""
     normalized_path = _normalized(branch_path).lower()
     return any(
         normalized_path.startswith(prefix)
-        for prefix in TEMPORARY_UNRESOLVED_BRANCH_PREFIXES
+        for prefix in OPTIONAL_ZERO_ONLY_TEMPLATE_BRANCH_PREFIXES
     )
+
+
+def row_has_only_zero_payload(
+    row: pd.Series,
+    tolerance: float = 1e-12,
+) -> bool:
+    """Return True only when an expression or complete year payload is zero."""
+    expression = _text(row.get("Expression"))
+    if expression:
+        mode, payload = parse_expression(expression)
+        if mode == "const" and payload is not None:
+            return abs(float(payload)) <= tolerance
+        if mode == "series" and isinstance(payload, dict):
+            return bool(payload) and all(
+                abs(float(value)) <= tolerance
+                for value in payload.values()
+            )
+        return False
+
+    year_columns = [
+        column
+        for column in row.index
+        if _int_or_none(column) is not None
+    ]
+    if not year_columns:
+        return False
+    values = pd.to_numeric(row[year_columns], errors="coerce")
+    return bool(
+        values.notna().all()
+        and values.abs().le(tolerance).all()
+    )
+
+
+def drop_zero_only_optional_unmatched_rows(
+    data: pd.DataFrame,
+    tolerance: float = 1e-12,
+) -> pd.DataFrame:
+    """Omit all-zero unmatched Resources, Stock, and Statistical rows."""
+    required_columns = {"BranchID", "Branch Path"}
+    if data.empty or not required_columns.issubset(data.columns):
+        return data.copy()
+    candidate_mask = (
+        ~data["BranchID"].map(_id_valid)
+        & data["Branch Path"].map(is_optional_zero_only_template_branch_path)
+    )
+    if not bool(candidate_mask.any()):
+        return data.copy()
+    zero_mask = pd.Series(False, index=data.index)
+    zero_mask.loc[candidate_mask] = data.loc[candidate_mask].apply(
+        row_has_only_zero_payload,
+        axis=1,
+        tolerance=tolerance,
+    )
+    if not bool(zero_mask.any()):
+        return data.copy()
+    print(
+        "[INFO] Omitted "
+        f"{int(zero_mask.sum())} all-zero row(s) under Resources, Stock Changes, "
+        "or Statistical Differences because the selected economy template has "
+        "no corresponding branch."
+    )
+    return data.loc[~zero_mask].copy()
 
 
 def _is_warning_only_missing_id_branch(row: pd.Series) -> bool:
-    return (
-        _is_warning_only_aggregated_demand_branch(row)
-        or is_temporary_unresolved_branch_path(row.get("Branch Path"))
-    )
+    return _is_warning_only_aggregated_demand_branch(row)
 
 
 def _row_sort_signature(row: pd.Series) -> tuple[object, ...]:
@@ -1835,17 +1895,9 @@ def validate_seed_rows(
                 continue
             context = _row_context(row)
             warning_only = _is_warning_only_missing_id_branch(row)
-            is_temporary_branch = is_temporary_unresolved_branch_path(
-                row.get("Branch Path")
-            )
             findings.append(_finding(
                 "SEED-003", "warn" if warning_only else "fail",
-                (
-                    "Stock-change/statistical-difference branch is awaiting refreshed "
-                    "LEAP template IDs; row retained with unresolved IDs."
-                    if is_temporary_branch
-                    else "Aggregate-demand placeholder branch is absent from LEAP; row retained with BranchID=-1."
-                )
+                "Aggregate-demand placeholder branch is absent from LEAP; row retained with BranchID=-1."
                 if warning_only
                 else "Resolved row has one or more missing IDs.",
                 evidence="|".join(invalid_columns), **context,
@@ -1857,12 +1909,7 @@ def validate_seed_rows(
                 detail = "unparseable" if is_zero is None else "nonzero"
                 findings.append(_finding(
                     "SEED-004", "warn" if warning_only else "fail",
-                    (
-                        "Nonzero stock-change/statistical-difference row is retained "
-                        "for ID backfill after the LEAP template is refreshed."
-                        if is_temporary_branch
-                        else "Nonzero aggregate-demand placeholder cannot import because BranchID=-1."
-                    )
+                    "Nonzero aggregate-demand placeholder cannot import because BranchID=-1."
                     if warning_only
                     else "Missing-ID row contains a nonzero or unparseable expression.",
                     evidence=f"{detail}; ids={'|'.join(invalid_columns)}", **context,
@@ -1960,16 +2007,10 @@ def validate_seed_rows(
                 continue
             if branch_path and branch_path.lower() not in valid_paths:
                 warning_only = _is_warning_only_missing_id_branch(row)
-                is_temporary_branch = is_temporary_unresolved_branch_path(branch_path)
                 findings.append(_finding(
                     "SEED-011",
                     "warn" if warning_only else "fail",
-                    (
-                        "Stock-change/statistical-difference branch is awaiting a "
-                        "refreshed canonical full-model export."
-                        if is_temporary_branch
-                        else "Aggregate-demand placeholder branch is absent from the canonical full-model export."
-                    )
+                    "Aggregate-demand placeholder branch is absent from the canonical full-model export."
                     if warning_only
                     else "Branch path is absent from the canonical full-model export.",
                     evidence=str(path),
@@ -2018,6 +2059,7 @@ def prepare_seed_rows_for_write(
 ) -> ValidationResult:
     """Complete, enrich, validate, and persist diagnostics before any write."""
     enriched = enrich_seed_ids_from_template(data, template_path)
+    enriched = drop_zero_only_optional_unmatched_rows(enriched)
     initial = validate_seed_rows(
         enriched,
         template_path=template_path,
@@ -2099,7 +2141,7 @@ def prepare_seed_rows_for_write(
 __all__ = [
     "AGGREGATED_DEMAND_BRANCH_PREFIX",
     "ID_COLUMNS",
-    "TEMPORARY_UNRESOLVED_BRANCH_PREFIXES",
+    "OPTIONAL_ZERO_ONLY_TEMPLATE_BRANCH_PREFIXES",
     "LOGICAL_KEY_COLUMNS",
     "RULE_SPECS",
     "RuleSpec",
@@ -2107,7 +2149,9 @@ __all__ = [
     "BaselineSeedValidationError",
     "_validate_process_efficiency_for_capacity",
     "filter_actionable_findings",
-    "is_temporary_unresolved_branch_path",
+    "is_optional_zero_only_template_branch_path",
+    "row_has_only_zero_payload",
+    "drop_zero_only_optional_unmatched_rows",
     "build_missing_branch_issue_groups",
     "build_branch_issue_summary",
     "build_producer_coverage_issue_groups",

@@ -1389,6 +1389,74 @@ def _filter_all_zero_demand_branches_for_export(
     return demand.loc[~drop_mask].copy()
 
 
+def _complete_requested_demand_scenario_years(
+    demand: pd.DataFrame,
+    scenarios: list[str],
+    use_sector_branches: bool,
+    base_year: int,
+    final_year: int,
+) -> pd.DataFrame:
+    """Fill absent scenario/year rows with zero for every retained branch.
+
+    A branch can be historical-zero but nonzero in a 9th projection scenario.
+    Once that branch is retained, LEAP still needs an explicit Current Accounts
+    reset row (and complete rows for every other requested scenario). Missing
+    source data therefore means zero here; it does not mean omit the scenario.
+    """
+    if demand.empty:
+        return demand.copy()
+
+    branch_keys = (
+        ["sector", "leap_fuel_name"]
+        if use_sector_branches and "sector" in demand.columns
+        else ["leap_fuel_name"]
+    )
+    required_keys: list[tuple[object, ...]] = []
+    for branch_values in demand[branch_keys].drop_duplicates().itertuples(
+        index=False,
+        name=None,
+    ):
+        for scenario in scenarios:
+            years = (
+                [base_year]
+                if scenario == "Current Accounts"
+                else list(range(base_year + 1, final_year + 1))
+            )
+            required_keys.extend(
+                (*branch_values, scenario, year)
+                for year in years
+            )
+
+    existing_keys = {
+        tuple(row)
+        for row in demand[
+            [*branch_keys, "scenario", "year"]
+        ].itertuples(index=False, name=None)
+    }
+    missing_rows: list[dict[str, object]] = []
+    economy_value = (
+        demand["economy"].dropna().iloc[0]
+        if "economy" in demand.columns and not demand["economy"].dropna().empty
+        else None
+    )
+    for key in required_keys:
+        if key in existing_keys:
+            continue
+        row = dict(zip([*branch_keys, "scenario", "year"], key))
+        row["value"] = 0.0
+        if economy_value is not None:
+            row["economy"] = economy_value
+        missing_rows.append(row)
+
+    if not missing_rows:
+        return demand.copy()
+    return pd.concat(
+        [demand, pd.DataFrame(missing_rows)],
+        ignore_index=True,
+        sort=False,
+    )
+
+
 def _warn_contributions_do_not_reconcile(
     demand: pd.DataFrame,
     contributions: pd.DataFrame,
@@ -1502,6 +1570,13 @@ def save_aggregated_demand_as_leap_workbook(
             f"{omitted_branch_rows} source row(s) belonging to branches that are "
             "zero across every requested scenario and year."
         )
+    export_demand = _complete_requested_demand_scenario_years(
+        demand=export_demand,
+        scenarios=use_scenarios,
+        use_sector_branches=use_sector_branches,
+        base_year=base_year,
+        final_year=final_year,
+    )
 
     has_sector = use_sector_branches and "sector" in demand.columns
     group_keys = (["sector", "leap_fuel_name", "scenario"] if has_sector

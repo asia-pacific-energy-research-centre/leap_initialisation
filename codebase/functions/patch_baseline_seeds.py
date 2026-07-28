@@ -68,8 +68,9 @@ from codebase.functions.baseline_seed_validation import (
     normalize_template_key,
     prepare_seed_rows_for_write,
     resolve_logical_duplicates,
-    TEMPORARY_UNRESOLVED_BRANCH_PREFIXES,
     _exclude_ignored_full_model_export_rows,
+    is_optional_zero_only_template_branch_path,
+    row_has_only_zero_payload,
     load_template_rows,
 )
 from codebase.functions.leap_excel_io import (
@@ -520,7 +521,7 @@ def validate_seed_files(
     template_path: Path | None = None,
     ignore_prefixes: frozenset[str] = VALIDATION_IGNORE_PREFIXES,
     ignore_fuel_names: frozenset[str] = VALIDATION_IGNORE_FUEL_NAMES,
-    allow_unresolved_prefixes: tuple[str, ...] = TEMPORARY_UNRESOLVED_BRANCH_PREFIXES,
+    allow_unresolved_prefixes: tuple[str, ...] = (),
 ) -> int:
     """Check all seed files against the template; return number of invalid rows found.
 
@@ -571,6 +572,11 @@ def validate_seed_files(
             canonical_bp = lookup.canonical_paths.get(branch_key)
             if canonical_bp is None:
                 normalized_bp = bp.strip().lower()
+                if (
+                    is_optional_zero_only_template_branch_path(bp)
+                    and row_has_only_zero_payload(row)
+                ):
+                    continue
                 if any(
                     normalized_bp.startswith(prefix)
                     for prefix in allow_unresolved_prefixes

@@ -66,6 +66,7 @@ from codebase.functions.baseline_seed_validation import (
     build_validation_issue_groups,
     check_producer_coverage,
     complete_canonical_share_groups,
+    drop_zero_only_optional_unmatched_rows,
     filter_actionable_findings,
     prepare_seed_rows_for_write,
 )
@@ -2080,6 +2081,7 @@ def write_per_economy_combined_workbooks(
                     lambda x: scenario_to_id.get(str(x).strip(), -1))
             combined["RegionID"] = 1
 
+        combined = drop_zero_only_optional_unmatched_rows(combined)
         combined = _drop_zero_only_unmatched_transformation_rows(combined)
 
         # Surface unresolved -1 sentinel IDs loudly. These never raise on their

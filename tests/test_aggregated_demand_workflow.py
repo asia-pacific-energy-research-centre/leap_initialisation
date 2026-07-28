@@ -1028,7 +1028,6 @@ class TestAllZeroDemandBranchExportFilter:
     def test_any_nonzero_value_retains_all_requested_scenarios(self, tmp_path):
         demand = pd.DataFrame(
             [
-                self._row("Road", "Hydrogen", "Current Accounts", 2022, 0.0),
                 self._row("Road", "Hydrogen", "Reference", 2023, 0.0),
                 self._row("Road", "Hydrogen", "Reference", 2024, 1.0),
                 self._row("Road", "Hydrogen", "Target", 2023, 0.0),
@@ -1058,6 +1057,10 @@ class TestAllZeroDemandBranchExportFilter:
             "Target",
         }
         assert len(branch_rows) == 6
+        current_accounts = branch_rows[
+            branch_rows["Scenario"].eq("Current Accounts")
+        ]
+        assert set(current_accounts["Expression"].astype(str)) == {"0", "1"}
 
 
 class TestContributionsSheet:
