@@ -862,7 +862,7 @@ def _finding(
         "status": status,
         "severity": spec.severity,
         "blocking": bool(spec.blocking and status == "fail"),
-        "description": spec.description,
+        "violated_rule_expectation": spec.description,
         "scope": spec.scope,
         "message": message,
         "evidence": evidence,

@@ -52,7 +52,7 @@ def _finding(economy: str, rule_id: str, **overrides: object) -> dict:
         "status": "fail",
         "severity": "warning",
         "blocking": False,
-        "description": "test finding",
+        "violated_rule_expectation": "test finding",
         "scope": "",
         "message": "",
         "evidence": "",
@@ -97,6 +97,23 @@ def test_merge_concatenates_findings_from_every_successful_worker(tmp_path) -> N
         / "baseline_seed_20260723_consolidated_branch_issue_summary.csv"
     )
     assert branch_summary_path.exists()
+
+
+def test_merge_normalizes_legacy_description_heading(tmp_path) -> None:
+    finding = _finding("20_USA", "SEED-003")
+    finding["description"] = finding.pop("violated_rule_expectation")
+    _write_worker_findings("MERGE_TEST_LEGACY", "20_USA", [finding])
+
+    findings_path, _ = merge.merge_consolidated_baseline_seed_findings(
+        [_fake_result("20_USA", "MERGE_TEST_LEGACY")],
+        run_stamp="20260723",
+        output_dir=tmp_path / "parent",
+        economies_run_order=["20_USA"],
+    )
+
+    merged = pd.read_csv(findings_path)
+    assert "description" not in merged.columns
+    assert merged["violated_rule_expectation"].tolist() == ["test finding"]
 
 
 def test_merge_orders_rows_by_economies_run_order_then_rule_id(tmp_path) -> None:

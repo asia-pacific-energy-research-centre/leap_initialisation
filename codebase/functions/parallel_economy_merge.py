@@ -47,7 +47,8 @@ from codebase.functions.leap_excel_io import find_leap_header_row
 from codebase.functions.parallel_economy_runner import EconomyWorkerResult
 
 _FINDINGS_COLUMNS = (
-    "economy", "rule_id", "status", "severity", "blocking", "description",
+    "economy", "rule_id", "status", "severity", "blocking",
+    "violated_rule_expectation",
     "scope", "message", "evidence", "documentation_reference", "Branch Path",
     "Variable", "Scenario", "Region", "source_workflow", "source_file",
     "year", "exception_applied", "exception_id", "exception_reason",
@@ -75,6 +76,21 @@ def _read_consolidated_findings_csv(path: Path) -> pd.DataFrame:
         frame = pd.read_csv(path)
     except pd.errors.EmptyDataError:
         return pd.DataFrame(columns=_FINDINGS_COLUMNS)
+    # Older worker outputs called the failed invariant "description", which
+    # reads as though the finding itself were being described. Normalize that
+    # legacy heading so newly merged reports use the clearer human-facing name.
+    legacy_column = "description"
+    expectation_column = "violated_rule_expectation"
+    if legacy_column in frame.columns:
+        if expectation_column in frame.columns:
+            missing_expectation = frame[expectation_column].isna()
+            frame.loc[missing_expectation, expectation_column] = frame.loc[
+                missing_expectation,
+                legacy_column,
+            ]
+            frame = frame.drop(columns=[legacy_column])
+        else:
+            frame = frame.rename(columns={legacy_column: expectation_column})
     return frame
 
 
