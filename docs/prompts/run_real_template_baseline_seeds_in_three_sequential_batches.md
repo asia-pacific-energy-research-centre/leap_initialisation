@@ -183,4 +183,3 @@ Report:
 - fixes and commits, if any;
 - confirmation execution was fully sequential;
 - confirmation the recurring monitor was deleted.
-
