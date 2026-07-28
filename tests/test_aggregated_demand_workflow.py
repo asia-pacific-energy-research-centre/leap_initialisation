@@ -972,6 +972,94 @@ class TestReconciliationAccountingLogic:
         assert excluded == ["15_02_road"]
 
 
+class TestAllZeroDemandBranchExportFilter:
+    """All sibling LEAP rows are omitted only when the whole branch is zero."""
+
+    @staticmethod
+    def _row(
+        sector: str,
+        fuel: str,
+        scenario: str,
+        year: int,
+        value: float,
+    ) -> dict[str, object]:
+        return {
+            "economy": "20_USA",
+            "sector": sector,
+            "leap_fuel_name": fuel,
+            "scenario": scenario,
+            "year": year,
+            "value": value,
+        }
+
+    def test_all_zero_branch_is_omitted_at_export_boundary(self, tmp_path):
+        demand = pd.DataFrame(
+            [
+                self._row("Road", "Wind", "Current Accounts", 2022, 0.0),
+                self._row("Road", "Wind", "Reference", 2023, 0.0),
+                self._row("Road", "Wind", "Target", 2023, 5e-13),
+                self._row("Road", "Electricity", "Current Accounts", 2022, 2.0),
+                self._row("Road", "Electricity", "Reference", 2023, 3.0),
+                self._row("Road", "Electricity", "Target", 2023, 4.0),
+            ]
+        )
+        original = demand.copy(deep=True)
+        output_path = tmp_path / "aggregated_demand.xlsx"
+
+        result = aggregated_demand_workflow.save_aggregated_demand_as_leap_workbook(
+            economy="20_USA",
+            output_path=output_path,
+            scenarios=["Current Accounts", "Reference", "Target"],
+            id_lookup_path=None,
+            use_sector_branches=True,
+            demand=demand,
+        )
+
+        assert result == output_path
+        written = pd.read_excel(output_path, sheet_name="LEAP", header=2)
+        assert not written["Branch Path"].str.endswith(r"\Wind").any()
+        assert set(written["Variable"]) == {
+            aggregated_demand_workflow.ACTIVITY_VARIABLE_NAME,
+            aggregated_demand_workflow.INTENSITY_VARIABLE_NAME,
+        }
+        pd.testing.assert_frame_equal(demand, original)
+        assert demand["value"].sum() == pytest.approx(9.0, abs=1e-12)
+
+    def test_any_nonzero_value_retains_all_requested_scenarios(self, tmp_path):
+        demand = pd.DataFrame(
+            [
+                self._row("Road", "Hydrogen", "Current Accounts", 2022, 0.0),
+                self._row("Road", "Hydrogen", "Reference", 2023, 0.0),
+                self._row("Road", "Hydrogen", "Reference", 2024, 1.0),
+                self._row("Road", "Hydrogen", "Target", 2023, 0.0),
+                self._row("Road", "Hydrogen", "Target", 2024, 0.0),
+            ]
+        )
+        output_path = tmp_path / "aggregated_demand.xlsx"
+
+        aggregated_demand_workflow.save_aggregated_demand_as_leap_workbook(
+            economy="20_USA",
+            output_path=output_path,
+            scenarios=["Current Accounts", "Reference", "Target"],
+            id_lookup_path=None,
+            use_sector_branches=True,
+            demand=demand,
+        )
+
+        written = pd.read_excel(output_path, sheet_name="LEAP", header=2)
+        branch_rows = written[
+            written["Branch Path"].eq(
+                r"Demand\All demand aggregated\Road\Hydrogen"
+            )
+        ]
+        assert set(branch_rows["Scenario"]) == {
+            "Current Accounts",
+            "Reference",
+            "Target",
+        }
+        assert len(branch_rows) == 6
+
+
 class TestContributionsSheet:
     """D5B.3/D5B.4: an opt-in Contributions sheet recording per-branch provenance
     behind each aggregated (fuel, scenario, year) total, and a reconciliation

@@ -1339,6 +1339,54 @@ def _build_id_lookups(
 
 
 CONTRIBUTIONS_RELATIVE_TOLERANCE = 1e-6
+AGGREGATED_DEMAND_ZERO_ABSOLUTE_TOLERANCE = 1e-12
+
+
+def _filter_all_zero_demand_branches_for_export(
+    demand: pd.DataFrame,
+    scenarios: list[str],
+    use_sector_branches: bool,
+    tolerance: float = AGGREGATED_DEMAND_ZERO_ABSOLUTE_TOLERANCE,
+) -> pd.DataFrame:
+    """
+    Omit branches whose demand is zero in every requested scenario and year.
+
+    This filter belongs at the export boundary: the unfiltered demand table
+    remains available for reconciliation and contribution checks, while all
+    sibling LEAP rows for a no-op branch are omitted together. Missing or
+    non-numeric values are retained so incomplete source data is not silently
+    treated as zero.
+    """
+    branch_keys = (
+        ["sector", "leap_fuel_name"]
+        if use_sector_branches and "sector" in demand.columns
+        else ["leap_fuel_name"]
+    )
+    requested = demand[demand["scenario"].isin(scenarios)].copy()
+    if requested.empty:
+        return demand.copy()
+
+    requested["_numeric_value"] = pd.to_numeric(requested["value"], errors="coerce")
+    all_zero_by_branch = requested.groupby(
+        branch_keys,
+        dropna=False,
+        sort=False,
+    )["_numeric_value"].agg(
+        lambda values: bool(
+            values.notna().all()
+            and values.abs().le(tolerance).all()
+        )
+    )
+    zero_branch_keys = all_zero_by_branch[all_zero_by_branch].index
+    if len(zero_branch_keys) == 0:
+        return demand.copy()
+
+    if len(branch_keys) == 1:
+        drop_mask = demand[branch_keys[0]].isin(zero_branch_keys)
+    else:
+        demand_branch_index = pd.MultiIndex.from_frame(demand[branch_keys])
+        drop_mask = demand_branch_index.isin(zero_branch_keys)
+    return demand.loc[~drop_mask].copy()
 
 
 def _warn_contributions_do_not_reconcile(
@@ -1442,12 +1490,25 @@ def save_aggregated_demand_as_leap_workbook(
         print("[INFO] save_aggregated_demand_as_leap_workbook: no demand data — workbook not written.")
         return None
 
+    export_demand = _filter_all_zero_demand_branches_for_export(
+        demand=demand,
+        scenarios=use_scenarios,
+        use_sector_branches=use_sector_branches,
+    )
+    omitted_branch_rows = len(demand) - len(export_demand)
+    if omitted_branch_rows:
+        print(
+            "[INFO] aggregated demand: omitted "
+            f"{omitted_branch_rows} source row(s) belonging to branches that are "
+            "zero across every requested scenario and year."
+        )
+
     has_sector = use_sector_branches and "sector" in demand.columns
     group_keys = (["sector", "leap_fuel_name", "scenario"] if has_sector
                   else ["leap_fuel_name", "scenario"])
 
     rows = []
-    for group_key, grp in demand.groupby(group_keys, sort=True):
+    for group_key, grp in export_demand.groupby(group_keys, sort=True):
         if has_sector:
             sector_key, fuel_name, scenario = group_key
             sector_label = _SECTOR_LEAP_LABELS.get(sector_key, sector_key)
