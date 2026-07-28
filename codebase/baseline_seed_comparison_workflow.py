@@ -613,7 +613,7 @@ def _source_workflow_attribution(branch_path: object) -> str:
     if path.startswith("transformation\\") and "interim" in path:
         return "electricity_heat_interim_workflow"
     if path.startswith("transformation\\oil refin"):
-        return "refining_workflow"
+        return "transformation_workflow"
     if path.startswith("transformation\\"):
         return "transformation_or_transfers_workflow"
     return "unattributed"

@@ -37,7 +37,14 @@ def test_transformation_exports_reuse_reference_projection_for_current_accounts(
             borrowed_record_ids[str(scenario)] = id(records[0])
         return 0
 
-    def fake_apply(records, targets, reconciliation_table, scenario):
+    def fake_apply(
+        records,
+        targets,
+        reconciliation_table,
+        scenario,
+        *,
+        allocation_ledger=None,
+    ):
         applied_records.append((str(scenario), id(records[0]), records[0]["projection_source"]))
         # Mimic later processing that can mutate a scenario's records.
         records[0]["export_scenario"] = str(scenario)

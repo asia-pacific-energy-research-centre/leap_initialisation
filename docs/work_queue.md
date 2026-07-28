@@ -1486,11 +1486,10 @@ These are deliberately outside Phase 2: their settings alter model behaviour,
 fallback policy, or an operational run contract. Review and implement each as
 a separate task, in this order:
 
-1. `docs/prompts/refining_workflow_scoped_review.md` - **decision recorded
-   2026-07-28:** implement and verify the shared LEAP process-boundary
-   normalization, then retire the unused standalone prebuilt-workbook workflow
-   to `codebase/old_workflows/`. Do not build another refining-specific wrapper;
-   `transformation_entry.py` already fills that role. See
+1. **Completed 2026-07-28:** shared LEAP process-boundary normalization is
+   implemented and verified against AUS 2022; the unused standalone refining
+   workflow is archived under `codebase/old_workflows/`. The completed brief is
+   `docs/archive/refining_workflow_scoped_review.md`; see also
    `docs/refining_workflow_retirement_audit.md`.
 2. `docs/prompts/aggregated_demand_scoped_review.md` - demand definition,
    source filters, zeroing contract, and selective-cache policy.
@@ -1701,7 +1700,7 @@ carry the same distortion.
   — **fixed 2026-07-23** (`ac1a79f`). Diagnosed at last: the assertion was
   pinned to the real USA template's area name string ("USA clean slate
   15_07"), and the user re-exported that template today under a new area
-  name ("USA clean slate 23_07") as part of updating the real per-economy
+  name ("USA clean slate 28_07") as part of updating the real per-economy
   templates. Updated the assertion to match; not a code defect, just a
   stale fixture string.
 - `tests/test_supply_transformation_export_projection_cache.py::test_transformation_exports_reuse_reference_projection_for_current_accounts`

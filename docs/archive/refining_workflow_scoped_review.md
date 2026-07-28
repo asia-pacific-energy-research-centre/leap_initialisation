@@ -1,5 +1,8 @@
 # Refining workflow - scoped review and implementation brief
 
+Status: completed 2026-07-28. The shared process boundary was implemented and
+verified against AUS 2022, and the standalone workflow was archived.
+
 ## Purpose
 
 `codebase/refining_workflow.py` is a compact legacy-style workflow that reads a

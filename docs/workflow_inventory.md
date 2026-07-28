@@ -17,13 +17,12 @@ separately below.
 |---|---|
 | `supply_reconciliation_workflow.py` | Main linked supply/reconciliation loop. It compares LEAP balance results with the expected supply/transformation baseline and iteratively adjusts supply, transformation, transfers, and proxy branches. |
 | `supply_workflow.py` | Standalone supply export/import wrapper. It delegates to the supply data pipeline and is the simplest way to build supply workbooks without the full reconciliation loop. |
-| `transformation_workflow.py` | Main transformation export workflow for non-hydrogen transformation sectors. Builds LEAP-ready workbooks and can optionally import them into LEAP. |
+| `transformation_workflow.py` | Main transformation export workflow for non-hydrogen transformation sectors, including Oil Refining. Builds LEAP-ready workbooks and can optionally import them into LEAP. |
 | `hydrogen_transformation_workflow.py` | Hydrogen-specific transformation workflow. Uses the shared transformation helpers but keeps hydrogen configuration and filenames separate from the main transformation workflow. |
 | `transfers_workflow.py` | Transfer-sector workflow. Converts ESTO transfer flows into LEAP transformation-style process records and exports them for import into LEAP. |
 | `aggregated_demand_workflow.py` | Builds the `Demand\All demand aggregated` placeholder branch from ESTO and 9th inputs. Used while detailed demand sectors are still being developed or when a combined demand proxy is needed. |
 | `electricity_heat_interim_workflow.py` | Builds interim electricity, CHP, and heat transformation modules from ESTO power-sector data and 9th projections. |
 | `other_loss_own_use_proxy_workflow.py` | Builds proxy demand branches for losses and own-use flows that do not fit cleanly in transformation modules. |
-| `refining_workflow.py` | Builds and imports LEAP refining branches from export data, including refitting/remapping of fuels where needed. |
 | `minor_demand_workflow.py` | Draft scaffold for Agriculture, Fishing, and Non-specified others. It is used by `full_model_workflow_notebook.py` and is not part of the supply reconciliation loop. |
 | `baseline_seed_comparison_workflow.py` | Compares generated baseline seed workbooks with reviewed references and separates structural, metadata, expression, duplicate-key, and share-total differences. |
 | `outlook_mapping_maintenance_workflow.py` | Maintenance workflow for the Outlook mapping workbook. It recomputes audit columns and produces mapping QA outputs. |
@@ -50,7 +49,6 @@ baseline seed.
 - `aggregated_demand_workflow.py`
 - `electricity_heat_interim_workflow.py`
 - `other_loss_own_use_proxy_workflow.py`
-- `refining_workflow.py`
 
 ### 3. Standalone / Convenience / QA
 

@@ -209,7 +209,6 @@ shared implementation.
 |---|---|---|
 | region present in export | `leap_exports.validate_region` (`leap_exports.py:106`) | `validate_export_region` in transformation:562, transfers:999, hydrogen:555, workflow_common:733, supply_export_io:116 — **thin delegates, not duplication** |
 | region injected if missing | `ensure_region_in_export` | transformation:678, transfers:1195, hydrogen:661 |
-| all target scenarios present (copy fallback) | `_ensure_export_contains_scenarios` (`refining_workflow.py:122`) | copies from a source scenario when one is missing |
 | Current Accounts scenario present | `_ensure_current_accounts_scenario` (`supply_reconciliation_balance_tables.py:516`) | |
 | manual-import workbook shape | `validate_workbook_for_manual_import` (`analysis_input_write_dispatcher.py:464`), `_validate_workbook_structure_against_canonical` (`:298`) | |
 | power-interim fuel/sector coverage | `validate_power_interim_fuel_coverage` (`electricity_heat_interim_workflow.py:582`), `validate_power_interim_sub1sectors` (`:133`) | |
