@@ -10,6 +10,16 @@
 > (`D-04` full-model-export retirement, `D-05` template census, `D-06`
 > Phase 2). Verify against code before acting on a number here.
 
+## [22] Three-batch real-template baseline-seed run
+
+**Status: execution prompt ready; production run pending.**
+
+Run the 11 economies with real, non-`_COMP_GEN` templates as three strictly
+sequential full-horizon batches. Batch 1 is AUS/USA/PRC, followed by
+BD/MAS/MEX/NZ and PNG/PHL/THA/VN. Use the 30-minute scheduled monitoring and
+batch verification gates in
+`docs/prompts/run_real_template_baseline_seeds_in_three_sequential_batches.md`.
+
 ## [21] Cyclical baseline-seed LEAP balance diagnostics
 
 **Status: Step 1 implemented and real-data verified 2026-07-27 in the
