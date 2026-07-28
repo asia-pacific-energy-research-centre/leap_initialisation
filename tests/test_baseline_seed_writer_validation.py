@@ -439,6 +439,7 @@ def test_grouped_share_issues_collapse_to_one_issue_per_share_group() -> None:
 
 def test_branch_issue_summary_collapses_rules_variables_and_scenarios() -> None:
     branch = r"Demand\All demand aggregated\Road\Wind"
+    standalone_coverage_branch = r"Demand\All demand aggregated\Road\Solar"
     findings = pd.DataFrame([
         {
             "economy": economy,
@@ -457,6 +458,15 @@ def test_branch_issue_summary_collapses_rules_variables_and_scenarios() -> None:
             ("20_USA", "SEED-004", True, branch, "Activity Level", "Target", 2024),
             ("20_USA", "SEED-011", True, branch, "Final Energy Intensity", "Reference", 2023),
             ("20_USA", "SEED-009", True, branch, "Activity Level", "Reference", 2025),
+            (
+                "20_USA",
+                "SEED-009",
+                True,
+                standalone_coverage_branch,
+                "Activity Level",
+                "Reference",
+                2026,
+            ),
             ("05_PRC", "SEED-003", True, branch, "Activity Level", "Reference", 2023),
         ]
     ])
@@ -468,17 +478,18 @@ def test_branch_issue_summary_collapses_rules_variables_and_scenarios() -> None:
         summary["economy"].eq("20_USA")
         & summary["issue_family"].eq("missing_branch_or_id")
     ].iloc[0]
-    assert usa_missing["member_rule_ids"] == "SEED-003|SEED-004|SEED-011"
+    assert usa_missing["member_rule_ids"] == "SEED-003|SEED-004|SEED-009|SEED-011"
     assert usa_missing["variables"] == "Activity Level|Final Energy Intensity"
     assert usa_missing["scenarios"] == "Reference|Target"
-    assert usa_missing["years"] == "2023|2024"
-    assert usa_missing["finding_count"] == 3
-    assert usa_missing["blocking_count"] == 2
+    assert usa_missing["years"] == "2023|2024|2025"
+    assert usa_missing["finding_count"] == 4
+    assert usa_missing["blocking_count"] == 3
     assert usa_missing["blocking_status"] == "blocking"
     assert (
         summary[
             summary["economy"].eq("20_USA")
             & summary["issue_family"].eq("series_coverage")
+            & summary["Branch Path"].eq(standalone_coverage_branch)
         ].shape[0]
         == 1
     )

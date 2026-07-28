@@ -536,6 +536,21 @@ def build_branch_issue_summary(findings: pd.DataFrame) -> pd.DataFrame:
     work.loc[missing_family, "issue_family"] = (
         "rule_" + work.loc[missing_family, "rule_id"].map(_normalized)
     )
+    # Year/scenario coverage failures are downstream symptoms when the same
+    # economy/branch is already absent or carries unresolved IDs. Keep coverage
+    # as its own family only when no missing-branch root cause exists.
+    branch_has_missing_root_cause = work.groupby(
+        ["economy", "Branch Path"],
+        dropna=False,
+        sort=False,
+    )["rule_id"].transform(
+        lambda rule_ids: rule_ids.isin(MISSING_BRANCH_ROOT_CAUSE_RULE_IDS).any()
+    )
+    coverage_symptom = work["rule_id"].isin({"SEED-009", "SEED-010"})
+    work.loc[
+        branch_has_missing_root_cause & coverage_symptom,
+        "issue_family",
+    ] = "missing_branch_or_id"
 
     def _joined_values(group: pd.DataFrame, column: str) -> str:
         if column not in group.columns:
