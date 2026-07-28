@@ -1,10 +1,12 @@
 # `docs/` index
 
-New here? Read in this order: root [`README.md`](../README.md) →
-[`process_map_human.md`](process_map_human.md) →
+New here? Read
+[`handover/supply_reconciliation_guide.md`](handover/supply_reconciliation_guide.md),
+then [`process_map_human.md`](process_map_human.md) and
 [`supply_reconciliation_workflow_guide.md`](supply_reconciliation_workflow_guide.md).
-Agents should read [`process_map_agent.md`](process_map_agent.md) instead of the
-human map. Everything else here is reference material or a working backlog.
+Agents should read
+[`handover/supply_reconciliation_agent_guide.md`](handover/supply_reconciliation_agent_guide.md)
+and [`process_map_agent.md`](process_map_agent.md).
 
 > **Verify before you trust.** Several documents in this repository have
 > misreported their own status — the audit below records six such cases,
@@ -15,6 +17,8 @@ human map. Everything else here is reference material or a working backlog.
 
 | File | What it covers |
 |---|---|
+| [`handover/supply_reconciliation_guide.md`](handover/supply_reconciliation_guide.md) | Reader-friendly repository-owned handover guide from inputs through LEAP-ready output. |
+| [`handover/supply_reconciliation_agent_guide.md`](handover/supply_reconciliation_agent_guide.md) | Exact environment, run modes, safety, validation, and diagnostic routing for agents. |
 | [`handover_work_queue_20260728.md`](handover_work_queue_20260728.md) | **Current work starts here.** Dated git/worktree state, prioritized queue INITQ-001…026, and the four-week handover plan. |
 | [`work_queue.md`](work_queue.md) | The detailed engineering log — items `[0]`–`[21]`, recorded traps, and known pre-existing test failures. The reasoning behind the queue above. |
 | [`documentation_audit_20260728.md`](documentation_audit_20260728.md) | File-by-file Markdown audit, findings `D-01`–`D-13`, with keep/update/archive actions. |

@@ -6,6 +6,13 @@ Primary entry point:
 
 - `codebase/supply_reconciliation_workflow.py`
 
+For the current handover route, start with
+[`docs/handover/supply_reconciliation_guide.md`](docs/handover/supply_reconciliation_guide.md).
+Agents should also read
+[`docs/handover/supply_reconciliation_agent_guide.md`](docs/handover/supply_reconciliation_agent_guide.md).
+The cross-repository start page is
+`leap_mappings/docs/handover/README.md`.
+
 Supporting workflows copied with it include supply, transformation, transfers, interim electricity/heat, aggregated demand, loss/own-use proxy, LEAP export helpers, and mapping readers.
 
 Current copied inputs include `config/`, live `data/` inputs, docs, scripts, tests, and the current `outputs/leap_exports/supply_reconciliation` plus related balance/mapping output context.
