@@ -16,6 +16,7 @@ Within this repository:
 | understand or run supply reconciliation | [`docs/handover/supply_reconciliation_guide.md`](docs/handover/supply_reconciliation_guide.md) |
 | execute safely as an agent | [`docs/handover/supply_reconciliation_agent_guide.md`](docs/handover/supply_reconciliation_agent_guide.md) |
 | interpret validation rules | [`docs/check_registry.md`](docs/check_registry.md) |
+| understand placeholder demand and interim power branches | [`docs/placeholder_branches_and_interim_models.md`](docs/placeholder_branches_and_interim_models.md) |
 | choose current work | [`docs/handover_work_queue_20260728.md`](docs/handover_work_queue_20260728.md) |
 | inspect detailed engineering history and traps | [`docs/work_queue.md`](docs/work_queue.md) |
 

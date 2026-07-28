@@ -69,12 +69,11 @@ Dated findings. Historical context, not live instruction.
 | [`leap_export_readiness_plan.md`](leap_export_readiness_plan.md) | 2026-07-17 |
 | [`leap_initialisation zip_extraction_plan.md`](leap_initialisation%20zip_extraction_plan.md) | 2026-07-22 — inter-PC `config.zip`/`data.zip` sync plan |
 
-## Colleague-facing material
+## Placeholder structures
 
 | File | What it covers |
 |---|---|
-| [`colleague_intro_all_demand_aggregated.md`](colleague_intro_all_demand_aggregated.md) | Introduction to the `All demand aggregated` branch for non-developers. |
-| [`leap_all_demand_aggregated_branch_guide.md`](leap_all_demand_aggregated_branch_guide.md) | Branch-level guide to the same. |
+| [`placeholder_branches_and_interim_models.md`](placeholder_branches_and_interim_models.md) | Why placeholders exist, how aggregated demand and the electricity/CHP/heat-plant interim modules are created, their mapping rules, and how they are replaced without double counting. |
 
 ## `prompts/` and `archive/`
 
