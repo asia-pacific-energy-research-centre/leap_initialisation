@@ -195,10 +195,15 @@ Requirements (one-time install):
 
 ## LEAP mapping maintenance
 
-- Removed rows in `leap_combined_esto` and `leap_combined_ninth` are often deliberate guardrails, not obsolete data.
-- Many removed rows are rows that would create many-to-many mappings if active, usually because LEAP, ESTO, and 9th Outlook have different levels of detail.
-- When checking mapping gaps, treat `counterpart_presence_state == removed_only` as unavailable rather than as a missing row to restore.
-- Before reactivating or adding rows, check whether the change would create a many-to-many relationship and prefer the narrowest mapping needed for the workflow.
+- The maintained mapping sheets contain only relationships believed to be
+  correct. Rejected relationships are removed; review history belongs in notes,
+  QA evidence, or Git history rather than inactive guardrail rows.
+- When checking mapping gaps, treat
+  `counterpart_presence_state == removed_only` as unavailable, not as evidence
+  that a former row should be restored.
+- Before adding or replacing a relationship, check complete sibling coverage
+  and unintended many-to-many effects. Prefer the agreed coarse mapping when
+  LEAP, ESTO, and the 9th Outlook use different levels of detail.
 
 ## LEAP Export File Structure
 
@@ -219,31 +224,30 @@ Requirements (one-time install):
   `supporting_files/checks/leap_balance_total_checks.csv`.
 - Mismatches are also appended to runtime issues with
   `reason == total_balance_mapping_check`.
-- To switch checks off for a run, set this in
-  `config/leap_results_balance_known_issues.json`:
-
-```json
-{
-  "total_balance_checks": {
-    "enabled": false
-  }
-}
-```
-
-- Optional keys: `tolerance_pj` controls numeric tolerance and
+- There is no repository-level
+  `config/leap_results_balance_known_issues.json` in this checkout. Override
+  behavior at the call site:
+  `run_total_balance_checks=False` disables the checks and
+  `total_balance_check_tolerance_pj=<value>` changes the tolerance.
+- Callers that already supply a `known_issues` dictionary may use its
+  `total_balance_checks.enabled`, `tolerance_pj`, and `fail_on_error` keys.
   `fail_on_error` raises instead of only writing issue rows.
 
 ## Balance Table Structures (ESTO vs 9th)
 
 - See `C:\\Users\\Work\\.codex\\AGENTS_BALANCE_TABLES.md` for balance table structure details.
 
-These two balance tables are the core inputs for `codebase/transformation_analysis_workflow.py`.
-Keep this structure in mind when adding new transformations or debugging data issues.
+These two balance tables are core inputs for
+`codebase/transformation_workflow.py` and the shared supply/transformation
+functions. Keep this structure in mind when adding transformations or
+debugging source-data issues.
 
 ### 9th structure (sector/fuel hierarchy)
 
 - Source file: `data/merged_file_energy_ALL_20251106.csv` (loaded as "9th" in the script).
-  - Use `data/merged_file_energy_ALL_20251106.csv` and `data/merged_file_energy_00_APEC_20251106` when you need to exactly match 9th edition projections.
+  - Use `data/merged_file_energy_ALL_20251106.csv` and
+    `data/9th merged_file_energy_00_APEC_20251106.csv` when you need the
+    maintained all-economy and APEC-aggregate projection inputs.
 - Key columns:
   - `scenarios`, `economy`
   - Sector hierarchy: `sectors`, `sub1sectors`, `sub2sectors`, `sub3sectors`, `sub4sectors`
@@ -256,11 +260,13 @@ Keep this structure in mind when adding new transformations or debugging data is
 - Usage in transformations:
   - Supports detailed subsector selection (e.g., LNG uses `sub2sectors` and `subfuels`).
   - Filtered to `scenarios == reference` before calculations.
-- Subtotals are removed using the subtotal mapping in `config/ESTO_subtotal_mapping.xlsx`.
+- 9th subtotal rows are filtered from the `subtotal_layout` and
+  `subtotal_results` flags.
 
 ### ESTO (Matt) structure (flow/product table)
 
-- Source file: `data/00APEC_2024_low.csv` (loaded as "ESTO (Matt) data" in the script).
+- Source file: `data/00APEC_2024_low_with_subtotals.csv`, the configured
+  initialisation base table.
 - Key columns:
   - `economy`
   - `flows` (balance rows like production, transformation, own use, losses)
@@ -281,8 +287,9 @@ Keep this structure in mind when adding new transformations or debugging data is
 
 ## Baseline Seed Validation (`patch_baseline_seeds.py`)
 
-`validate_seed_files()` checks all `leap_import_baseline_seed_*.xlsx` files against the full
-model export template.  Two ignore sets control which rows are silently skipped:
+`validate_seed_files()` checks `leap_import_baseline_seed_*.xlsx` files against
+the LEAP export template resolved for the target economy. Two ignore sets
+control which rows are silently skipped:
 
 - **`VALIDATION_IGNORE_PREFIXES`** — branch path *prefixes* for sectors known to be absent from
   the template (e.g. `Transformation\Biofuels processing\` — confirmed zero energy in ESTO).

@@ -18,6 +18,12 @@ instructions now point to the template resolved for each economy under
 they are needed to explain history or identify code that still requires
 migration.
 
+**Editorial follow-up.** A second readability and accuracy pass corrected the
+live ESTO and APEC-aggregate filenames, removed references to a nonexistent
+workflow and subtotal workbook, linked the archived supply-side overview
+explicitly, replaced an absent Word-guide reference with the maintained
+handover guide, and aligned rejected-mapping guidance with `leap_mappings`.
+
 **Method note.** This repository has a recorded history of documents that
 describe themselves as done, blocked, or current and are none of those things.
 Section A of `docs/prompts/handoff_20260723_docs_audit_and_cleanup.md` says so

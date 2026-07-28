@@ -1,7 +1,10 @@
 ﻿# `supply_reconciliation_workflow.py` Guide
 
 > **Purpose note**  
-> This document explains the role of `codebase/supply_reconciliation_workflow.py` in the APERC LEAP workflow. It focuses on the process around the script: why it is needed, how it fits around LEAP, what it compares, and how modellers should interpret its outputs.
+> This document explains the role of
+> `codebase/supply_reconciliation_workflow.py` in the APERC LEAP workflow: why
+> it is needed, how it fits around LEAP, what it compares, and how modellers
+> should interpret its outputs.
 
 This guide is based on the documented workflow logic. It should be checked against the current Python file before being treated as a complete code reference.
 
@@ -61,16 +64,36 @@ This guide is based on the documented workflow logic. It should be checked again
 
 ## 0. Where this fits in
 
-This workflow is one tool used during the **LEAP initialisation process** — the stage where a new economy/scenario area is first built up and reconciled before it is handed over for scenario work within LEAP. `LEAP initialisation guide.docx` is the overall guide to that initialisation process; it explains where this workflow (and the other initialisation steps, including demand and power) fit in the sequence. Read that guide first for the end-to-end picture; this document only covers the supply/transformation reconciliation step.
+This workflow is one part of the **LEAP initialisation process**: building and
+reconciling a new economy/scenario area before it is handed over for scenario
+work in LEAP. Start with the maintained
+[supply reconciliation handover guide](handover/supply_reconciliation_guide.md)
+for the end-to-end repository picture. This document then explains the
+supply/transformation reconciliation step in detail.
 
-The data this workflow reconciles against, and the modelling logic it is trying to keep consistent with, is described in `supply_side_modelling_overview.md`. That document explains the LEAP-side modelling logic (transformation modules, transfers, supply/resources, losses and own-use); this guide explains the Python tool that helps reconcile those branches against expected supply/trade outcomes.
+The archived
+[supply-side modelling overview](archive/supply_side_modelling_overview.md)
+preserves the original explanation of LEAP transformation, transfers,
+supply/resources, losses, and own-use. It is useful background, but current
+entry points and operating rules come from this guide, the handover guide, and
+the controlling work queues.
 
-**Sector scope — important limitation.** This workflow can only initialise and adjust the sectors covered by `supply_side_modelling_overview.md`: other transformation (LNG regasification, natural gas liquefaction, coal transformation, blast furnace gas, coke ovens, patent fuel plants, non-specified transformation, etc.), transfers, supply/resources (production, imports, exports), and losses/own-use. This is because those are the only branches this codebase builds workbooks for.
+**Sector scope — important limitation.** This workflow builds and reconciles
+other transformation modules (including LNG regasification, natural-gas
+liquefaction, coal transformation, blast furnace gas, coke ovens, patent fuel
+plants, and non-specified transformation), transfers, supply/resources
+(production, imports, and exports), and losses/own-use. It does not replace the
+separate demand and power initialisation workflows.
 
 - **Demand** and **Power** are initialised by separate workflows/processes (not this one) — this workflow writes placeholder/zero rows for those branches where needed, but does not set them up.
 - **Refining** is a special case: this workflow does perform the *initialisation* of refining (it is part of the same transformation/transfers codebase), but any *adjustments* to refining assumptions after that initial setup (capacity, output shares, etc.) should be handled separately from this reconciliation loop, not through this workflow's iterative gap-filling logic. This same principle applies to all processes initialised by this workflow — it is the right place for initialisation and reconciliation against the supply/trade baseline, but not for making targeted adjustments to individual process assumptions after that initial setup. Refining is the most likely process to need such post-initialisation adjustment, because its capacity, output shares, and feedstock splits are more economy-specific and more likely to be revised; for other processes this is less common, but the same rule applies if it does arise.
 
-In short: this workflow only initialises and adjusts supply, transformation, and transfers. Demand and power are present as placeholders during this step and are not adjusted by this workflow. If placeholder branches produce unexpected values, that most likely indicates a bug in the placeholder workbook rather than something to address here. Demand and power are initialised separately after supply reconciliation is complete — see `LEAP initialisation guide.docx` for where those steps fit in the overall sequence.
+In short: this workflow initialises and adjusts supply, transformation, and
+transfers. Demand and power are present as placeholders during this step and
+are not adjusted by the reconciliation loop. Unexpected placeholder values
+usually indicate a producer-workbook defect. The
+[handover guide](handover/supply_reconciliation_guide.md) shows where the
+separate demand and power steps fit.
 
 Once initialisation is complete, no sector is adjusted through this workflow — all further changes are made directly in LEAP. Only if a sector becomes significantly muddled would reinitialisation be worth considering, and even then the most practical approach is usually to apply the latest initialisation workflow output for the affected sectors and fuels rather than re-running the full process.
 
@@ -345,7 +368,21 @@ These settings are not part of the mode presets above, but each has a real, easy
 
 - **`electricity_heat_interim_workflow.py`** — builds the three interim power placeholder modules (Electricity interim, CHP interim, Heat plant interim) from signed `09_*` transformation rows only (positive = output, negative = feedstock; `18_*`/`19_*` accounting-sector rows are prohibited as inputs). Driven by `RUN_ELECTRICITY_HEAT_INTERIM`, on in `baseline_seed` and off in `results_update` once the real power model exists. In `patch_baseline_seeds` mode it's only touched if `PATCH_MODULE` includes `"power_interim"`.
 
-- **`transformation_workflow.py`** — produces the "other transformation" sector data (LNG regasification, gas liquefaction, coal transformation modules, coke ovens, blast furnaces, patent fuel plants, non-specified transformation, etc.), including exogenous capacity and process efficiency, from ESTO historical relationships and 9th Outlook projections. Its projection conservation check (F5 — see [4e](#4e-checks-and-validation-link-to-the-check-registry)) is no longer self-bypassing: the hand-rolled catch-and-retry was replaced by the repo-wide `functions/conservation_policy.py`, which warns by default and raises when `CONSERVATION_FAILURES_ARE_ERRORS=True`. The check always runs; only the severity is policy. A conservation failure still lets the non-strict allocation reach the output by default, so **read the `[WARN] … strict conservation check failed` line rather than treating a green run as proof it held**. This is the module gated out of `patch_baseline_seeds` for its auto-regen sectors (see [4a](#4a-the-three-run-modes-baseline_seed-results_update-patch_baseline_seeds)) — its output has not been reproduced row-for-row through the simplified patch path.
+- **`transformation_workflow.py`** — produces the "other transformation"
+  sector data (LNG regasification, gas liquefaction, coal transformation
+  modules, coke ovens, blast furnaces, patent fuel plants, non-specified
+  transformation, etc.), including exogenous capacity and process efficiency,
+  from ESTO historical relationships and 9th Outlook projections. Its
+  projection conservation check (F5 — see
+  [4e](#4e-checks-and-validation-link-to-the-check-registry)) uses
+  `codebase/functions/conservation_policy.py`: it warns by default and raises
+  when `CONSERVATION_FAILURES_ARE_ERRORS=True`. The check always runs; policy
+  changes only its severity. A non-strict failure can still reach the output,
+  so read the `[WARN] … strict conservation check failed` message rather than
+  treating a completed run as proof that conservation held. This module is
+  gated out of `patch_baseline_seeds` for its auto-regenerated sectors (see
+  [4a](#4a-the-three-run-modes-baseline_seed-results_update-patch_baseline_seeds));
+  the simplified patch path has not reproduced its output row for row.
 
 - **`transfers_workflow.py`** — produces transfers data for the upstream liquids, refinery and blending, and transfers-unallocated modules. Unlike the other transformation sectors, this module's patch path has been verified end-to-end (see [4a](#4a-the-three-run-modes-baseline_seed-results_update-patch_baseline_seeds)): a patched seed reproduces the full workflow's transfer rows exactly, so `"transfers"` is one of the safely patchable `PATCH_MODULE` values.
 
@@ -426,13 +463,16 @@ The exact file names and paths should be checked against the current script. Con
 
 ### Source data files
 
-Three source data files underpin the mapping and comparison steps used by this workflow:
+Three source data files underpin this workflow:
 
-- **`data/00APEC_2025_low_with_subtotals.csv`** — ESTO historical energy balance for all 21 APEC member economies. Covers 1990 to the latest available year, which is always two years behind the release year. Rows are structured as flow/product pairs. Subtotals are flagged with a single `is_subtotal` boolean column. This is the canonical ESTO reference for balance comparisons.
+- **`data/00APEC_2024_low_with_subtotals.csv`** — the configured ESTO
+  base-table default for initialisation. It contains 1990–2022 flow/product
+  rows for all 21 APEC economies and carries `is_subtotal` directly.
 
 - **`data/merged_file_energy_ALL_20251106.csv`** — 9th Outlook projection data for all 21 APEC member economies and both scenarios (reference and target). Covers 1980–2070. Sector and fuel codes use underscores (e.g. `09_06_gas_processing_plants`). Subtotals are tracked with two columns: `subtotal_layout` marks aggregate rows in historical years (pre-2022), and `subtotal_results` marks aggregate rows generated by the 9th Outlook model in projection years. This is the primary source for balance comparisons and supply baseline targets.
 
-- **`data/merged_file_energy_00_APEC_20251106.csv`** — A subset of the above containing only the APEC aggregate economy (`00_APEC`) in the reference scenario. Useful for aggregate-level checks without the full dataset volume.
+- **`data/9th merged_file_energy_00_APEC_20251106.csv`** — the APEC-aggregate
+  reference-scenario subset used for aggregate-level checks.
 
 The date suffix in the 9th Outlook filenames (e.g. `20251106`) records when the file was produced. When a new 9th Outlook vintage is released both files should be updated together and the suffix updated to match.
 

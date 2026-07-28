@@ -216,6 +216,9 @@ branches under Key Assumptions.
 The original balance-table screenshot is not present in this repository. Use
 the retained example script and inspect its generated workbook instead.
 
-# Common issues:
+# Common issue: units and scale
 
-- Units need to be manually set within the LEAP GUI to ensure correct scale value if it is not already. This is because it seems that when we use the create_branches_from_export_file() funciton to create branches, they seem to default to some unknown value that seems to be making LEAP project incorrect values. See Industry example comments for more details.
+After creating branches from an export file, verify their units and scale in
+the generated workbook and in the LEAP GUI. The example helper has no
+`SET_UNITS` toggle, and an unsuitable LEAP default can distort projected
+values.

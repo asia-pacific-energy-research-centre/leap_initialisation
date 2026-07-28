@@ -139,7 +139,8 @@ contracts, convergence manifests, and own-use proxy fixtures. These remain
 covered by their focused tests; they are not gates ahead of the parallelism
 boundary above.
 
-The authoritative detailed execution material remains:
+Detailed material is split between active execution briefs and archived
+measurement evidence:
 
 - `docs/work_queue.md` [16] for the refactor/map backlog and [18] for the
   zeroing rationale;
@@ -147,8 +148,8 @@ The authoritative detailed execution material remains:
   register;
 - `docs/prompts/phase_4_monolith_decomposition_execution.md` and
   `docs/prompts/phase_5_feature_improvements_execution.md` for phase gates;
-- `docs/prompts/supply_reconciliation_runtime_profiling_execution.md` for the
-  output-inert measurement task.
+- `docs/archive/supply_reconciliation_runtime_profiling_execution.md` for the
+  completed output-inert measurement task and its acceptance criteria.
 
 ## Rollout and documentation hygiene
 

@@ -29,7 +29,10 @@ Use an explicit allowlist. The current labels are `Biomass`, `Coal`, `Gas`, `Oth
 
 ### Validation
 
-Confirm ignored rows end only with an allowlisted label. Review every other unknown path as a possible workflow or template defect. When the allowlist changes, run seed validation against the full model export and compare ignored-row counts and fuel totals before and after.
+Confirm ignored rows end only with an allowlisted label. Review every other
+unknown path as a possible workflow or template defect. When the allowlist
+changes, run seed validation against the reviewed template for each affected
+economy and compare ignored-row counts and fuel totals before and after.
 
 ### History
 
