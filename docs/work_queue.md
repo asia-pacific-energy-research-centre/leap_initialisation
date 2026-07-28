@@ -23,6 +23,18 @@ recalculates it in LEAP, reads REF/TGT Energy Balance exports back, diagnoses
 source differences, previews the existing results-update changes, and repeats
 until differences converge or are classified.
 
+The corrected AUS Reference 2022 cycle now also has a reusable, balance-shaped
+review surface. `codebase/balance_structure_review_workbook_workflow.mjs`
+preserves the original 39-column by 138-row Energy Balance layout and produces
+side-by-side sheets for the unchanged LEAP values, red `LEAP - source` errors,
+blue source values, a full expected-source sheet that distinguishes
+source-backed/unavailable/structurally absent cells, and a filtered
+missing/unavailable-combination audit. A 2026-07-28 comparator correction adds
+the configured `10.01.11 Oil refineries` auxiliary-own-use flow to the
+`09.07 Oil refineries` source boundary and signs non-specified own use as
+consumption. The corrected 195-row run has 93 mismatches, 65 matches, 37
+unavailable rows, and 58 material differences.
+
 Before the next AUS rerun, the supply exporter now emits native
 `Stock Changes\Primary|Secondary\...` and
 `Statistical Differences\Primary|Secondary\...` rows directly from the balance
@@ -1534,8 +1546,11 @@ These are deliberately outside Phase 2: their settings alter model behaviour,
 fallback policy, or an operational run contract. Review and implement each as
 a separate task, in this order:
 
-1. `docs/prompts/refining_workflow_scoped_review.md` - small legacy-wrapper
-   adapter and path/default review.
+1. **Completed 2026-07-28:** shared LEAP process-boundary normalization is
+   implemented and verified against AUS 2022; the unused standalone refining
+   workflow is archived under `codebase/old_workflows/`. The completed brief is
+   `docs/archive/refining_workflow_scoped_review.md`; see also
+   `docs/refining_workflow_retirement_audit.md`.
 2. `docs/prompts/aggregated_demand_scoped_review.md` - demand definition,
    source filters, zeroing contract, and selective-cache policy.
 3. `docs/prompts/other_loss_own_use_proxy_scoped_review.md` - proxy activity,
@@ -1745,7 +1760,7 @@ carry the same distortion.
   — **fixed 2026-07-23** (`ac1a79f`). Diagnosed at last: the assertion was
   pinned to the real USA template's area name string ("USA clean slate
   15_07"), and the user re-exported that template today under a new area
-  name ("USA clean slate 23_07") as part of updating the real per-economy
+  name ("USA clean slate 28_07") as part of updating the real per-economy
   templates. Updated the assertion to match; not a code defect, just a
   stale fixture string.
 - `tests/test_supply_transformation_export_projection_cache.py::test_transformation_exports_reuse_reference_projection_for_current_accounts`

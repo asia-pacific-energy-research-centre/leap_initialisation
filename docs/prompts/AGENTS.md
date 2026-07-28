@@ -59,7 +59,7 @@ Good prompts in this repo are specific, testable, and conservative.
 
 ## Current Inventory
 
-Reviewed on 2026-07-27.
+Reviewed on 2026-07-28.
 
 | Prompt | Type | Status | Basic Details | Notes Before Use |
 |---|---|---|---|---|

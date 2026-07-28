@@ -909,6 +909,194 @@ def compute_own_use_ratios_for_record(loss_values_by_year, input_series_map, yea
         raise
 
 
+def _normalize_process_boundary_for_leap(
+    output_values,
+    auxiliary_ratios,
+    value_tolerance=1e-9,
+):
+    """Return LEAP-facing net outputs and rebased auxiliary ratios.
+
+    ESTO transformation output is gross. When a module also consumes one of
+    its output fuels as auxiliary energy, LEAP-facing capacity and output
+    shares must use the remaining deliverable output. Efficiency continues to
+    use the untouched gross output and feedstock values.
+
+    A fully self-consuming process has no valid auxiliary-per-net-output
+    denominator. Preserve its gross representation until that edge case has a
+    dedicated LEAP loss representation.
+    """
+    try:
+        gross_output_values = {
+            str(label): dict(values or {})
+            for label, values in (output_values or {}).items()
+        }
+        output_years = sorted(
+            {
+                int(year)
+                for value_map in gross_output_values.values()
+                for year in (value_map or {})
+            }
+        )
+        raw_auxiliary_ratios = {
+            str(label): (
+                dict(values or {}) if isinstance(values, dict) else values
+            )
+            for label, values in (auxiliary_ratios or {}).items()
+        }
+        normalized_auxiliary_ratios = {
+            str(label): (
+                dict(values or {})
+                if isinstance(values, dict)
+                else {year: float(values or 0.0) for year in output_years}
+            )
+            for label, values in (auxiliary_ratios or {}).items()
+        }
+        empty_result = {
+            "output_values": gross_output_values,
+            "auxiliary_ratios": raw_auxiliary_ratios,
+            "gross_output_values": gross_output_values,
+            "auxiliary_energy_values": {},
+            "same_module_auxiliary_values": {},
+            "external_auxiliary_energy_values": {},
+            "status": "no_output_auxiliary_overlap",
+        }
+        if not gross_output_values or not normalized_auxiliary_ratios:
+            return empty_result
+
+        output_label_by_token = {
+            str(label).strip().casefold(): str(label)
+            for label in gross_output_values
+            if str(label).strip()
+        }
+        overlapping_auxiliary_labels = {
+            str(aux_label): output_label_by_token[str(aux_label).strip().casefold()]
+            for aux_label in normalized_auxiliary_ratios
+            if str(aux_label).strip().casefold() in output_label_by_token
+        }
+        if not overlapping_auxiliary_labels:
+            return empty_result
+
+        years = sorted(
+            {
+                int(year)
+                for value_map in (
+                    list(gross_output_values.values())
+                    + list(normalized_auxiliary_ratios.values())
+                )
+                for year in (value_map or {})
+            }
+        )
+        gross_total_by_year = {
+            year: sum(
+                max(
+                    float(
+                        (values or {}).get(
+                            year,
+                            (values or {}).get(str(year), 0.0),
+                        )
+                        or 0.0
+                    ),
+                    0.0,
+                )
+                for values in gross_output_values.values()
+            )
+            for year in years
+        }
+        auxiliary_energy_values = {
+            label: {
+                year: max(
+                    float(
+                        (ratio_by_year or {}).get(
+                            year,
+                            (ratio_by_year or {}).get(str(year), 0.0),
+                        )
+                        or 0.0
+                    ),
+                    0.0,
+                )
+                * gross_total_by_year[year]
+                for year in years
+            }
+            for label, ratio_by_year in normalized_auxiliary_ratios.items()
+        }
+        net_output_values = {
+            label: {
+                year: max(
+                    float(
+                        (values or {}).get(
+                            year,
+                            (values or {}).get(str(year), 0.0),
+                        )
+                        or 0.0
+                    ),
+                    0.0,
+                )
+                for year in years
+            }
+            for label, values in gross_output_values.items()
+        }
+        same_module_auxiliary_values = {}
+        external_auxiliary_energy_values = {}
+        for auxiliary_label, output_label in overlapping_auxiliary_labels.items():
+            same_module_auxiliary_values[auxiliary_label] = {}
+            external_auxiliary_energy_values[auxiliary_label] = {}
+            for year in years:
+                auxiliary_value = auxiliary_energy_values[auxiliary_label][year]
+                gross_value = net_output_values[output_label][year]
+                same_module_value = min(auxiliary_value, gross_value)
+                external_value = max(auxiliary_value - same_module_value, 0.0)
+                net_value = gross_value - same_module_value
+                net_output_values[output_label][year] = max(net_value, 0.0)
+                same_module_auxiliary_values[auxiliary_label][year] = same_module_value
+                external_auxiliary_energy_values[auxiliary_label][year] = external_value
+
+        net_total_by_year = {
+            year: sum(values.get(year, 0.0) for values in net_output_values.values())
+            for year in years
+        }
+        positive_gross_years = [
+            year
+            for year in years
+            if gross_total_by_year[year] > float(value_tolerance)
+        ]
+        if any(
+            net_total_by_year[year] <= float(value_tolerance)
+            for year in positive_gross_years
+        ):
+            return {
+                **empty_result,
+                "auxiliary_energy_values": auxiliary_energy_values,
+                "same_module_auxiliary_values": same_module_auxiliary_values,
+                "external_auxiliary_energy_values": external_auxiliary_energy_values,
+                "status": "zero_net_deliverable_preserved_gross",
+            }
+
+        rebased_auxiliary_ratios = {
+            label: {
+                year: (
+                    auxiliary_energy_values[label][year] / net_total_by_year[year]
+                    if net_total_by_year[year] > float(value_tolerance)
+                    else 0.0
+                )
+                for year in years
+            }
+            for label in normalized_auxiliary_ratios
+        }
+        return {
+            "output_values": net_output_values,
+            "auxiliary_ratios": rebased_auxiliary_ratios,
+            "gross_output_values": gross_output_values,
+            "auxiliary_energy_values": auxiliary_energy_values,
+            "same_module_auxiliary_values": same_module_auxiliary_values,
+            "external_auxiliary_energy_values": external_auxiliary_energy_values,
+            "status": "net_deliverable_output",
+        }
+    except Exception as exc:
+        print(f"Failed to normalize the LEAP process boundary: {exc}")
+        _try_debug_breakpoint()
+        raise
+
+
 def build_process_record(
     economy,
     sector_title,
@@ -946,16 +1134,29 @@ def build_process_record(
             for value in (values or {}).values()
         )
         stored_efficiency = canonical_efficiency if has_nonzero_feedstock else efficiency
+        leap_boundary = _normalize_process_boundary_for_leap(
+            output_values,
+            auxiliary_ratios,
+        )
         return {
             "economy": economy,
             "sector_title": sector_title,
             "process_name": process_name,
-            "output_values": output_values,
+            "output_values": leap_boundary["output_values"],
+            "gross_output_values": leap_boundary["gross_output_values"],
             "feedstock_values": feedstock_values,
             "feedstock_shares": dict(feedstock_shares or {}),
             "efficiency": stored_efficiency,
             "efficiency_scale": str(efficiency_scale or "ratio"),
-            "auxiliary_ratios": dict(auxiliary_ratios or {}),
+            "auxiliary_ratios": leap_boundary["auxiliary_ratios"],
+            "auxiliary_energy_values": leap_boundary["auxiliary_energy_values"],
+            "same_module_auxiliary_values": leap_boundary[
+                "same_module_auxiliary_values"
+            ],
+            "external_auxiliary_energy_values": leap_boundary[
+                "external_auxiliary_energy_values"
+            ],
+            "process_boundary_status": leap_boundary["status"],
             "loss_values": dict(loss_values or {}),
             "loss_total": loss_total,
             "input_total": input_total,

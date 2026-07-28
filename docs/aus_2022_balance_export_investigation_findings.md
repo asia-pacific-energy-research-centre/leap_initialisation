@@ -30,7 +30,30 @@ pre-fix seed while current code contains the fix.
 
 ## Comparison summary
 
-The corrected diagnostic produced 193 direct ESTO-pair comparison rows:
+### Comparator correction, 2026-07-28
+
+A follow-up rerun corrected two diagnostic false-positive causes without
+changing the LEAP workbook:
+
+- Oil Refining now compares the net-by-fuel LEAP module boundary with the
+  maintained ESTO boundary `09.07 Oil refineries + 10.01.11 Oil refineries`.
+  Natural gas and electricity therefore move from mismatches to exact matches.
+  Refinery gas, petroleum coke, and other products now expose the real net
+  boundary difference instead of being compared with gross transformation
+  output alone.
+- `Non specified own uses` was the only populated own-use label omitted from
+  the balance extractor's sign-normalization set. Its seven LEAP values were
+  therefore left positive while ESTO was negative. Other own-use rows did not
+  show the problem because their labels were already normalized to negative
+  consumption. Adding both hyphenated and unhyphenated label variants makes
+  all seven rows match to floating-point precision.
+
+For the current 195-row workbook diagnostic this reduces mismatches from 102
+to 93, increases matches from 56 to 65, and reduces material differences from
+62 to 58. The 37 unavailable comparator rows are unchanged.
+
+The original diagnostic, before the 2026-07-28 comparator correction above,
+produced 193 direct ESTO-pair comparison rows:
 
 | Count | Rows |
 | --- | ---: |
@@ -74,11 +97,40 @@ Unlisted row-level differences remain `unresolved` in the review CSV.
 | --- | --- | --- | --- | --- |
 | 1 | Anthracite imports and TPES are each about `+985.171 PJ`; Other bituminous production is `-657.521 PJ`; Other bituminous TPES is `-616.478 PJ`; Sub-bituminous production and TPES are each `-387.480 PJ` | `baseline_seed_generation_bug` | Electricity/heat interim producer | The pre-fix seed wrote 47.010% of Electricity interim feedstock to Anthracite and 0% to the two real coal products. Current code preserves the real ESTO products. Regenerate/import/recalculate/export to verify. |
 | 2 | Ten material flow-13 rows, led by Natural gas `+424.163 PJ`, Electricity `+175.954 PJ`, and Gas/diesel oil `+125.943 PJ` | `diagnostic_bug` | Mapping/comparison boundary | LEAP `Total Final Energy Demand` equals `All demand aggregated + Other loss and own use`; it is not a direct comparator for ESTO flow 13. Define a rollup-aware boundary before updates. |
-| 3 | LPG exports `-169.504 PJ`, LPG imports `+157.551 PJ`, electricity imports `+60.981 PJ`, electricity exports `-57.664 PJ`, plus associated TPES rows | `leap_model_behavior` (inferred, not fresh-cycle verified) | Supply plus transformation dispatch | The seed sets Resources targets, while LEAP closes shortfalls and exports transformation surpluses. Review shortfall/surplus settings and module order before changing targets. |
+| 3 | LPG exports `-169.504 PJ`, LPG imports `+157.551 PJ`, electricity imports `+60.981 PJ`, electricity exports `-57.664 PJ`, plus associated TPES rows | `leap_model_behavior` (confirmed first-pass semantics) | Supply plus transformation dispatch | The seed inputs match their intended baseline-seed rules: imports are deliberately zero, export targets match ESTO, and production is a cap. LEAP then closes shortfalls and exports transformation surpluses. Run the results-update loop before changing source targets. |
 | 4 | Coke oven coke imports `+115.211 PJ`, Coke oven coke TPES `+85.403 PJ`, and Coking coal TPES `+80.464 PJ` | `confirmed_formula_defect_fixed_code_side_plus_scope_decision` | Transformation methodology | LEAP defines efficiency as output/feedstock and excludes auxiliary fuels. The shared process-record builder now enforces that formula for every transformation module. A fresh seed/import/recalculation is still required; the remaining decision is which ESTO rows belong to each process/module. |
 | 5 | Crude-oil TPES `+174.680 PJ`, crude-oil imports `+170.737 PJ`, refinery crude input `-81.152 PJ`, and refinery product differences | `unresolved` | Refining plus LEAP dispatch | Compare the Current Accounts refining producer record, post-boundary seed, and recalculated output; decide whether the capacity heuristic should reproduce raw 2022 throughput exactly. |
-| 6 | All seven `10.01.17 Non-specified own uses` rows are almost exactly 1/100 of the ESTO magnitude in LEAP; four exceed 1 PJ | `confirmed_leap_branch_scale_mismatch` | Other-loss/own-use proxy | The seed's activity × intensity equals the ESTO target, but the existing LEAP leaf Activity Level is interpreted as a percentage/share. Choose Total Energy or convert to the tree's activity-share convention, then verify one fuel. |
+| 6 | All seven `10.01.17 Non-specified own uses` rows had the correct magnitude but appeared with the opposite sign in the diagnostic | `confirmed_diagnostic_sign_defect_fixed` | Balance extraction | This label alone was missing from the own-use sign-normalization set. Both label variants are now normalized as consumption and all seven rows match. The separate live-LEAP 1/100 scale issue was already corrected by clearing the leaf Scale unit. |
 | 7 | Remaining supply and small transformation rows | `unresolved` | Owner in issue register | Compare the named producer row with the post-boundary seed and recalculated LEAP branch. Percentage alone is not used for priority. |
+
+## Supply-input trace
+
+The AUS baseline-seed supply workbook was checked directly against the corrected
+ESTO comparison rows:
+
+```text
+outputs/leap_exports/supply_reconciliation/baseline_seed/runs/
+SEED_01_AUS_CA_2022_EFF_FIX_RUN2_20260727/workbooks/
+supply_leap_imports_01_AUS_CurrentAccounts.xlsx
+```
+
+- all 25 inspected `Imports` inputs are zero, as required by the
+  `baseline_seed` preset so LEAP recalculation reveals the initial import gap;
+- all 18 inspected `Exports` inputs match the absolute ESTO export target, yet
+  seven recalculated LEAP export results differ;
+- 12 of 16 inspected `Maximum Production` rows equal the ESTO production
+  value; the other four are intentionally `Unlimited` renewable resources; and
+- Other bituminous coal has the correct `Maximum Production` input
+  (`5,775.561 PJ`) but LEAP produces `5,698.175 PJ`, because maximum production
+  is a ceiling rather than a forced output.
+
+Therefore the prominent production/import/export differences are not evidence
+that ESTO values were copied incorrectly into this baseline seed. They are the
+expected first-pass balancing signal: Resources imports meet unresolved
+requirements, production dispatches below its ceiling where appropriate, and
+transformation surplus settings can add exports. The next correction mechanism
+is the normal `results_update` pass, which allocates observed gaps to production,
+transformation capacity, or configured import fallback.
 
 ## Transformation efficiency and own-use finding
 

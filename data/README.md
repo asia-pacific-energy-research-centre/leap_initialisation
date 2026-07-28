@@ -277,7 +277,10 @@ Process Share, and Feedstock Fuel Share across the valid sibling leaves.
   - Power-sector import workbook used by `codebase/power_workflow.py`.
 
 - `refining model export.xlsx`
-  - Refining import workbook used by `codebase/refining_workflow.py`.
+  - Legacy refining import workbook formerly used by the archived
+    `codebase/old_workflows/refining_workflow.py`.
+  - Active Oil Refining generation uses ESTO/9th inputs through
+    `codebase/transformation_workflow.py`.
 
 - `detailed balance table output example.xlsx`
   - Template/example workbook for detailed balance-table generation.

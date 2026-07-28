@@ -1,5 +1,8 @@
 # Refining workflow - scoped review and implementation brief
 
+Status: completed 2026-07-28. The shared process boundary was implemented and
+verified against AUS 2022, and the standalone workflow was archived.
+
 ## Purpose
 
 `codebase/refining_workflow.py` is a compact legacy-style workflow that reads a
@@ -10,6 +13,79 @@ combine run selection with operational behaviour.
 
 This brief is linked from `docs/work_queue.md` [15]. It is not part of Phase 2
 configuration standardisation.
+
+## Superseding decision - 2026-07-28
+
+The earlier recommendation below to parameterize and retain the standalone
+workflow is superseded by the evidence in
+`docs/refining_workflow_retirement_audit.md`.
+
+Oil refining is already produced through the active shared transformation
+process-record/export path, while the standalone workflow has no production
+caller, depends on an unavailable gitignored workbook, and would bypass the
+proposed shared LEAP process-boundary normalization. The implementation task is
+therefore to retire the active script safely after the common boundary fix is
+verified, not to create a second refining wrapper.
+
+### Short implementation prompt
+
+Retire `codebase/refining_workflow.py` from the active workflow surface without
+losing any production behavior. First implement and verify the shared
+process-boundary normalization described in
+`docs/refining_workflow_retirement_audit.md`: gross-output/feedstock Process
+Efficiency, deliverable-output Exogenous Capacity and Output Shares, and
+auxiliary/deliverable-output Auxiliary Fuel Use. Prove Oil Refining receives
+the rule through the same process records and exporter as other transformation
+modules, and prove non-overlap modules are unchanged.
+
+Then migrate the standalone file to `codebase/old_workflows/`, remove its
+obsolete capacity flag/test and active check-registry entry, and correct the
+documentation that describes it as a baseline-seed producer. Preserve
+`transformation_fuel_remap.py`; do not migrate the order-dependent missing
+scenario fallback or the prebuilt-workbook mutation route into the shared
+pipeline. Use `transformation_entry.py` as the sole notebook-friendly direct
+transformation wrapper.
+
+### Required execution order
+
+1. Run `git status --short`; do not overlap another agent's edits.
+2. Re-read the audit and verify every cited symbol/path with `rg`.
+3. Land the common process-boundary normalization and its focused tests as a
+   separate commit.
+4. Generate and inspect AUS 2022 Current Accounts Oil Refining output. Stop if
+   gross output, same-module auxiliary, or expected capacity boundaries cannot
+   be reconciled unambiguously.
+5. Run transformation back-calculation and baseline-seed validation.
+6. Only after those checks pass, archive the standalone workflow and update:
+   `workflow_config.py`, `test_refining_capacity_policy.py`,
+   `test_check_registry.py`, `check_registry.md`,
+   `baseline_seed_rule_inventory.md`, `workflow_inventory.md`,
+   `supply_reconciliation_workflow_guide.md`,
+   `system_overview_for_rewrite.md`,
+   `special_rules_and_design_decisions.md`, and `data/README.md`.
+7. Run a repo-wide caller/import scan and all affected focused tests.
+8. Commit retirement separately from the boundary calculation fix.
+
+### Stop conditions
+
+- Stop for user input if a real current user of the hand-maintained refining
+  workbook is identified.
+- Stop if the legacy workbook contains behavior not reproducible from the
+  shared process records.
+- Stop if the shared rule changes a module with no output/auxiliary overlap.
+- Do not delete the fuel-remap helper or any source workbook.
+- Do not run a full multi-economy reconciliation workflow without explicit
+  authorization.
+
+### Completion evidence
+
+- Focused calculations and exact AUS 2022 values for gross output, overlapping
+  auxiliary use, deliverable output, feedstock, efficiency, capacity, output
+  shares, and auxiliary ratios.
+- A no-overlap regression result.
+- Scenario/template/final-seed validation results.
+- A repo-wide no-production-caller result for the archived workflow.
+- Two coherent commits: common boundary fix, then workflow retirement/docs.
 
 ## Current evidence
 

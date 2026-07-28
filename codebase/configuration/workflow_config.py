@@ -34,16 +34,22 @@ def _resolve_global_aggregate(economies: list[str]) -> str:
         return economies[0]
     return "ALL_ECONOMIES"
 
-# Default to individual APEC member economies so workbook producers emit
-# reusable per-economy files. Use an explicit aggregate sentinel when a
-# 00_APEC / ALL_ECONOMIES run is wanted.
+# Default to the economies with real, economy-owned LEAP export templates.
+# `_COMP_GEN` economies remain excluded until their provisional USA-derived IDs
+# are replaced. Use an explicit aggregate sentinel for an APEC aggregate run.
 GLOBAL_ECONOMIES = _normalize_economies(
     [
         "01_AUS",
+        "02_BD",
         "05_PRC",
+        "10_MAS",
         "11_MEX",
         "12_NZ",
+        "13_PNG",
+        "15_PHL",
+        "19_THA",
         "20_USA",
+        "21_VN",
     ]
 )
 # Multiple economies -> per-economy runs (no aggregation unless a sentinel is used).
@@ -80,10 +86,6 @@ BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True
 # so the unit-review diagnostic ignores this exact pair by default. Set False
 # to restore visibility of the raw metadata mismatch.
 BASELINE_SEED_IGNORE_IMPLICIT_SHARE_UNIT_MISMATCHES = True
-
-# Retained modelling decision: refining Exogenous Capacity follows Historical
-# Production, using the existing unit conversion metadata in refining_workflow.
-REFINING_USE_HISTORICAL_PRODUCTION_CAPACITY_HEURISTIC = True
 
 # LEAP sometimes exports a "full model output all years ... REF.xlsx" workbook
 # whose internal "Scenario: X, Year: Y, Units: Z" sheet subtitles say "Target"

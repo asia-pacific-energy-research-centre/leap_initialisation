@@ -45,7 +45,6 @@ REGISTERED_CHECKS: dict[str, str] = {
     "validate_seed_files": "codebase/functions/patch_baseline_seeds.py",
     # F3 - LEAP-import readiness
     "validate_region": "codebase/functions/leap_exports.py",
-    "_ensure_export_contains_scenarios": "codebase/refining_workflow.py",
     "run_export_readiness": "codebase/utilities/leap_export_readiness.py",
     # F4 - preflight
     "run_preflight_compressed_projection": "codebase/functions/supply_preflight.py",

@@ -62,7 +62,8 @@ by `supply_results_saver.py`'s per-economy loop, §2.3):
 - `codebase/transfers_workflow.py` (1,364 LOC)
 - `codebase/electricity_heat_interim_workflow.py` (1,332 LOC)
 - `codebase/hydrogen_transformation_workflow.py` (725 LOC)
-- `codebase/refining_workflow.py` (554 LOC)
+- `codebase/old_workflows/refining_workflow.py` (archived; Oil Refining is
+  produced by `codebase/transformation_workflow.py`)
 - `codebase/supply_workflow.py` (211 LOC) — standalone supply wrapper over
   `codebase/functions/supply_data_pipeline.py`, used directly by the engine's
   per-economy loop via `supply_data_pipeline.generate_supply_exports` rather

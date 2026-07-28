@@ -1,6 +1,10 @@
 #%%
 """
-Build and optionally import LEAP refining branches from export data.
+Archived prebuilt-workbook refining workflow.
+
+Active Oil Refining generation uses ``transformation_workflow.py`` and the
+shared process-record/export boundary. This mutator remains for historical
+reference only.
 
 This workflow prepares the refining export workbook, optionally remaps
 transformation fuels, and imports branch structure and time-series values into
@@ -53,6 +57,7 @@ from codebase.utilities.output_paths import STANDALONE_LEAP_EXPORTS_ROOT
 WRITE_MODE = get_analysis_input_write_mode()
 
 CREATE_BRANCHES_FROM_EXPORT_FILE = True
+ARCHIVED_USE_HISTORICAL_PRODUCTION_CAPACITY_HEURISTIC = True
 
 # Define parameters
 leap_export_filename = "../data/refining model export.xlsx"
@@ -286,7 +291,7 @@ def _apply_transformation_capacity_logic_to_refining_export(
     (Million Gigajoules/Year).  Refining starts from a hand-maintained export
     workbook, so this normalizes those process rows before branch fill/import.
     """
-    if not workflow_cfg.REFINING_USE_HISTORICAL_PRODUCTION_CAPACITY_HEURISTIC:
+    if not ARCHIVED_USE_HISTORICAL_PRODUCTION_CAPACITY_HEURISTIC:
         print("[INFO] Refining Historical Production capacity heuristic is disabled.")
         return
 

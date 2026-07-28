@@ -1841,10 +1841,6 @@ def write_per_economy_combined_workbooks(
 
     def _producer_for_row(configured_source: str, branch_path: object) -> str:
         path = str(branch_path or "").strip().lower()
-        if configured_source == "transformation_workflow" and path.startswith(
-            "transformation\\oil refin"
-        ):
-            return "refining_workflow"
         return configured_source
 
     def _current_source_frames(

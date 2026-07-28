@@ -88,7 +88,7 @@ not permanent API references.
 | SEED-C022 | Unknown non-excepted branch paths remain errors; allowlists are explicit. | No automatic expansion from observed backup rows. | Legacy validator had prefix and fuel allowlists. | SEED-011 exception records match explicit fields. | `confirmed_rule` |
 | SEED-C023 | Demand zeroing excludes the aggregated-demand branch and Other loss and own use branches, preserving values owned by their workflows. | Scenario coverage follows the zeroing workbook. | `aggregated_demand_workflow.py:182-197,918-1008`; `supply_reconciliation_workflow.py:1065-1075`. | Current aggregated demand workflow. | `confirmed_exception` |
 | SEED-C024 | Resources paths are classified against the full-model export; unmatched all-zero rows may be dropped, while unmatched nonzero rows are diagnostic failures. | All scenarios/years. | `supply_reconciliation_workflow.py:11400-11455,12275-12340`. | Current supply reconciliation functions. | `confirmed_rule` |
-| SEED-C025 | Refining removes subtotal/aggregate fuel branches before import and sets Exogenous Capacity from Historical Production using Million Gigajoules/Year metadata. | Current Accounts base year and projection scenario window. | `refining_workflow.py:257-399`. | `REFINING_USE_HISTORICAL_PRODUCTION_CAPACITY_HEURISTIC`; refining capacity policy test | Retained `confirmed_rule` |
+| SEED-C025 | Transformation Process Efficiency uses gross output divided by feedstock. When an auxiliary fuel is also a module output, same-module auxiliary use is capped at that fuel's gross output and deliverable output subtracts that portion; any excess remains external auxiliary input. Exogenous Capacity and Output Share use deliverable output, and all auxiliary ratios use deliverable output as denominator. A fully self-consuming zero-net process temporarily preserves its gross representation because LEAP has no valid auxiliary-per-zero-output denominator. | All transformation process records and scenarios. | `functions/transformation_record_builder.build_process_record`; `functions/supply_leap_io.apply_transformation_target_overrides_for_scenario`. | Feedstock-only efficiency and process-boundary regression tests | `confirmed_rule`; zero-net edge case remains explicit |
 | SEED-C026 | Transfers use configured process relationships and transformation share/zero-fill builders. | Current Accounts handling is explicitly configurable. | `transfers_workflow.py:1754+`; `configuration/workflow_config.py:240-252`. | Current transfers workflow and shared transformation functions. | `implementation_detail`; mapping semantics remain owned by `leap_mappings` |
 | SEED-C027 | `Minimum Share of Production` exists in the model but is not a sibling allocation that must sum to 100%. | Constraint semantics, not an allocation group. | Present in `data/full model export.xlsx`; absent from the June USA seed. | Deliberately excluded from `SHARE_VARIABLE_RULE_IDS`. | `implementation_detail` |
 | SEED-C028 | Workbook metadata (`Units`, `Scale`, `Per...`) and LEAP preamble are preserved from templates. | All rows/scenarios. | Legacy Excel writers and `AGENTS_LEAP_EXPORT.md`. | Comparator metadata differences and existing workbook writers. | `confirmed_rule` |
@@ -152,7 +152,8 @@ blocking status, and reason.
    measure/key. No production exception is configured.
 2. Scenario coverage defaults to Current Accounts 2022 and Reference/Target
    2023–2060. The base and final years are centralized configuration values.
-3. Refining retains the Historical Production → Exogenous Capacity heuristic.
+3. Oil Refining uses the shared transformation process boundary; the legacy
+   Historical Production to Exogenous Capacity heuristic is retired.
 
 ## Production-readiness comparison (2026-06-28)
 

@@ -156,6 +156,8 @@ LEAP_BALANCE_LOSS_AND_OWN_USE_ROWS = (
     "Coal mines",
     "Electricity CHP and heat plants",
     "Liquefaction and regasification plants",
+    "Non specified own uses",
+    "Non-specified own uses",
     "Oil and gas extraction",
     "Oil refineries",
     "Pump storage plants",

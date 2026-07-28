@@ -723,11 +723,13 @@ Verification:
 - Manual checks: inspect the interim fuel validation report, confirm only the three interim modules are emitted, confirm electricity/heat output rows are present as expected, and confirm auxiliary fuels are not included.
 - After LEAP import/recalculation, verify that interim modules do not conflict with the full power model if both are present.
 
-### `refining_workflow.py`
+### Archived: `old_workflows/refining_workflow.py`
 
 Purpose:
 
-Builds and optionally imports refining branch data from a refining model export workbook.
+Historical prebuilt-workbook mutator, retained for reference only. Active Oil
+Refining generation is configured in `transformation_workflow.py` and uses the
+shared process-record/export boundary.
 
 Writes to LEAP:
 
@@ -757,10 +759,11 @@ Refining initialisation is part of the transformation/supply setup, but later re
 
 Verification:
 
-- No dedicated direct test file currently covers `refining_workflow.py` end to end.
-- Related automated tests: `tests/test_series_adapter_and_remaps.py` covers expression/year-column handling for remap helpers; supply-reconciliation tests cover some downstream refining/supply interactions.
-- Manual checks: verify the source `data/refining model export.xlsx` has the expected scenarios and sheet, inspect remapped fuel names, confirm skipped variables are intentional, and review output/feedstock/auxiliary fuel branch groups before import.
-- After import, check refining outputs and feedstocks in LEAP balance results before relying on supply reconciliation to close residual supply gaps.
+- No production caller imports the archived workflow.
+- Shared transformation tests cover gross-output efficiency, net deliverable
+  output, auxiliary ratios, and the zero-net edge case.
+- After import, check Oil Refining outputs, feedstocks, auxiliary fuels, and
+  capacity in LEAP balance results before relying on reconciliation.
 
 ### `outlook_mapping_maintenance_workflow.py`
 

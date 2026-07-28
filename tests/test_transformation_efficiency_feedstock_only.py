@@ -5,6 +5,7 @@
 import pandas as pd
 import pytest
 
+from codebase.functions import supply_leap_io, supply_preflight
 from codebase.functions.transformation_record_builder import (
     build_process_record,
     build_transformation_log_rows,
@@ -70,6 +71,151 @@ def test_process_record_overrides_legacy_efficiency_with_exported_feedstocks() -
     )
     efficiency_row = next(row for row in rows if row["Measure"] == "Process Efficiency")
     assert efficiency_row["Value"] == pytest.approx((16.775 / 41.930999) * 100.0)
+
+
+def test_oil_refining_uses_net_deliverable_output_for_leap_boundary() -> None:
+    """Oil-refinery own use is removed from output, but not efficiency."""
+    gross_output = 551.001809
+    feedstock = 552.471099
+    own_use = {
+        "Refinery gas": 25.581888,
+        "Petroleum coke": 3.237736,
+        "Other products": 10.210399,
+    }
+    external_auxiliary = {
+        "Natural gas": 3.620941,
+        "Electricity": 2.097260,
+    }
+    output_values = {
+        "Motor gasoline": {2022: 431.971786},
+        "Refinery gas": {2022: own_use["Refinery gas"]},
+        "Petroleum coke": {2022: own_use["Petroleum coke"]},
+        "Other products": {2022: 90.210399},
+    }
+    auxiliary_energy = {**own_use, **external_auxiliary}
+
+    record = build_process_record(
+        economy="01_AUS",
+        sector_title="Oil Refining",
+        process_name="Oil Refining",
+        output_values=output_values,
+        feedstock_values={"Crude oil and refinery feedstocks": {2022: feedstock}},
+        efficiency={2022: 0.0},
+        auxiliary_ratios={
+            label: {2022: value / gross_output}
+            for label, value in auxiliary_energy.items()
+        },
+        loss_values={
+            label: {2022: value}
+            for label, value in auxiliary_energy.items()
+        },
+        loss_total=sum(auxiliary_energy.values()),
+    )
+
+    expected_net_output = gross_output - sum(own_use.values())
+    assert sum(values[2022] for values in record["gross_output_values"].values()) == pytest.approx(
+        gross_output
+    )
+    assert sum(values[2022] for values in record["output_values"].values()) == pytest.approx(
+        expected_net_output
+    )
+    assert record["output_values"]["Refinery gas"][2022] == pytest.approx(0.0)
+    assert record["output_values"]["Petroleum coke"][2022] == pytest.approx(0.0)
+    assert record["output_values"]["Other products"][2022] == pytest.approx(80.0)
+    assert record["efficiency"][2022] == pytest.approx(gross_output / feedstock)
+    assert record["auxiliary_ratios"]["Natural gas"][2022] == pytest.approx(
+        external_auxiliary["Natural gas"] / expected_net_output
+    )
+    assert record["process_boundary_status"] == "net_deliverable_output"
+
+
+def test_non_overlapping_auxiliary_fuels_leave_process_record_unchanged() -> None:
+    record = build_process_record(
+        economy="01_AUS",
+        sector_title="Electricity generation",
+        process_name="Gas turbine",
+        output_values={"Electricity": {2022: 40.0}},
+        feedstock_values={"Natural gas": {2022: 80.0}},
+        efficiency={2022: 0.5},
+        auxiliary_ratios={"Diesel": {2022: 0.05}},
+        loss_values={"Diesel": {2022: 2.0}},
+        loss_total=2.0,
+    )
+
+    assert record["output_values"] == {"Electricity": {2022: 40.0}}
+    assert record["auxiliary_ratios"] == {"Diesel": {2022: 0.05}}
+    assert record["process_boundary_status"] == "no_output_auxiliary_overlap"
+
+
+def test_capacity_uses_net_output_and_preserves_runtime_additions(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    gross_output = 100.0
+    record = build_process_record(
+        economy="01_AUS",
+        sector_title="Oil Refining",
+        process_name="Oil Refining",
+        output_values={"Motor gasoline": {2022: 80.0}, "Refinery gas": {2022: 20.0}},
+        feedstock_values={"Crude oil": {2022: 110.0}},
+        efficiency={2022: 0.0},
+        auxiliary_ratios={"Refinery gas": {2022: 20.0 / gross_output}},
+        loss_values={"Refinery gas": {2022: 20.0}},
+        loss_total=20.0,
+    )
+    monkeypatch.setattr(supply_leap_io, "_use_capacity_like_mode", lambda: True)
+    monkeypatch.setattr(supply_leap_io, "_use_legacy_trade_split_mode", lambda: False)
+    monkeypatch.setattr(
+        supply_leap_io,
+        "_leap_export_template_for_economy",
+        lambda economy: tmp_path / "aus.xlsx",
+    )
+    monkeypatch.setattr(
+        supply_preflight,
+        "_configured_reset_module_names",
+        lambda template_path=None: {"oil refining"},
+    )
+    monkeypatch.setattr(
+        supply_preflight,
+        "_configured_reset_output_fuel_labels_by_module",
+        lambda module_names, template_path=None: {
+            "oil refining": ["Motor gasoline", "Refinery gas"]
+        },
+    )
+    monkeypatch.setattr(
+        supply_leap_io,
+        "_lookup_runtime_capacity_additions_for_record",
+        lambda **kwargs: {2022: 5.0},
+    )
+
+    updated = supply_leap_io.apply_transformation_target_overrides_for_scenario(
+        [record],
+        pd.DataFrame(),
+        pd.DataFrame(),
+        "Current Accounts",
+    )[0]
+
+    assert updated["exogenous_capacity_by_year"][2022] == pytest.approx(85.0)
+    assert updated["historical_production_by_year"][2022] == pytest.approx(85.0)
+
+
+def test_auxiliary_above_matching_output_preserves_excess_as_external() -> None:
+    record = build_process_record(
+        economy="01_AUS",
+        sector_title="Coke ovens",
+        process_name="Coke ovens",
+        output_values={"Coke oven gas": {2022: 10.0}, "Coke": {2022: 10.0}},
+        feedstock_values={"Coking coal": {2022: 30.0}},
+        efficiency={2022: 2.0 / 3.0},
+        auxiliary_ratios={"Coke oven gas": {2022: 0.75}},
+        loss_values={"Coke oven gas": {2022: 15.0}},
+        loss_total=15.0,
+    )
+
+    assert record["output_values"]["Coke oven gas"][2022] == pytest.approx(0.0)
+    assert record["same_module_auxiliary_values"]["Coke oven gas"][2022] == pytest.approx(10.0)
+    assert record["external_auxiliary_energy_values"]["Coke oven gas"][2022] == pytest.approx(5.0)
+    assert record["auxiliary_ratios"]["Coke oven gas"][2022] == pytest.approx(1.5)
 
 
 def test_multiple_exported_feedstocks_are_summed_in_denominator() -> None:
