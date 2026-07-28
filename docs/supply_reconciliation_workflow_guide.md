@@ -244,6 +244,42 @@ One important nuance: the workflow does not assume imports are always an error i
 
 `supply_reconciliation_workflow.py` runs in one of three modes. The first two are full runs of the supply/transformation/transfers pipeline, distinguished by `CAPACITY_UNMET_PASS_MODE`; the third bypasses that pipeline entirely and edits existing seed files in place.
 
+Choose the mode from the state of the economy and the scope of the intended
+change:
+
+```mermaid
+flowchart TD
+    START["Need a LEAP import workbook"]
+    PATCH{"Only refresh a verified patchable module in an existing seed?"}
+    PATCHMODE["patch_baseline_seeds"]
+    SUPPORTED{"Module is in the patch registry and is not a gated transformation auto-regen sector?"}
+    FULL["Use a full reconciliation run"]
+    RESULTS{"Recalculated LEAP balance export exists for this pass?"}
+    BASELINE["baseline_seed: write imports as zero and establish the first signal"]
+    UPDATE["results_update: read observed balances and allocate the gap"]
+    IMPORT["Import workbook into LEAP and recalculate"]
+    EXPORT["Export the next LEAP balance result"]
+    DONE{"Reconciliation and validation criteria met?"}
+    COMPLETE["Current reconciliation cycle complete"]
+
+    START --> PATCH
+    PATCH -- "Yes" --> SUPPORTED
+    SUPPORTED -- "Yes" --> PATCHMODE
+    SUPPORTED -- "No" --> FULL
+    PATCH -- "No" --> FULL
+    FULL --> RESULTS
+    RESULTS -- "No" --> BASELINE
+    RESULTS -- "Yes" --> UPDATE
+    BASELINE --> IMPORT
+    UPDATE --> IMPORT
+    PATCHMODE --> IMPORT
+    IMPORT --> EXPORT --> DONE
+    DONE -- "No" --> UPDATE
+    DONE -- "Yes" --> COMPLETE
+```
+
+A later structural or data update starts a new decision at the top.
+
 | | `baseline_seed` | `results_update` | `patch_baseline_seeds` |
 |---|---|---|---|
 | Selected by | `CAPACITY_UNMET_PASS_MODE = "baseline_seed"` (`_PRESET_BASELINE_SEED`, ~line 670) | `CAPACITY_UNMET_PASS_MODE = "results_update"` (`_PRESET_RESULTS_UPDATE`, ~line 798) | `RUN_MODE = "patch_baseline_seeds"` (`_PRESET_PATCH_BASELINE_SEEDS`, ~line 775) |
