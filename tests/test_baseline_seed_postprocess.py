@@ -10,12 +10,14 @@ import pytest
 from codebase.functions import supply_leap_io
 from codebase.functions.baseline_seed_postprocess import (
     apply_postprocess_rules,
+    load_postprocess_excluded_branch_paths,
     load_postprocess_rules,
     validate_postprocess_rule,
 )
 
 
 PROCESS_PATH = r"Transformation\Oil Refining\Processes\Oil Refining"
+COAL_CHP_PATH = r"Transformation\CHP plants\Processes\Coal CHP"
 
 
 def _template_rows(*, target_value: float = 90.0) -> pd.DataFrame:
@@ -158,6 +160,27 @@ def test_economy_filter_prevents_cross_economy_override() -> None:
     assert audit.empty
 
 
+def test_excluded_branch_path_prevents_automatic_override() -> None:
+    template = _template_rows()
+    template.loc[:, "Branch Path"] = COAL_CHP_PATH
+    broad_rule = _rule(
+        branch_path_equals=[],
+        branch_path_contains=r"Transformation\CHP plants\Processes",
+    )
+
+    result, audit = apply_postprocess_rules(
+        pd.DataFrame(columns=["Branch Path", "Variable", "Scenario", "Region"]),
+        template,
+        [broad_rule],
+        economy="20_USA",
+        config_path="rules.json",
+        excluded_branch_paths=[COAL_CHP_PATH],
+    )
+
+    assert result.empty
+    assert audit.empty
+
+
 def test_load_rules_and_reject_ambiguous_rule(tmp_path) -> None:
     path = tmp_path / "rules.json"
     path.write_text(
@@ -175,6 +198,39 @@ def test_load_rules_and_reject_ambiguous_rule(tmp_path) -> None:
                 "replacement_expression": "100",
             }
         )
+
+
+def test_load_excluded_branch_paths_from_configured_workbook(tmp_path) -> None:
+    workbook_path = tmp_path / "new leap rows.xlsx"
+    with pd.ExcelWriter(workbook_path, engine="openpyxl") as writer:
+        pd.DataFrame(
+            {"Branch Path": [COAL_CHP_PATH, r"Transformation\CHP plants"]}
+        ).to_excel(writer, sheet_name="power", index=False)
+
+    path = tmp_path / "rules.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "excluded_branch_path_workbooks": [
+                    {
+                        "path": workbook_path.name,
+                        "sheets": ["power"],
+                        "branch_path_column": "Branch Path",
+                    }
+                ],
+                "rules": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    excluded = load_postprocess_excluded_branch_paths(path)
+
+    assert excluded == {
+        COAL_CHP_PATH,
+        r"Transformation\CHP plants",
+    }
 
 
 def test_final_seed_writer_applies_enabled_postprocess_rule(

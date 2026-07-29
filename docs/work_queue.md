@@ -23,6 +23,10 @@ populated canonical-template value differs from an expected value; and write an
 explicit LEAP expression. Every change is template-backed, passes through final
 seed validation, and is recorded in a per-economy CSV audit. Results-update and
 patch presets explicitly disable the feature to prevent notebook state leakage.
+Maintained branch paths in
+`../leap_mappings/data/temp/new leap rows.xlsx` are globally excluded from
+automatic post-processing so intentionally configured new-template rows retain
+their expressions.
 See [baseline_seed_postprocess_rules.md](baseline_seed_postprocess_rules.md).
 
 ## [22] Three-batch real-template baseline-seed run

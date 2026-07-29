@@ -1,5 +1,16 @@
 {
   "version": 1,
+  "excluded_branch_path_workbooks": [
+    {
+      "path": "../../leap_mappings/data/temp/new leap rows.xlsx",
+      "sheets": [
+        "demand",
+        "power"
+      ],
+      "branch_path_column": "Branch Path",
+      "required": true
+    }
+  ],
   "rules": [
     {
       "rule_id": "real_template_oil_refining_maximum_availability_100",

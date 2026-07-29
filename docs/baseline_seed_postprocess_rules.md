@@ -42,6 +42,13 @@ The JSON file has `version: 1` and a `rules` list. Each rule supports:
 At least one branch-path or variable constraint is mandatory. This prevents an
 accidental unconstrained rewrite.
 
+The optional `excluded_branch_path_workbooks` list names maintained Excel
+catalogues whose `Branch Path` values are protected from every automatic rule.
+Paths are resolved relative to the JSON file. Each entry can specify `sheets`,
+`branch_path_column`, and whether the workbook is `required`. Exclusion is by
+exact normalized branch path and applies to every variable, scenario and
+economy on that path.
+
 Example:
 
 ```json
@@ -92,8 +99,9 @@ rows in the 11 real templates.
   `Transformation\Oil Refining\Processes\Oil Refining`, Target, at `90` for
   every year from 2023 through 2060.
 - USA also had Coal CHP at `50` and Gas CHP at `80`. These are separate,
-  technology-specific settings and are intentionally not matched by the oil
-  refining rule.
+  technology-specific settings. Their process paths are present in
+  `leap_mappings/data/temp/new leap rows.xlsx`, so the exclusion catalogue
+  prevents any current or future automatic rule from changing them.
 - Blank projection years on Current Accounts rows were recorded separately and
   are normal scenario-window blanks, not explicit non-100 settings.
 

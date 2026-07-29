@@ -1780,6 +1780,13 @@ def write_per_economy_combined_workbooks(
         if postprocess_enabled
         else []
     )
+    postprocess_excluded_branch_paths = (
+        baseline_seed_postprocess.load_postprocess_excluded_branch_paths(
+            postprocess_config_path
+        )
+        if postprocess_enabled
+        else set()
+    )
 
     # Each economy is its own LEAP area, so its template, ID lookups, and
     # reference rows are resolved per economy inside the loop below. An explicit
@@ -2005,6 +2012,7 @@ def write_per_economy_combined_workbooks(
                 postprocess_rules,
                 economy=econ_token,
                 config_path=postprocess_config_path,
+                excluded_branch_paths=postprocess_excluded_branch_paths,
             )
             postprocess_audit_path = (
                 diagnostics_dir / f"{diagnostic_stem}_postprocess_overrides.csv"

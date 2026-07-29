@@ -61,8 +61,8 @@ def _year_columns(frame: pd.DataFrame) -> list[object]:
     return sorted(columns, key=lambda column: int(str(column)))
 
 
-def load_postprocess_rules(config_path: str | Path) -> list[dict[str, object]]:
-    """Load and validate the version-1 JSON post-processing configuration."""
+def _load_config_payload(config_path: str | Path) -> tuple[Path, dict[str, object]]:
+    """Load and validate the shared version-1 configuration envelope."""
     path = Path(config_path)
     if not path.exists():
         raise FileNotFoundError(f"Baseline-seed post-process config not found: {path}")
@@ -72,10 +72,84 @@ def load_postprocess_rules(config_path: str | Path) -> list[dict[str, object]]:
         raise ValueError("Baseline-seed post-process config must be a JSON object.")
     if payload.get("version") != 1:
         raise ValueError("Baseline-seed post-process config version must be 1.")
+    return path, payload
+
+
+def load_postprocess_rules(config_path: str | Path) -> list[dict[str, object]]:
+    """Load and validate the version-1 JSON post-processing configuration."""
+    _, payload = _load_config_payload(config_path)
     rules = payload.get("rules")
     if not isinstance(rules, list):
         raise ValueError("Baseline-seed post-process config 'rules' must be a list.")
     return [validate_postprocess_rule(rule) for rule in rules]
+
+
+def load_postprocess_excluded_branch_paths(
+    config_path: str | Path,
+) -> set[str]:
+    """Load exact branch paths that automatic post-processing must never change."""
+    path, payload = _load_config_payload(config_path)
+    catalogs = payload.get("excluded_branch_path_workbooks", [])
+    if not isinstance(catalogs, list):
+        raise ValueError(
+            "Baseline-seed post-process config "
+            "'excluded_branch_path_workbooks' must be a list."
+        )
+
+    excluded: set[str] = set()
+    for catalog in catalogs:
+        if not isinstance(catalog, dict):
+            raise ValueError(
+                "Each excluded branch-path workbook entry must be an object."
+            )
+        configured_path = _text(catalog.get("path"))
+        if not configured_path:
+            raise ValueError("Each excluded branch-path workbook requires path.")
+        workbook_path = Path(configured_path)
+        if not workbook_path.is_absolute():
+            workbook_path = (path.parent / workbook_path).resolve()
+
+        required = bool(catalog.get("required", True))
+        if not workbook_path.exists():
+            if required:
+                raise FileNotFoundError(
+                    f"Excluded branch-path workbook not found: {workbook_path}"
+                )
+            continue
+
+        sheet_names = _as_string_list(
+            catalog.get("sheets"),
+            field_name=f"{workbook_path}.sheets",
+        )
+        branch_path_column = _text(
+            catalog.get("branch_path_column", "Branch Path")
+        )
+        loaded = pd.read_excel(
+            workbook_path,
+            sheet_name=sheet_names or None,
+        )
+        frames = loaded if isinstance(loaded, dict) else {"configured": loaded}
+        found_column = False
+        for sheet_name, frame in frames.items():
+            if branch_path_column not in frame.columns:
+                if sheet_names:
+                    raise ValueError(
+                        f"Excluded branch-path workbook {workbook_path}, sheet "
+                        f"{sheet_name!r}, is missing column {branch_path_column!r}."
+                    )
+                continue
+            found_column = True
+            excluded.update(
+                _text(value)
+                for value in frame[branch_path_column]
+                if _text(value)
+            )
+        if not found_column:
+            raise ValueError(
+                f"Excluded branch-path workbook {workbook_path} has no "
+                f"{branch_path_column!r} column."
+            )
+    return excluded
 
 
 def validate_postprocess_rule(rule: object) -> dict[str, object]:
@@ -211,6 +285,7 @@ def apply_postprocess_rules(
     *,
     economy: str,
     config_path: str | Path,
+    excluded_branch_paths: Iterable[str] = (),
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Insert or replace seed rows selected from the canonical template.
 
@@ -226,6 +301,9 @@ def apply_postprocess_rules(
     result = seed_rows.copy()
     template_year_columns = _year_columns(template_rows)
     audit_rows: list[dict[str, object]] = []
+    normalized_excluded_paths = {
+        _normalized(value) for value in excluded_branch_paths if _text(value)
+    }
 
     for raw_rule in rules:
         rule = validate_postprocess_rule(raw_rule)
@@ -236,6 +314,12 @@ def apply_postprocess_rules(
         selected = template_rows.loc[
             _rule_mask(template_rows, rule, economy=economy)
         ].copy()
+        if normalized_excluded_paths:
+            selected = selected.loc[
+                ~selected["Branch Path"].map(_normalized).isin(
+                    normalized_excluded_paths
+                )
+            ].copy()
 
         triggered_rows: list[tuple[pd.Series, dict[str, object]]] = []
         for _, template_row in selected.iterrows():
