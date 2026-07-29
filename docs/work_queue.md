@@ -1,5 +1,16 @@
 # Remaining work queue
 
+## [24] Subtotal mapping mismatches warn without stopping updates
+
+**Status: completed 2026-07-29.**
+
+Unapproved LEAP-to-ESTO or LEAP-to-9th subtotal-flag mismatches remain visible
+as console warnings and in
+`subtotal_flag_mismatch_warnings_<mapping-sheet>.csv`, but no longer raise from
+the mapping loader. A mapping-workbook review issue must not cause the entire
+economy's balance-demand input to be skipped. The maintained exception sheet
+still distinguishes reviewed intentional mismatches from unresolved warnings.
+
 > **This is the engineering log, not the handover schedule.** For dated
 > status, priorities, owners, dependencies and the four-week plan, start at
 > [handover_work_queue_20260728.md](handover_work_queue_20260728.md). This
