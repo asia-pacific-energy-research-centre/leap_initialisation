@@ -8,7 +8,7 @@ from typing import Callable, Iterable
 
 import pandas as pd
 
-from codebase import supply_reconciliation_allocation as allocation
+from codebase.supply_reconciliation import allocation
 from codebase.functions.baseline_seed_balance_diagnostics import (
     classify_balance_variable,
     load_balance_variable_rules,

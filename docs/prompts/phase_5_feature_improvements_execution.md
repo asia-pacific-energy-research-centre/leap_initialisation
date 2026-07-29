@@ -24,20 +24,20 @@ be over-promised.
 
 More exists than `AGENTS.md` implies. Measured 2026-07-21:
 
-- `codebase/supply_reconciliation_history.py` (583 LOC) owns
+- `codebase/supply_reconciliation/history.py` (583 LOC) owns
   `CONVERGENCE_CSV_COLUMNS` (with `run_id` first), `load_convergence_csv`
   (inserts blank `run_id` for legacy files), `_latest_convergence_run_id`,
   `rollback_last_capacity_unmet_pass`, `trim_capacity_unmet_pass_deltas`,
   `trim_convergence_csv_to_pass`, `remove_convergence_run`,
   `clear_convergence_csv`, `_build_results_signature`, and the capacity-unmet
   state read/write pair.
-- `codebase/functions/capacity_unmet_convergence_diagnostics.py` (385 LOC)
+- `codebase/supply_reconciliation/convergence.py` (385 LOC)
   provides `build_capacity_unmet_run_diagnostics()` (per-fuel start/end gap,
   allocation split by lever, unresolved flag; writes
   `capacity_unmet_run_diagnostics_<run_id>.csv`) and
   `compare_capacity_unmet_runs()` (latest-two comparison, warns on differing
   `mode` / `iteration_run_mode`).
-- Guarded by `tests/test_capacity_unmet_convergence_diagnostics.py` and
+- Guarded by `tests/test_supply_reconciliation/convergence.py` and
   `tests/test_convergence_csv_cleanup.py`.
 
 ### Gaps worth closing
@@ -93,7 +93,7 @@ More exists than `AGENTS.md` implies. Measured 2026-07-21:
 
 ### Safe now?
 
-**Yes, all of 5A** - it touches `supply_reconciliation_history.py` and the
+**Yes, all of 5A** - it touches `supply_reconciliation/history.py` and the
 diagnostics module, neither of which is edited by the fleet run. Do not delete
 or prune any history file while the run is live.
 
@@ -137,12 +137,12 @@ built, and 5B.2's premise is wrong.**
   sectors implied by whichever LEAP demand groups are currently real, and
   deduplicates (Freight road + Passenger road both map to `15_02_road` and are
   excluded once). Backed by `LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP`
-  (`supply_reconciliation_config.py:1049`, 6 groups) and the manual switch
+  (`supply_reconciliation/config.py:1049`, 6 groups) and the manual switch
   `DETAILED_DEMAND_BRANCHES_ACTIVE` (`:1072`, currently `None`).
 - **It can even infer readiness automatically.**
   `_infer_active_demand_branch_groups(sector_table)` +
   `resolve_effective_aggregated_demand_exclusions`
-  (`supply_reconciliation_tables.py:~700-731`) detect active demand groups from
+  (`supply_reconciliation/tables.py:~700-731`) detect active demand groups from
   the LEAP results sector table, falling back to the manual list.
 - Subtraction is taken from **9th/ESTO source data, not detailed LEAP branch
   results**, deliberately - so the placeholder shrinks by the source amount
@@ -186,7 +186,7 @@ excluding exactly three things:
 3. whatever the caller passes in `exclude_branch_prefixes`.
 
 The only caller, `build_other_demand_zeroing_workbooks`
-(`supply_leap_io.py:2256`), populates (3) with **one** value: the own-use proxy
+(`supply_reconciliation/leap_io.py:2256`), populates (3) with **one** value: the own-use proxy
 prefix, and only when `ZERO_OTHER_DEMAND_EXCLUDE_OWN_USE_PROXY_BRANCHES` is
 set. It is never given the excluded-sector list, the active demand branches, or
 anything derived from them.
@@ -325,7 +325,7 @@ globals. **Threads are unsafe; this is not a tuning question.**
 
 Found 2026-07-21, after this brief was first written:
 `supply_reconciliation_config.PARALLEL_ECONOMY_WORKERS: int = 0` is consumed at
-`supply_results_saver.py:3526`, which - when the value exceeds 1 - runs
+`supply_reconciliation/results_saver.py:3526`, which - when the value exceeds 1 - runs
 per-economy export generation under a **`concurrent.futures.ThreadPoolExecutor`**
 (`:3529`), sharing one interpreter and therefore one copy of every mirrored
 module global. It aggregates per-economy exceptions into

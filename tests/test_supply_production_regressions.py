@@ -6,11 +6,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from codebase.functions import (
-    supply_export_builder,
-    supply_leap_io,
-    supply_reconciliation_tables,
-)
+from codebase.functions import supply_export_builder
+from codebase.supply_reconciliation import leap_io as supply_leap_io
+from codebase.supply_reconciliation import tables as supply_reconciliation_tables
 
 
 USA_MSW_PRODUCT = "16.04 Municipal solid waste (non-renewable)"

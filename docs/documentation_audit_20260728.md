@@ -81,7 +81,7 @@ claims to have fixed:
 | `supply_reconciliation_workflow.py` | 13,628 (banner: 1,494) | 1,508 |
 
 Related: `docs/prompts/phase_4_monolith_decomposition_execution.md` sizes
-`codebase/functions/supply_results_saver.py` at 4,024 LOC; it is now **4,508**.
+`codebase/supply_reconciliation/results_saver.py` at 4,024 LOC; it is now **4,508**.
 The "re-decide `supply_results_saver`" task has grown, not shrunk, since it was
 scoped.
 
@@ -103,8 +103,8 @@ Phase 4 run-context work and per-process configuration overrides."*
 **Both are contradicted by code in this repository**, and the same roadmap
 document contradicts itself 70 lines later at its own item 2:
 
-- `codebase/functions/parallel_economy_runner.py` (13.6 KB) exists.
-- `codebase/functions/parallel_economy_merge.py` (14.8 KB) exists.
+- `codebase/supply_reconciliation/parallel_runner.py` (13.6 KB) exists.
+- `codebase/supply_reconciliation/parallel_merge.py` (14.8 KB) exists.
 - `supply_reconciliation_workflow._apply_worker_snapshot_overrides()` is defined
   at `codebase/supply_reconciliation_workflow.py:715` and **called at line 1122**,
   reading a per-process `LEAP_WORKER_SNAPSHOT_JSON` snapshot before the preset
@@ -115,7 +115,7 @@ roadmap's item 2 records it as landed and verified 2026-07-23 (`9aab65b`) with a
 two-economy concurrent smoke test.
 
 **Action:** rewrite the `AGENTS.md` section and the roadmap's run-policy bullet
-to state the real rule — parallelism goes through `parallel_economy_runner.py`,
+to state the real rule — parallelism goes through `supply_reconciliation/parallel_runner.py`,
 and the prohibition applies only to launching a second *bare* invocation from the
 same working tree. This is a live foot-gun: an operator reading either document
 today would decline to use a facility that exists and works.

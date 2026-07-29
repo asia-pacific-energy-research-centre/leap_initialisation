@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from codebase.functions import supply_preflight as preflight
+from codebase.supply_reconciliation import preflight
 import codebase.supply_reconciliation_workflow as workflow
 
 

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from codebase.supply_reconciliation_config import *  # noqa: F401,F403
+from codebase.supply_reconciliation.config import *  # noqa: F401,F403
 from codebase.utilities.workflow_utils import _resolve
 
 CONVERGENCE_CSV_COLUMNS = [
@@ -138,7 +138,7 @@ def _current_commit7() -> str:
     try:
         return subprocess.check_output(
             ["git", "rev-parse", "--short=7", "HEAD"],
-            cwd=Path(__file__).resolve().parents[1],
+            cwd=Path(__file__).resolve().parents[2],
             text=True,
             stderr=subprocess.DEVNULL,
         ).strip()
@@ -261,7 +261,7 @@ def rollback_last_capacity_unmet_pass(
     If you ran a pass based on stale or incorrect LEAP results and want to
     pretend that pass never happened:
 
-        from codebase.supply_reconciliation_history import rollback_last_capacity_unmet_pass
+        from codebase.supply_reconciliation.history import rollback_last_capacity_unmet_pass
         rollback_last_capacity_unmet_pass()   # uses default state path from config
 
     The function:
@@ -364,7 +364,7 @@ def trim_capacity_unmet_pass_deltas(
     Once you are confident that early passes are correct and you no longer need
     the ability to roll them back, trim the delta list to save disk space:
 
-        from codebase.supply_reconciliation_history import trim_capacity_unmet_pass_deltas
+        from codebase.supply_reconciliation.history import trim_capacity_unmet_pass_deltas
         trim_capacity_unmet_pass_deltas(keep_last=5)  # keep last 5 passes reversible
 
     **Warning — this is irreversible.** Trimmed passes are permanently locked
@@ -528,7 +528,7 @@ def _lookup_runtime_capacity_additions_for_record(
     allocation_ledger=None,
 ) -> dict[int, float]:
     """Return per-year cumulative exogenous-capacity additions for one process record."""
-    import codebase.supply_reconciliation_allocation as _sra  # late import — avoids circular dep
+    import codebase.supply_reconciliation.allocation as _sra  # late import — avoids circular dep
     capacity_additions = (
         _sra._CAPACITY_UNMET_RUNTIME_CAPACITY_ADDITIONS
         if allocation_ledger is None
@@ -565,7 +565,7 @@ def _lookup_runtime_primary_addition(
     allocation_ledger=None,
 ) -> float:
     """Return cumulative primary-production addition for one product-year."""
-    import codebase.supply_reconciliation_allocation as _sra  # late import — avoids circular dep
+    import codebase.supply_reconciliation.allocation as _sra  # late import — avoids circular dep
     primary_additions = (
         _sra._CAPACITY_UNMET_RUNTIME_PRIMARY_ADDITIONS
         if allocation_ledger is None
@@ -762,7 +762,7 @@ def _lookup_runtime_export_adjustment(
     allocation_ledger=None,
 ) -> float:
     """Return cumulative extra exports adjustment for one product-year."""
-    import codebase.supply_reconciliation_allocation as _sra  # late import — avoids circular dep
+    import codebase.supply_reconciliation.allocation as _sra  # late import — avoids circular dep
     export_adjustments = (
         _sra._CAPACITY_UNMET_RUNTIME_EXPORT_ADJUSTMENTS
         if allocation_ledger is None

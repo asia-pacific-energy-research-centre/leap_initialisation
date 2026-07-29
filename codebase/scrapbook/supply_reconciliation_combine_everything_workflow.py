@@ -17,7 +17,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from codebase.functions.baseline_seed_validation import BaselineSeedValidationError
-from codebase.functions.supply_leap_io import write_per_economy_combined_workbooks
+from codebase.supply_reconciliation.leap_io import write_per_economy_combined_workbooks
 from codebase.utilities import workflow_common
 
 # --- Stable paths ---

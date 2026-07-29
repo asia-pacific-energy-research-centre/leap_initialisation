@@ -18,7 +18,7 @@ from codebase.functions.patch_baseline_seeds import (
     SEED_FILENAME_PATTERN,
     _economy_from_seed_filename,
 )
-from codebase.functions.supply_leap_io import promote_baseline_seed_to_primary_dir
+from codebase.supply_reconciliation.leap_io import promote_baseline_seed_to_primary_dir
 
 
 def _make_run_seed(tmp_path, name="leap_import_baseline_seed_01_AUS_20260721.xlsx"):

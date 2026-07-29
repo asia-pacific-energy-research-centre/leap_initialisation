@@ -3,14 +3,14 @@
 Scope, deliberately narrow (docs/prompts/continuation_20260722_phase4_parallelism_and_release_readiness.md
 and docs/current_execution_roadmap.md flagged this as still-open work needing
 its own design pass, not a rushed add-on to
-``codebase/functions/parallel_economy_runner.py``):
+``codebase/supply_reconciliation/parallel_runner.py``):
 
 * This module merges only the **consolidated baseline-seed validation
   findings** (``baseline_seed_<stamp>_consolidated_rule_findings.csv`` and
   ``..._consolidated_issue_groups.csv``) across a set of parallel workers.
   Each worker already writes these two files for its own single economy;
   merging is a safe, deterministic concatenation because
-  ``codebase/functions/supply_leap_io.py``'s sequential multi-economy writer
+  ``codebase/supply_reconciliation/leap_io.py``'s sequential multi-economy writer
   builds them the exact same way - by looping over economies and
   concatenating each economy's own findings, tagged with an ``economy``
   column, then recomputing issue groups from the concatenated frame with
@@ -38,13 +38,13 @@ from typing import Sequence
 
 import pandas as pd
 
-import codebase.supply_reconciliation_config as _supply_reconciliation_config
+import codebase.supply_reconciliation.config as _supply_reconciliation_config
 from codebase.functions.baseline_seed_validation import (
     build_branch_issue_summary,
     build_validation_issue_groups,
 )
 from codebase.functions.leap_excel_io import find_leap_header_row
-from codebase.functions.parallel_economy_runner import EconomyWorkerResult
+from codebase.supply_reconciliation.parallel_runner import EconomyWorkerResult
 
 _FINDINGS_COLUMNS = (
     "economy", "rule_id", "status", "severity", "blocking",

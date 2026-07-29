@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from codebase import supply_reconciliation_workflow as workflow
-from codebase import supply_reconciliation_allocation as allocation
+from codebase.supply_reconciliation import allocation
 from codebase.configuration import workflow_config as workflow_cfg
 
 
@@ -496,7 +496,7 @@ def test_generated_balance_workbook_names_keep_requested_scenarios(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    import codebase.supply_reconciliation_balance_tables as balance_tables
+    import codebase.supply_reconciliation.balance_tables as balance_tables
 
     monkeypatch.setattr(
         balance_tables,
@@ -522,7 +522,7 @@ def test_generated_balance_workbook_names_keep_requested_scenarios(
 def test_generated_balance_workbook_names_allow_lazy_default_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import codebase.supply_reconciliation_balance_tables as balance_tables
+    import codebase.supply_reconciliation.balance_tables as balance_tables
 
     monkeypatch.setattr(balance_tables, "BALANCE_DEMAND_REF_WORKBOOK_PATH", None)
     monkeypatch.setattr(balance_tables, "BALANCE_DEMAND_TGT_WORKBOOK_PATH", None)

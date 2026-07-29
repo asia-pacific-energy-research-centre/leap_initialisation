@@ -819,10 +819,10 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
     elif module == "transfers":
         from codebase import transfers_workflow as _w
         from codebase.functions import transformation_analysis_utils as _core
-        from codebase.functions.supply_leap_io import (
+        from codebase.supply_reconciliation.leap_io import (
             save_transfer_exports_with_supply_overrides,
         )
-        from codebase.functions.supply_results_saver import (
+        from codebase.supply_reconciliation.results_saver import (
             _build_transformation_supply_fuel_catalog_df,
         )
         _core.prepare_transformation_assets()
@@ -856,10 +856,10 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
     }:
         from codebase import transformation_workflow as _w
         from codebase.functions import transformation_analysis_utils as _core
-        from codebase.functions.supply_leap_io import (
+        from codebase.supply_reconciliation.leap_io import (
             save_transformation_exports_with_split_targets,
         )
-        from codebase.functions.supply_results_saver import (
+        from codebase.supply_reconciliation.results_saver import (
             _build_transformation_supply_fuel_catalog_df,
             _catalog_for_economy,
         )
@@ -912,7 +912,7 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
             BASE_YEAR,
             PROJECTION_END_YEAR,
         )
-        from codebase.supply_reconciliation_config import (
+        from codebase.supply_reconciliation.config import (
             AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES,
             AGGREGATED_DEMAND_EXCLUDED_SECTORS,
             AGGREGATED_DEMAND_USE_SECTOR_BRANCHES,
@@ -954,10 +954,10 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
     elif module == "losses_own_use":
         from codebase import other_loss_own_use_proxy_workflow as proxy_workflow
         from codebase.functions import transformation_analysis_utils as _core
-        from codebase.functions.supply_leap_io import (
+        from codebase.supply_reconciliation.leap_io import (
             _resolve_other_loss_own_use_proxy_activity_source_mode,
         )
-        from codebase.supply_reconciliation_config import (
+        from codebase.supply_reconciliation.config import (
             CAPACITY_UNMET_PASS_MODE,
             OTHER_LOSS_OWN_USE_LEAP_BALANCE_DATE_ID,
             OTHER_LOSS_OWN_USE_LEAP_BALANCE_SCENARIO,

@@ -12,16 +12,17 @@
 
 ## [24] Package the supply reconciliation subsystem
 
-**Status: feasibility confirmed 2026-07-29; implementation and production run
-deferred on `codex/reconciliation-package-migration`.**
+**Status: package migration implemented and bounded verification completed
+2026-07-29 on `codex/reconciliation-package-migration`; production run
+deferred.**
 
-Keep `codebase/supply_reconciliation_workflow.py` as the notebook-facing root
-entry point and move its implementation modules plus reconciliation-specific
-supporting functions into `codebase/supply_reconciliation/`. The import/path
-audit found this is feasible as an atomic migration, but temporary star-import
-shims would be unsafe because config and allocation state are module-local.
-Use bounded characterization/unit tests in the migration worktree; retain the
-full-horizon, multi-economy workflow for a later useful-output boundary.
+`codebase/supply_reconciliation_workflow.py` remains the notebook-facing root
+entry point. Its implementation modules and reconciliation-specific supporting
+functions now live in `codebase/supply_reconciliation/`; imports, path-depth
+assumptions, tests, and active documentation were updated without compatibility
+shims. Bounded import/characterization/unit verification is complete. Retain
+the representative workflow smoke and full-horizon multi-economy run for a
+later useful-output boundary.
 See [reconciliation_package_migration_plan.md](reconciliation_package_migration_plan.md).
 
 ## [23] Opt-in final baseline-seed expression overrides
@@ -305,7 +306,7 @@ Required design and implementation work:
 
 `filter_actionable_mapping_config_mismatches()` and
 `build_template_matching_summary()` in
-`codebase/functions/supply_results_saver.py`, wired into
+`codebase/supply_reconciliation/results_saver.py`, wired into
 `save_results_linked_single_workbook`, write
 `supply_reconciliation_template_matching_summary.csv` alongside the existing
 detailed CSVs (unchanged, still unfiltered). 8 new tests
@@ -369,7 +370,7 @@ Do not weaken seed validation or silently delete the detailed files.
 ### Priority follow-up — make template verification economy-specific — ✅ Implemented 2026-07-23 (`68de3f4`)
 
 `_resolve_ids_and_filter_unmatched_export_rows_per_economy`
-(`codebase/functions/supply_results_saver.py`) groups the combined export by
+(`codebase/supply_reconciliation/results_saver.py`) groups the combined export by
 `Region`, resolves each region's own economy's LEAP export template via
 `leap_export_template_resolver.resolve_leap_export_template_or_fallback`, and
 runs the existing single-reference ID-resolution logic per group instead of
@@ -458,7 +459,7 @@ Completed:
 - canonical `leap_fuel_branch_catalog.csv` name with legacy compatibility copy;
 - transfer export catalog preflight and legacy-root rejection.
 
-Next work may use `fuel_catalog_preflight.py`, `supply_leap_io.py`, readiness
+Next work may use `fuel_catalog_preflight.py`, `supply_reconciliation/leap_io.py`, readiness
 tests, and documentation, but must not modify Workpath A files. The remaining
 full-model dependency is tracked below as a cross-cutting follow-up and should
 be split by file ownership before implementation.
@@ -472,14 +473,14 @@ be split by file ownership before implementation.
   second resolver or key implementation.
 - Verification runs must use a clean tree or an isolated worktree.
 
-### Shared-helper handoff ✅ DONE 2026-07-17 — `supply_leap_io.py` released to Workpath B
+### Shared-helper handoff ✅ DONE 2026-07-17 — `supply_reconciliation/leap_io.py` released to Workpath B
 
 The aggregate-aware wrapper is now public API:
 `leap_export_template_resolver.resolve_leap_export_template_or_fallback(economy, *, fallback=...)`.
 `supply_leap_io._leap_export_template_for_economy` is a thin alias over it and is
 unchanged for every existing caller.
 
-**Workpath B is unblocked: `supply_leap_io.py` is released.** Workpath A will not
+**Workpath B is unblocked: `supply_reconciliation/leap_io.py` is released.** Workpath A will not
 touch it again for the standalone routing.
 
 Two design points worth keeping:
@@ -1038,7 +1039,7 @@ have passed it.
 
 The reset is the **wipe half of a wipe-then-fill pair whose fill half is the
 LEAP API import pass** — the `... or RUN_RESET_...` clauses at
-`supply_results_saver.py:3718-3766` and `supply_leap_io.py:2387`'s forced
+`supply_reconciliation/results_saver.py:3718-3766` and `supply_reconciliation/leap_io.py:2387`'s forced
 Current Accounts fill. The API is decommissioned and production runs in
 workbook mode, so the fill never executes. A wipe with no fill does not stage
 a refill; it deletes.
@@ -1091,7 +1092,7 @@ proves statically.
 
 **Finding 2 — the aggregate-sentinel raise is MASKED, not resolved.** With the
 reset enabled, `reset_..._to_zero` resolved a LEAP export template through the
-strict `resolve_leap_export_template` (`supply_reconciliation_tables.py:1807`,
+strict `resolve_leap_export_template` (`supply_reconciliation/tables.py:1807`,
 `:1815`), which raises on `00_APEC`, the aggregate sentinel the compressed
 projection preflight runs. Every run then ended in a deferred `RuntimeError`.
 `c5401a5` stops the reset being entered at all, so the raise no longer fires —
@@ -1117,7 +1118,7 @@ minus Demand\Other loss and own use   0
 Every non-aggregated `Demand\` branch in the template sits under
 `Demand\Other loss and own use`, which is excluded whenever
 `ZERO_OTHER_DEMAND_EXCLUDE_OWN_USE_PROXY_BRANCHES` is `True`
-(`supply_reconciliation_config.py:1092`) because the own-use proxy populates
+(`supply_reconciliation/config.py:1092`) because the own-use proxy populates
 those branches in the same pass. Zero rows is **correct**. Region is a red
 herring: `zero_fill_unset_rows` overwrites `Region` rather than filtering on
 it, returning 1,236 rows for every region value tested.
@@ -1134,13 +1135,13 @@ belongs to G2.
 #### Open items this work created or uncovered
 
 1. **`sector_set` is computed but never applied to the reconciliation mask**
-   (`supply_reconciliation_tables.py:1854`; the mask at `:1886-1905` uses
+   (`supply_reconciliation/tables.py:1854`; the mask at `:1886-1905` uses
    economy ∧ scenario ∧ product ∧ year only). It gates the *transformation
    records* half alone, so `RESET_SCOPE_SECTOR_TITLES` silently does nothing to
    the reconciliation half. Dormant while the reset is gated off, but it is the
    first knob anyone will reach for if the API returns.
 2. **Finding 2's strict resolver**, above.
-3. **A third dishonest log line.** `supply_preflight.py:526` reports reset state
+3. **A third dishonest log line.** `supply_reconciliation/preflight.py:526` reports reset state
    from the flag alone and never sees the gate, so after `c5401a5` it prints
    `reset is ENABLED` on runs where the reset is skipped. Being fixed via a
    shared `reset_is_effective()` predicate in
@@ -1208,7 +1209,7 @@ permanent import-only reproduction — it acquires no locks and writes nothing:
   `RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT` too — that copy is what
   the honest `[WARN] Reset reminder` line was reading.
 - The compressed **projection** preflight does not override the reset flag (only
-  the `results_update` preflight does, at `supply_preflight.py:1229`), so after
+  the `results_update` preflight does, at `supply_reconciliation/preflight.py:1229`), so after
   step 4 that preflight will exercise the reset as well. Its outputs are
   isolated under `preflight_compressed_projection/`.
 
@@ -1228,7 +1229,7 @@ Neither `_sync_results_saver_overrides()` nor `_broadcast_config_overrides()`
 delivers them (the broadcast at `supply_reconciliation_workflow.py:574` carries
 only `CAPACITY_UNMET_PASS_MODE` plus refreshed *paths*).
 
-**Intent is not ambiguous.** `supply_reconciliation_config.py:1096` is commented
+**Intent is not ambiguous.** `supply_reconciliation/config.py:1096` is commented
 `# PRESET-CONTROLLED DEFAULT: both active presets replace this value.` The
 mechanism meant to replace it does not.
 
@@ -1254,7 +1255,7 @@ routing, not reset — but no recent seed is a "clean reset" baseline.
 
 Live consequences today (workbook mode, LEAP import disabled):
 
-1. **`supply_results_saver.py:3223` — the zero-reset is skipped.**
+1. **`supply_reconciliation/results_saver.py:3223` — the zero-reset is skipped.**
    `reset_supply_and_transformation_import_export_to_zero(...)` never runs, so
    supply/transformation Import/Export/target values are not zeroed before
    filling. Stale values persist in the reconciliation table and process
@@ -1447,7 +1448,7 @@ not. Build it.
 The reset is the wipe half of a wipe-then-fill pair. In API mode the fill was
 the LEAP import pass. In workbook mode there is no second pass, so the wipe was
 applied to the **in-memory reconciliation table** at
-`supply_results_saver.py:3251` — before `save_year_balance_tables` and
+`supply_reconciliation/results_saver.py:3251` — before `save_year_balance_tables` and
 everything downstream — and nothing refilled it. The effect is not "LEAP is
 zeroed then filled"; it is **"the workbook ships with the values deleted"**:
 1,111,593 PJ of `01_AUS` exports, and +271,919 PJ on the REF 2022 energy
@@ -1455,7 +1456,7 @@ balance. Measured, not inferred — see [17].
 
 ### The demand side already does this correctly — copy it
 
-`build_other_demand_zeroing_workbooks` (`supply_leap_io.py:2256`) emits a
+`build_other_demand_zeroing_workbooks` (`supply_reconciliation/leap_io.py:2256`) emits a
 **separate** artifact, `demand_zeroing_{economy}.xlsx`, imported *before* the
 main workbook. Zeroing happens inside LEAP, through its own file, and the main
 workbook still carries real values. The supply/transformation side has no
@@ -1487,7 +1488,7 @@ defect.**
 - **Never bundle the mechanism with the behaviour change.** [17]'s flip passed
   every static check — clean forwarding report, 60 green tests, an AST-derived
   blast radius — and still deleted a million PJ. Only running it revealed that.
-- Two `supply_reconciliation_tables.py` defects are pinned by
+- Two `supply_reconciliation/tables.py` defects are pinned by
   fail-when-fixed tests and are in scope here: `sector_set` never narrowing the
   reconciliation mask (so the reset's blast radius cannot be scoped by module),
   and the strict template resolver raising on aggregate sentinels like
@@ -1663,14 +1664,14 @@ cache and zero-argument helpers; `23aac52` had already routed both. Re-verified
 against the tree 2026-07-17 before starting work — nothing to implement:
 
 - `_RESET_SCOPE_FROM_EXPORT_CACHE` **is** keyed, by resolved source path
-  (`supply_preflight.py:580`), so entries cannot cross templates.
+  (`supply_reconciliation/preflight.py:580`), so entries cannot cross templates.
 - `_load_reset_scope_from_full_model_export`, `_configured_reset_module_names`,
   `_configured_reset_fuel_labels` and
   `_configured_reset_output_fuel_labels_by_module` all take `template_path`.
 - **No call site anywhere relies on the `None` default** (which would fall back
   to `RESULTS_VERIFICATION_EXPORT_PATH`, i.e. USA). Verified by grep.
 - `reset_supply_and_transformation_import_export_to_zero`
-  (`supply_reconciliation_tables.py:1741`) **self-partitions**: >1 economy in the
+  (`supply_reconciliation/tables.py:1741`) **self-partitions**: >1 economy in the
   reconciliation table → it recurses per economy with
   `template_path=resolve_leap_export_template(economy)` (`:1807`); exactly 1 →
   same resolver (`:1815`). Its `supply_results_saver:3159` caller therefore
@@ -1806,9 +1807,9 @@ carry the same distortion.
   user's instruction on 2026-07-10. The comment at `workflow_config.py:79-91`
   names these three tests. Monkeypatching the flag to `False` turns all 16 green.
   Mechanism: `prepare_seed_rows_for_write` (`baseline_seed_validation.py:1835`)
-  clears the `blocking` column, and the raise at `supply_leap_io.py:1977-1984` is
+  clears the `blocking` column, and the raise at `supply_reconciliation/leap_io.py:1977-1984` is
   gated on `blocking` being non-empty. (SEED-012 tests still pass because their
-  findings are appended at `supply_leap_io.py:1960-1961`, after that path.)
+  findings are appended at `supply_reconciliation/leap_io.py:1960-1961`, after that path.)
   Test 3 is the same cause, not a config move: `BASE_YEAR=2022`/`FINAL_YEAR=2060`
   are intact and the sibling window test passes; SEED-009 simply no longer blocks.
 
@@ -1851,7 +1852,7 @@ carry the same distortion.
   ledger), the fixture doesn't accept it, and the call raises `TypeError`.
   Not diagnosed further; fixture needs an `allocation_ledger=None` parameter
   to match.
-- ~~`tests/test_module_attribute_contracts.py::test_no_bare_name_misattribution[codebase.functions.supply_leap_io]`~~
+- ~~`tests/test_module_attribute_contracts.py::test_no_bare_name_misattribution[codebase.supply_reconciliation.leap_io]`~~
   — **cleared.** Was failing mid-flight while the export-template work was
   uncommitted; passes at `6bda122` (39/39). Left here only to stop it being
   re-reported. This is what a verification run against a dirty tree looks like

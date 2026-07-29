@@ -140,7 +140,7 @@ def test_alias_exception_rescue_survives_split(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def _saver_resolver():
-    from codebase.functions.supply_results_saver import (
+    from codebase.supply_reconciliation.results_saver import (
         _resolve_ids_and_filter_unmatched_export_rows,
     )
 
@@ -148,7 +148,7 @@ def _saver_resolver():
 
 
 def test_only_aggregate_demand_is_excluded_from_fatal_nonzero_missing_id_gate() -> None:
-    from codebase.functions.supply_results_saver import (
+    from codebase.supply_reconciliation.results_saver import (
         _filter_blocking_nonzero_missing_id_rows,
     )
 
@@ -402,7 +402,7 @@ def test_saver_source_missing_required_columns_reason() -> None:
 # ---------------------------------------------------------------------------
 
 def _per_economy_resolver():
-    from codebase.functions.supply_results_saver import (
+    from codebase.supply_reconciliation.results_saver import (
         _resolve_ids_and_filter_unmatched_export_rows_per_economy,
     )
 
@@ -435,7 +435,7 @@ def test_pinned_reference_alone_misses_a_real_non_pinned_economy_branch() -> Non
 
 
 def test_per_economy_resolver_uses_each_rows_own_template(monkeypatch) -> None:
-    import codebase.functions.supply_results_saver as supply_results_saver
+    import codebase.supply_reconciliation.results_saver as supply_results_saver
 
     resolve = _per_economy_resolver()
 
@@ -527,7 +527,7 @@ def test_per_economy_resolver_falls_back_for_unrecognised_region() -> None:
 
 
 def test_per_economy_resolver_falls_back_when_template_resolution_raises(monkeypatch) -> None:
-    import codebase.functions.supply_results_saver as supply_results_saver
+    import codebase.supply_reconciliation.results_saver as supply_results_saver
 
     resolve = _per_economy_resolver()
     usa_pinned_reference = pd.DataFrame(
@@ -560,7 +560,7 @@ def test_per_economy_resolver_falls_back_when_template_resolution_raises(monkeyp
 # ---------------------------------------------------------------------------
 
 def test_build_source_diagnostics_reads_first_year_column() -> None:
-    from codebase.functions.supply_preflight import _build_source_diagnostics
+    from codebase.supply_reconciliation.preflight import _build_source_diagnostics
 
     nonzero_missing = pd.DataFrame(
         [

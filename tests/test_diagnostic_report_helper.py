@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from codebase.functions.supply_results_saver import _write_diagnostic_report
+from codebase.supply_reconciliation.results_saver import _write_diagnostic_report
 
 
 def _rows(n: int) -> pd.DataFrame:

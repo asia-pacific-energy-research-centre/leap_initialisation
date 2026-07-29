@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from codebase.functions import supply_leap_io
+from codebase.supply_reconciliation import leap_io as supply_leap_io
 
 
 def test_transformation_exports_reuse_reference_projection_for_current_accounts(

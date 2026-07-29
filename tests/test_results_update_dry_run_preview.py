@@ -3,8 +3,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-import codebase.supply_reconciliation_allocation as allocation
-from codebase.functions import results_update_preview as preview
+import codebase.supply_reconciliation.allocation as allocation
+from codebase.supply_reconciliation import results_update_preview as preview
 
 
 def _reconciliation() -> pd.DataFrame:

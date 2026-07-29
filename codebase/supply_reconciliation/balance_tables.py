@@ -10,13 +10,13 @@ import shutil
 import pandas as pd
 from openpyxl.styles import Font, PatternFill
 
-from codebase.supply_reconciliation_config import *  # noqa: F401,F403
+from codebase.supply_reconciliation.config import *  # noqa: F401,F403
 from codebase.utilities.workflow_utils import _resolve
-from codebase.supply_reconciliation_utils import (
+from codebase.supply_reconciliation.utils import (
     _build_label_to_esto_product_lookup,
     _normalize_template_header_value,
 )
-from codebase.supply_reconciliation_results import _resolve_refinery_results_workbook
+from codebase.supply_reconciliation.results import _resolve_refinery_results_workbook
 from codebase.configuration.all_products_and_flows import ESTO_PRODUCT_LIST, ESTO_SECTORS
 
 def _find_refinery_sheet_header_row(raw: pd.DataFrame) -> int | None:
@@ -848,7 +848,7 @@ def _infer_top_level_demand_category(
     """Map a demand row to a broad category using mapped 9th/ESTO sector levels."""
     # Late import — these lookups live in supply_demand_mapping, which imports
     # this module at top level, so a top-level import here would be circular.
-    from codebase.functions.supply_demand_mapping import SECTOR_TO_ESTO_FLOW_LOOKUP
+    from codebase.supply_reconciliation.demand_mapping import SECTOR_TO_ESTO_FLOW_LOOKUP
 
     flow_label = str(esto_flow or "").strip()
     if not flow_label:
@@ -1028,7 +1028,7 @@ def build_reference_conventional_balance_matrix(
     """Build the same matrix shape using source ESTO/9th values before adjustments."""
     # Late import — lives in supply_demand_mapping, which imports this module at
     # top level (circular if imported at module scope here).
-    from codebase.functions.supply_demand_mapping import ESTO_PARENT_PRODUCT_LOOKUP
+    from codebase.supply_reconciliation.demand_mapping import ESTO_PARENT_PRODUCT_LOOKUP
 
     year_value = int(year)
     economy_value = str(economy)
@@ -1189,7 +1189,7 @@ def build_conventional_balance_matrix(
     """Return a conventional balance matrix: sectors on rows, fuels on columns."""
     # Late import — lives in supply_demand_mapping, which imports this module at
     # top level (circular if imported at module scope here).
-    from codebase.functions.supply_demand_mapping import ESTO_PARENT_PRODUCT_LOOKUP
+    from codebase.supply_reconciliation.demand_mapping import ESTO_PARENT_PRODUCT_LOOKUP
 
     year_value = int(year)
     economy_value = str(economy)

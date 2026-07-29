@@ -19,8 +19,8 @@ from typing import Callable, Iterable
 import pandas as pd
 from openpyxl.styles import Font, PatternFill
 
-from codebase.supply_reconciliation_config import *  # noqa: F401,F403
-from codebase.supply_reconciliation_config import (
+from codebase.supply_reconciliation.config import *  # noqa: F401,F403
+from codebase.supply_reconciliation.config import (
     ReconciliationRunContext,
     _ModuleCapRule,
     _resolve_module_cap_rule,
@@ -105,7 +105,7 @@ from codebase.utilities.leap_results_dashboard_utils import (
 )
 from codebase.scrapbook.utilities import load_augmented_reference_tables
 from codebase.utilities.workflow_common import archive_config_dir_once_per_day
-from codebase.supply_reconciliation_utils import (
+from codebase.supply_reconciliation.utils import (
     _canonical_transformation_fuel_label,
     _load_code_to_name_table,
     _normalize_label_for_lookup,
@@ -115,7 +115,7 @@ from codebase.supply_reconciliation_utils import (
     _sort_output_frame_for_csv,
     _normalize_template_header_value,
 )
-from codebase.supply_reconciliation_history import (
+from codebase.supply_reconciliation.history import (
     _state_token,
     _capacity_addition_state_key,
     _output_addition_state_key,
@@ -130,7 +130,7 @@ from codebase.supply_reconciliation_history import (
     _lookup_runtime_primary_addition,
     _lookup_runtime_export_adjustment,
 )
-from codebase.supply_reconciliation_results import (
+from codebase.supply_reconciliation.results import (
     _parse_year_column_token,
     _find_supply_results_header_row,
     _read_supply_results_trade_sheet,
@@ -144,7 +144,7 @@ from codebase.supply_reconciliation_results import (
     _resolve_refinery_results_workbook,
     _resolve_transformation_results_workbook,
 )
-from codebase.supply_reconciliation_balance_tables import (
+from codebase.supply_reconciliation.balance_tables import (
     build_year_balance_table,
     save_year_balance_tables,
     build_conventional_balance_matrix,
@@ -160,9 +160,9 @@ from codebase.supply_reconciliation_balance_tables import (
     _ensure_current_accounts_scenario,
     _zero_small_numeric_values,
 )
-import codebase.supply_reconciliation_allocation as _sra
+import codebase.supply_reconciliation.allocation as _sra
 
-from codebase.functions.supply_preflight import (
+from codebase.supply_reconciliation.preflight import (
     _keep_windows_pc_awake,
     _emit_completion_beep,
     _format_scope_preview,
@@ -182,7 +182,7 @@ from codebase.functions.supply_preflight import (
     _apply_preflight_compressed_state,
     run_preflight_compressed_projection,
 )
-from codebase.functions.supply_demand_mapping import (
+from codebase.supply_reconciliation.demand_mapping import (
     _normalize_sector_match_key,
     _sector_match_keys,
     _is_demand_sector_mapping,
@@ -214,7 +214,7 @@ from codebase.functions.supply_demand_mapping import (
     load_balance_demand_inputs,
     load_direct_leap_demand_inputs,
 )
-from codebase.functions.supply_reconciliation_tables import (
+from codebase.supply_reconciliation.tables import (
     _collect_transformation_and_transfer_rows,
     _query_leap_value_series_for_fuels,
     _refresh_transformation_measures_from_leap_results,
@@ -259,7 +259,7 @@ from codebase.functions.transformation_conservation import (
     build_raw_transformation_output_reference,
     build_transformation_output_conservation,
 )
-from codebase.functions.supply_leap_io import (
+from codebase.supply_reconciliation.leap_io import (
     _build_supply_measures_for_trade_mode,
     _build_transformation_target_multiplier_table,
     _resolve_reconciliation_scenario_key,

@@ -23,13 +23,13 @@ from codebase.functions.analysis_input_write_dispatcher import reset_is_effectiv
 
 REPO = Path(__file__).resolve().parents[1]
 # Several codebase/*.py files carry a UTF-8 BOM; read as utf-8-sig or ast skips them.
-PREFLIGHT_SRC = (REPO / "codebase" / "functions" / "supply_preflight.py").read_text(
+PREFLIGHT_SRC = (REPO / "codebase" / "supply_reconciliation" / "preflight.py").read_text(
     encoding="utf-8-sig"
 )
-SAVER_SRC = (REPO / "codebase" / "functions" / "supply_results_saver.py").read_text(
+SAVER_SRC = (REPO / "codebase" / "supply_reconciliation" / "results_saver.py").read_text(
     encoding="utf-8-sig"
 )
-TABLES_SRC = (REPO / "codebase" / "functions" / "supply_reconciliation_tables.py").read_text(
+TABLES_SRC = (REPO / "codebase" / "supply_reconciliation" / "tables.py").read_text(
     encoding="utf-8-sig"
 )
 

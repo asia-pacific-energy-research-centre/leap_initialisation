@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 
 import codebase.aggregated_demand_workflow as aggregated_demand_workflow
-import codebase.functions.supply_reconciliation_tables as supply_reconciliation_tables
+import codebase.supply_reconciliation.tables as supply_reconciliation_tables
 from codebase.utilities.workflow_utils import clear_csv_cache, load_esto_csv, load_ninth_outlook_csv
 from codebase.aggregated_demand_workflow import (
     _apply_first_projection_year_bridge,
@@ -337,7 +337,7 @@ def test_build_aggregated_demand_bridge_mode_switch(monkeypatch):
     assert on_values[2022] == pytest.approx(100.0)
     assert on_values[2023] == pytest.approx(100.0)
     assert on_values[2024] == pytest.approx(110.0)
-from codebase.supply_reconciliation_config import (
+from codebase.supply_reconciliation.config import (
     DETAILED_DEMAND_BRANCHES_ACTIVE,
     LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP,
 )

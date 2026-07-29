@@ -20,7 +20,7 @@ from codebase.utilities.leap_export_template_resolver import (
 
 
 def test_supply_reconciliation_reference_template_uses_current_usa_resolver() -> None:
-    from codebase import supply_reconciliation_config
+    from codebase.supply_reconciliation import config as supply_reconciliation_config
 
     assert supply_reconciliation_config.RESULTS_VERIFICATION_EXPORT_PATH == (
         resolve_leap_export_template("20_USA")
@@ -182,10 +182,10 @@ def test_find_shared_template_areas_empty_when_areas_distinct(tmp_path):
 def test_read_area_from_real_usa_template():
     # Pinned to whatever area name the real, live template currently carries -
     # re-check this string whenever the real USA template is re-exported
-    # (last updated 2026-07-28, area "USA clean slate 28_07").
+    # (last updated 2026-07-29, area "USA clean slate 29_07").
     path = resolve_leap_export_template("20_USA")
 
-    assert read_leap_export_template_area(path) == "USA clean slate 28_07"
+    assert read_leap_export_template_area(path) == "USA clean slate 29_07"
 
 
 def test_provisional_template_resolves_and_reports_economy_without_marker(tmp_path):

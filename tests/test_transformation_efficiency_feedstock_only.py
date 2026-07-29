@@ -5,7 +5,8 @@
 import pandas as pd
 import pytest
 
-from codebase.functions import supply_leap_io, supply_preflight
+from codebase.supply_reconciliation import leap_io as supply_leap_io
+from codebase.supply_reconciliation import preflight as supply_preflight
 from codebase.functions.transformation_record_builder import (
     build_process_record,
     build_transformation_log_rows,

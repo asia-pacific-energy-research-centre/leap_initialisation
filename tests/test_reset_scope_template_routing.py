@@ -6,8 +6,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from codebase.functions import supply_preflight, supply_reconciliation_tables
-from codebase.functions import supply_leap_io
+from codebase.supply_reconciliation import leap_io as supply_leap_io
+from codebase.supply_reconciliation import preflight as supply_preflight
+from codebase.supply_reconciliation import tables as supply_reconciliation_tables
 
 
 def test_reset_scope_cache_is_keyed_by_template_source(monkeypatch, tmp_path):
@@ -25,7 +26,7 @@ def test_reset_scope_cache_is_keyed_by_template_source(monkeypatch, tmp_path):
 
     monkeypatch.setattr(supply_preflight, "_RESET_SCOPE_FROM_EXPORT_CACHE", {})
     monkeypatch.setattr(
-        "codebase.functions.supply_results_saver._extract_catalog_rows_from_full_model_export",
+        "codebase.supply_reconciliation.results_saver._extract_catalog_rows_from_full_model_export",
         _catalog_rows,
     )
 

@@ -88,7 +88,7 @@ def test_two_worker_snapshots_resolve_to_disjoint_run_contexts(monkeypatch) -> N
     iterative-state JSON stay isolated without a new artifact-scoping
     mechanism. Neither snapshot may read the other's ECONOMIES or label.
     """
-    import codebase.supply_reconciliation_config as config
+    import codebase.supply_reconciliation.config as config
 
     context_a = config.resolve_reconciliation_run_context("baseline_seed", "PARALLEL_A_01_AUS")
     context_b = config.resolve_reconciliation_run_context("baseline_seed", "PARALLEL_B_12_NZ")

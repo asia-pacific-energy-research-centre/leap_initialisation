@@ -1,7 +1,7 @@
 # Supply reconciliation package migration plan
 
-**Status:** feasibility confirmed; implementation intentionally deferred while a
-full reconciliation process is running.  
+**Status:** package migration implemented and bounded verification completed;
+production workflow verification intentionally deferred.
 **Worktree:** `C:\Users\Work\github\worktrees\leap_initialisation_reconciliation_package`  
 **Branch:** `codex/reconciliation-package-migration`
 
@@ -16,29 +16,29 @@ entry point and move its implementation modules into a dedicated
 The branch should remain unmerged after targeted verification. A production
 workflow run is a later release gate, not part of the mechanical file move.
 
-## Proposed package
+## Implemented package
 
-Move the current root-level modules:
+Moved the former root-level modules:
 
-- `supply_reconciliation_config.py` -> `supply_reconciliation/config.py`
-- `supply_reconciliation_allocation.py` -> `supply_reconciliation/allocation.py`
-- `supply_reconciliation_history.py` -> `supply_reconciliation/history.py`
-- `supply_reconciliation_balance_tables.py` -> `supply_reconciliation/balance_tables.py`
-- `supply_reconciliation_results.py` -> `supply_reconciliation/results.py`
-- `supply_reconciliation_utils.py` -> `supply_reconciliation/utils.py`
+- `codebase/supply_reconciliation_config.py` -> `codebase/supply_reconciliation/config.py`
+- `codebase/supply_reconciliation_allocation.py` -> `codebase/supply_reconciliation/allocation.py`
+- `codebase/supply_reconciliation_history.py` -> `codebase/supply_reconciliation/history.py`
+- `codebase/supply_reconciliation_balance_tables.py` -> `codebase/supply_reconciliation/balance_tables.py`
+- `codebase/supply_reconciliation_results.py` -> `codebase/supply_reconciliation/results.py`
+- `codebase/supply_reconciliation_utils.py` -> `codebase/supply_reconciliation/utils.py`
 
-Also move the reconciliation-specific supporting modules currently mixed into
+Also moved the reconciliation-specific supporting modules formerly mixed into
 `codebase/functions/`:
 
-- `supply_preflight.py` -> `supply_reconciliation/preflight.py`
-- `supply_reconciliation_tables.py` -> `supply_reconciliation/tables.py`
-- `supply_demand_mapping.py` -> `supply_reconciliation/demand_mapping.py`
-- `supply_leap_io.py` -> `supply_reconciliation/leap_io.py`
-- `supply_results_saver.py` -> `supply_reconciliation/results_saver.py`
-- `capacity_unmet_convergence_diagnostics.py` -> `supply_reconciliation/convergence.py`
-- `results_update_preview.py` -> `supply_reconciliation/results_update_preview.py`
-- `parallel_economy_runner.py` -> `supply_reconciliation/parallel_runner.py`
-- `parallel_economy_merge.py` -> `supply_reconciliation/parallel_merge.py`
+- `codebase/functions/supply_preflight.py` -> `codebase/supply_reconciliation/preflight.py`
+- `codebase/functions/supply_reconciliation_tables.py` -> `codebase/supply_reconciliation/tables.py`
+- `codebase/functions/supply_demand_mapping.py` -> `codebase/supply_reconciliation/demand_mapping.py`
+- `codebase/functions/supply_leap_io.py` -> `codebase/supply_reconciliation/leap_io.py`
+- `codebase/functions/supply_results_saver.py` -> `codebase/supply_reconciliation/results_saver.py`
+- `codebase/functions/capacity_unmet_convergence_diagnostics.py` -> `codebase/supply_reconciliation/convergence.py`
+- `codebase/functions/results_update_preview.py` -> `codebase/supply_reconciliation/results_update_preview.py`
+- `codebase/functions/parallel_economy_runner.py` -> `codebase/supply_reconciliation/parallel_runner.py`
+- `codebase/functions/parallel_economy_merge.py` -> `codebase/supply_reconciliation/parallel_merge.py`
 
 Leave generic supply infrastructure such as `supply_data_pipeline.py`,
 `supply_assets.py`, and `patch_baseline_seeds.py` in `codebase/functions/`.
@@ -65,7 +65,7 @@ The move is mechanically possible, but it must be atomic within the branch:
   same change.
 - The preset broadcast scans loaded `codebase.*` modules. New
   `codebase.supply_reconciliation.*` module names still satisfy that rule.
-- `parallel_economy_runner.py` deliberately launches the root workflow script
+- `supply_reconciliation/parallel_runner.py` deliberately launches the root workflow script
   by path. Keeping the workflow entry point at its current location preserves
   the subprocess contract.
 - `config.py` currently calculates `REPO_ROOT` with
@@ -121,12 +121,38 @@ new baseline seeds:
 5. Run `scripts/check_preset_forwarding.py`.
 6. Confirm the subprocess runner still resolves
    `codebase/supply_reconciliation_workflow.py`.
-7. Confirm no active Python process was used as verification and no workflow
-   output was created by the migration tests.
+7. Confirm no baseline-seed or full reconciliation workflow was launched as
+   migration verification.
 
 Do not run the repository-wide suite blindly: the current work queue records
 that it can exceed 20 minutes and fan out multi-gigabyte Python subprocesses.
 Use the bounded targeted set first.
+
+## Verification results
+
+- All moved modules and the root workflow compiled and imported successfully.
+- Full-suite collection succeeded: **1,121 tests collected** without stale
+  import paths.
+- The first bounded gate passed: **241 tests passed** across characterization,
+  state forwarding, module contracts, run context, parallel fake workers,
+  registry, convergence, and reset safety.
+- The remaining affected-test batch produced **350 passed, 6 skipped, and
+  3 expected xfails**. Its initial failures were traced to ignored source data
+  and sibling-repository paths absent from the new worktree, plus one stale USA
+  template area-name assertion; those worktree inputs were linked and the
+  assertion was updated from `28_07` to the current `29_07`.
+- The focused rerun passed 56 of 57 tests. The remaining failure,
+  `test_projection_only_path_sees_rollup_augmented_road_rows`, is a current
+  canonical-mapping expectation mismatch: the maintained workbook returns
+  native `15_02_road` rows but no `15_02_01*`/`15_02_02*` descendants. It is
+  unrelated to module relocation and was not changed here.
+- `tests/test_baseline_seed_comparison_workflow.py` passed **29 tests** with
+  three data-heavy transformation auto-regeneration cases deselected after the
+  combined retry exceeded the seven-minute bounded-test limit.
+- `scripts/check_preset_forwarding.py` reported that every preset reaches every
+  module that reads it, with no stale copies.
+- Importing the root workflow loads no obsolete reconciliation module aliases;
+  only the new `codebase.supply_reconciliation.*` package paths are present.
 
 ## Deferred release gate
 
@@ -136,4 +162,3 @@ post-boundary workbook with a known-good artifact. Keep the full-horizon,
 multi-economy run for the next useful production-output boundary, as requested.
 Record the deferred full run explicitly in the branch handoff if the package
 migration is merged before that production run is available.
-

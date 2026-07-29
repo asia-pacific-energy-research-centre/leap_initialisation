@@ -410,7 +410,7 @@ auxiliary-per-zero-output expression is undefined.
 **Status:** Confirmed (lock policy); Planned (all-economy application)
 **Owner:** leap_initialisation
 **Type:** Modelling
-**Affected areas:** `CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS` and `CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS` in `codebase/supply_reconciliation_config.py`; capacity-unmet gap allocation in `codebase/supply_reconciliation_allocation.py`; `docs/supply_reconciliation_workflow_guide.md` section 4b
+**Affected areas:** `CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS` and `CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS` in `codebase/supply_reconciliation/config.py`; capacity-unmet gap allocation in `codebase/supply_reconciliation/allocation.py`; `docs/supply_reconciliation_workflow_guide.md` section 4b
 
 ### Situation
 
@@ -471,17 +471,17 @@ and confirm no locked module reports added capacity in any economy/scenario.
 **Owner:** leap_initialisation
 **Type:** Data mapping / comparison boundary
 **Affected areas:**
-`codebase/functions/supply_demand_mapping.py`
+`codebase/supply_reconciliation/demand_mapping.py`
 (`load_balance_demand_inputs`, `_build_augmented_balance_demand_mapping_workbook`,
 `_build_direct_demand_mapping_status`, `_resolve_demand_esto_pairs_via_rollups`,
 `_build_inferred_esto_rows`, `_annotate_balance_demand_issue_scope`);
-`codebase/functions/supply_results_saver.py`
+`codebase/supply_reconciliation/results_saver.py`
 (`_is_capacity_unmet_baseline_seed_pass`, balance-demand issue gating);
 `codebase/functions/baseline_seed_validation.py`
 (`enrich_seed_ids_from_template`, `_rescue_ids_via_known_leap_label_exceptions`);
 `codebase/configuration/known_leap_label_exceptions.py`
 (`KNOWN_LEAP_LABEL_EXCEPTIONS`);
-`codebase/supply_reconciliation_config.py`
+`codebase/supply_reconciliation/config.py`
 (`DEMAND_NON_ACTIONABLE_FUEL_EXACT_MATCHES`);
 `codebase/mapping_tools/mapping_rollups.py` (reused rollup machinery);
 `leap_mappings/config/outlook_mappings_master.xlsx` sheets `leap_combined_ninth`,
@@ -621,7 +621,7 @@ issues, not one:
 **Owner:** leap_initialisation
 **Type:** Integration test / run-workflow boundary
 **Affected areas:**
-`codebase/functions/supply_preflight.py`
+`codebase/supply_reconciliation/preflight.py`
 (`run_preflight_compressed_projection`, `run_preflight_compressed_results_update`,
 `_create_preflight_compressed_source_files`, `_build_reduced_preflight_balance_workbook`,
 `_sum_future_balance_grids`, `_broadcast_config_overrides`,
