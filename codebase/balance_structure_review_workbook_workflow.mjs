@@ -37,6 +37,11 @@ const RED_FILL = "#FCE8E6";
 const BLUE_FONT = "#1F4E78";
 const BLUE_FILL = "#DDEBF7";
 const YELLOW_FILL = "#FFF2CC";
+const NO_COMPARATOR_FONT = "#5B2C83";
+const NO_COMPARATOR_FILL = "#E4DFEC";
+const AFFECTED_SUPPLY_FONT = "#375623";
+const AFFECTED_SUPPLY_FILL = "#E2F0D9";
+const AFFECTED_SUPPLY_BORDER = "#70AD47";
 const PALE_RED_FILL = "#F4CCCC";
 const NEUTRAL_FILL = "#F2F2F2";
 const HEADER_FILL = "#1F4E78";
@@ -92,6 +97,10 @@ async function readCsvRows(csvPath, sheetName) {
   const csvWorkbook = await Workbook.fromCSV(text, { sheetName });
   const values = csvWorkbook.worksheets.getItem(sheetName).getUsedRange().values;
   return rowsFromValues(values);
+}
+
+function asBoolean(value) {
+  return ["true", "1", "yes"].includes(String(value ?? "").trim().toLowerCase());
 }
 
 async function readOptionalCsvRows(csvPath, sheetName) {
@@ -455,34 +464,64 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
   setDiagnosticTitle(
     errorSheet,
     `LEAP - Source Error for Area "${economy}"`,
-    `Scenario: ${sourceMetadata.scenario}, Year: ${sourceMetadata.year}, Units: ${UNITS} | Red = LEAP minus source; yellow blank = no safe comparator`,
+    `Scenario: ${sourceMetadata.scenario}, Year: ${sourceMetadata.year}, Units: ${UNITS} | Red = LEAP minus source; purple blank = seed/carry-forward process; yellow blank = other unavailable comparator; green outline = supply affected by a seed-derived transformation`,
   );
   setDiagnosticTitle(
     correctSheet,
     `Correct Source Values for Area "${economy}"`,
-    `Scenario: ${sourceMetadata.scenario}, Year: ${sourceMetadata.year}, Units: ${UNITS} | Blue = source value; yellow blank = no safe comparator`,
+    `Scenario: ${sourceMetadata.scenario}, Year: ${sourceMetadata.year}, Units: ${UNITS} | Blue = source value; purple blank = seed/carry-forward process; yellow blank = other unavailable comparator; green outline = affected supply`,
   );
   setDiagnosticTitle(
     fullExpectedSheet,
     `Full Expected Source for Area "${economy}"`,
-    `Scenario: ${sourceMetadata.scenario}, Year: ${sourceMetadata.year}, Units: ${UNITS} | Blue = source-backed expected value; yellow = known comparator unavailable; grey = structurally absent or not comparable`,
+    `Scenario: ${sourceMetadata.scenario}, Year: ${sourceMetadata.year}, Units: ${UNITS} | Blue = source-backed expected; purple = seed/carry-forward process; yellow = other unavailable comparator; green outline = affected supply; grey = structurally absent`,
   );
 
   const resolver = makeStructureResolver(sourceValues);
   const missingRecords = [];
   const comparisonStateCounts = {
     mapped: 0,
+    no_direct_projection_comparator: 0,
     reference_unavailable: 0,
     missing_visible_structure: 0,
     ambiguous_structure_resolution: 0,
   };
   const populatedKeys = new Set();
   const yellowKeys = new Set();
+  const noComparatorKeys = new Set();
+  const affectedSupplyKeys = new Set();
   const reconciliationSamples = [];
 
   for (const review of reviews) {
     const labels = preferredComparisonLabels(review);
     const resolution = resolver.resolve(labels.rowLabel, labels.fuelLabel);
+
+    if (asBoolean(review.no_direct_projection_comparator)) {
+      comparisonStateCounts.no_direct_projection_comparator += 1;
+      missingRecords.push(
+        makeMissingRecord({
+          category: "no_direct_projection_comparator",
+          economy: review.economy,
+          scenario: review.scenario,
+          year: review.year,
+          rowLabel: labels.rowLabel,
+          fuelLabel: labels.fuelLabel,
+          leapValue: review.leap_value_pj,
+          status: review.primary_classification || review.status,
+          details:
+            review.evidence_note ||
+            "No direct projection comparator; process generated from a seed/carry-forward rule.",
+          resolution,
+          recommendation:
+            review.next_action ||
+            "Leave process efficiency and auxiliary values unchanged pending an explicit comparator.",
+        }),
+      );
+      if (resolution.status === "unique") {
+        noComparatorKeys.add(`${resolution.row},${resolution.column}`);
+      }
+      continue;
+    }
 
     if (review.status === "reference_unavailable") {
       comparisonStateCounts.reference_unavailable += 1;
@@ -585,6 +624,20 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     }
   }
 
+  for (const review of reviews) {
+    if (!asBoolean(review.no_direct_projection_comparator)) {
+      continue;
+    }
+    const fuelLabel =
+      review.leap_balance_fuel || review.leap_fuel_names || review.fuel_label;
+    for (const supplyRow of ["Production", "Imports", "Exports"]) {
+      const resolution = resolver.resolve(supplyRow, fuelLabel);
+      if (resolution.status === "unique") {
+        affectedSupplyKeys.add(`${resolution.row},${resolution.column}`);
+      }
+    }
+  }
+
   for (const issue of mappingIssues) {
     const labels = preferredMappingIssueLabels(issue);
     const resolution = resolver.resolve(labels.rowLabel, labels.fuelLabel);
@@ -622,6 +675,38 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     fullExpectedSheet.getRange(address).format.fill = YELLOW_FILL;
   }
 
+  for (const key of noComparatorKeys) {
+    const [row, column] = key.split(",").map(Number);
+    const address = cellAddress(row, column);
+    errorSheet.getRange(address).clear({ applyTo: "contents" });
+    correctSheet.getRange(address).clear({ applyTo: "contents" });
+    fullExpectedSheet.getRange(address).clear({ applyTo: "contents" });
+    styleCell(sourceSheet.getRange(address), NO_COMPARATOR_FILL, NO_COMPARATOR_FONT, true);
+    styleCell(errorSheet.getRange(address), NO_COMPARATOR_FILL, NO_COMPARATOR_FONT, true);
+    styleCell(correctSheet.getRange(address), NO_COMPARATOR_FILL, NO_COMPARATOR_FONT, true);
+    styleCell(fullExpectedSheet.getRange(address), NO_COMPARATOR_FILL, NO_COMPARATOR_FONT, true);
+  }
+
+  const affectedSupplyBorder = {
+    top: { style: "medium", color: AFFECTED_SUPPLY_BORDER },
+    bottom: { style: "medium", color: AFFECTED_SUPPLY_BORDER },
+    left: { style: "medium", color: AFFECTED_SUPPLY_BORDER },
+    right: { style: "medium", color: AFFECTED_SUPPLY_BORDER },
+  };
+  for (const key of affectedSupplyKeys) {
+    const [row, column] = key.split(",").map(Number);
+    const address = cellAddress(row, column);
+    styleCell(
+      sourceSheet.getRange(address),
+      AFFECTED_SUPPLY_FILL,
+      AFFECTED_SUPPLY_FONT,
+      true,
+    );
+    for (const sheet of [errorSheet, correctSheet, fullExpectedSheet]) {
+      sheet.getRange(address).format.borders = affectedSupplyBorder;
+    }
+  }
+
   const accountedComparisonRows = Object.values(comparisonStateCounts).reduce(
     (sum, value) => sum + value,
     0,
@@ -632,6 +717,7 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     );
   }
   const expectedMissingRecordCount =
+    comparisonStateCounts.no_direct_projection_comparator +
     comparisonStateCounts.reference_unavailable +
     comparisonStateCounts.missing_visible_structure +
     comparisonStateCounts.ambiguous_structure_resolution +
@@ -669,7 +755,7 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
   };
   missingSheet.getRange("A2:N2").merge();
   missingSheet.getRange("A2").values = [[
-    "Diagnostic view only. Red = LEAP minus source mismatch; blue = correct source; yellow blank = no safe comparator; uncoloured/zero = within tolerance.",
+    "Diagnostic view only. Red = mismatch; blue = source; purple = no direct projection comparator (seed/carry-forward); yellow = other unavailable comparator; green = production/import/export affected by those transformation values.",
   ]];
   missingSheet.getRange("A2:N2").format = {
     fill: SUBHEADER_FILL,
@@ -678,20 +764,21 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
   const summary = [
     ["Comparison rows", reviews.length, "Mapped comparable rows", comparisonStateCounts.mapped],
     ["Mismatches", statusCounts.value_mismatch, "Matches", statusCounts.match],
+    ["Seed/carry-forward comparator gaps", comparisonStateCounts.no_direct_projection_comparator, "Affected supply cells", affectedSupplyKeys.size],
     ["Reference unavailable", statusCounts.reference_unavailable, "Structure absent", comparisonStateCounts.missing_visible_structure],
     ["Mapping/check issue rows", mappingIssues.length, "Missing ESTO pair", issueCounts.missing_esto_pair],
     ["Total-balance boundary errors", issueCounts.total_balance_mapping_check, "Ambiguous structure", comparisonStateCounts.ambiguous_structure_resolution],
   ];
-  missingSheet.getRange("A4:D8").values = summary;
-  missingSheet.getRange("A4:D8").format.borders = {
+  missingSheet.getRange("A4:D9").values = summary;
+  missingSheet.getRange("A4:D9").format.borders = {
     preset: "all",
     style: "thin",
     color: "#B4C6E7",
   };
-  missingSheet.getRange("A4:A8").format.font = { bold: true, color: "#1F4E78" };
-  missingSheet.getRange("C4:C8").format.font = { bold: true, color: "#1F4E78" };
-  missingSheet.getRange("B4:B8").format.numberFormat = "#,##0";
-  missingSheet.getRange("D4:D8").format.numberFormat = "#,##0";
+  missingSheet.getRange("A4:A9").format.font = { bold: true, color: "#1F4E78" };
+  missingSheet.getRange("C4:C9").format.font = { bold: true, color: "#1F4E78" };
+  missingSheet.getRange("B4:B9").format.numberFormat = "#,##0";
+  missingSheet.getRange("D4:D9").format.numberFormat = "#,##0";
 
   const headerRow = 10;
   const firstDataRow = headerRow + 1;
@@ -720,7 +807,11 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     const excelRow = firstDataRow + index;
     const category = missingRecords[index][0];
     missingSheet.getRange(`A${excelRow}:N${excelRow}`).format.fill =
-      category === "aggregate_boundary_error" ? PALE_RED_FILL : YELLOW_FILL;
+      category === "aggregate_boundary_error"
+        ? PALE_RED_FILL
+        : category === "no_direct_projection_comparator"
+          ? NO_COMPARATOR_FILL
+          : YELLOW_FILL;
   }
   const widths = [
     200, 90, 200, 65, 230, 170, 110, 190, 330, 120, 100, 120, 160, 300,
@@ -730,7 +821,7 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
       .getRangeByIndexes(0, column, lastDataRow, 1)
       .format.columnWidthPx = widths[column];
   }
-  missingSheet.getRange("A4:D8").format.rowHeightPx = 24;
+  missingSheet.getRange("A4:D9").format.rowHeightPx = 24;
   missingSheet.getRange(`A${headerRow}:N${headerRow}`).format.rowHeightPx = 36;
   missingSheet.freezePanes.freezeRows(headerRow);
 

@@ -215,6 +215,118 @@ def test_oil_refining_base_comparator_adds_only_configured_own_use_flow() -> Non
     assert row["status"] == "match"
 
 
+def test_projection_comparator_combines_auxiliary_for_an_active_process() -> None:
+    natural_gas = _comparison_rows(
+        scenario="Reference",
+        year=2023,
+        leap_value=-110.0,
+        source="projection",
+        source_value=-100.0,
+    )
+    natural_gas["sheet"] = "09.06.02.01 Liquefaction"
+    natural_gas["fuel_label"] = "08.01 Natural gas"
+    electricity = _comparison_rows(
+        scenario="Reference",
+        year=2023,
+        leap_value=-2.0,
+        source="projection",
+        source_value=0.0,
+    )
+    electricity["sheet"] = "09.06.02.01 Liquefaction"
+    electricity["fuel_label"] = "17 Electricity"
+    comparison = pd.concat([natural_gas, electricity], ignore_index=True)
+    mapping_status = pd.DataFrame(
+        [
+            {
+                "sheet": "09.06.02.01 Liquefaction",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": product,
+                "esto_flow": "09.06.02.01 Liquefaction",
+                "esto_product": product,
+                "sector_code_9th": "09_06_02_liquefaction_regasification_plants",
+                "ninth_fuel_code": product,
+            }
+            for product in ["08.01 Natural gas", "17 Electricity"]
+        ]
+    )
+    projection_tables = pd.DataFrame(
+        [
+            {
+                "scenario": "Reference",
+                "esto_flow": "10.01.03 Liquefaction/regasification plants",
+                "esto_product": "08.01 Natural gas",
+                "2023": -10.0,
+            },
+            {
+                "scenario": "Reference",
+                "esto_flow": "10.01.03 Liquefaction/regasification plants",
+                "esto_product": "17 Electricity",
+                "2023": -2.0,
+            },
+        ]
+    )
+
+    table = diagnostics.build_leap_source_difference_table(
+        comparison_long=comparison,
+        mapping_status=mapping_status,
+        leap_long=None,
+        projection_tables=projection_tables,
+        economy="20_USA",
+        years=[2023],
+        scenarios=["Reference"],
+    )
+
+    indexed = table.set_index("esto_product")
+    assert indexed.loc["08.01 Natural gas", "source_value_pj"] == pytest.approx(
+        -110.0
+    )
+    assert indexed.loc["17 Electricity", "source_value_pj"] == pytest.approx(-2.0)
+    assert set(table["transformation_auxiliary_comparison_status"]) == {
+        "combined_with_active_process_comparator"
+    }
+    assert set(table["status"]) == {"match"}
+
+
+def test_lng_parent_projection_alias_requires_exactly_one_visible_child() -> None:
+    projection = pd.DataFrame(
+        [
+            {
+                "scenario": "Reference",
+                "esto_flow": "09.06.02 Liquefaction/regasification plants",
+                "esto_product": "08.01 Natural gas",
+                "2023": -100.0,
+            }
+        ]
+    )
+    liquefaction_only = pd.DataFrame(
+        [{"esto_flow": "09.06.02.01 Liquefaction"}]
+    )
+
+    aliased = diagnostics._add_single_lng_child_projection_alias(
+        projection_tables=projection,
+        mapping_status=liquefaction_only,
+    )
+
+    assert set(aliased["esto_flow"]) == {
+        "09.06.02 Liquefaction/regasification plants",
+        "09.06.02.01 Liquefaction",
+    }
+
+    both_children = pd.DataFrame(
+        [
+            {"esto_flow": "09.06.02.01 Liquefaction"},
+            {"esto_flow": "09.06.02.02 Regasification"},
+        ]
+    )
+    not_aliased = diagnostics._add_single_lng_child_projection_alias(
+        projection_tables=projection,
+        mapping_status=both_children,
+    )
+    assert not_aliased["esto_flow"].tolist() == [
+        "09.06.02 Liquefaction/regasification plants"
+    ]
+
+
 def test_shared_ninth_pair_across_esto_rows_requires_allocation() -> None:
     mapping_status = _mapping_status(
         ninth_pairs=[("09_06_gas_processing_plants", "08_01_natural_gas")]
@@ -560,6 +672,50 @@ def test_review_table_uses_imports_as_error_signal_and_protects_other_flows() ->
     assert bool(total["requires_issue_review"]) is True
 
 
+def test_review_marks_seed_process_and_affected_supply_fuels() -> None:
+    rows = []
+    for flow, sector, leap_value, source_value, status in [
+        ("09.08.01 Coke ovens", "Coke ovens", -20.0, 0.0, "value_mismatch"),
+        ("09.07 Oil refineries", "Oil Refining", -2.0, 0.0, "value_mismatch"),
+        ("01 Production", "Production", 5.0, 4.0, "value_mismatch"),
+        ("02 Imports", "Imports", 7.0, 6.0, "value_mismatch"),
+        ("03 Exports", "Exports", -3.0, -2.0, "value_mismatch"),
+    ]:
+        row = {column: "" for column in diagnostics.DIFFERENCE_OUTPUT_COLUMNS}
+        row.update(
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "year": 2023,
+                "esto_flow": flow,
+                "esto_product": "02.01 Coke oven coke",
+                "leap_sector_names": sector,
+                "leap_fuel_names": "Coke oven coke",
+                "leap_value_pj": leap_value,
+                "source_value_pj": source_value,
+                "difference_pj": leap_value - source_value,
+                "absolute_difference_pj": abs(leap_value - source_value),
+                "reference_source": "9th Outlook",
+                "status": status,
+                "update_allocation_required": False,
+            }
+        )
+        rows.append(row)
+
+    review = diagnostics.build_balance_review_table(pd.DataFrame(rows))
+    indexed = review.set_index("esto_flow")
+    transformation = indexed.loc["09.08.01 Coke ovens"]
+    assert bool(transformation["no_direct_projection_comparator"]) is True
+    assert transformation["primary_classification"] == "seed_or_carry_forward_process"
+    assert transformation["balance_contract_issue"] == "no_direct_projection_comparator"
+    assert bool(indexed.loc["09.07 Oil refineries", "no_direct_projection_comparator"]) is False
+
+    for flow in ["01 Production", "02 Imports", "03 Exports"]:
+        supply = indexed.loc[flow]
+        assert bool(supply["affected_by_no_projection_transformation"]) is True
+        assert supply["impact_source_transformation_flows"] == "09.08.01 Coke ovens"
+
+
 def test_placeholder_scope_is_visible_but_not_silently_excluded() -> None:
     row = {column: "" for column in diagnostics.DIFFERENCE_OUTPUT_COLUMNS}
     row.update(
@@ -756,10 +912,11 @@ def test_mapping_issue_partition_ignores_totals_and_selected_aggregate_rows() ->
     assert ignored["diagnostic_disposition_reason"].str.len().gt(0).all()
 
 
-def test_comparison_partition_ignores_total_final_energy_demand_boundary() -> None:
+def test_comparison_partition_ignores_selected_aggregate_boundaries() -> None:
     differences = pd.DataFrame(
         [
             {"leap_sector_names": "Total final energy consumption", "status": "value_mismatch"},
+            {"leap_sector_names": "All demand aggregated/Road", "status": "value_mismatch"},
             {"leap_sector_names": "Total Primary Supply", "status": "value_mismatch"},
         ]
     )
@@ -768,7 +925,8 @@ def test_comparison_partition_ignores_total_final_energy_demand_boundary() -> No
 
     assert active["leap_sector_names"].tolist() == ["Total Primary Supply"]
     assert ignored["leap_sector_names"].tolist() == [
-        "Total final energy consumption"
+        "Total final energy consumption",
+        "All demand aggregated/Road",
     ]
 
 
@@ -788,7 +946,17 @@ def test_esto_extraction_mapping_expands_transfer_rollup_components(
                 "esto_pair_is_subtotal": "False",
                 "duplicate_to_remove": "False",
                 "esto_dataset_scope": "BOTH",
-            }
+            },
+            {
+                "leap_sector_name_full_path": "NG Liquefaction/NG Liquefaction",
+                "raw_leap_fuel_name": "Electricity",
+                "esto_flow": "09.06.02.01 Liquefaction",
+                "esto_product": "17 Electricity",
+                "leap_is_subtotal": "False",
+                "esto_pair_is_subtotal": "False",
+                "duplicate_to_remove": "False",
+                "esto_dataset_scope": "BOTH",
+            },
         ]
     )
     ninth = pd.DataFrame(
@@ -847,3 +1015,17 @@ def test_esto_extraction_mapping_expands_transfer_rollup_components(
     assert "Oil Refining/Oil Refining" not in set(
         extracted["leap_sector_name_full_path"]
     )
+    lng_alias = extracted[
+        extracted["leap_sector_name_full_path"].eq(
+            "NG Liquefaction/Liquefaction"
+        )
+    ]
+    assert lng_alias[["raw_leap_fuel_name", "esto_flow", "esto_product"]].to_dict(
+        "records"
+    ) == [
+        {
+            "raw_leap_fuel_name": "Electricity",
+            "esto_flow": "09.06.02.01 Liquefaction",
+            "esto_product": "17 Electricity",
+        }
+    ]

@@ -111,6 +111,7 @@ DIFFERENCE_OUTPUT_COLUMNS = [
     "projection_share_sources",
     "update_allocation_required",
     "update_allocation_reason",
+    "transformation_auxiliary_comparison_status",
     "sheet",
     "measure",
     "fuel_label",
@@ -133,6 +134,9 @@ REVIEW_ADDED_COLUMNS = [
     "primary_classification",
     "evidence_note",
     "next_action",
+    "no_direct_projection_comparator",
+    "affected_by_no_projection_transformation",
+    "impact_source_transformation_flows",
 ]
 
 BALANCE_VARIABLE_RULE_COLUMNS = [
@@ -154,11 +158,32 @@ PLACEHOLDER_SECTOR_PATTERN = re.compile(
 
 IGNORED_BALANCE_DIAGNOSTIC_ROWS = frozenset(
     {
+        "all demand aggregated",
         "total transformation",
         "total final energy demand",
         "total final energy consumption",
         "unmet requirements",
     }
+)
+
+# These processes write 10.01 own-use/loss energy as Auxiliary Fuel Use inside
+# the LEAP Transformation module. Coal mines is deliberately absent: despite a
+# legacy loss_flow_codes entry, the active proxy workflow owns 10.01.06 under
+# Demand\Other loss and own use because coal mining is supply-related.
+TRANSFORMATION_AUXILIARY_CONFIG_KEYS = (
+    "gas_works",
+    "coal_coke_ovens",
+    "coal_blast_furnaces",
+    "oil_refineries",
+)
+
+# These are the transformation processes currently confirmed to be created
+# from baseline seed/carry-forward logic when the projection has no active
+# transformation comparator. Keep this explicit so zero-valued projection
+# cells in electricity/CHP allocation workflows are not misclassified.
+SEED_OR_CARRY_FORWARD_TRANSFORMATION_FLOW_PREFIXES = (
+    "09.08.01 Coke ovens",
+    "09.08.02 Blast furnaces",
 )
 
 
@@ -265,7 +290,11 @@ def _partition_comparison_rows(
         ),
         axis=1,
     )
-    normalized = row_labels.map(_normalize_diagnostic_label)
+    normalized = row_labels.map(
+        lambda value: _normalize_diagnostic_label(
+            re.split(r"[/\\]", _clean_token(value), maxsplit=1)[0]
+        )
+    )
     ignored_mask = normalized.isin(IGNORED_BALANCE_DIAGNOSTIC_ROWS)
     active = work.loc[~ignored_mask].reset_index(drop=True)
     ignored = work.loc[ignored_mask].copy()
@@ -776,6 +805,96 @@ def build_balance_review_table(
         "Apply the maintained rollup components before numerical comparison."
     )
 
+    leap_nonzero = (
+        pd.to_numeric(review["leap_value_pj"], errors="coerce")
+        .fillna(0.0)
+        .abs()
+        .gt(DEFAULT_TOLERANCE_PJ)
+    )
+    source_missing_or_zero = (
+        pd.to_numeric(review["source_value_pj"], errors="coerce")
+        .fillna(0.0)
+        .abs()
+        .le(DEFAULT_TOLERANCE_PJ)
+    )
+    auxiliary_without_process = review[
+        "transformation_auxiliary_comparison_status"
+    ].fillna("").eq("auxiliary_present_without_process_comparator")
+    confirmed_seed_process = (
+        review["esto_flow"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.startswith(SEED_OR_CARRY_FORWARD_TRANSFORMATION_FLOW_PREFIXES)
+    )
+    review["no_direct_projection_comparator"] = (
+        confirmed_seed_process
+        & leap_nonzero
+        & ~review["reference_source"].fillna("").eq("ESTO")
+        & (
+            review["status"].eq("reference_unavailable")
+            | source_missing_or_zero
+            | auxiliary_without_process
+        )
+    )
+    no_projection_comparator = review["no_direct_projection_comparator"]
+    review.loc[
+        no_projection_comparator, "primary_classification"
+    ] = "seed_or_carry_forward_process"
+    review.loc[
+        no_projection_comparator, "balance_contract_issue"
+    ] = "no_direct_projection_comparator"
+    review.loc[no_projection_comparator, "requires_issue_review"] = True
+    review.loc[no_projection_comparator, "update_signal_eligible"] = False
+    review.loc[no_projection_comparator, "evidence_note"] = (
+        "No active direct 9th projection transformation comparator is available. "
+        "The LEAP process balance is therefore generated from a seed or "
+        "carry-forward rule for review purposes."
+    )
+    review.loc[no_projection_comparator, "next_action"] = (
+        "Leave the process efficiency and auxiliary values unchanged unless a "
+        "reviewed projection comparator or replacement rule is supplied."
+    )
+
+    review["affected_by_no_projection_transformation"] = False
+    review["impact_source_transformation_flows"] = ""
+    impact_keys = review.loc[
+        no_projection_comparator,
+        ["economy", "scenario", "year", "esto_product", "esto_flow"],
+    ].copy()
+    if not impact_keys.empty:
+        impact_summary = (
+            impact_keys.groupby(
+                ["economy", "scenario", "year", "esto_product"],
+                dropna=False,
+            )["esto_flow"]
+            .agg(lambda values: " | ".join(sorted({_clean_token(value) for value in values})))
+            .rename("impact_source_transformation_flows")
+            .reset_index()
+        )
+        supply_rows = review["esto_flow"].isin(
+            {"01 Production", "02 Imports", "03 Exports"}
+        )
+        review = review.merge(
+            impact_summary,
+            on=["economy", "scenario", "year", "esto_product"],
+            how="left",
+            suffixes=("", "_impact"),
+        )
+        impact_column = "impact_source_transformation_flows_impact"
+        review.loc[
+            supply_rows & review[impact_column].fillna("").ne(""),
+            "affected_by_no_projection_transformation",
+        ] = True
+        review.loc[
+            review[impact_column].fillna("").ne(""),
+            "impact_source_transformation_flows",
+        ] = review.loc[
+            review[impact_column].fillna("").ne(""),
+            impact_column,
+        ]
+        review = review.drop(columns=impact_column)
+
     return review[[*DIFFERENCE_OUTPUT_COLUMNS, *REVIEW_ADDED_COLUMNS]].reset_index(
         drop=True
     )
@@ -915,6 +1034,36 @@ def _write_esto_axis_extraction_mapping_workbook(
                 ],
                 keep="first",
             )
+
+    # Some Level 2 exports shorten the child process label from
+    # NG Liquefaction to Liquefaction. The maintained electricity mapping is
+    # currently recorded against the repeated parent/child label, while the
+    # same workbook already maps natural gas and LNG under the shortened child.
+    # Add the equivalent extraction alias without changing the canonical file.
+    lng_repeated = esto_mapping[
+        esto_mapping["leap_sector_name_full_path"]
+        .fillna("")
+        .astype(str)
+        .map(_normalize_diagnostic_label)
+        .eq("ng liquefaction/ng liquefaction")
+    ].copy()
+    if not lng_repeated.empty:
+        lng_repeated["leap_sector_name_full_path"] = (
+            "NG Liquefaction/Liquefaction"
+        )
+        esto_mapping = pd.concat(
+            [esto_mapping, lng_repeated],
+            ignore_index=True,
+            sort=False,
+        ).drop_duplicates(
+            subset=[
+                "leap_sector_name_full_path",
+                "raw_leap_fuel_name",
+                "esto_flow",
+                "esto_product",
+            ],
+            keep="first",
+        )
     ninth_columns = read_config_table(
         codebook_path,
         sheet_name="leap_combined_ninth",
@@ -1341,6 +1490,50 @@ def build_canonical_projection_inputs(
     )
 
 
+def _add_single_lng_child_projection_alias(
+    *,
+    projection_tables: pd.DataFrame,
+    mapping_status: pd.DataFrame,
+) -> pd.DataFrame:
+    """Alias parent LNG projections when one visible child owns the module."""
+    if projection_tables is None or projection_tables.empty:
+        return projection_tables.copy()
+    if mapping_status is None or mapping_status.empty:
+        return projection_tables.copy()
+
+    lng_config = MAJOR_SECTOR_CONFIG["lng"]
+    child_flows = {
+        _clean_token(lng_config.get("esto_flow_code_liquefaction", "")),
+        _clean_token(lng_config.get("esto_flow_code_regasification", "")),
+    }
+    child_flows.discard("")
+    present_flows: set[str] = set()
+    for value in mapping_status.get("esto_flow", pd.Series(dtype=str)):
+        present_flows.update(_split_pipe_tokens(value))
+    selected_children = sorted(child_flows & present_flows)
+    if len(selected_children) != 1:
+        return projection_tables.copy()
+
+    parent_flow = "09.06.02 Liquefaction/regasification plants"
+    out = projection_tables.copy()
+    parent_rows = out[
+        out["esto_flow"].fillna("").astype(str).str.strip().eq(parent_flow)
+    ].copy()
+    if parent_rows.empty:
+        return out
+    parent_rows["esto_flow"] = selected_children[0]
+    out = pd.concat([out, parent_rows], ignore_index=True, sort=False)
+    dedupe_columns = [
+        column
+        for column in ["scenario", "esto_flow", "esto_product"]
+        if column in out.columns
+    ]
+    return out.drop_duplicates(
+        subset=dedupe_columns,
+        keep="first",
+    ).reset_index(drop=True)
+
+
 def _comparison_grain(row: pd.Series) -> str:
     leap_count = int(row.get("leap_component_count", 0) or 0)
     ninth_count = int(row.get("ninth_pair_count", 0) or 0)
@@ -1387,34 +1580,61 @@ def _allocation_reason(row: pd.Series) -> str:
     return ";".join(reasons)
 
 
-def _add_refinery_auxiliary_own_use_to_base_reference(
-    *,
-    wide: pd.DataFrame,
-    base_df: pd.DataFrame | None,
-    economy: str,
-) -> pd.DataFrame:
-    """Add the configured refinery own-use flow to its ESTO base comparator.
-
-    The LEAP Oil Refining balance row is the net-by-fuel module boundary. Its
-    source comparator therefore needs the transformation flow plus the exact
-    own-use flow maintained for that module in ``MAJOR_SECTOR_CONFIG``.
-    """
-    if base_df is None or base_df.empty or wide.empty:
-        return wide
-
-    config = MAJOR_SECTOR_CONFIG["oil_refineries"]
-    transformation_flows = list(config.get("transformation_flow_codes", []))
-    auxiliary_flows = list(config.get("loss_flow_codes", []))
-    if len(transformation_flows) != 1 or not auxiliary_flows:
-        raise ValueError(
-            "Oil-refinery diagnostic expects one transformation flow and at "
-            "least one configured own-use flow."
+def _transformation_auxiliary_rules() -> list[dict[str, object]]:
+    """Return the active LEAP transformation-module own-use boundaries."""
+    rules: list[dict[str, object]] = []
+    for config_key in TRANSFORMATION_AUXILIARY_CONFIG_KEYS:
+        config = MAJOR_SECTOR_CONFIG[config_key]
+        transformation_flows = list(
+            config.get("transformation_flow_codes", [])
+        )
+        if config_key in {"coal_coke_ovens", "coal_blast_furnaces"}:
+            transformation_flows.extend(
+                f"{flow} (including own use)"
+                for flow in tuple(transformation_flows)
+            )
+        rules.append(
+            {
+                "config_key": config_key,
+                "transformation_flows": transformation_flows,
+                "auxiliary_flows": list(config.get("loss_flow_codes", [])),
+            }
         )
 
+    lng_config = MAJOR_SECTOR_CONFIG["lng"]
+    rules.append(
+        {
+            "config_key": "lng",
+            "transformation_flows": [
+                _clean_token(lng_config.get("esto_flow_code_liquefaction", "")),
+                _clean_token(lng_config.get("esto_flow_code_regasification", "")),
+            ],
+            "auxiliary_flows": [
+                "10.01.03 Liquefaction/regasification plants",
+            ],
+        }
+    )
+    return [
+        rule
+        for rule in rules
+        if rule["transformation_flows"] and rule["auxiliary_flows"]
+    ]
+
+
+def _base_auxiliary_values_long(
+    *,
+    base_df: pd.DataFrame | None,
+    economy: str,
+    auxiliary_flows: Sequence[str],
+) -> pd.DataFrame:
+    """Extract raw ESTO own-use values for one transformation boundary."""
+    columns = ["esto_product", "year", "_auxiliary_value_pj"]
+    if base_df is None or base_df.empty:
+        return pd.DataFrame(columns=columns)
     required = {"economy", "flows", "products"}
     missing = sorted(required - set(base_df.columns))
     if missing:
-        raise KeyError(f"base_df is missing refinery comparison columns: {missing}")
+        raise KeyError(f"base_df is missing transformation comparison columns: {missing}")
 
     year_columns = {
         int(str(column)): column
@@ -1423,49 +1643,211 @@ def _add_refinery_auxiliary_own_use_to_base_reference(
     }
     scoped = base_df.copy()
     scoped["_economy_key"] = (
-        scoped["economy"].fillna("").astype(str).str.replace("_", "", regex=False).str.upper()
+        scoped["economy"]
+        .fillna("")
+        .astype(str)
+        .str.replace("_", "", regex=False)
+        .str.upper()
     )
     scoped = scoped[
         scoped["_economy_key"].eq(_clean_token(economy).replace("_", "").upper())
         & scoped["flows"].fillna("").astype(str).str.strip().isin(auxiliary_flows)
     ].copy()
     if "is_subtotal" in scoped.columns:
-        scoped = scoped[~scoped["is_subtotal"].fillna(False).astype(bool)].copy()
-    if scoped.empty:
-        return wide
+        subtotal = (
+            scoped["is_subtotal"]
+            .fillna(False)
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .isin({"true", "1", "yes"})
+        )
+        scoped = scoped[~subtotal].copy()
 
-    adjustment_rows: list[dict[str, Any]] = []
+    records: list[dict[str, object]] = []
     for _, row in scoped.iterrows():
-        product = _clean_token(row.get("products", ""))
         for year, column in year_columns.items():
-            value = pd.to_numeric(pd.Series([row.get(column)]), errors="coerce").iloc[0]
+            value = pd.to_numeric(
+                pd.Series([row.get(column)]), errors="coerce"
+            ).iloc[0]
             if pd.notna(value):
-                adjustment_rows.append(
+                records.append(
                     {
-                        "esto_product": product,
-                        "year": year,
-                        "_refinery_auxiliary_own_use_pj": float(value),
+                        "esto_product": _clean_token(row.get("products", "")),
+                        "year": int(year),
+                        "_auxiliary_value_pj": float(value),
                     }
                 )
-    if not adjustment_rows:
-        return wide
-
-    adjustments = (
-        pd.DataFrame(adjustment_rows)
-        .groupby(["esto_product", "year"], as_index=False)["_refinery_auxiliary_own_use_pj"]
+    if not records:
+        return pd.DataFrame(columns=columns)
+    return (
+        pd.DataFrame(records)
+        .groupby(["esto_product", "year"], as_index=False)[
+            "_auxiliary_value_pj"
+        ]
         .sum()
     )
-    out = wide.merge(adjustments, on=["esto_product", "year"], how="left")
-    refinery_mask = (
-        out["esto_flow"].eq(transformation_flows[0])
-        & out["base"].notna()
-        & out["_refinery_auxiliary_own_use_pj"].notna()
+
+
+def _projection_auxiliary_values_long(
+    *,
+    projection_tables: pd.DataFrame | None,
+    auxiliary_flows: Sequence[str],
+) -> pd.DataFrame:
+    """Extract allocated 9th own-use values for one transformation boundary."""
+    columns = ["scenario", "esto_product", "year", "_auxiliary_value_pj"]
+    if projection_tables is None or projection_tables.empty:
+        return pd.DataFrame(columns=columns)
+    required = {"scenario", "esto_flow", "esto_product"}
+    missing = sorted(required - set(projection_tables.columns))
+    if missing:
+        raise KeyError(
+            f"projection_tables is missing transformation comparison columns: {missing}"
+        )
+
+    year_columns = [
+        column for column in projection_tables.columns if str(column).isdigit()
+    ]
+    scoped = projection_tables[
+        projection_tables["esto_flow"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .isin(auxiliary_flows)
+    ].copy()
+    if scoped.empty or not year_columns:
+        return pd.DataFrame(columns=columns)
+    scoped["scenario"] = (
+        scoped["scenario"].fillna("").astype(str).str.strip().str.title()
     )
-    out.loc[refinery_mask, "base"] = (
-        out.loc[refinery_mask, "base"]
-        + out.loc[refinery_mask, "_refinery_auxiliary_own_use_pj"]
+    scoped["esto_product"] = (
+        scoped["esto_product"].fillna("").astype(str).str.strip()
     )
-    return out.drop(columns="_refinery_auxiliary_own_use_pj")
+    long = scoped.melt(
+        id_vars=["scenario", "esto_product"],
+        value_vars=year_columns,
+        var_name="year",
+        value_name="_auxiliary_value_pj",
+    )
+    long["year"] = pd.to_numeric(long["year"], errors="coerce").astype("Int64")
+    long["_auxiliary_value_pj"] = pd.to_numeric(
+        long["_auxiliary_value_pj"], errors="coerce"
+    )
+    return (
+        long.groupby(
+            ["scenario", "esto_product", "year"],
+            as_index=False,
+            dropna=False,
+        )["_auxiliary_value_pj"]
+        .sum(min_count=1)
+    )
+
+
+def _add_auxiliary_values_for_active_process(
+    *,
+    wide: pd.DataFrame,
+    value_column: str,
+    auxiliary_values: pd.DataFrame,
+    transformation_flows: Sequence[str],
+    join_columns: Sequence[str],
+    tolerance_pj: float,
+) -> pd.DataFrame:
+    """Add own-use only when exactly one configured process comparator is active."""
+    if auxiliary_values.empty:
+        return wide
+    out = wide.copy()
+    scoped = out[
+        out["esto_flow"].isin(transformation_flows) & out[value_column].notna()
+    ].copy()
+    if scoped.empty:
+        return out
+
+    activity = (
+        scoped.assign(_absolute_direct=scoped[value_column].abs())
+        .groupby([*join_columns, "esto_flow"], as_index=False, dropna=False)[
+            "_absolute_direct"
+        ]
+        .sum()
+    )
+    active = activity[activity["_absolute_direct"].gt(float(tolerance_pj))]
+    active_counts = (
+        active.groupby(list(join_columns), dropna=False)["esto_flow"]
+        .nunique()
+        .rename("_active_process_count")
+        .reset_index()
+    )
+    active = active.merge(active_counts, on=list(join_columns), how="left")
+    active = active[active["_active_process_count"].eq(1)][
+        [*join_columns, "esto_flow"]
+    ].rename(columns={"esto_flow": "_active_transformation_flow"})
+
+    out = out.merge(active, on=list(join_columns), how="left")
+    out = out.merge(auxiliary_values, on=[*join_columns, "esto_product"], how="left")
+    target = (
+        out["esto_flow"].eq(out["_active_transformation_flow"])
+        & out[value_column].notna()
+        & out["_auxiliary_value_pj"].notna()
+    )
+    out.loc[target, value_column] = (
+        out.loc[target, value_column] + out.loc[target, "_auxiliary_value_pj"]
+    )
+    out.loc[
+        target, "transformation_auxiliary_comparison_status"
+    ] = "combined_with_active_process_comparator"
+
+    auxiliary_present = (
+        out["esto_flow"].isin(transformation_flows)
+        & out["_auxiliary_value_pj"].fillna(0.0).abs().gt(float(tolerance_pj))
+        & out["_active_transformation_flow"].isna()
+    )
+    out.loc[
+        auxiliary_present, "transformation_auxiliary_comparison_status"
+    ] = "auxiliary_present_without_process_comparator"
+    return out.drop(
+        columns=["_active_transformation_flow", "_auxiliary_value_pj"]
+    )
+
+
+def _add_transformation_auxiliary_own_use_to_references(
+    *,
+    wide: pd.DataFrame,
+    base_df: pd.DataFrame | None,
+    projection_tables: pd.DataFrame | None,
+    economy: str,
+    tolerance_pj: float,
+) -> pd.DataFrame:
+    """Align source comparators with LEAP's net transformation-module boundary."""
+    out = wide.copy()
+    out["transformation_auxiliary_comparison_status"] = ""
+    for rule in _transformation_auxiliary_rules():
+        transformation_flows = list(rule["transformation_flows"])
+        auxiliary_flows = list(rule["auxiliary_flows"])
+        base_auxiliary = _base_auxiliary_values_long(
+            base_df=base_df,
+            economy=economy,
+            auxiliary_flows=auxiliary_flows,
+        )
+        out = _add_auxiliary_values_for_active_process(
+            wide=out,
+            value_column="base",
+            auxiliary_values=base_auxiliary,
+            transformation_flows=transformation_flows,
+            join_columns=["year"],
+            tolerance_pj=tolerance_pj,
+        )
+        projection_auxiliary = _projection_auxiliary_values_long(
+            projection_tables=projection_tables,
+            auxiliary_flows=auxiliary_flows,
+        )
+        out = _add_auxiliary_values_for_active_process(
+            wide=out,
+            value_column="projection",
+            auxiliary_values=projection_auxiliary,
+            transformation_flows=transformation_flows,
+            join_columns=["scenario", "year"],
+            tolerance_pj=tolerance_pj,
+        )
+    return out
 
 
 def build_leap_source_difference_table(
@@ -1475,6 +1857,7 @@ def build_leap_source_difference_table(
     leap_long: pd.DataFrame | None = None,
     projection_allocation_status: pd.DataFrame | None = None,
     base_df: pd.DataFrame | None = None,
+    projection_tables: pd.DataFrame | None = None,
     economy: str,
     years: Sequence[int],
     scenarios: Sequence[str],
@@ -1520,10 +1903,12 @@ def build_leap_source_difference_table(
 
     metadata = _build_mapping_metadata(mapping_status, leap_long)
     wide = wide.merge(metadata, on=["sheet", "measure", "fuel_label"], how="left")
-    wide = _add_refinery_auxiliary_own_use_to_base_reference(
+    wide = _add_transformation_auxiliary_own_use_to_references(
         wide=wide,
         base_df=base_df,
+        projection_tables=projection_tables,
         economy=economy,
+        tolerance_pj=tolerance_pj,
     )
 
     has_base = wide["base"].notna()
@@ -1805,6 +2190,10 @@ def run_economy_balance_diagnostic(
             scenarios=selected_scenarios,
         )
     )
+    canonical_projection = _add_single_lng_child_projection_alias(
+        projection_tables=canonical_projection,
+        mapping_status=comparison["mapping_status"],
+    )
     comparison_long_raw = comparison["comparison_long"]
     allocated_comparison_long, projection_allocation_status = (
         apply_canonical_projection_comparators(
@@ -1828,6 +2217,7 @@ def run_economy_balance_diagnostic(
         leap_long=conversion["leap_long"],
         projection_allocation_status=projection_allocation_status,
         base_df=comparison.get("base_df"),
+        projection_tables=canonical_projection,
         economy=economy,
         years=selected_years,
         scenarios=selected_scenarios,
