@@ -10,6 +10,20 @@
 > (`D-04` full-model-export retirement, `D-05` template census, `D-06`
 > Phase 2). Verify against code before acting on a number here.
 
+## [24] Package the supply reconciliation subsystem
+
+**Status: feasibility confirmed 2026-07-29; implementation and production run
+deferred on `codex/reconciliation-package-migration`.**
+
+Keep `codebase/supply_reconciliation_workflow.py` as the notebook-facing root
+entry point and move its implementation modules plus reconciliation-specific
+supporting functions into `codebase/supply_reconciliation/`. The import/path
+audit found this is feasible as an atomic migration, but temporary star-import
+shims would be unsafe because config and allocation state are module-local.
+Use bounded characterization/unit tests in the migration worktree; retain the
+full-horizon, multi-economy workflow for a later useful-output boundary.
+See [reconciliation_package_migration_plan.md](reconciliation_package_migration_plan.md).
+
 ## [23] Opt-in final baseline-seed expression overrides
 
 **Status: completed 2026-07-29.**
