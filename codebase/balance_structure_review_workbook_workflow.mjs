@@ -667,24 +667,22 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
   for (const key of yellowKeys) {
     const [row, column] = key.split(",").map(Number);
     const address = cellAddress(row, column);
-    errorSheet.getRange(address).clear({ applyTo: "contents" });
-    correctSheet.getRange(address).clear({ applyTo: "contents" });
-    fullExpectedSheet.getRange(address).clear({ applyTo: "contents" });
-    errorSheet.getRange(address).format.fill = YELLOW_FILL;
-    correctSheet.getRange(address).format.fill = YELLOW_FILL;
-    fullExpectedSheet.getRange(address).format.fill = YELLOW_FILL;
+    for (const sheet of [errorSheet, correctSheet, fullExpectedSheet]) {
+      const cell = sheet.getRange(address);
+      cell.formulas = [['=""']];
+      cell.format.fill = YELLOW_FILL;
+    }
   }
 
   for (const key of noComparatorKeys) {
     const [row, column] = key.split(",").map(Number);
     const address = cellAddress(row, column);
-    errorSheet.getRange(address).clear({ applyTo: "contents" });
-    correctSheet.getRange(address).clear({ applyTo: "contents" });
-    fullExpectedSheet.getRange(address).clear({ applyTo: "contents" });
     styleCell(sourceSheet.getRange(address), NO_COMPARATOR_FILL, NO_COMPARATOR_FONT, true);
-    styleCell(errorSheet.getRange(address), NO_COMPARATOR_FILL, NO_COMPARATOR_FONT, true);
-    styleCell(correctSheet.getRange(address), NO_COMPARATOR_FILL, NO_COMPARATOR_FONT, true);
-    styleCell(fullExpectedSheet.getRange(address), NO_COMPARATOR_FILL, NO_COMPARATOR_FONT, true);
+    for (const sheet of [errorSheet, correctSheet, fullExpectedSheet]) {
+      const cell = sheet.getRange(address);
+      cell.formulas = [['=""']];
+      styleCell(cell, NO_COMPARATOR_FILL, NO_COMPARATOR_FONT, true);
+    }
   }
 
   const affectedSupplyBorder = {

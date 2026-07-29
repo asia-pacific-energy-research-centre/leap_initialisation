@@ -230,7 +230,7 @@ def test_projection_comparator_combines_auxiliary_for_an_active_process() -> Non
         year=2023,
         leap_value=-2.0,
         source="projection",
-        source_value=0.0,
+        source_value=None,
     )
     electricity["sheet"] = "09.06.02.01 Liquefaction"
     electricity["fuel_label"] = "17 Electricity"
@@ -325,6 +325,65 @@ def test_lng_parent_projection_alias_requires_exactly_one_visible_child() -> Non
     assert not_aliased["esto_flow"].tolist() == [
         "09.06.02 Liquefaction/regasification plants"
     ]
+
+
+def test_direct_lng_fallback_uses_exact_projection_pairs_without_base_shares(
+    tmp_path: Path,
+) -> None:
+    mapping_path = tmp_path / "pairs.csv"
+    pd.DataFrame(
+        [
+            {
+                "ninth_sector": "09_06_02_liquefaction_regasification_plants",
+                "ninth_fuel": "08_01_natural_gas",
+                "esto_flow": "09.06.02 Liquefaction/regasification plants",
+                "esto_product": "08.01 Natural gas",
+            },
+            {
+                "ninth_sector": "09_06_02_liquefaction_regasification_plants",
+                "ninth_fuel": "08_02_lng",
+                "esto_flow": "09.06.02 Liquefaction/regasification plants",
+                "esto_product": "08.02 LNG",
+            },
+        ]
+    ).to_csv(mapping_path, index=False)
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy": "20_USA",
+                "scenarios": "target",
+                "sub2sectors": "09_06_02_liquefaction_regasification_plants",
+                "fuels": "08_gas",
+                "subfuels": "08_01_natural_gas",
+                "2023": -100.0,
+            },
+            {
+                "economy": "20_USA",
+                "scenarios": "target",
+                "sub2sectors": "09_06_02_liquefaction_regasification_plants",
+                "fuels": "08_gas",
+                "subfuels": "08_02_lng",
+                "2023": 100.0,
+            },
+        ]
+    )
+
+    fallback = diagnostics._add_direct_lng_projection_fallback(
+        projection_tables=pd.DataFrame(),
+        ninth_df=ninth,
+        mapping_status=pd.DataFrame(
+            [{"esto_flow": "09.06.02.01 Liquefaction"}]
+        ),
+        mapping_pairs_path=mapping_path,
+        economy="20_USA",
+        projection_years=[2023],
+        scenarios=["Target"],
+    )
+
+    indexed = fallback.set_index("esto_product")
+    assert set(fallback["esto_flow"]) == {"09.06.02.01 Liquefaction"}
+    assert indexed.loc["08.01 Natural gas", "2023"] == pytest.approx(-100.0)
+    assert indexed.loc["08.02 LNG", "2023"] == pytest.approx(100.0)
 
 
 def test_shared_ninth_pair_across_esto_rows_requires_allocation() -> None:

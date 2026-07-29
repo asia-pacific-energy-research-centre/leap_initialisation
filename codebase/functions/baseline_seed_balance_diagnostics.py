@@ -1534,6 +1534,124 @@ def _add_single_lng_child_projection_alias(
     ).reset_index(drop=True)
 
 
+def _add_direct_lng_projection_fallback(
+    *,
+    projection_tables: pd.DataFrame,
+    ninth_df: pd.DataFrame,
+    mapping_status: pd.DataFrame,
+    mapping_pairs_path: ConfigTableRef,
+    economy: str,
+    projection_years: Sequence[int],
+    scenarios: Sequence[str],
+) -> pd.DataFrame:
+    """Add exact LNG rows when share allocation has no historical base profile."""
+    if ninth_df is None or ninth_df.empty or not projection_years:
+        return projection_tables.copy()
+
+    lng_config = MAJOR_SECTOR_CONFIG["lng"]
+    child_flows = {
+        _clean_token(lng_config.get("esto_flow_code_liquefaction", "")),
+        _clean_token(lng_config.get("esto_flow_code_regasification", "")),
+    }
+    child_flows.discard("")
+    present_flows: set[str] = set()
+    for value in mapping_status.get("esto_flow", pd.Series(dtype=str)):
+        present_flows.update(_split_pipe_tokens(value))
+    selected_children = sorted(child_flows & present_flows)
+    if len(selected_children) != 1:
+        return projection_tables.copy()
+
+    from codebase.functions.ninth_projection_mapping import add_ninth_pair_columns
+    from codebase.utilities.master_config import read_config_table
+
+    mapping_ref = _resolve_config_table_ref(mapping_pairs_path)
+    if isinstance(mapping_ref, tuple):
+        mapping_df = read_config_table(
+            mapping_ref[0],
+            sheet_name=mapping_ref[1],
+            dtype=str,
+        ).fillna("")
+    else:
+        mapping_df = read_config_table(mapping_ref, dtype=str).fillna("")
+    ninth_sector = _clean_token(lng_config["transformation_sub2"][0])
+    parent_flow = "09.06.02 Liquefaction/regasification plants"
+    pair_map = mapping_df[
+        mapping_df["ninth_sector"].fillna("").astype(str).str.strip().eq(ninth_sector)
+        & mapping_df["esto_flow"].fillna("").astype(str).str.strip().eq(parent_flow)
+    ][["ninth_fuel", "esto_product"]].drop_duplicates()
+    if pair_map.empty:
+        return projection_tables.copy()
+
+    source = ninth_df.copy()
+    if "economy" in source.columns:
+        source = source[
+            source["economy"]
+            .fillna("")
+            .astype(str)
+            .str.replace("_", "", regex=False)
+            .str.upper()
+            .eq(_clean_token(economy).replace("_", "").upper())
+        ].copy()
+    source = source[
+        source.get("sub2sectors", pd.Series("", index=source.index))
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .eq(ninth_sector)
+    ].copy()
+    if source.empty:
+        return projection_tables.copy()
+    source = add_ninth_pair_columns(source)
+    source = source.merge(pair_map, on="ninth_fuel", how="inner")
+    if source.empty:
+        return projection_tables.copy()
+
+    scenario_values = {value.lower() for value in _normalize_scenarios(scenarios)}
+    source = source[
+        source["scenarios"].fillna("").astype(str).str.strip().str.lower().isin(
+            scenario_values
+        )
+    ].copy()
+    if source.empty:
+        return projection_tables.copy()
+    source["scenario"] = source["scenarios"].astype(str).str.strip().str.title()
+    year_columns = [
+        column
+        for year in projection_years
+        for column in source.columns
+        if str(column) == str(int(year))
+    ]
+    if not year_columns:
+        return projection_tables.copy()
+    for column in year_columns:
+        source[column] = pd.to_numeric(source[column], errors="coerce")
+
+    fallback = (
+        source.groupby(["scenario", "esto_product"], as_index=False, dropna=False)[
+            year_columns
+        ]
+        .sum(min_count=1)
+    )
+    fallback["economy_key"] = _clean_token(economy).replace("_", "").upper()
+    fallback["esto_flow"] = selected_children[0]
+    ordered = [
+        "economy_key",
+        "scenario",
+        "esto_flow",
+        "esto_product",
+        *year_columns,
+    ]
+    out = pd.concat(
+        [projection_tables, fallback[ordered]],
+        ignore_index=True,
+        sort=False,
+    )
+    return out.drop_duplicates(
+        subset=["scenario", "esto_flow", "esto_product"],
+        keep="first",
+    ).reset_index(drop=True)
+
+
 def _comparison_grain(row: pd.Series) -> str:
     leap_count = int(row.get("leap_component_count", 0) or 0)
     ninth_count = int(row.get("ninth_pair_count", 0) or 0)
@@ -1785,11 +1903,11 @@ def _add_auxiliary_values_for_active_process(
     out = out.merge(auxiliary_values, on=[*join_columns, "esto_product"], how="left")
     target = (
         out["esto_flow"].eq(out["_active_transformation_flow"])
-        & out[value_column].notna()
         & out["_auxiliary_value_pj"].notna()
     )
     out.loc[target, value_column] = (
-        out.loc[target, value_column] + out.loc[target, "_auxiliary_value_pj"]
+        out.loc[target, value_column].fillna(0.0)
+        + out.loc[target, "_auxiliary_value_pj"]
     )
     out.loc[
         target, "transformation_auxiliary_comparison_status"
@@ -2193,6 +2311,15 @@ def run_economy_balance_diagnostic(
     canonical_projection = _add_single_lng_child_projection_alias(
         projection_tables=canonical_projection,
         mapping_status=comparison["mapping_status"],
+    )
+    canonical_projection = _add_direct_lng_projection_fallback(
+        projection_tables=canonical_projection,
+        ninth_df=comparison.get("ninth_df", pd.DataFrame()),
+        mapping_status=comparison["mapping_status"],
+        mapping_pairs_path=mapping_pairs_path,
+        economy=economy,
+        projection_years=projection_years,
+        scenarios=selected_scenarios,
     )
     comparison_long_raw = comparison["comparison_long"]
     allocated_comparison_long, projection_allocation_status = (
