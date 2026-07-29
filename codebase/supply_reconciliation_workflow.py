@@ -1286,6 +1286,71 @@ def run_with_config() -> dict[str, object]:
             return _run_with_config_inner()
 
 
+def run_results_update_with_config(
+    *,
+    economies: Iterable[str],
+    scenarios: Iterable[str],
+    update_horizon: str = "full",
+    run_output_label: str | None = None,
+) -> dict[str, object]:
+    """Run the results-update preset without borrowing the review-year scope.
+
+    ``update_horizon`` is deliberately independent from any balance diagnostic
+    years. ``full`` runs the configured production horizon; ``base_year_plus_one``
+    retains the existing two-year smoke path.
+    """
+    horizon = str(update_horizon).strip().lower()
+    if horizon not in {"full", "base_year_plus_one"}:
+        raise ValueError(
+            "update_horizon must be 'full' or 'base_year_plus_one', "
+            f"not {update_horizon!r}."
+        )
+    economy_list = [str(economy).strip() for economy in economies if str(economy).strip()]
+    scenario_list = [str(scenario).strip() for scenario in scenarios if str(scenario).strip()]
+    if not economy_list:
+        raise ValueError("At least one results-update economy is required.")
+    if not scenario_list:
+        raise ValueError("At least one results-update scenario is required.")
+    label = str(run_output_label or "").strip()
+    if not label:
+        label = f"BALANCE_UPDATE_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+    names = set(_PRESET_RESULTS_UPDATE) | {
+        "ACTIVE_PRESET",
+        "RUN_MODE",
+        "ECONOMIES",
+        "SCENARIOS",
+        "TEST_HORIZON_BASE_YEAR_PLUS_ONE",
+        "RUN_OUTPUT_LABEL",
+    }
+    missing = object()
+    snapshot = {}
+    for name in names:
+        value = globals().get(name, missing)
+        snapshot[name] = missing if value is missing else copy.deepcopy(value)
+    try:
+        globals()["ACTIVE_PRESET"] = _PRESET_RESULTS_UPDATE
+        globals()["RUN_MODE"] = "full"
+        globals()["ECONOMIES"] = economy_list
+        globals()["SCENARIOS"] = scenario_list
+        globals()["TEST_HORIZON_BASE_YEAR_PLUS_ONE"] = (
+            horizon == "base_year_plus_one"
+        )
+        globals()["RUN_OUTPUT_LABEL"] = label
+        globals().update(copy.deepcopy(_PRESET_RESULTS_UPDATE))
+        _broadcast_preset_overrides()
+        _refresh_output_paths_for_current_pass_mode()
+        return run_with_config()
+    finally:
+        for name, value in snapshot.items():
+            if value is missing:
+                globals().pop(name, None)
+            else:
+                globals()[name] = value
+        _broadcast_preset_overrides()
+        _refresh_output_paths_for_current_pass_mode()
+
+
 def _run_with_config_inner() -> dict[str, object]:
     """Run the notebook-configured results-linked transformation+supply workflow.
 

@@ -26,7 +26,8 @@ batch verification gates in
 `codex/baseline-seed-export-diagnostics` worktree. AUS Reference 2022 direct
 workbook investigation completed code-side. The feedstock-only transformation
 efficiency fix is implemented; a fresh LEAP cycle is required to verify it and
-the already-landed thermal-coal producer fix.**
+the already-landed thermal-coal producer fix. Review/update orchestration and
+production all-years sheet selection completed and verified 2026-07-29.**
 
 Build a limited-year feedback loop that generates a baseline seed, imports and
 recalculates it in LEAP, reads REF/TGT Energy Balance exports back, diagnoses
@@ -48,6 +49,16 @@ unavailable rows, and 58 material differences.
 The direct-workbook diagnostic and review builder also accept
 `Thousand Petajoule` metadata. Extraction and every displayed review sheet are
 normalized to PJ, while the source workbook remains unchanged.
+
+`codebase/balance_update_workflow.py` now provides review-only, update-only,
+and review-plus-update notebook presets. Review years are an exact sheet
+selection from `data/leap balances exports`; they do not alter the independent
+results-update horizon. The update stage calls the existing results-update
+preset through `run_results_update_with_config()`, with `full` as the notebook
+default and `base_year_plus_one` retained as an explicit smoke option. A real
+AUS 2022 REF/TGT review against the current production all-years exports
+completed with 428 comparison rows and 144 mismatches; both comparison
+workbooks passed the programmatic formula-error scan.
 
 The 2026-07-29 AUS review identified two canonical mapping gaps. The mapping
 workbook now maps LEAP `Stock Changes` to ESTO `06 Stock changes` and LEAP

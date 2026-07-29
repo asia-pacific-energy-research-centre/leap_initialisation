@@ -9,23 +9,23 @@ import { FileBlob, SpreadsheetFile, Workbook } from "@oai/artifact-tool";
 const MAIN_REPO_ROOT = "C:/Users/Work/github/leap_initialisation";
 const ECONOMY = process.env.BALANCE_REVIEW_ECONOMY ?? "01_AUS";
 const UNITS = "Petajoule";
-const SOURCE_WORKBOOK =
-  process.env.BALANCE_REVIEW_SOURCE_WORKBOOK ??
-  `${MAIN_REPO_ROOT}/data/leap balances exports - testing/${ECONOMY}/2022.xlsx`;
+const SOURCE_WORKBOOK = process.env.BALANCE_REVIEW_SOURCE_WORKBOOK ?? "";
 const DIAGNOSTICS_DIRECTORY =
   process.env.BALANCE_REVIEW_DIAGNOSTICS_DIRECTORY ??
   `${MAIN_REPO_ROOT}/outputs/leap_exports/supply_reconciliation/supporting_files/` +
-    "baseline_seed_balance_diagnostics/01_AUS_2022_TGT_THOUSAND_PJ_20260729";
+    "baseline_seed_balance_diagnostics";
 const OUTPUT_WORKBOOK =
   process.env.BALANCE_REVIEW_OUTPUT_WORKBOOK ??
   `${MAIN_REPO_ROOT}/outputs/leap_exports/supply_reconciliation/supporting_files/` +
-    "baseline_seed_balance_diagnostics/01_AUS_2022_TGT_THOUSAND_PJ_20260729/" +
-    "aus_2022_target_balance_structure_review.xlsx";
+    "baseline_seed_balance_diagnostics/balance_structure_review.xlsx";
 const TEMP_DIRECTORY =
   process.env.BALANCE_REVIEW_TEMP_DIRECTORY ??
-  `${MAIN_REPO_ROOT}/.tmp/aus_target_balance_review`;
+  `${MAIN_REPO_ROOT}/.tmp/balance_review`;
 
-const SOURCE_SHEET_NAME = "Energy Balance";
+const SOURCE_SHEET_NAME = process.env.BALANCE_REVIEW_SOURCE_SHEET ?? "Energy Balance";
+const RENDER_PREVIEWS =
+  String(process.env.BALANCE_REVIEW_RENDER_PREVIEWS ?? "false").toLowerCase() ===
+  "true";
 const LEAP_SHEET_NAME = "LEAP Values";
 const ERROR_SHEET_NAME = "LEAP - Source Error";
 const CORRECT_SHEET_NAME = "Correct Source Values";
@@ -318,16 +318,24 @@ function makeMissingRecord({
 }
 
 async function buildBalanceStructureReviewWorkbook(config = {}) {
+  const economy = config.economy ?? ECONOMY;
   const sourceWorkbookPath = config.sourceWorkbook ?? SOURCE_WORKBOOK;
+  const sourceSheetName = config.sourceSheetName ?? SOURCE_SHEET_NAME;
   const diagnosticsDirectory = config.diagnosticsDirectory ?? DIAGNOSTICS_DIRECTORY;
   const outputWorkbookPath = config.outputWorkbook ?? OUTPUT_WORKBOOK;
   const tempDirectory = config.tempDirectory ?? TEMP_DIRECTORY;
+  const renderPreviews = config.renderPreviews ?? RENDER_PREVIEWS;
+  if (!sourceWorkbookPath) {
+    throw new Error(
+      "BALANCE_REVIEW_SOURCE_WORKBOOK is required; use a resolved production balance export.",
+    );
+  }
 
   const sourceBefore = await fs.readFile(sourceWorkbookPath);
   const sourceBlob = await FileBlob.load(sourceWorkbookPath);
-  const workbook = await SpreadsheetFile.importXlsx(sourceBlob);
-  const sourceSheet = workbook.worksheets.getItem(SOURCE_SHEET_NAME);
-  const sourceUsedRange = sourceSheet.getUsedRange();
+  const importedWorkbook = await SpreadsheetFile.importXlsx(sourceBlob);
+  const importedSourceSheet = importedWorkbook.worksheets.getItem(sourceSheetName);
+  const sourceUsedRange = importedSourceSheet.getUsedRange();
   let sourceValues = sourceUsedRange.values;
   const sourceRows = sourceValues.length;
   const sourceColumns = sourceValues[0].length;
@@ -335,17 +343,19 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
   const title = String(sourceValues[0][0] ?? "");
   const metadata = String(sourceValues[1][0] ?? "");
   const sourceMetadata = parseSourceMetadata(metadata);
-  const expectedAreaToken = ECONOMY.split("_").at(-1);
-  if (!new RegExp(expectedAreaToken, "i").test(title)) {
-    throw new Error(
-      `Source area metadata does not identify ${ECONOMY}: ${title}`,
-    );
-  }
   if (sourceRows < 4 || sourceColumns < 2) {
     throw new Error(
       `Expected a populated balance structure, found ${sourceRows}x${sourceColumns}`,
     );
   }
+  const workbook = Workbook.create();
+  const sourceSheet = workbook.worksheets.add(LEAP_SHEET_NAME);
+  copyBalanceLayout(
+    importedSourceSheet,
+    sourceSheet,
+    sourceRows,
+    sourceColumns,
+  );
   const sourceUnitMultiplier = sourceUnitToPjMultiplier(sourceMetadata.units);
   convertSourceSheetToPetajoule(
     sourceSheet,
@@ -361,17 +371,32 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     .getRangeByIndexes(0, 0, sourceRows, sourceColumns)
     .values;
 
-  const differences = await readCsvRows(
+  const allDifferences = await readCsvRows(
     path.join(diagnosticsDirectory, "leap_balance_source_differences.csv"),
     "Differences",
   );
-  const reviews = await readCsvRows(
+  const allReviews = await readCsvRows(
     path.join(diagnosticsDirectory, "leap_balance_source_review.csv"),
     "Review",
   );
-  const mappingIssues = await readOptionalCsvRows(
+  const allMappingIssues = await readOptionalCsvRows(
     path.join(diagnosticsDirectory, "leap_balance_mapping_issues.csv"),
     "MappingIssues",
+  );
+  const matchesSourceCell = (row) =>
+    String(row.economy ?? "") === economy &&
+    String(row.scenario ?? "").toLowerCase() ===
+      sourceMetadata.scenario.toLowerCase() &&
+    Number(row.year) === sourceMetadata.year;
+  const differences = allDifferences.filter(matchesSourceCell);
+  const reviews = allReviews.filter(matchesSourceCell);
+  const mappingIssues = allMappingIssues.filter(
+    (row) =>
+      (!String(row.economy ?? "") || String(row.economy) === economy) &&
+      (!String(row.scenario ?? "") ||
+        String(row.scenario).toLowerCase() ===
+          sourceMetadata.scenario.toLowerCase()) &&
+      (!String(row.year ?? "") || Number(row.year) === sourceMetadata.year),
   );
 
   if (differences.length === 0 || differences.length !== reviews.length) {
@@ -399,22 +424,9 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
       }
     }
   }
-  const staleDiagnosticRows = reviews.filter(
-    (review) =>
-      String(review.economy ?? "") !== ECONOMY ||
-      String(review.scenario ?? "").toLowerCase() !==
-        sourceMetadata.scenario.toLowerCase() ||
-      Number(review.year) !== sourceMetadata.year,
-  );
-  if (staleDiagnosticRows.length > 0) {
-    throw new Error(
-      `${staleDiagnosticRows.length} diagnostic rows do not match ${ECONOMY} ${sourceMetadata.scenario} ${sourceMetadata.year}`,
-    );
-  }
   const statusCounts = countBy(reviews, "status");
   const issueCounts = countBy(mappingIssues, "reason");
 
-  sourceSheet.name = LEAP_SHEET_NAME;
   sourceSheet.freezePanes.freezeRows(3);
   sourceSheet.freezePanes.freezeColumns(1);
   const errorSheet = workbook.worksheets.add(ERROR_SHEET_NAME);
@@ -442,17 +454,17 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
   ).format.fill = NEUTRAL_FILL;
   setDiagnosticTitle(
     errorSheet,
-    `LEAP - Source Error for Area "${ECONOMY}"`,
+    `LEAP - Source Error for Area "${economy}"`,
     `Scenario: ${sourceMetadata.scenario}, Year: ${sourceMetadata.year}, Units: ${UNITS} | Red = LEAP minus source; yellow blank = no safe comparator`,
   );
   setDiagnosticTitle(
     correctSheet,
-    `Correct Source Values for Area "${ECONOMY}"`,
+    `Correct Source Values for Area "${economy}"`,
     `Scenario: ${sourceMetadata.scenario}, Year: ${sourceMetadata.year}, Units: ${UNITS} | Blue = source value; yellow blank = no safe comparator`,
   );
   setDiagnosticTitle(
     fullExpectedSheet,
-    `Full Expected Source for Area "${ECONOMY}"`,
+    `Full Expected Source for Area "${economy}"`,
     `Scenario: ${sourceMetadata.scenario}, Year: ${sourceMetadata.year}, Units: ${UNITS} | Blue = source-backed expected value; yellow = known comparator unavailable; grey = structurally absent or not comparable`,
   );
 
@@ -580,7 +592,7 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     missingRecords.push(
       makeMissingRecord({
         category: isBoundary ? "aggregate_boundary_error" : "missing_esto_pair",
-        economy: issue.economy || ECONOMY,
+        economy: issue.economy || economy,
         scenario: issue.scenario || sourceMetadata.scenario,
         year: issue.year || sourceMetadata.year,
         rowLabel: labels.rowLabel,
@@ -649,7 +661,7 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
   missingSheet.showGridLines = false;
   missingSheet.getRange("A1:N1").merge();
   missingSheet.getRange("A1").values = [[
-    `${ECONOMY} ${sourceMetadata.scenario} ${sourceMetadata.year} Balance Diagnostic - Missing and Unavailable Combinations`,
+    `${economy} ${sourceMetadata.scenario} ${sourceMetadata.year} Balance Diagnostic - Missing and Unavailable Combinations`,
   ]];
   missingSheet.getRange("A1:N1").format = {
     fill: HEADER_FILL,
@@ -736,46 +748,40 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
 
   const outputBlob = await SpreadsheetFile.exportXlsx(workbook);
   await outputBlob.save(outputWorkbookPath);
+  // Some artifact-tool runtimes emit a large inspect sidecar beside the xlsx.
+  // The compact JSON summary below is the maintained diagnostic; keep the
+  // human-facing output directory limited to the workbook itself.
+  await fs.rm(`${outputWorkbookPath}.inspect.ndjson`, { force: true });
 
   const renders = {};
-  for (const sheetName of [
-    LEAP_SHEET_NAME,
-    ERROR_SHEET_NAME,
-    CORRECT_SHEET_NAME,
-    FULL_EXPECTED_SHEET_NAME,
-    MISSING_SHEET_NAME,
-  ]) {
-    const range =
-      sheetName === MISSING_SHEET_NAME
-        ? `A1:N${lastDataRow}`
-        : `A1:${columnName(sourceColumns - 1)}${sourceRows}`;
-    const rendered = await workbook.render({
-      sheetName,
-      range,
-      scale: sheetName === MISSING_SHEET_NAME ? 0.8 : 0.7,
-      format: "png",
-    });
-    const renderPath = path.join(
-      tempDirectory,
-      `${sheetName.toLowerCase().replaceAll(" ", "_").replaceAll("-", "")}.png`,
-    );
-    await fs.writeFile(renderPath, new Uint8Array(await rendered.arrayBuffer()));
-    renders[sheetName] = renderPath;
-  }
-  for (const [name, range] of Object.entries({
-    supply: "A1:AM8",
-    transformation: "A23:AM27",
-    own_use: "A57:AM66",
-  })) {
-    const rendered = await workbook.render({
-      sheetName: ERROR_SHEET_NAME,
-      range,
-      scale: 1.25,
-      format: "png",
-    });
-    const renderPath = path.join(tempDirectory, `error_${name}.png`);
-    await fs.writeFile(renderPath, new Uint8Array(await rendered.arrayBuffer()));
-    renders[`error_${name}`] = renderPath;
+  if (renderPreviews) {
+    for (const sheetName of [
+      LEAP_SHEET_NAME,
+      ERROR_SHEET_NAME,
+      CORRECT_SHEET_NAME,
+      FULL_EXPECTED_SHEET_NAME,
+      MISSING_SHEET_NAME,
+    ]) {
+      const range =
+        sheetName === MISSING_SHEET_NAME
+          ? `A1:N${lastDataRow}`
+          : `A1:${columnName(sourceColumns - 1)}${sourceRows}`;
+      const rendered = await workbook.render({
+        sheetName,
+        range,
+        scale: sheetName === MISSING_SHEET_NAME ? 0.8 : 0.7,
+        format: "png",
+      });
+      const renderPath = path.join(
+        tempDirectory,
+        `${sheetName.toLowerCase().replaceAll(" ", "_").replaceAll("-", "")}.png`,
+      );
+      await fs.writeFile(
+        renderPath,
+        new Uint8Array(await rendered.arrayBuffer()),
+      );
+      renders[sheetName] = renderPath;
+    }
   }
 
   const formulaErrorPattern = /#REF!|#DIV\/0!|#VALUE!|#NAME\?|#N\/A/i;
@@ -809,6 +815,7 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
 
   const result = {
     sourceWorkbook: sourceWorkbookPath,
+    sourceSheet: sourceSheetName,
     outputWorkbook: outputWorkbookPath,
     metadata: {
       title,

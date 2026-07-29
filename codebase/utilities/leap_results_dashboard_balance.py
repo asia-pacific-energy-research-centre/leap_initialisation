@@ -1150,6 +1150,8 @@ def convert_leap_balances_to_esto_long_table(
     known_issues: dict[str, Any] | None = None,
     projection_economy: str = "20_USA",
     max_output_year: int | None = None,
+    ref_sheet_name_filter: Sequence[str] | None = None,
+    tgt_sheet_name_filter: Sequence[str] | None = None,
     explicit_pair_mappings_only: bool = False,
     allow_descendant_mapping_expansion: bool = True,
     run_total_balance_checks: bool | None = None,
@@ -1171,6 +1173,8 @@ def convert_leap_balances_to_esto_long_table(
         structure_config=structure_config,
         known_issues=known_issues,
         projection_economy=projection_economy,
+        ref_sheet_name_filter=ref_sheet_name_filter,
+        tgt_sheet_name_filter=tgt_sheet_name_filter,
         explicit_pair_mappings_only=explicit_pair_mappings_only,
         allow_descendant_mapping_expansion=allow_descendant_mapping_expansion,
         run_total_balance_checks=run_total_balance_checks,
@@ -4149,6 +4153,7 @@ def _extract_balance_workbook(
     template_sheet: str,
     mapping_pairs_path: ConfigTableRef,
     codebook_path: Path,
+    sheet_name_filter: Sequence[str] | None = None,
     explicit_pair_mappings_only: bool = False,
     allow_descendant_mapping_expansion: bool = True,
 ) -> dict[str, Any]:
@@ -4162,7 +4167,11 @@ def _extract_balance_workbook(
         allow_descendant_mapping_expansion=allow_descendant_mapping_expansion,
     )
     extractor.load_mappings()
-    selected_sheets = _list_balance_sheets(workbook_path)
+    selected_sheets = (
+        [str(name) for name in sheet_name_filter]
+        if sheet_name_filter is not None
+        else _list_balance_sheets(workbook_path)
+    )
     if not selected_sheets:
         raise ValueError(f"No balance sheets found in workbook: {workbook_path}")
     raw_long, mapped_long, coverage, unit_diag, report = extractor.extract_workbook(
@@ -8077,6 +8086,8 @@ def load_balance_leap_long_esto_axis(
     structure_config: dict[str, Any] | None = None,
     known_issues: dict[str, Any] | None = None,
     projection_economy: str = "20_USA",
+    ref_sheet_name_filter: Sequence[str] | None = None,
+    tgt_sheet_name_filter: Sequence[str] | None = None,
     explicit_pair_mappings_only: bool = False,
     allow_descendant_mapping_expansion: bool = True,
     run_total_balance_checks: bool | None = None,
@@ -8123,6 +8134,9 @@ def load_balance_leap_long_esto_axis(
             template_sheet=template_sheet,
             mapping_pairs_path=mapping_pairs,
             codebook_path=codebook,
+            sheet_name_filter=(
+                ref_sheet_name_filter if scenario == "ref" else tgt_sheet_name_filter
+            ),
             explicit_pair_mappings_only=explicit_pair_mappings_only,
             allow_descendant_mapping_expansion=allow_descendant_mapping_expansion,
         )

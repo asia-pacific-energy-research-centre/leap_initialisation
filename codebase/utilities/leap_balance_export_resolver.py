@@ -15,7 +15,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BALANCE_EXPORTS_ROOT = REPO_ROOT / "data" / "leap balances exports"
 
 BALANCE_EXPORT_FILENAME_PATTERN = re.compile(
-    r"^full model output all years (?P<date_id>\d{5,8}) (?P<scenario>[A-Za-z]+)(?:\s[^.]*)?\.xlsx$",
+    r"^(?:"
+    r"full model output all years (?P<date_first>\d{5,8}) (?P<scenario_second>[A-Za-z]+)"
+    r"|"
+    r"(?P<scenario_first>REF|TGT|Reference|Target) (?P<date_second>\d{5,8})"
+    r")"
+    r"(?:\s[^.]*)?\.xlsx$",
     re.IGNORECASE,
 )
 
@@ -45,6 +50,18 @@ class BalanceExportDetailInspection:
     detected_level_label: str
     has_level2_detail: bool
     sample_indented_label: str | None
+
+
+@dataclass(frozen=True)
+class BalanceExportSheet:
+    """One scenario/year balance sheet available inside an export workbook."""
+
+    path: Path
+    sheet_name: str
+    scenario: str
+    scenario_code: str
+    year: int
+    units: str
 
 
 def normalize_balance_scenario_code(scenario: str) -> str:
@@ -197,6 +214,7 @@ def _parse_balance_export_date_id(date_id: str) -> date | None:
         for year, month, day in (
             (token[:4], token[4:6], token[6:8]),
             (token[4:8], token[:2], token[2:4]),
+            (token[4:8], token[2:4], token[:2]),
         ):
             try:
                 return date(int(year), int(month), int(day))
@@ -221,6 +239,16 @@ def _parse_balance_export_date_id(date_id: str) -> date | None:
     return None
 
 
+def _balance_export_filename_parts(path: Path) -> tuple[str, str] | None:
+    """Return ``(date_id, scenario_code)`` for either maintained filename form."""
+    match = BALANCE_EXPORT_FILENAME_PATTERN.match(path.name)
+    if not match:
+        return None
+    date_id = match.group("date_first") or match.group("date_second")
+    scenario = match.group("scenario_first") or match.group("scenario_second")
+    return date_id, normalize_balance_scenario_code(scenario)
+
+
 def _iter_balance_export_workbooks(
     export_dir: Path,
     *,
@@ -232,12 +260,12 @@ def _iter_balance_export_workbooks(
     for path in export_dir.glob("*.xlsx"):
         if path.name.startswith("~$"):
             continue
-        match = BALANCE_EXPORT_FILENAME_PATTERN.match(path.name)
-        if not match:
+        parts = _balance_export_filename_parts(path)
+        if parts is None:
             continue
-        if normalize_balance_scenario_code(match.group("scenario")) != scenario_code:
+        date_id, candidate_scenario_code = parts
+        if candidate_scenario_code != scenario_code:
             continue
-        date_id = match.group("date_id")
         yield BalanceExportWorkbook(
             path=path,
             economy=economy,
@@ -318,6 +346,98 @@ def resolve_balance_export_workbook(
     return latest[0].path
 
 
+def list_balance_export_sheets(
+    workbook_path: Path | str,
+) -> list[BalanceExportSheet]:
+    """Read scenario/year/unit metadata for every balance sheet in a workbook."""
+    path = _resolve_path(workbook_path)
+    if not path.exists():
+        raise FileNotFoundError(f"LEAP balance-export workbook does not exist: {path}")
+
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    sheets: list[BalanceExportSheet] = []
+    try:
+        for sheet in workbook.worksheets:
+            metadata = str(sheet.cell(2, 1).value or "").strip()
+            scenario_match = re.search(
+                r"Scenario:\s*([^,]+)",
+                metadata,
+                flags=re.IGNORECASE,
+            )
+            year_match = re.search(r"Year:\s*(\d{4})", metadata, flags=re.IGNORECASE)
+            units_match = re.search(r"Units:\s*(.+)$", metadata, flags=re.IGNORECASE)
+            if not scenario_match or not year_match or not units_match:
+                continue
+            scenario_code = normalize_balance_scenario_code(
+                scenario_match.group(1).strip()
+            )
+            sheets.append(
+                BalanceExportSheet(
+                    path=path,
+                    sheet_name=str(sheet.title),
+                    scenario="Reference" if scenario_code == "REF" else "Target",
+                    scenario_code=scenario_code,
+                    year=int(year_match.group(1)),
+                    units=units_match.group(1).strip().rstrip("."),
+                )
+            )
+    finally:
+        workbook.close()
+    if not sheets:
+        raise ValueError(
+            "No sheets declared Scenario, Year, and Units metadata in "
+            f"{path}."
+        )
+    return sheets
+
+
+def select_balance_export_sheets(
+    workbook_path: Path | str,
+    *,
+    years: Sequence[int],
+    scenarios: Sequence[str],
+) -> list[BalanceExportSheet]:
+    """Return exact requested scenario/year sheets and reject missing/duplicates."""
+    wanted_years = sorted({int(year) for year in years})
+    wanted_codes = {
+        normalize_balance_scenario_code(scenario) for scenario in scenarios
+    }
+    if not wanted_years:
+        raise ValueError("At least one balance-export year is required.")
+    if not wanted_codes:
+        raise ValueError("At least one balance-export scenario is required.")
+
+    available_sheets = list_balance_export_sheets(workbook_path)
+    selected = [
+        sheet
+        for sheet in available_sheets
+        if sheet.year in wanted_years and sheet.scenario_code in wanted_codes
+    ]
+    counts: dict[tuple[str, int], int] = {}
+    for sheet in selected:
+        key = (sheet.scenario_code, sheet.year)
+        counts[key] = counts.get(key, 0) + 1
+    duplicates = sorted(key for key, count in counts.items() if count > 1)
+    if duplicates:
+        raise ValueError(
+            f"Duplicate scenario/year balance sheets in {workbook_path}: {duplicates}"
+        )
+
+    expected = {
+        (scenario_code, year)
+        for scenario_code in wanted_codes
+        for year in wanted_years
+    }
+    missing = sorted(expected - set(counts))
+    if missing:
+        raise ValueError(
+            f"Requested balance sheets are missing from {workbook_path}: {missing}"
+        )
+    return sorted(selected, key=lambda sheet: (sheet.scenario_code, sheet.year))
+
+
 def _leap_balance_sheet_unit_to_pj_multiplier(raw: pd.DataFrame) -> float:
     """Return the multiplier needed to convert a LEAP balance sheet to PJ."""
     unit_text = ""
@@ -369,13 +489,8 @@ def _leap_balance_sheet_scenario_label(raw: pd.DataFrame) -> str:
 
 def _scenario_code_from_balance_export_filename(workbook: Path) -> str:
     """Return the REF/TGT scenario code implied by a balance-export filename, or "" if unrecognized."""
-    match = BALANCE_EXPORT_FILENAME_PATTERN.match(workbook.name)
-    if not match:
-        return ""
-    try:
-        return normalize_balance_scenario_code(match.group("scenario"))
-    except ValueError:
-        return ""
+    parts = _balance_export_filename_parts(workbook)
+    return parts[1] if parts is not None else ""
 
 
 def load_leap_balance_activity_table(

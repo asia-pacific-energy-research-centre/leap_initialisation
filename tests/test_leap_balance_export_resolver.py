@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from openpyxl import Workbook
+import pytest
 
 from codebase.utilities.leap_balance_export_resolver import (
     is_leap_balance_own_use_or_loss_row,
@@ -10,6 +11,7 @@ from codebase.utilities.leap_balance_export_resolver import (
     load_leap_balance_activity_table,
     require_level2_balance_export_detail,
     resolve_balance_export_workbook,
+    select_balance_export_sheets,
 )
 
 
@@ -54,6 +56,23 @@ def test_resolve_balance_export_workbook_honors_explicit_date_id(tmp_path: Path)
     assert resolved == expected
 
 
+def test_resolve_balance_export_workbook_accepts_current_scenario_first_name(
+    tmp_path: Path,
+) -> None:
+    export_dir = tmp_path / "01_AUS"
+    _touch(export_dir / "REF 27072026 AUS.xlsx")
+    expected = export_dir / "REF 28072026 AUS.xlsx"
+    _touch(expected)
+
+    resolved = resolve_balance_export_workbook(
+        economy="01_AUS",
+        scenario="Reference",
+        exports_root=tmp_path,
+    )
+
+    assert resolved == expected
+
+
 def test_resolve_balance_export_workbook_reports_missing_match(tmp_path: Path) -> None:
     try:
         resolve_balance_export_workbook(
@@ -78,6 +97,36 @@ def _write_balance_workbook(path: Path, *, units: str, electricity_value: float)
     sheet.append(["Imports", electricity_value, 2.0])
     sheet.append(["Production", 3.0, 4.0])
     workbook.save(path)
+
+
+def test_select_balance_export_sheets_uses_exact_requested_years(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "all_years.xlsx"
+    workbook = Workbook()
+    first = workbook.active
+    first.title = "2022"
+    first.append(['Energy Balance for Area "Test"'])
+    first.append(["Scenario: Reference, Year: 2022, Units: Petajoule"])
+    second = workbook.create_sheet("2023")
+    second.append(['Energy Balance for Area "Test"'])
+    second.append(["Scenario: Reference, Year: 2023, Units: Petajoule"])
+    workbook.save(path)
+
+    selected = select_balance_export_sheets(
+        path,
+        years=[2022],
+        scenarios=["Reference"],
+    )
+
+    assert [(sheet.sheet_name, sheet.year) for sheet in selected] == [("2022", 2022)]
+
+    with pytest.raises(ValueError, match="missing"):
+        select_balance_export_sheets(
+            path,
+            years=[2024],
+            scenarios=["Reference"],
+        )
 
 
 def test_inspect_balance_export_detail_distinguishes_level1_and_level2(

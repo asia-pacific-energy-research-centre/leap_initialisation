@@ -20,8 +20,11 @@ import pandas as pd
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.mappings.canonical_mapping import ConfigTableRef
 from codebase.utilities.leap_balance_export_resolver import (
+    BalanceExportSheet,
+    list_balance_export_sheets,
     require_level2_balance_export_detail,
     resolve_balance_export_workbook,
+    select_balance_export_sheets,
 )
 from codebase.functions.transformation_analysis_utils import MAJOR_SECTOR_CONFIG
 
@@ -413,42 +416,49 @@ def _read_direct_workbook_scope(
     workbook_path: Path | str,
     *,
     base_year: int,
-) -> tuple[Path, list[int], list[str]]:
-    """Read the diagnostic year/scenario from one explicit balance workbook."""
+    years: Sequence[int] | None = None,
+    scenarios: Sequence[str] | None = None,
+) -> tuple[Path, list[int], list[str], list[BalanceExportSheet]]:
+    """Read and optionally narrow the scope of one explicit balance workbook."""
     path = _resolve(workbook_path)
     if not path.exists():
         raise FileNotFoundError(f"Direct LEAP balance workbook does not exist: {path}")
 
-    from openpyxl import load_workbook
-
-    workbook = load_workbook(path, read_only=True, data_only=True)
-    metadata_rows: list[tuple[str, int, str]] = []
-    try:
-        for sheet in workbook.worksheets:
-            metadata = str(sheet.cell(2, 1).value or "").strip()
-            scenario_match = re.search(
-                r"Scenario:\s*([^,]+)",
-                metadata,
-                flags=re.IGNORECASE,
-            )
-            year_match = re.search(r"Year:\s*(\d{4})", metadata, flags=re.IGNORECASE)
-            units_match = re.search(r"Units:\s*(.+)$", metadata, flags=re.IGNORECASE)
-            if not scenario_match or not year_match or not units_match:
-                raise ValueError(
-                    "Direct LEAP balance workbook metadata must declare Scenario, "
-                    f"Year, and Units on every sheet: {path} [{sheet.title}]"
-                )
-            metadata_rows.append(
-                (
-                    scenario_match.group(1).strip(),
-                    int(year_match.group(1)),
-                    units_match.group(1).strip().rstrip("."),
-                )
-            )
-    finally:
-        workbook.close()
-
-    units = sorted({unit.lower() for _, _, unit in metadata_rows})
+    available = list_balance_export_sheets(path)
+    selected_years = (
+        _validate_years(years, base_year=base_year)
+        if years is not None
+        else _validate_years(
+            [sheet.year for sheet in available],
+            base_year=base_year,
+        )
+    )
+    requested_scenarios = (
+        _normalize_scenarios(scenarios)
+        if scenarios is not None
+        else _normalize_scenarios([sheet.scenario for sheet in available])
+    )
+    available_scenarios = {sheet.scenario for sheet in available}
+    selected_scenarios = [
+        scenario
+        for scenario in requested_scenarios
+        if scenario in available_scenarios
+    ]
+    if not selected_scenarios:
+        raise ValueError(
+            f"None of the requested scenarios are available in {path}: "
+            f"{requested_scenarios}"
+        )
+    selected = select_balance_export_sheets(
+        path,
+        years=selected_years,
+        scenarios=selected_scenarios,
+    )
+    if not selected:
+        raise ValueError(
+            f"No requested scenario/year balance sheets were found in {path}."
+        )
+    units = sorted({sheet.units.lower() for sheet in selected})
     supported_units = {"petajoule", "thousand petajoule"}
     unsupported_units = sorted(set(units) - supported_units)
     if unsupported_units:
@@ -457,9 +467,14 @@ def _read_direct_workbook_scope(
             "Thousand Petajoule workbook metadata; "
             f"found unsupported units {unsupported_units} in {path}."
         )
-    scenarios = _normalize_scenarios([scenario for scenario, _, _ in metadata_rows])
-    years = _validate_years([year for _, year, _ in metadata_rows], base_year=base_year)
-    return path, years, scenarios
+    actual_years = _validate_years(
+        [sheet.year for sheet in selected],
+        base_year=base_year,
+    )
+    actual_scenarios = _normalize_scenarios(
+        [sheet.scenario for sheet in selected]
+    )
+    return path, actual_years, actual_scenarios, selected
 
 
 def _load_optional_json(path: Path | str | None) -> dict[str, Any]:
@@ -1655,9 +1670,16 @@ def run_economy_balance_diagnostic(
     resolved_sheet_map_path = _resolve(sheet_map_path)
 
     if workbook_path is not None:
-        direct_path, selected_years, selected_scenarios = _read_direct_workbook_scope(
+        (
+            direct_path,
+            selected_years,
+            selected_scenarios,
+            selected_balance_sheets,
+        ) = _read_direct_workbook_scope(
             workbook_path,
             base_year=base_year,
+            years=years,
+            scenarios=scenarios,
         )
         ref_path = direct_path if "Reference" in selected_scenarios else None
         tgt_path = direct_path if "Target" in selected_scenarios else None
@@ -1688,6 +1710,33 @@ def run_economy_balance_diagnostic(
             if "Target" in selected_scenarios
             else None
         )
+        selected_balance_sheets = []
+        if ref_path is not None:
+            selected_balance_sheets.extend(
+                select_balance_export_sheets(
+                    ref_path,
+                    years=selected_years,
+                    scenarios=["Reference"],
+                )
+            )
+        if tgt_path is not None:
+            selected_balance_sheets.extend(
+                select_balance_export_sheets(
+                    tgt_path,
+                    years=selected_years,
+                    scenarios=["Target"],
+                )
+            )
+    ref_sheet_names = [
+        sheet.sheet_name
+        for sheet in selected_balance_sheets
+        if sheet.scenario_code == "REF"
+    ]
+    tgt_sheet_names = [
+        sheet.sheet_name
+        for sheet in selected_balance_sheets
+        if sheet.scenario_code == "TGT"
+    ]
     projection_years = [year for year in selected_years if year > int(base_year)]
     scenario_map = {scenario: scenario.lower() for scenario in selected_scenarios}
 
@@ -1720,6 +1769,8 @@ def run_economy_balance_diagnostic(
                 known_issues=known_issues,
                 projection_economy=economy,
                 max_output_year=max(selected_years),
+                ref_sheet_name_filter=ref_sheet_names or None,
+                tgt_sheet_name_filter=tgt_sheet_names or None,
                 explicit_pair_mappings_only=True,
                 allow_descendant_mapping_expansion=False,
             )
@@ -1814,6 +1865,7 @@ def run_economy_balance_diagnostic(
         "scenarios": selected_scenarios,
         "ref_workbook_path": ref_path,
         "tgt_workbook_path": tgt_path,
+        "selected_balance_sheets": selected_balance_sheets,
         "detail_inspections": detail_inspections,
         "difference_table": difference_table,
         "mapping_issues": mapping_issues,
@@ -1857,8 +1909,8 @@ def run_baseline_seed_balance_diagnostics(
         direct_workbook_path = (workbook_paths_by_economy or {}).get(economy)
         result = run_economy_balance_diagnostic(
             economy=economy,
-            years=None if direct_workbook_path is not None else years,
-            scenarios=None if direct_workbook_path is not None else scenarios,
+            years=years,
+            scenarios=scenarios,
             base_year=base_year,
             exports_root=exports_root,
             workbook_path=direct_workbook_path,

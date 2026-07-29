@@ -436,6 +436,8 @@ def test_direct_reference_workbook_uses_metadata_without_target(
     assert result["tgt_workbook_path"] is None
     assert calls["ref_workbook_path"] == direct_path
     assert calls["tgt_workbook_path"] is None
+    assert calls["ref_sheet_name_filter"] == ["Energy Balance"]
+    assert calls["tgt_sheet_name_filter"] is None
 
 
 def test_direct_workbook_metadata_accepts_thousand_petajoule(

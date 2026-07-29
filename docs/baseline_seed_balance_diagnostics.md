@@ -59,6 +59,15 @@ by 1,000 and relabels the copied review sheet as `Petajoule`, keeping the LEAP,
 error, and expected-source sheets on the same PJ basis. Source files are never
 modified.
 
+The normal review path now reads the maintained all-years files under
+`data/leap balances exports/<economy>/`. Both filename forms are accepted:
+`full model output all years <date> REF|TGT.xlsx` and the current
+`REF|TGT <date> <economy>.xlsx`. Sheet metadata is catalogued first, and only
+the exact requested scenario/year sheets are passed to extraction. A selected
+set of years produces one compact comparison workbook per
+economy/scenario/year, rather than copying the unrelated all-years tabs into
+every review file.
+
 ### Governing balance-variable contract
 
 The diagnostic must not decide update eligibility by maintaining a list of
@@ -216,7 +225,31 @@ through the separate `ninth_pairs_to_esto_pairs` ESTO bridge after extraction.
 
 ### Notebook use
 
-Open `codebase/baseline_seed_balance_diagnostics_workflow.py`, set:
+For the complete review/update cycle, open
+`codebase/balance_update_workflow.py`. Choose one of:
+
+```python
+ACTIVE_PRESET = _PRESET_REVIEW_ONLY
+# ACTIVE_PRESET = _PRESET_UPDATE_ONLY
+# ACTIVE_PRESET = _PRESET_REVIEW_AND_UPDATE
+```
+
+`REVIEW_YEARS` and `REVIEW_SCENARIOS` affect only the diagnostic and comparison
+workbooks. `UPDATE_HORIZON` independently controls the existing results-update
+workflow:
+
+```python
+REVIEW_YEARS = [2022, 2025]
+UPDATE_HORIZON = "full"  # or "base_year_plus_one" for a smoke run
+```
+
+The full-horizon update gets a unique timestamped run label when
+`UPDATE_RUN_OUTPUT_LABEL` is left as `None`. The review writer performs
+programmatic formula/error checks and does not render preview images by
+default.
+
+For diagnostics without the comparison workbook or update stage, open
+`codebase/baseline_seed_balance_diagnostics_workflow.py` and set:
 
 ```python
 RUN_DIAGNOSTICS = True
@@ -237,12 +270,13 @@ To run one explicit Reference-only workbook:
 
 ```python
 WORKBOOK_PATHS_BY_ECONOMY = {
-    "01_AUS": r"C:\Users\Work\github\leap_initialisation\data\leap balances exports - testing\01_AUS\2022.xlsx",
+    "01_AUS": r"C:\Users\Work\github\leap_initialisation\data\leap balances exports\01_AUS\REF 28072026 AUS.xlsx",
 }
 ```
 
 For an explicit workbook, scenario, year, and units are read from each sheet's
-metadata. The diagnostic does not require or fabricate the other scenario.
+metadata, then narrowed to `YEARS` and `SCENARIOS` when those controls are set.
+The diagnostic does not require or fabricate the other scenario.
 Sheets may report `Petajoule` or `Thousand Petajoule`; recognized thousand-PJ
 values are converted to PJ by the shared LEAP balance extractor before
 comparison. The workbook must pass Level 2+ detail inspection before source
