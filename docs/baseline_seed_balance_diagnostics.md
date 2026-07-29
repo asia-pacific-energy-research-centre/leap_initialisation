@@ -62,7 +62,9 @@ modified.
 The normal review path now reads the maintained all-years files under
 `data/leap balances exports/<economy>/`. Both filename forms are accepted:
 `full model output all years <date> REF|TGT.xlsx` and the current
-`REF|TGT <date> <economy>.xlsx`. Sheet metadata is catalogued first, and only
+`REF|TGT <date> <economy>.xlsx`. A four-digit date such as `2907` is read as
+`DDMM`, using the workbook modification year when ordering the latest export.
+Sheet metadata is catalogued first, and only
 the exact requested scenario/year sheets are passed to extraction. A selected
 set of years produces one compact comparison workbook per
 economy/scenario/year, rather than copying the unrelated all-years tabs into

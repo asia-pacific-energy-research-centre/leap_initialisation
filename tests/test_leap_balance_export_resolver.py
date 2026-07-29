@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+import os
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -67,6 +69,25 @@ def test_resolve_balance_export_workbook_accepts_current_scenario_first_name(
     resolved = resolve_balance_export_workbook(
         economy="01_AUS",
         scenario="Reference",
+        exports_root=tmp_path,
+    )
+
+    assert resolved == expected
+
+
+def test_resolve_balance_export_workbook_accepts_four_digit_day_month(
+    tmp_path: Path,
+) -> None:
+    export_dir = tmp_path / "20_USA"
+    _touch(export_dir / "REF 28072026 USA.xlsx")
+    expected = export_dir / "REF 2907 USA.xlsx"
+    _touch(expected)
+    modified = datetime(2026, 7, 29).timestamp()
+    os.utime(expected, (modified, modified))
+
+    resolved = resolve_balance_export_workbook(
+        economy="20_USA",
+        scenario="REF",
         exports_root=tmp_path,
     )
 

@@ -16,9 +16,9 @@ DEFAULT_BALANCE_EXPORTS_ROOT = REPO_ROOT / "data" / "leap balances exports"
 
 BALANCE_EXPORT_FILENAME_PATTERN = re.compile(
     r"^(?:"
-    r"full model output all years (?P<date_first>\d{5,8}) (?P<scenario_second>[A-Za-z]+)"
+    r"full model output all years (?P<date_first>\d{4,8}) (?P<scenario_second>[A-Za-z]+)"
     r"|"
-    r"(?P<scenario_first>REF|TGT|Reference|Target) (?P<date_second>\d{5,8})"
+    r"(?P<scenario_first>REF|TGT|Reference|Target) (?P<date_second>\d{4,8})"
     r")"
     r"(?:\s[^.]*)?\.xlsx$",
     re.IGNORECASE,
@@ -204,11 +204,21 @@ def _resolve_path(path: Path | str) -> Path:
     return candidate if candidate.is_absolute() else (REPO_ROOT / candidate)
 
 
-def _parse_balance_export_date_id(date_id: str) -> date | None:
-    """Parse compact workbook date ids such as 492026 or 4212026."""
+def _parse_balance_export_date_id(
+    date_id: str,
+    *,
+    fallback_year: int | None = None,
+) -> date | None:
+    """Parse compact workbook date ids such as 2907, 492026, or 4212026."""
     token = str(date_id).strip()
     if not token.isdigit():
         return None
+
+    if len(token) == 4 and fallback_year is not None:
+        try:
+            return date(int(fallback_year), int(token[2:4]), int(token[:2]))
+        except ValueError:
+            return None
 
     if len(token) == 8:
         for year, month, day in (
@@ -271,7 +281,10 @@ def _iter_balance_export_workbooks(
             economy=economy,
             scenario_code=scenario_code,
             date_id=date_id,
-            parsed_date=_parse_balance_export_date_id(date_id),
+            parsed_date=_parse_balance_export_date_id(
+                date_id,
+                fallback_year=date.fromtimestamp(path.stat().st_mtime).year,
+            ),
         )
 
 
