@@ -483,6 +483,73 @@ def test_gas_parent_residual_without_a_missing_base_year_active_child_raises(tmp
         )
 
 
+@pytest.mark.parametrize(
+    ("base_year", "projection_year"),
+    [(2021, 2022), (2022, 2023), (2023, 2024)],
+)
+def test_protected_single_target_with_zero_configured_base_year_is_kept(
+    tmp_path,
+    base_year: int,
+    projection_year: int,
+) -> None:
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "01AUS",
+                "flows": "09.06.02 Liquefaction/regasification plants",
+                "products": "08.01 Natural gas",
+                "is_subtotal": False,
+                str(base_year): 0.0,
+            }
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy": "01_AUS",
+                "scenarios": "reference",
+                "sectors": "09_total_transformation_sector",
+                "sub1sectors": "09_06_gas_processing_plants",
+                "sub2sectors": "09_06_02_liquefaction_regasification_plants",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "08_01_natural_gas",
+                "subfuels": "x",
+                "subtotal_results": False,
+                projection_year: -125.0,
+            }
+        ]
+    )
+    mapping_path = tmp_path / "mapping.xlsx"
+    pd.DataFrame(
+        [
+            {
+                "ninth_sector": "09_06_02_liquefaction_regasification_plants",
+                "ninth_fuel": "08_01_natural_gas",
+                "esto_flow": "09.06.02 Liquefaction/regasification plants",
+                "esto_product": "08.01 Natural gas",
+            }
+        ]
+    ).to_excel(mapping_path, index=False)
+
+    projection, diagnostics, provenance = build_esto_projection_table(
+        ninth,
+        esto,
+        mapping_path,
+        base_year=base_year,
+        projection_years=[projection_year],
+        sign_stable_flows="all",
+        return_allocation_provenance=True,
+    )
+
+    assert projection.iloc[0][projection_year] == pytest.approx(-125.0)
+    assert provenance.iloc[0]["share"] == pytest.approx(1.0)
+    assert provenance.iloc[0]["share_source"] == "single_target_no_base_year"
+    assert not diagnostics["diagnostic_type"].astype(str).eq(
+        "unallocated_no_economy_base_year"
+    ).any()
+
+
 def test_zero_gas_parent_does_not_reverse_direct_child_projection_by_default(tmp_path) -> None:
     esto = pd.DataFrame(
         [
