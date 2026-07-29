@@ -10,6 +10,25 @@
 > (`D-04` full-model-export retirement, `D-05` template census, `D-06`
 > Phase 2). Verify against code before acting on a number here.
 
+## [24] Merge and verify the supply reconciliation package migration
+
+**Status: implementation complete in a worktree; master integration and
+workflow verification pending.**
+
+The reconciliation implementation modules and reconciliation-specific support
+files have been moved into `codebase/supply_reconciliation/` on branch
+`codex/reconciliation-package-migration`, while
+`codebase/supply_reconciliation_workflow.py` remains the notebook-facing root
+entry point. The implementation checkpoint is commit `bee2b98`; the worktree is
+`C:\Users\Work\github\worktrees\leap_initialisation_reconciliation_package`.
+
+Bounded verification completed without launching the full workflow: all modules
+compiled and imported, 1,121 tests collected, the 241-test core gate passed,
+and preset forwarding passed. Before merging, reconcile the branch with current
+master changes and run the established one-economy/test-horizon smoke against a
+known-good post-boundary workbook. Keep the full-horizon multi-economy run for a
+later useful production-output boundary.
+
 ## [23] Opt-in final baseline-seed expression overrides
 
 **Status: completed 2026-07-29.**
