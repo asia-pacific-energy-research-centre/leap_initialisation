@@ -579,16 +579,15 @@ Exporting results is required before every reconciliation pass. Results must be 
    | Level | What is included | When to use |
    |---|---|---|
    | Level 1 | Balance totals; no transformation activity by process | Not usually sufficient for reconciliation |
-   | Level 2 | Sector-level demand; transformation by module | Sufficient for most reconciliation passes |
+   | Level 2 | Sector-level demand; transformation by module | Required minimum for reconciliation and results-update runs |
    | Level 4 | All detail including demand sub-sector end-uses | Use when you also need detailed demand sector outputs |
-
-   Malaysia (`10_MAS`) is the main exception: it needs Level 2 balance detail when running `results_update`, because the hydrogen transformation sector can use both `Electrolysers` and `SMR with CCS` and the workflow checks for those process rows explicitly.
 
 5. Click the **Excel symbol** and select **All** to export all results.
 6. Wait for the export to complete. A full area at Level 2 covering 2022–2060 typically takes **3–4 hours**. Higher detail levels or more years will take longer. This is best run on a spare machine or out of hours.
 7. Place the exported file in the directory expected by `supply_reconciliation_workflow.py` — check the script's input path settings to confirm the correct location.
 
-> If you are exporting for the first time, choose Level 2 unless there is a specific reason to need Level 4. Level 4 significantly increases export time and file size.
+> Use Level 2 by default unless there is a specific reason to need Level 4.
+> Level 4 significantly increases export time and file size.
 
 ## 9c. Fast preflight checks
 

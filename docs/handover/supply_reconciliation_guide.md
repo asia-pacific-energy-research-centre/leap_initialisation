@@ -220,8 +220,6 @@ paraphrase those rules into ad-hoc lists.
 - Aggregated-demand generation omits a branch when every selected modelled
   value is zero (`5544853`); absence of that branch is therefore different from
   an unresolved non-zero template path.
-- Malaysia results-update needs sufficient Level 2 transformation detail for
-  its hydrogen process checks.
 
 ## Manual LEAP cycle
 
