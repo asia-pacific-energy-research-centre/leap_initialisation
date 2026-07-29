@@ -49,6 +49,18 @@ The direct-workbook diagnostic and review builder also accept
 `Thousand Petajoule` metadata. Extraction and every displayed review sheet are
 normalized to PJ, while the source workbook remains unchanged.
 
+The 2026-07-29 AUS review identified two canonical mapping gaps that must be
+closed in `leap_mappings`: LEAP `From Stocks` must compare with ESTO
+`06 Stock changes`, and LEAP `Statistical Differences` must compare with ESTO
+`11 Statistical discrepancy`. The diagnostic now excludes the derived `Total`
+fuel column plus `Total Transformation`, `Total Final Energy Demand` /
+`Total final energy consumption`, and `Unmet Requirements`, retaining those
+rows in `leap_balance_ignored_rows.csv` rather than presenting them as missing
+mappings. Transfer components use the maintained expanding `Transfers` rollup
+for comparison. A later write/update stage must distribute a rolled transfer
+difference through the same economy-specific shares and policies used by
+`transfers_workflow.py`; it must not use an equal or ad hoc split.
+
 Before the next AUS rerun, the supply exporter now emits native
 `Stock Changes\Primary|Secondary\...` and
 `Statistical Differences\Primary|Secondary\...` rows directly from the balance

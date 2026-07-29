@@ -149,6 +149,16 @@ PLACEHOLDER_SECTOR_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 
+IGNORED_BALANCE_DIAGNOSTIC_ROWS = frozenset(
+    {
+        "total transformation",
+        "total final energy demand",
+        "total final energy consumption",
+        "unmet requirements",
+    }
+)
+
+
 def _resolve(path: Path | str) -> Path:
     """Resolve a notebook-friendly path against this repository."""
     normalized = str(path).replace("\\", "/")
@@ -169,6 +179,103 @@ def _clean_token(value: object) -> str:
     if value is None or value is pd.NA:
         return ""
     return str(value).strip()
+
+
+def _normalize_diagnostic_label(value: object) -> str:
+    """Return a case-insensitive label key with stable whitespace."""
+    return " ".join(_clean_token(value).casefold().split())
+
+
+def _first_present_label(row: pd.Series, columns: Sequence[str]) -> str:
+    """Return the first populated label from a diagnostic row."""
+    for column in columns:
+        value = _clean_token(row.get(column, ""))
+        if value:
+            return value
+    return ""
+
+
+def _ignored_mapping_issue_reason(row: pd.Series) -> str:
+    """Explain why an extraction issue is intentionally outside this diagnostic."""
+    fuel_label = _first_present_label(
+        row,
+        (
+            "mapping_key_fuel",
+            "leap_product_name",
+            "leap_product",
+            "raw_leap_fuel_name",
+        ),
+    )
+    if _normalize_diagnostic_label(fuel_label) == "total":
+        return "aggregate Total fuel column is derived and is not mapped directly"
+
+    sector_label = _first_present_label(
+        row,
+        (
+            "mapping_key_sector",
+            "leap_flow_name",
+            "leap_flow",
+            "leap_sector_name_full_path",
+        ),
+    )
+    sector_root = re.split(r"[/\\]", sector_label, maxsplit=1)[0]
+    if _normalize_diagnostic_label(sector_root) in IGNORED_BALANCE_DIAGNOSTIC_ROWS:
+        return f"{sector_root} is an excluded aggregate or diagnostic-only balance row"
+    return ""
+
+
+def _partition_mapping_issues(
+    mapping_issues: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split actionable mapping issues from explicitly ignored aggregate rows."""
+    if mapping_issues is None or mapping_issues.empty:
+        empty = pd.DataFrame(columns=getattr(mapping_issues, "columns", []))
+        return empty.copy(), empty.copy()
+
+    work = mapping_issues.copy()
+    reasons = work.apply(_ignored_mapping_issue_reason, axis=1)
+    ignored_mask = reasons.ne("")
+    active = work.loc[~ignored_mask].reset_index(drop=True)
+    ignored = work.loc[ignored_mask].copy()
+    ignored.insert(0, "diagnostic_record_type", "mapping_issue")
+    ignored.insert(
+        1,
+        "diagnostic_disposition_reason",
+        reasons.loc[ignored_mask].to_numpy(),
+    )
+    return active, ignored.reset_index(drop=True)
+
+
+def _partition_comparison_rows(
+    differences: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Remove user-selected aggregate rows while retaining an explicit audit."""
+    if differences is None or differences.empty:
+        empty = pd.DataFrame(columns=getattr(differences, "columns", []))
+        return empty.copy(), empty.copy()
+
+    work = differences.copy()
+    row_labels = work.apply(
+        lambda row: _first_present_label(
+            row,
+            ("leap_balance_row", "leap_sector_names", "esto_flow"),
+        ),
+        axis=1,
+    )
+    normalized = row_labels.map(_normalize_diagnostic_label)
+    ignored_mask = normalized.isin(IGNORED_BALANCE_DIAGNOSTIC_ROWS)
+    active = work.loc[~ignored_mask].reset_index(drop=True)
+    ignored = work.loc[ignored_mask].copy()
+    ignored.insert(0, "diagnostic_record_type", "comparison_row")
+    ignored.insert(
+        1,
+        "diagnostic_disposition_reason",
+        [
+            f"{label} is an excluded aggregate or diagnostic-only balance row"
+            for label in row_labels.loc[ignored_mask]
+        ],
+    )
+    return active, ignored.reset_index(drop=True)
 
 
 def load_balance_variable_rules(
@@ -715,6 +822,84 @@ def _write_esto_axis_extraction_mapping_workbook(
         sheet_name="leap_combined_esto",
         dtype=str,
     )
+    rollup_rules = read_config_table(
+        codebook_path,
+        sheet_name="leap_rollup_rules",
+        dtype=str,
+    )
+    required_rollup_columns = {
+        "input_leap_sector_name_full_path",
+        "rolled_leap_sector_name_full_path",
+        "ROLLUP_MODE",
+        "include",
+    }
+    if required_rollup_columns.issubset(rollup_rules.columns):
+        include = (
+            rollup_rules["include"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+            .isin({"1", "true", "yes", "y", "on", "t"})
+        )
+        expanding = (
+            rollup_rules["ROLLUP_MODE"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+            .eq("expanding")
+        )
+        transfer_rules = rollup_rules.loc[
+            include
+            & expanding
+            & rollup_rules["rolled_leap_sector_name_full_path"]
+            .fillna("")
+            .astype(str)
+            .map(_normalize_diagnostic_label)
+            .eq("transfers")
+        ]
+        transfer_mapping = esto_mapping.loc[
+            esto_mapping["leap_sector_name_full_path"]
+            .fillna("")
+            .astype(str)
+            .map(_normalize_diagnostic_label)
+            .eq("transfers")
+        ]
+        aliases: list[pd.DataFrame] = []
+        for component in transfer_rules[
+            "input_leap_sector_name_full_path"
+        ].dropna().astype(str):
+            component = component.strip()
+            if not component:
+                continue
+            alias = transfer_mapping.copy()
+            # Level 2 balance exports expose these rows as a parent and an
+            # identically named indented child, so the extractor's full key is
+            # Component/Component.
+            alias["leap_sector_name_full_path"] = f"{component}/{component}"
+            # The maintained mapping correctly labels ESTO 08 Transfers as a
+            # subtotal. Unlike ordinary subtotals, however, its product rows
+            # contain the real comparison values. The direct diagnostic must
+            # therefore pull them rather than replacing them with NA.
+            if "esto_pair_is_subtotal" in alias.columns:
+                alias["esto_pair_is_subtotal"] = "False"
+            alias["subtotal_mismatch_is_ok"] = "True"
+            aliases.append(alias)
+        if aliases:
+            esto_mapping = pd.concat(
+                [esto_mapping, *aliases],
+                ignore_index=True,
+                sort=False,
+            ).drop_duplicates(
+                subset=[
+                    "leap_sector_name_full_path",
+                    "raw_leap_fuel_name",
+                    "esto_flow",
+                    "esto_product",
+                ],
+                keep="first",
+            )
     ninth_columns = read_config_table(
         codebook_path,
         sheet_name="leap_combined_ninth",
@@ -1597,10 +1782,21 @@ def run_economy_balance_diagnostic(
         scenarios=selected_scenarios,
         tolerance_pj=tolerance_pj,
     )
-    mapping_issues = _scope_rows_to_diagnostic_window(
+    difference_table, ignored_comparison_rows = _partition_comparison_rows(
+        difference_table
+    )
+    scoped_mapping_issues = _scope_rows_to_diagnostic_window(
         conversion.get("issues", pd.DataFrame()),
         years=selected_years,
         scenarios=selected_scenarios,
+    )
+    mapping_issues, ignored_mapping_issues = _partition_mapping_issues(
+        scoped_mapping_issues
+    )
+    ignored_rows = pd.concat(
+        [ignored_comparison_rows, ignored_mapping_issues],
+        ignore_index=True,
+        sort=False,
     )
     total_balance_checks = _scope_rows_to_diagnostic_window(
         conversion.get("total_balance_checks", pd.DataFrame()),
@@ -1621,6 +1817,7 @@ def run_economy_balance_diagnostic(
         "detail_inspections": detail_inspections,
         "difference_table": difference_table,
         "mapping_issues": mapping_issues,
+        "ignored_rows": ignored_rows,
         "total_balance_checks": total_balance_checks,
         "matching_diagnostics": matching_diagnostics,
         "projection_allocation_status": projection_allocation_status,
@@ -1654,6 +1851,7 @@ def run_baseline_seed_balance_diagnostics(
     results: dict[str, dict[str, Any]] = {}
     difference_parts: list[pd.DataFrame] = []
     issue_parts: list[pd.DataFrame] = []
+    ignored_parts: list[pd.DataFrame] = []
     for economy in economy_list:
         date_ids = (date_ids_by_economy or {}).get(economy, {})
         direct_workbook_path = (workbook_paths_by_economy or {}).get(economy)
@@ -1676,6 +1874,11 @@ def run_baseline_seed_balance_diagnostics(
             if "economy" not in issues.columns:
                 issues["economy"] = economy
             issue_parts.append(issues)
+        ignored = result.get("ignored_rows", pd.DataFrame()).copy()
+        if not ignored.empty:
+            if "economy" not in ignored.columns:
+                ignored["economy"] = economy
+            ignored_parts.append(ignored)
 
     differences = (
         pd.concat(difference_parts, ignore_index=True, sort=False)
@@ -1690,6 +1893,16 @@ def run_baseline_seed_balance_diagnostics(
     if not mapping_issues.empty:
         mapping_issues_path = resolved_output_dir / "leap_balance_mapping_issues.csv"
         mapping_issues.to_csv(mapping_issues_path, index=False)
+
+    ignored_rows = (
+        pd.concat(ignored_parts, ignore_index=True, sort=False)
+        if ignored_parts
+        else pd.DataFrame()
+    )
+    ignored_rows_path: Path | None = None
+    if not ignored_rows.empty:
+        ignored_rows_path = resolved_output_dir / "leap_balance_ignored_rows.csv"
+        ignored_rows.to_csv(ignored_rows_path, index=False)
 
     review = build_balance_review_table(differences)
     review_path = resolved_output_dir / "leap_balance_source_review.csv"
@@ -1709,6 +1922,8 @@ def run_baseline_seed_balance_diagnostics(
     print(f"[INFO] Wrote {review_path}")
     if mapping_issues_path is not None:
         print(f"[INFO] Wrote {mapping_issues_path}")
+    if ignored_rows_path is not None:
+        print(f"[INFO] Wrote {ignored_rows_path}")
 
     return {
         "differences": differences,
@@ -1717,12 +1932,15 @@ def run_baseline_seed_balance_diagnostics(
         "review_path": review_path,
         "mapping_issues": mapping_issues,
         "mapping_issues_path": mapping_issues_path,
+        "ignored_rows": ignored_rows,
+        "ignored_rows_path": ignored_rows_path,
         "economy_results": results,
         "summary": {
             "comparison_rows": int(len(differences)),
             "mismatch_rows": mismatch_count,
             "future_allocation_rule_rows": allocation_count,
             "mapping_issue_rows": int(len(mapping_issues)),
+            "ignored_rows": int(len(ignored_rows)),
             **diagnostic_counts,
         },
     }

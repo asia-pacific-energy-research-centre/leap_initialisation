@@ -721,3 +721,127 @@ def test_multi_economy_runner_writes_one_combined_table(monkeypatch, tmp_path: P
     assert result["summary"]["mismatch_rows"] == 2
     assert result["mapping_issues_path"] is None
     assert result["review_path"].exists()
+
+
+def test_mapping_issue_partition_ignores_totals_and_selected_aggregate_rows() -> None:
+    issues = pd.DataFrame(
+        [
+            {
+                "mapping_key_sector": "Other loss and own use/Coal mines",
+                "mapping_key_fuel": "Total",
+                "reason": "missing_esto_pair",
+            },
+            {
+                "mapping_key_sector": "Total Transformation",
+                "mapping_key_fuel": "Natural gas",
+                "reason": "missing_esto_pair",
+            },
+            {
+                "mapping_key_sector": "From Stocks",
+                "mapping_key_fuel": "Natural gas",
+                "reason": "missing_esto_pair",
+            },
+        ]
+    )
+
+    active, ignored = diagnostics._partition_mapping_issues(issues)
+
+    assert active["mapping_key_sector"].tolist() == ["From Stocks"]
+    assert ignored["mapping_key_sector"].tolist() == [
+        "Other loss and own use/Coal mines",
+        "Total Transformation",
+    ]
+    assert ignored["diagnostic_disposition_reason"].str.len().gt(0).all()
+
+
+def test_comparison_partition_ignores_total_final_energy_demand_boundary() -> None:
+    differences = pd.DataFrame(
+        [
+            {"leap_sector_names": "Total final energy consumption", "status": "value_mismatch"},
+            {"leap_sector_names": "Total Primary Supply", "status": "value_mismatch"},
+        ]
+    )
+
+    active, ignored = diagnostics._partition_comparison_rows(differences)
+
+    assert active["leap_sector_names"].tolist() == ["Total Primary Supply"]
+    assert ignored["leap_sector_names"].tolist() == [
+        "Total final energy consumption"
+    ]
+
+
+def test_esto_extraction_mapping_expands_transfer_rollup_components(
+    tmp_path: Path,
+) -> None:
+    codebook_path = tmp_path / "mapping.xlsx"
+    output_path = tmp_path / "extraction.xlsx"
+    esto = pd.DataFrame(
+        [
+            {
+                "leap_sector_name_full_path": "Transfers",
+                "raw_leap_fuel_name": "Natural gas",
+                "esto_flow": "08 Transfers",
+                "esto_product": "08.01 Natural gas",
+                "leap_is_subtotal": "True",
+                "esto_pair_is_subtotal": "False",
+                "duplicate_to_remove": "False",
+                "esto_dataset_scope": "BOTH",
+            }
+        ]
+    )
+    ninth = pd.DataFrame(
+        columns=[
+            "leap_sector_name_full_path",
+            "raw_leap_fuel_name",
+            "sector_code_9th",
+            "fuel_code_9th",
+        ]
+    )
+    rollups = pd.DataFrame(
+        [
+            {
+                "input_leap_sector_name_full_path": "Transfers unallocated",
+                "input_raw_leap_fuel_name": "",
+                "rolled_leap_sector_name_full_path": "Transfers",
+                "rolled_raw_leap_fuel_name": "",
+                "ROLLUP_MODE": "EXPANDING",
+                "include": "True",
+            },
+            {
+                "input_leap_sector_name_full_path": "Oil Refining",
+                "input_raw_leap_fuel_name": "",
+                "rolled_leap_sector_name_full_path": "Total transformation - no transfers",
+                "rolled_raw_leap_fuel_name": "",
+                "ROLLUP_MODE": "NON_EXPANDING",
+                "include": "True",
+            },
+        ]
+    )
+    with pd.ExcelWriter(codebook_path) as writer:
+        esto.to_excel(writer, sheet_name="leap_combined_esto", index=False)
+        ninth.to_excel(writer, sheet_name="leap_combined_ninth", index=False)
+        rollups.to_excel(writer, sheet_name="leap_rollup_rules", index=False)
+
+    diagnostics._write_esto_axis_extraction_mapping_workbook(
+        output_path=output_path,
+        codebook_path=codebook_path,
+    )
+    extracted = pd.read_excel(
+        output_path,
+        sheet_name="leap_combined_esto",
+        dtype=str,
+    )
+
+    assert "Transfers unallocated/Transfers unallocated" in set(
+        extracted["leap_sector_name_full_path"]
+    )
+    transfer_alias = extracted[
+        extracted["leap_sector_name_full_path"].eq(
+            "Transfers unallocated/Transfers unallocated"
+        )
+    ]
+    assert transfer_alias["esto_pair_is_subtotal"].tolist() == ["False"]
+    assert transfer_alias["subtotal_mismatch_is_ok"].tolist() == ["True"]
+    assert "Oil Refining/Oil Refining" not in set(
+        extracted["leap_sector_name_full_path"]
+    )
