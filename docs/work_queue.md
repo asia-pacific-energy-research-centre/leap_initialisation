@@ -219,6 +219,20 @@ Two additional findings were confirmed:
   seed validator does not compare `Scale`, `Units`, or `Per...`; this is a
   live-area metadata validation gap, not a seed-row value defect.
 
+Transformation ownership and update routing were tightened on 2026-07-29:
+
+- `10.01.03 Liquefaction/regasification plants` is now owned exclusively by
+  `Demand\Other loss and own use\Liquefaction and regasification plants`.
+  LNG transformation records no longer read that flow as Auxiliary Fuel Use,
+  and the Demand proxy retains nonzero 9th projection rows even when ESTO has
+  no historical `10.01.03` fuel row. The balance preview therefore no longer
+  folds `10.01.03` into the LNG transformation comparator.
+- Electricity interim, CHP interim, and Heat plant interim records now
+  participate in the normal capacity-unmet process catalog. Scenario-specific
+  capacity additions are applied to their Exogenous Capacity and Historical
+  Production before the power-interim workbook is written, using the same
+  runtime capacity ledger as other transformation modules.
+
 A Current Accounts-only seed is structurally supported. When no Reference or
 Target scenario is requested, the baseline runner now uses Reference only for
 its internal balance/reconciliation inputs while writing only Current Accounts

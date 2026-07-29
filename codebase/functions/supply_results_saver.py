@@ -3162,6 +3162,29 @@ def _resolve_results_saver_run_paths(
     }
 
 
+def _build_capacity_allocation_process_records(
+    transformation_process_records: list[dict],
+    *,
+    economies: Iterable[str],
+    include_power_interim: bool,
+) -> list[dict]:
+    """Return every transformation record eligible for capacity allocation.
+
+    Power interim records are produced by a separate workbook workflow, so they
+    are not part of ``transformation_process_records``. Include them explicitly
+    here so electricity and heat residuals can use the same capacity allocator
+    as the other transformation modules.
+    """
+    records = list(transformation_process_records)
+    if include_power_interim:
+        records.extend(
+            electricity_heat_interim_workflow.build_electricity_heat_interim_rows(
+                economies=list(economies)
+            )
+        )
+    return records
+
+
 def run_results_linked_transformation_supply_workflow(
     economies: Iterable[str] | None = None,
     scenario_names: list[str] | None = None,
@@ -3672,6 +3695,12 @@ def run_results_linked_transformation_supply_workflow(
             transformation_process_records = updated_process_records
     timer.lap("build reconciliation and apply trade rules")
 
+    capacity_process_records = _build_capacity_allocation_process_records(
+        transformation_process_records,
+        economies=economy_list,
+        include_power_interim=bool(RUN_ELECTRICITY_HEAT_INTERIM),
+    )
+
     balance_paths = save_year_balance_tables(
         reconciliation_table,
         years=BALANCE_EXPORT_YEARS,
@@ -3685,7 +3714,7 @@ def run_results_linked_transformation_supply_workflow(
     if _use_capacity_unmet_iterative_mode():
         _sra._run_capacity_unmet_iterative_pass(
             reconciliation_table=reconciliation_table,
-            process_records=transformation_process_records,
+            process_records=capacity_process_records,
             economies=economy_list,
             scenarios=export_scenario_list,
             resolve_scenario_key=_resolve_reconciliation_scenario_key,
@@ -3726,7 +3755,7 @@ def run_results_linked_transformation_supply_workflow(
         else:
             _sra._run_capacity_unmet_iterative_balanced_pass(
                 reconciliation_table=reconciliation_table,
-                process_records=transformation_process_records,
+                process_records=capacity_process_records,
                 economies=economy_list,
                 scenarios=balance_scenario_list,
                 resolve_scenario_key=_resolve_reconciliation_scenario_key,
@@ -3891,17 +3920,13 @@ def run_results_linked_transformation_supply_workflow(
         timer.lap(f"generate transfer export workbook ({economy})")
         econ_dummy: list[Path] = []
         if RUN_ELECTRICITY_HEAT_INTERIM:
-            interim_records = electricity_heat_interim_workflow.build_electricity_heat_interim_rows(
-                economies=[economy]
-            )
-            for scenario in export_scenario_list:
-                transformation_records_by_scenario.setdefault(str(scenario), []).extend(
-                    copy.deepcopy(interim_records)
-                )
             econ_dummy = build_electricity_heat_interim_workbooks_for_results_supply(
                 economies=[economy],
                 scenarios=export_scenario_list,
                 output_dir=export_dir,
+                reconciliation_table=reconciliation_table,
+                allocation_ledger=allocation_ledger,
+                records_by_scenario_out=transformation_records_by_scenario,
             )
             timer.lap(f"generate electricity/heat interim workbook ({economy})")
         econ_combined_path = save_combined_supply_transformation_export(

@@ -1272,6 +1272,9 @@ def build_electricity_heat_interim_workbooks_for_results_supply(
     economies: Iterable[str],
     scenarios: Iterable[str],
     output_dir: Path | str | None = None,
+    reconciliation_table: pd.DataFrame | None = None,
+    allocation_ledger=None,
+    records_by_scenario_out: dict[str, list[dict]] | None = None,
 ) -> list[Path]:
     """Build electricity+heat interim workbooks to accompany the supply/transformation exports.
 
@@ -1285,6 +1288,31 @@ def build_electricity_heat_interim_workbooks_for_results_supply(
         return []
     output_path = Path(output_dir or EXPORT_OUTPUT_DIR)
     output_path.mkdir(parents=True, exist_ok=True)
+    if reconciliation_table is not None:
+        base_records = electricity_heat_interim_workflow.build_electricity_heat_interim_rows(
+            economies=economy_list
+        )
+        adjusted_by_scenario: dict[str, list[dict]] = {}
+        empty_targets = pd.DataFrame()
+        for scenario in scenario_list:
+            adjusted = apply_transformation_target_overrides_for_scenario(
+                copy.deepcopy(base_records),
+                empty_targets,
+                reconciliation_table,
+                scenario,
+                allocation_ledger=allocation_ledger,
+            )
+            adjusted_by_scenario[str(scenario)] = adjusted
+            if records_by_scenario_out is not None:
+                records_by_scenario_out.setdefault(str(scenario), []).extend(
+                    copy.deepcopy(adjusted)
+                )
+        return electricity_heat_interim_workflow.assemble_electricity_heat_interim_workbook(
+            economies=economy_list,
+            scenarios=scenario_list,
+            export_output_dir=output_path,
+            process_records_by_scenario=adjusted_by_scenario,
+        )
     return electricity_heat_interim_workflow.assemble_electricity_heat_interim_workbook(
         economies=economy_list,
         scenarios=scenario_list,

@@ -167,9 +167,9 @@ IGNORED_BALANCE_DIAGNOSTIC_ROWS = frozenset(
 )
 
 # These processes write 10.01 own-use/loss energy as Auxiliary Fuel Use inside
-# the LEAP Transformation module. Coal mines is deliberately absent: despite a
-# legacy loss_flow_codes entry, the active proxy workflow owns 10.01.06 under
-# Demand\Other loss and own use because coal mining is supply-related.
+# the LEAP Transformation module. Coal mines and LNG are deliberately absent:
+# their active proxy workflows own 10.01.06 and 10.01.03 respectively under
+# Demand\Other loss and own use.
 TRANSFORMATION_AUXILIARY_CONFIG_KEYS = (
     "gas_works",
     "coal_coke_ovens",
@@ -1719,19 +1719,6 @@ def _transformation_auxiliary_rules() -> list[dict[str, object]]:
             }
         )
 
-    lng_config = MAJOR_SECTOR_CONFIG["lng"]
-    rules.append(
-        {
-            "config_key": "lng",
-            "transformation_flows": [
-                _clean_token(lng_config.get("esto_flow_code_liquefaction", "")),
-                _clean_token(lng_config.get("esto_flow_code_regasification", "")),
-            ],
-            "auxiliary_flows": [
-                "10.01.03 Liquefaction/regasification plants",
-            ],
-        }
-    )
     return [
         rule
         for rule in rules

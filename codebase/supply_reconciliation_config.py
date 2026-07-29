@@ -545,8 +545,8 @@ def refresh_output_paths_for_pass_mode(
 
 CAPACITY_UNMET_PRIORITY_BY_PRODUCT: dict[str, list[str]] = {
     # When RUN_ELECTRICITY_HEAT_INTERIM=True the three interim modules take
-    # priority; they use exogenous capacity so the capacity_unmet system cannot
-    # grow them — remaining gaps fall through to the import fallback.
+    # priority. Their exogenous capacity is adjusted through the same runtime
+    # capacity ledger used by the other transformation modules.
     "17 Electricity": [
         "Electricity interim",
         "CHP interim",
@@ -743,11 +743,14 @@ CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS: dict[str, dict[str, dict]] = {
             "Transfers unallocated":           _LOCKED_AT_BASE_YEAR,
             "Upstream liquids transfers":      _LOCKED_AT_BASE_YEAR,
             # Modules allowed to grow freely.
+            "CHP interim":                           UNLIMITED,
             "CHP plants":                           UNLIMITED,
             "Chemical heat for electricity production": UNLIMITED,
             "Electric boilers":                     UNLIMITED,
+            "Electricity interim":                   UNLIMITED,
             "Electricity Generation":               UNLIMITED,
             "Gas to liquids plants":                UNLIMITED,
+            "Heat plant interim":                    UNLIMITED,
             "Heat plants":                          UNLIMITED,
             "Hydrogen transformation":              UNLIMITED,
             "LNG regasification":                   UNLIMITED,
@@ -771,11 +774,14 @@ CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS: dict[str, dict[str, dict]] = {
             "Transfers unallocated":           _LOCKED_AT_BASE_YEAR,
             "Upstream liquids transfers":      _LOCKED_AT_BASE_YEAR,
             # Modules allowed to grow freely.
+            "CHP interim":                           UNLIMITED,
             "CHP plants":                           UNLIMITED,
             "Chemical heat for electricity production": UNLIMITED,
             "Electric boilers":                     UNLIMITED,
+            "Electricity interim":                   UNLIMITED,
             "Electricity Generation":               UNLIMITED,
             "Gas to liquids plants":                UNLIMITED,
+            "Heat plant interim":                    UNLIMITED,
             "Heat plants":                          UNLIMITED,
             "Hydrogen transformation":              UNLIMITED,
             "LNG regasification":                   UNLIMITED,

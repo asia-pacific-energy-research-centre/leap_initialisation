@@ -38,7 +38,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 import pandas as pd
 
@@ -1302,8 +1302,14 @@ def assemble_electricity_heat_interim_workbook(
     scenarios: Sequence[str] | None = None,
     export_output_dir: Path | str | None = None,
     id_lookup_path: Path | str | None = None,
+    process_records_by_scenario: Mapping[str, list[dict]] | None = None,
 ) -> list[Path]:
-    """Build rows for all three interim modules, write one LEAP workbook per economy."""
+    """Build rows for all three interim modules, write one LEAP workbook per economy.
+
+    ``process_records_by_scenario`` lets the supply reconciliation results-update
+    path provide scenario-specific copies after capacity adjustments. Standalone
+    callers can omit it and retain the normal shared-record behavior.
+    """
     economy_list = list(economies or core.ECONOMIES_TO_ANALYZE)
     scenario_list = workflow_common.normalize_workflow_scenarios(scenarios, DEFAULT_SCENARIOS)
     output_dir_path = Path(export_output_dir or core.EXPORT_OUTPUT_DIR)
@@ -1335,15 +1341,39 @@ def assemble_electricity_heat_interim_workbook(
             workbook_path=economy_template_path,
             raise_on_mismatch=False,
         )
-        rows = build_electricity_heat_interim_rows(economies=[economy])
+        scenario_records: dict[str, list[dict]] | None = None
+        if process_records_by_scenario:
+            scenario_records = {
+                str(scenario): [
+                    record
+                    for record in process_records_by_scenario.get(str(scenario), [])
+                    if str(record.get("economy") or "").strip() == str(economy).strip()
+                ]
+                for scenario in scenario_list
+            }
+            rows = [
+                record
+                for records in scenario_records.values()
+                for record in records
+            ]
+        else:
+            rows = build_electricity_heat_interim_rows(economies=[economy])
         if not rows:
             print(f"No electricity/heat interim rows for {economy}; skipping.")
             continue
-        core.consolidate_transformation_output_rows(
-            rows,
-            include_output_series=core.INCLUDE_OUTPUT_SERIES_IN_LEAP_EXPORT,
-            use_output_targets=False,
-        )
+        if scenario_records is not None:
+            for records in scenario_records.values():
+                core.consolidate_transformation_output_rows(
+                    records,
+                    include_output_series=core.INCLUDE_OUTPUT_SERIES_IN_LEAP_EXPORT,
+                    use_output_targets=False,
+                )
+        else:
+            core.consolidate_transformation_output_rows(
+                rows,
+                include_output_series=core.INCLUDE_OUTPUT_SERIES_IN_LEAP_EXPORT,
+                use_output_targets=False,
+            )
         export_filename = format_export_filename(economy, scenario_list)
         export_path = core.save_transformation_export(
             rows,
@@ -1359,6 +1389,7 @@ def assemble_electricity_heat_interim_workbook(
             id_lookup_path=economy_template_path,
             full_branch_catalog_df=branch_catalog,
             in_scope_sector_titles=in_scope,
+            process_records_by_scenario=scenario_records,
         )
         if export_path:
             exported_paths.append(Path(export_path))

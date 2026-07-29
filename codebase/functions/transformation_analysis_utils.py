@@ -255,7 +255,10 @@ MAJOR_SECTOR_CONFIG = {
         "additional_sector_titles": ["LNG regasification"],
         "transformation_sub1": "09_06_gas_processing_plants",
         "transformation_sub2": ["09_06_02_liquefaction_regasification_plants"],
-        "loss_sub2": ["10_01_03_liquefaction_regasification_plants"],
+        # 10.01.03 own use is owned by
+        # Demand\Other loss and own use\Liquefaction and regasification plants.
+        # Do not also export it as transformation Auxiliary Fuel Use.
+        "loss_sub2": [],
         "esto_flow_code_liquefaction": "09.06.02.01 Liquefaction",
         "esto_flow_code_regasification": "09.06.02.02 Regasification",
     },

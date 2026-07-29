@@ -215,7 +215,7 @@ def test_oil_refining_base_comparator_adds_only_configured_own_use_flow() -> Non
     assert row["status"] == "match"
 
 
-def test_projection_comparator_combines_auxiliary_for_an_active_process() -> None:
+def test_lng_projection_comparator_does_not_absorb_demand_owned_own_use() -> None:
     natural_gas = _comparison_rows(
         scenario="Reference",
         year=2023,
@@ -278,13 +278,12 @@ def test_projection_comparator_combines_auxiliary_for_an_active_process() -> Non
 
     indexed = table.set_index("esto_product")
     assert indexed.loc["08.01 Natural gas", "source_value_pj"] == pytest.approx(
-        -110.0
+        -100.0
     )
-    assert indexed.loc["17 Electricity", "source_value_pj"] == pytest.approx(-2.0)
-    assert set(table["transformation_auxiliary_comparison_status"]) == {
-        "combined_with_active_process_comparator"
-    }
-    assert set(table["status"]) == {"match"}
+    assert pd.isna(indexed.loc["17 Electricity", "source_value_pj"])
+    assert set(table["transformation_auxiliary_comparison_status"]) == {""}
+    assert indexed.loc["08.01 Natural gas", "status"] == "value_mismatch"
+    assert indexed.loc["17 Electricity", "status"] == "reference_unavailable"
 
 
 def test_lng_parent_projection_alias_requires_exactly_one_visible_child() -> None:
