@@ -1540,6 +1540,31 @@ def test_leap_balance_activity_mode_uses_explicit_fuel_set() -> None:
     assert series == {2022: 30.0, 2023: 5.0}
 
 
+def test_total_transformation_sector_alias_reads_exported_total_transformation(
+    tmp_path,
+) -> None:
+    workbook = tmp_path / "balance_total_transformation.xlsx"
+    sheet = pd.DataFrame(
+        [
+            ["Scenario: Reference, Year: 2022, Units: Petajoule", None, None],
+            [None, "Electricity", "Natural gas"],
+            ["Total Transformation", 25.0, -75.0],
+        ]
+    )
+    with pd.ExcelWriter(workbook, engine="openpyxl") as writer:
+        sheet.to_excel(writer, sheet_name="2022", index=False, header=False)
+
+    out = workflow.load_leap_balance_activity_table(
+        workbook,
+        balance_rows=["Total transformation sector"],
+        fuels=["Electricity", "Natural gas"],
+    )
+
+    assert len(out) == 2
+    assert set(out["balance_row"]) == {"Total Transformation"}
+    assert out["value"].abs().sum() == 100.0
+
+
 def test_leap_balance_activity_value_mode_positive_only() -> None:
     cfg = workflow.make_proxy_config(
         process_key="test",

@@ -64,6 +64,11 @@ class BalanceExportSheet:
     units: str
 
 
+BALANCE_LABEL_ALIASES = {
+    "total transformation sector": "total transformation",
+}
+
+
 def normalize_balance_scenario_code(scenario: str) -> str:
     """Return the balance-export filename scenario token."""
     text = str(scenario).strip()
@@ -74,7 +79,8 @@ def normalize_balance_scenario_code(scenario: str) -> str:
 
 def normalize_balance_label(value: object) -> str:
     """Return a compact lowercase key for LEAP balance row/fuel matching."""
-    return " ".join(str(value or "").strip().lower().split())
+    normalized = " ".join(str(value or "").strip().lower().split())
+    return BALANCE_LABEL_ALIASES.get(normalized, normalized)
 
 
 def inspect_balance_export_detail(
