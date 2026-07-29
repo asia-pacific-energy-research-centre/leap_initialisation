@@ -880,6 +880,15 @@ _PRESET_BASELINE_SEED = {
     # power transformation modules (Electricity interim, CHP interim, Heat plant interim).
     "RUN_ELECTRICITY_HEAT_INTERIM": True,  # overrides config default
 
+    # --- Final seed post-processing ---
+    # Opt-in template-backed policy overrides for variables the normal module
+    # producers do not own (for example Maximum Availability). Rules select
+    # exact/partial branch paths and variables, then set an explicit Expression.
+    "APPLY_BASELINE_SEED_POSTPROCESS_RULES": False,  # overrides config default
+    "BASELINE_SEED_POSTPROCESS_RULES_PATH": (
+        REPO_ROOT / "config" / "baseline_seed_postprocess_rules.json"
+    ),
+
     # --- Demand source ---
     # When True, use ESTO/ninth aggregated demand (aggregated_demand_workflow)
     # instead of LEAP balance exports. Stale note removed 2026-07-23 (presets
@@ -996,6 +1005,10 @@ _PRESET_PATCH_BASELINE_SEEDS = {
     # (docs/prompts/supply_reconciliation_presets_scoped_review.md, finding 3).
     "CAPACITY_UNMET_PASS_MODE": "baseline_seed",  # overrides config default
     "OTHER_LOSS_OWN_USE_PROXY_STAGE": "first",  # overrides config default
+    "APPLY_BASELINE_SEED_POSTPROCESS_RULES": False,  # full seed writer only
+    "BASELINE_SEED_POSTPROCESS_RULES_PATH": (
+        REPO_ROOT / "config" / "baseline_seed_postprocess_rules.json"
+    ),
     # Module name(s) from patch_baseline_seeds.MODULE_REGISTRY.  Accepts a single
     # string or a list to patch multiple modules in sequence, e.g.:
     #   "oil_refineries" | ["aggregated_demand", "power_interim"]
@@ -1023,6 +1036,10 @@ _PRESET_RESULTS_UPDATE = {
     "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT": False,  # overrides config default
     # Set True when the full power model is not ready.
     "RUN_ELECTRICITY_HEAT_INTERIM": False,  # overrides config default
+    "APPLY_BASELINE_SEED_POSTPROCESS_RULES": False,  # baseline-seed preset only
+    "BASELINE_SEED_POSTPROCESS_RULES_PATH": (
+        REPO_ROOT / "config" / "baseline_seed_postprocess_rules.json"
+    ),
 
     # --- Demand sector exclusions ---
     # Optional list of 9th-edition sector or sub1sector codes to omit from the

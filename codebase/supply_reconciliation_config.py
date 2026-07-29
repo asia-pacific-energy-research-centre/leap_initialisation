@@ -237,6 +237,15 @@ LEAP_IMPORT_WARNING_PRINT_LIMIT = 20
 # PRESET-CONTROLLED DEFAULT: both active presets replace this value.
 RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT = False
 
+# Optional final baseline-seed policy layer. When enabled, canonical rows from
+# the economy's LEAP export template can be inserted or replaced according to
+# the narrow rules in the JSON file. Keep disabled unless the active notebook
+# preset deliberately opts in.
+APPLY_BASELINE_SEED_POSTPROCESS_RULES = False
+BASELINE_SEED_POSTPROCESS_RULES_PATH = (
+    REPO_ROOT / "config" / "baseline_seed_postprocess_rules.json"
+)
+
 # All LEAP balance exports must use at least Level 2 detail so module branch
 # rows (e.g. 'Oil Refining/Oil Refining', hydrogen process rows) are visible.
 # The readiness check rejects flat Level 1 exports for every economy; see

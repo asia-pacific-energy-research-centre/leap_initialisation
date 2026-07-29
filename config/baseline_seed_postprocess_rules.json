@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "rule_id": "real_template_oil_refining_maximum_availability_100",
+      "enabled": true,
+      "economies": [
+        "01_AUS",
+        "02_BD",
+        "05_PRC",
+        "10_MAS",
+        "11_MEX",
+        "12_NZ",
+        "13_PNG",
+        "15_PHL",
+        "19_THA",
+        "20_USA",
+        "21_VN"
+      ],
+      "branch_path_equals": "Transformation\\Oil Refining\\Processes\\Oil Refining",
+      "variable_equals": "Maximum Availability",
+      "scenarios": [
+        "Target"
+      ],
+      "template_value_not_equal_to": 100,
+      "include_blank_template_values": false,
+      "replacement_expression": "100",
+      "require_match": false
+    }
+  ]
+}

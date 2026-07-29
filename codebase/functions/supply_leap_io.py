@@ -56,6 +56,7 @@ from codebase.mappings.canonical_mapping import (
     load_sheet_map,
 )
 from codebase.functions import supply_data_pipeline, leap_api, patch_baseline_seeds
+from codebase.functions import baseline_seed_postprocess
 from codebase.functions.supply_export_rows import coerce_value_by_year
 from codebase.functions.transformation_record_builder import _is_excluded_transformation_record
 from codebase.functions.baseline_seed_validation import (
@@ -68,6 +69,7 @@ from codebase.functions.baseline_seed_validation import (
     complete_canonical_share_groups,
     drop_zero_only_optional_unmatched_rows,
     filter_actionable_findings,
+    load_template_rows,
     prepare_seed_rows_for_write,
 )
 from codebase import (
@@ -1771,6 +1773,13 @@ def write_per_economy_combined_workbooks(
     blocking_findings_are_warnings = bool(
         getattr(workflow_cfg, "BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS", False)
     )
+    postprocess_enabled = bool(APPLY_BASELINE_SEED_POSTPROCESS_RULES)
+    postprocess_config_path = _resolve(BASELINE_SEED_POSTPROCESS_RULES_PATH)
+    postprocess_rules = (
+        baseline_seed_postprocess.load_postprocess_rules(postprocess_config_path)
+        if postprocess_enabled
+        else []
+    )
 
     # Each economy is its own LEAP area, so its template, ID lookups, and
     # reference rows are resolved per economy inside the loop below. An explicit
@@ -1983,6 +1992,29 @@ def write_per_economy_combined_workbooks(
             diagnostics_dir / f"{diagnostic_stem}_documented_exclusions.csv",
             index=False,
         )
+
+        if postprocess_enabled:
+            template_rows = (
+                reference_df
+                if reference_df is not None and not reference_df.empty
+                else load_template_rows(id_lookup_resolved)
+            )
+            combined, postprocess_audit = baseline_seed_postprocess.apply_postprocess_rules(
+                combined,
+                template_rows,
+                postprocess_rules,
+                economy=econ_token,
+                config_path=postprocess_config_path,
+            )
+            postprocess_audit_path = (
+                diagnostics_dir / f"{diagnostic_stem}_postprocess_overrides.csv"
+            )
+            postprocess_audit.to_csv(postprocess_audit_path, index=False)
+            print(
+                f"[INFO] Baseline-seed post-processing applied "
+                f"{len(postprocess_audit)} override(s) for {econ_token}; "
+                f"audit={postprocess_audit_path}"
+            )
 
         if enforce_validation:
             present_scenarios = sorted({

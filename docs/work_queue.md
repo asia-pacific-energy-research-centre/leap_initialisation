@@ -10,6 +10,21 @@
 > (`D-04` full-model-export retirement, `D-05` template census, `D-06`
 > Phase 2). Verify against code before acting on a number here.
 
+## [23] Opt-in final baseline-seed expression overrides
+
+**Status: completed 2026-07-29.**
+
+The final seed writer can now insert or replace narrowly selected variables
+that normal producers do not own. The baseline-seed preset points to
+`config/baseline_seed_postprocess_rules.json` and keeps the feature disabled
+unless explicitly activated. Rules can constrain economy, exact branch path,
+branch-path substrings, variable and scenario; optionally trigger only when a
+populated canonical-template value differs from an expected value; and write an
+explicit LEAP expression. Every change is template-backed, passes through final
+seed validation, and is recorded in a per-economy CSV audit. Results-update and
+patch presets explicitly disable the feature to prevent notebook state leakage.
+See [baseline_seed_postprocess_rules.md](baseline_seed_postprocess_rules.md).
+
 ## [22] Three-batch real-template baseline-seed run
 
 **Status: execution prompt ready; production run pending.**
