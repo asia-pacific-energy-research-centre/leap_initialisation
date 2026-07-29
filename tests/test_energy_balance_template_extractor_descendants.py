@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from codebase.utilities import energy_balance_template_extractor as extractor_module
 from codebase.utilities.energy_balance_template_extractor import TemplateBalanceExtractor
 
 
@@ -245,3 +246,64 @@ def test_load_mappings_reports_non_subtotal_many_to_many_rows(tmp_path: Path) ->
     assert set(diagnostics["_diagnostic_issue"]) == {"non_subtotal_many_to_many_mapping"}
     assert set(diagnostics["_diagnostic_sheet"]) == {"leap_combined_esto"}
     assert set(diagnostics["legacy_many_to_many_is_ok"]) == {True}
+
+
+def test_load_mappings_warns_and_continues_for_unapproved_subtotal_mismatch(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    workbook = tmp_path / "mapping_fixture.xlsx"
+    codebook = pd.DataFrame(columns=["name", "ninth_label", "ninth_column", "esto_label", "esto_column"])
+    esto_leap = pd.DataFrame(columns=["category", "leap_name", "original_label"])
+    esto = pd.DataFrame(columns=["leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product"])
+    ninth = pd.DataFrame(
+        [
+            {
+                "leap_sector_name_full_path": "Transport non road/Freight non road/Rail",
+                "raw_leap_fuel_name": "Hydrogen",
+                "ninth_sector": "15_03_rail",
+                "ninth_fuel": "16_x_hydrogen",
+                "leap_is_subtotal": False,
+                "ninth_pair_is_subtotal": True,
+                "subtotal_mismatch_is_ok": False,
+            }
+        ]
+    )
+
+    with pd.ExcelWriter(workbook) as writer:
+        codebook.to_excel(writer, sheet_name="code_to_name", index=False)
+        esto_leap.to_excel(writer, sheet_name="ESTO_LEAP_names", index=False)
+        esto.to_excel(writer, sheet_name="leap_combined_esto", index=False)
+        ninth.to_excel(writer, sheet_name="leap_combined_ninth", index=False)
+
+    diagnostic_dir = tmp_path / "checks"
+    monkeypatch.setattr(extractor_module, "SUBTOTAL_FLAG_DIAGNOSTIC_DIR", diagnostic_dir)
+    monkeypatch.setattr(extractor_module, "load_subtotal_mismatch_exception_sets", lambda: {})
+    monkeypatch.setattr(extractor_module, "load_leap_display_names", lambda: pd.DataFrame())
+
+    extractor = TemplateBalanceExtractor(
+        template_sheet="EBal|2060",
+        mapping_pairs_path=workbook,
+        codebook_path=workbook,
+        explicit_pair_mappings_only=True,
+    )
+
+    extractor.load_mappings()
+
+    warning_path = diagnostic_dir / "subtotal_flag_mismatch_warnings_leap_combined_ninth.csv"
+    warning_rows = pd.read_csv(warning_path)
+    output = capsys.readouterr().out
+
+    assert len(warning_rows) == 1
+    assert warning_rows.loc[0, "raw_leap_fuel_name"] == "Hydrogen"
+    assert "mapping load will continue" in output
+    assert (
+        extractor._balance_full_path_pair_to_ninth[
+            (
+                extractor._canonicalize_path_key("Transport non road/Freight non road/Rail"),
+                extractor._canonicalize_label("Hydrogen"),
+            )
+        ][0]["ninth_fuel"]
+        == "16_x_hydrogen"
+    )

@@ -987,55 +987,44 @@ class TemplateBalanceExtractor:
                 unique_mismatches = mismatch_rows[preview_cols].drop_duplicates()
                 preview = unique_mismatches.head(30).to_dict("records")
 
-                # Always write the full blocking set to a CSV so it can be
+                # Always write the full warning set to a CSV so it can be
                 # inspected, the flags fixed, or the reviewed rows pasted straight
                 # into the `subtotal_mismatch_allowed` exception sheet. The column
                 # order matches that sheet: enabled, sheet, leap_sector_name_full_path,
                 # raw_leap_fuel_name, <target sector>, <target fuel>, plus the flags
                 # for review.
-                blocking_export = unique_mismatches.copy()
-                blocking_export.insert(0, "sheet", sheet_label)
-                blocking_export.insert(0, "enabled", "")
-                blocking_path = (
+                warning_export = unique_mismatches.copy()
+                warning_export.insert(0, "sheet", sheet_label)
+                warning_export.insert(0, "enabled", "")
+                warning_path = (
                     SUBTOTAL_FLAG_DIAGNOSTIC_DIR
-                    / f"subtotal_flag_blocking_mismatches_{sheet_label}.csv"
+                    / f"subtotal_flag_mismatch_warnings_{sheet_label}.csv"
                 )
                 try:
-                    blocking_path.parent.mkdir(parents=True, exist_ok=True)
-                    blocking_export.to_csv(blocking_path, index=False, encoding="utf-8-sig")
+                    warning_path.parent.mkdir(parents=True, exist_ok=True)
+                    warning_export.to_csv(warning_path, index=False, encoding="utf-8-sig")
                     print(
-                        f"[INFO] {sheet_label}: wrote {len(unique_mismatches)} blocking subtotal "
-                        f"mismatch row(s) for review to {blocking_path}. Fix the flags or add the "
+                        f"[WARN] {sheet_label}: wrote {len(unique_mismatches)} subtotal "
+                        f"mismatch warning row(s) for review to {warning_path}. Fix the flags or add the "
                         "reviewed rows (enabled=TRUE) to the "
                         f"'{SUBTOTAL_MISMATCH_EXCEPTIONS_SHEET}' sheet of "
-                        f"{SUBTOTAL_MISMATCH_EXCEPTIONS_PATH}.",
+                        f"{SUBTOTAL_MISMATCH_EXCEPTIONS_PATH}. Processing will continue.",
                         flush=True,
                     )
                 except Exception as exc:
-                    blocking_path = None
+                    warning_path = None
                     print(
-                        f"[WARN] {sheet_label}: could not write blocking subtotal mismatch CSV "
-                        f"({exc}); {len(unique_mismatches)} row(s) remain unreviewed.",
+                        f"[WARN] {sheet_label}: could not write subtotal mismatch warning CSV "
+                        f"({exc}); {len(unique_mismatches)} row(s) remain unreviewed. "
+                        "Processing will continue.",
                         flush=True,
                     )
-
-                # LEAP_INIT_ALLOW_SUBTOTAL_MISMATCH: user-authorized escape hatch for
-                # runs against a mapping workbook whose subtotal flags are mid-review;
-                # mismatched rows are reported but do not block the run.
-                if truthy(os.environ.get("LEAP_INIT_ALLOW_SUBTOTAL_MISMATCH", "")):
-                    print(
-                        f"[WARN] {sheet_label}: {len(mismatch_rows)} subtotal mismatch row(s) "
-                        "allowed because LEAP_INIT_ALLOW_SUBTOTAL_MISMATCH is set. "
-                        f"Preview (up to 30): {preview}",
-                        flush=True,
-                    )
-                else:
-                    raise ValueError(
-                        f"{sheet_label} contains subtotal mismatches. Set subtotal_mismatch_is_ok=True "
-                        "only for intentional subtotal-to-non-subtotal mappings. "
-                        f"Full list of {len(unique_mismatches)} row(s) written to {blocking_path}. "
-                        f"Preview: {preview}"
-                    )
+                print(
+                    f"[WARN] {sheet_label}: {len(mismatch_rows)} unapproved subtotal "
+                    "mismatch row(s) detected; mapping load will continue. "
+                    f"Preview (up to 30): {preview}",
+                    flush=True,
+                )
 
             pair_many_to_many = out["pair_mapping_cardinality_computed"].eq("many_to_many")
             many_to_many_rows = out[

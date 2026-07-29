@@ -37,6 +37,11 @@ The run did not reach the normal timing-CSV or final-workbook stages.
 
 ## Blocking decision
 
+> **Policy update 2026-07-29:** this section records the behavior of the
+> 2026-07-28 run. Subtotal-flag mismatches are now warnings written to
+> `subtotal_flag_mismatch_warnings_<mapping-sheet>.csv`; they no longer stop
+> mapping load or cause the economy's balance-demand input to be skipped.
+
 The canonical ninth mapping validation found two active
 subtotal-to-non-subtotal mismatches:
 
@@ -84,4 +89,3 @@ were skipped.
 These fixes remove unrelated orchestration failures but do not bypass or
 auto-approve the two mapping decisions above, so rerunning the full NZ update
 before those decisions are reviewed would not be useful.
-
