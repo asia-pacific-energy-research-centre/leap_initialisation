@@ -83,6 +83,55 @@ def _parent_row() -> pd.Series:
     )
 
 
+def test_balance_path_alias_maps_from_stocks_to_stock_changes() -> None:
+    extractor = _make_extractor(explicit_pair_mappings_only=True)
+
+    assert extractor._canonicalize_path_key("From Stocks") == (
+        extractor._canonicalize_path_key("Stock Changes")
+    )
+    assert extractor._canonicalize_path_key("Statistical Differences") == (
+        "statistical differences"
+    )
+
+
+def test_from_stocks_balance_row_uses_stock_changes_explicit_pair() -> None:
+    extractor = _make_extractor(explicit_pair_mappings_only=True)
+    stock_key = extractor._canonicalize_path_key("Stock Changes")
+    fuel_key = extractor._canonicalize_label("Coal")
+    extractor._balance_full_path_pair_to_esto = {
+        (stock_key, fuel_key): [
+            {
+                "esto_flow": "06 Stock changes",
+                "esto_product": "01 Coal",
+                "candidate_leap_sector_name_full_path": "Stock Changes",
+                "candidate_leap_fuel_name": "Coal",
+                "candidate_rule": "",
+                "pair_mapping_cardinality": "one_to_one",
+            }
+        ]
+    }
+    extractor._balance_full_path_pair_to_ninth = {}
+    extractor._balance_present_source_keys_by_sheet = {
+        "Balance": {(stock_key, fuel_key)}
+    }
+    row = pd.Series(
+        {
+            "source_sheet": "Balance",
+            "leap_sector_name": "From Stocks",
+            "leap_sector_name_full_path": "From Stocks",
+            "leap_sector_name_original": "From Stocks",
+            "leap_fuel_name": "Coal",
+        }
+    )
+
+    records = extractor._map_row_records(row)
+
+    assert len(records) == 1
+    assert records[0]["mapping_status"] == "partial_full_path_pair"
+    assert records[0]["esto_flow"] == "06 Stock changes"
+    assert records[0]["esto_product"] == "01 Coal"
+
+
 def test_non_explicit_mode_uses_absent_child_descendant_mapping_by_default() -> None:
     extractor = _make_extractor(explicit_pair_mappings_only=False, present_child=False)
 

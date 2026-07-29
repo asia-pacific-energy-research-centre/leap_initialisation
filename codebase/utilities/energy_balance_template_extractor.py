@@ -412,6 +412,7 @@ class TemplateBalanceExtractor:
         self._flow_esto_cache: dict[str, list[str]] = {}
         self._fuel_esto_cache: dict[str, list[str]] = {}
         self._alias_map = {
+            "from stocks": "stock changes",
             "total primary supply": "total primary energy supply",
             "total final energy demand": "total final energy consumption",
             "total transformation": "total transformation sector",
