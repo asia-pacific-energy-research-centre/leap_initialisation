@@ -438,6 +438,46 @@ def test_direct_reference_workbook_uses_metadata_without_target(
     assert calls["tgt_workbook_path"] is None
 
 
+def test_direct_workbook_metadata_accepts_thousand_petajoule(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    direct_path = tmp_path / "2022.xlsx"
+    _write_balance_workbook(
+        direct_path,
+        scenario="Target",
+        units="Thousand Petajoule",
+    )
+
+    monkeypatch.setattr(
+        diagnostics,
+        "require_level2_balance_export_detail",
+        lambda paths: list(paths),
+    )
+
+    def stop_after_preflight(
+        *,
+        codebook_path: Path,
+        sheet_map_path: Path,
+        exports_root: Path,
+    ):
+        raise RuntimeError("preflight passed")
+
+    monkeypatch.setattr(
+        diagnostics,
+        "_temporary_balance_runtime_paths",
+        stop_after_preflight,
+    )
+
+    with pytest.raises(RuntimeError, match="preflight passed"):
+        diagnostics.run_economy_balance_diagnostic(
+            economy="01_AUS",
+            years=None,
+            scenarios=None,
+            workbook_path=direct_path,
+        )
+
+
 def test_direct_workbook_metadata_rejects_unsupported_units(tmp_path: Path) -> None:
     direct_path = tmp_path / "2022.xlsx"
     _write_balance_workbook(direct_path, units="Terajoule")

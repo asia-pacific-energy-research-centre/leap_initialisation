@@ -52,6 +52,13 @@ summary separately counts value mismatches, missing sides, unmapped rows,
 total-balance failures, direct comparisons, and aggregate/shared comparisons
 unsafe for a direct update.
 
+`codebase/balance_structure_review_workbook_workflow.mjs` can place one
+diagnostic result back into the source Energy Balance layout. When the source
+metadata reports `Thousand Petajoule`, it multiplies the displayed LEAP values
+by 1,000 and relabels the copied review sheet as `Petajoule`, keeping the LEAP,
+error, and expected-source sheets on the same PJ basis. Source files are never
+modified.
+
 ### Governing balance-variable contract
 
 The diagnostic must not decide update eligibility by maintaining a list of
@@ -236,8 +243,10 @@ WORKBOOK_PATHS_BY_ECONOMY = {
 
 For an explicit workbook, scenario, year, and units are read from each sheet's
 metadata. The diagnostic does not require or fabricate the other scenario.
-Every sheet must report Petajoule and the workbook must pass Level 2+ detail
-inspection before source tables are loaded.
+Sheets may report `Petajoule` or `Thousand Petajoule`; recognized thousand-PJ
+values are converted to PJ by the shared LEAP balance extractor before
+comparison. The workbook must pass Level 2+ detail inspection before source
+tables are loaded.
 
 The normal filename and Level 2 detail rules in
 `data/leap balances exports/README.md` still apply.

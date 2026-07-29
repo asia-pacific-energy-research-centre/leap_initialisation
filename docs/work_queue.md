@@ -45,6 +45,10 @@ the configured `10.01.11 Oil refineries` auxiliary-own-use flow to the
 consumption. The corrected 195-row run has 93 mismatches, 65 matches, 37
 unavailable rows, and 58 material differences.
 
+The direct-workbook diagnostic and review builder also accept
+`Thousand Petajoule` metadata. Extraction and every displayed review sheet are
+normalized to PJ, while the source workbook remains unchanged.
+
 Before the next AUS rerun, the supply exporter now emits native
 `Stock Changes\Primary|Secondary\...` and
 `Statistical Differences\Primary|Secondary\...` rows directly from the balance

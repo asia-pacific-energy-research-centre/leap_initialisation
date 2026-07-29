@@ -342,10 +342,13 @@ def _read_direct_workbook_scope(
         workbook.close()
 
     units = sorted({unit.lower() for _, _, unit in metadata_rows})
-    if units != ["petajoule"]:
+    supported_units = {"petajoule", "thousand petajoule"}
+    unsupported_units = sorted(set(units) - supported_units)
+    if unsupported_units:
         raise ValueError(
-            "Direct LEAP balance diagnostics currently require Petajoule workbook "
-            f"metadata; found {units} in {path}."
+            "Direct LEAP balance diagnostics currently require Petajoule or "
+            "Thousand Petajoule workbook metadata; "
+            f"found unsupported units {unsupported_units} in {path}."
         )
     scenarios = _normalize_scenarios([scenario for scenario, _, _ in metadata_rows])
     years = _validate_years([year for _, year, _ in metadata_rows], base_year=base_year)

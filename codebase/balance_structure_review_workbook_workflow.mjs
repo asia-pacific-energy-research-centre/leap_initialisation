@@ -1,27 +1,29 @@
 // Build a balance-shaped diagnostic workbook from a LEAP Energy Balance export
-// and the baseline-seed source-comparison diagnostics.
+// and the baseline-seed source-comparison diagnostics. Recognized thousand-PJ
+// source values are normalized to PJ so every displayed comparison is aligned.
 
 import fs from "node:fs/promises";
 import path from "node:path";
 import { FileBlob, SpreadsheetFile, Workbook } from "@oai/artifact-tool";
 
 const MAIN_REPO_ROOT = "C:/Users/Work/github/leap_initialisation";
-const WORKTREE_ROOT =
-  `${MAIN_REPO_ROOT}/.claude/worktrees/baseline-seed-export-diagnostics`;
-const ECONOMY = "01_AUS";
-const SCENARIO = "Reference";
-const YEAR = 2022;
+const ECONOMY = process.env.BALANCE_REVIEW_ECONOMY ?? "01_AUS";
 const UNITS = "Petajoule";
-const SOURCE_WORKBOOK = `${MAIN_REPO_ROOT}/data/leap balances exports - testing/${ECONOMY}/${YEAR}.xlsx`;
+const SOURCE_WORKBOOK =
+  process.env.BALANCE_REVIEW_SOURCE_WORKBOOK ??
+  `${MAIN_REPO_ROOT}/data/leap balances exports - testing/${ECONOMY}/2022.xlsx`;
 const DIAGNOSTICS_DIRECTORY =
-  `${WORKTREE_ROOT}/outputs/leap_exports/supply_reconciliation/supporting_files/` +
-  "baseline_seed_balance_diagnostics/01_AUS_2022_POST_EFF_FIX_20260728";
-const OUTPUT_WORKBOOK =
+  process.env.BALANCE_REVIEW_DIAGNOSTICS_DIRECTORY ??
   `${MAIN_REPO_ROOT}/outputs/leap_exports/supply_reconciliation/supporting_files/` +
-  "baseline_seed_balance_diagnostics/01_AUS_2022_POST_EFF_FIX_20260728/" +
-  "aus_2022_balance_structure_review_v2.xlsx";
+    "baseline_seed_balance_diagnostics/01_AUS_2022_TGT_THOUSAND_PJ_20260729";
+const OUTPUT_WORKBOOK =
+  process.env.BALANCE_REVIEW_OUTPUT_WORKBOOK ??
+  `${MAIN_REPO_ROOT}/outputs/leap_exports/supply_reconciliation/supporting_files/` +
+    "baseline_seed_balance_diagnostics/01_AUS_2022_TGT_THOUSAND_PJ_20260729/" +
+    "aus_2022_target_balance_structure_review.xlsx";
 const TEMP_DIRECTORY =
-  `${WORKTREE_ROOT}/.tmp/aus_balance_review`;
+  process.env.BALANCE_REVIEW_TEMP_DIRECTORY ??
+  `${MAIN_REPO_ROOT}/.tmp/aus_target_balance_review`;
 
 const SOURCE_SHEET_NAME = "Energy Balance";
 const LEAP_SHEET_NAME = "LEAP Values";
@@ -90,6 +92,65 @@ async function readCsvRows(csvPath, sheetName) {
   const csvWorkbook = await Workbook.fromCSV(text, { sheetName });
   const values = csvWorkbook.worksheets.getItem(sheetName).getUsedRange().values;
   return rowsFromValues(values);
+}
+
+async function readOptionalCsvRows(csvPath, sheetName) {
+  try {
+    return await readCsvRows(csvPath, sheetName);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+}
+
+function parseSourceMetadata(metadata) {
+  const scenario = String(metadata).match(/Scenario:\s*([^,]+)/i)?.[1]?.trim();
+  const yearText = String(metadata).match(/Year:\s*(\d{4})/i)?.[1];
+  const units = String(metadata).match(/Units:\s*(.+)$/i)?.[1]?.trim().replace(/\.$/, "");
+  if (!scenario || !yearText || !units) {
+    throw new Error(
+      `Source metadata must declare Scenario, Year, and Units: ${metadata}`,
+    );
+  }
+  return { scenario, year: Number(yearText), units };
+}
+
+function sourceUnitToPjMultiplier(units) {
+  const normalized = String(units).trim().toLowerCase();
+  if (normalized === "petajoule") {
+    return 1;
+  }
+  if (normalized === "thousand petajoule") {
+    return 1000;
+  }
+  throw new Error(
+    `Balance review supports Petajoule or Thousand Petajoule source units; found ${units}`,
+  );
+}
+
+function convertSourceSheetToPetajoule(
+  sourceSheet,
+  sourceValues,
+  sourceRows,
+  sourceColumns,
+  unitMultiplier,
+) {
+  if (unitMultiplier === 1) {
+    return;
+  }
+  const convertedValues = sourceValues.map((row, rowIndex) =>
+    row.map((value, columnIndex) => {
+      if (rowIndex < 3 || columnIndex < 1 || typeof value !== "number") {
+        return value;
+      }
+      return value * unitMultiplier;
+    }),
+  );
+  sourceSheet
+    .getRangeByIndexes(0, 0, sourceRows, sourceColumns)
+    .values = convertedValues;
 }
 
 function makeStructureResolver(sourceValues) {
@@ -267,27 +328,38 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
   const workbook = await SpreadsheetFile.importXlsx(sourceBlob);
   const sourceSheet = workbook.worksheets.getItem(SOURCE_SHEET_NAME);
   const sourceUsedRange = sourceSheet.getUsedRange();
-  const sourceValues = sourceUsedRange.values;
+  let sourceValues = sourceUsedRange.values;
   const sourceRows = sourceValues.length;
   const sourceColumns = sourceValues[0].length;
 
   const title = String(sourceValues[0][0] ?? "");
   const metadata = String(sourceValues[1][0] ?? "");
-  if (!/AUS/i.test(title)) {
-    throw new Error(`Source area metadata does not identify AUS: ${title}`);
+  const sourceMetadata = parseSourceMetadata(metadata);
+  const expectedAreaToken = ECONOMY.split("_").at(-1);
+  if (!new RegExp(expectedAreaToken, "i").test(title)) {
+    throw new Error(
+      `Source area metadata does not identify ${ECONOMY}: ${title}`,
+    );
   }
-  if (!metadata.includes(`Scenario: ${SCENARIO}`)) {
-    throw new Error(`Source scenario metadata is not ${SCENARIO}: ${metadata}`);
+  if (sourceRows < 4 || sourceColumns < 2) {
+    throw new Error(
+      `Expected a populated balance structure, found ${sourceRows}x${sourceColumns}`,
+    );
   }
-  if (!metadata.includes(`Year: ${YEAR}`)) {
-    throw new Error(`Source year metadata is not ${YEAR}: ${metadata}`);
-  }
-  if (!metadata.includes(`Units: ${UNITS}`)) {
-    throw new Error(`Source units metadata is not ${UNITS}: ${metadata}`);
-  }
-  if (sourceRows !== 138 || sourceColumns !== 39) {
-    throw new Error(`Expected a 138x39 balance structure, found ${sourceRows}x${sourceColumns}`);
-  }
+  const sourceUnitMultiplier = sourceUnitToPjMultiplier(sourceMetadata.units);
+  convertSourceSheetToPetajoule(
+    sourceSheet,
+    sourceValues,
+    sourceRows,
+    sourceColumns,
+    sourceUnitMultiplier,
+  );
+  sourceSheet.getRange("A2").values = [[
+    metadata.replace(/Units:\s*(.+)$/i, `Units: ${UNITS}`),
+  ]];
+  sourceValues = sourceSheet
+    .getRangeByIndexes(0, 0, sourceRows, sourceColumns)
+    .values;
 
   const differences = await readCsvRows(
     path.join(diagnosticsDirectory, "leap_balance_source_differences.csv"),
@@ -297,14 +369,14 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     path.join(diagnosticsDirectory, "leap_balance_source_review.csv"),
     "Review",
   );
-  const mappingIssues = await readCsvRows(
+  const mappingIssues = await readOptionalCsvRows(
     path.join(diagnosticsDirectory, "leap_balance_mapping_issues.csv"),
     "MappingIssues",
   );
 
-  if (differences.length !== 195 || reviews.length !== 195) {
+  if (differences.length === 0 || differences.length !== reviews.length) {
     throw new Error(
-      `Expected 195 comparison rows, found ${differences.length} differences and ${reviews.length} review rows`,
+      `Expected matching non-empty difference/review rows; found ${differences.length} differences and ${reviews.length} review rows`,
     );
   }
   const comparisonIdentityFields = [
@@ -327,22 +399,20 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
       }
     }
   }
+  const staleDiagnosticRows = reviews.filter(
+    (review) =>
+      String(review.economy ?? "") !== ECONOMY ||
+      String(review.scenario ?? "").toLowerCase() !==
+        sourceMetadata.scenario.toLowerCase() ||
+      Number(review.year) !== sourceMetadata.year,
+  );
+  if (staleDiagnosticRows.length > 0) {
+    throw new Error(
+      `${staleDiagnosticRows.length} diagnostic rows do not match ${ECONOMY} ${sourceMetadata.scenario} ${sourceMetadata.year}`,
+    );
+  }
   const statusCounts = countBy(reviews, "status");
   const issueCounts = countBy(mappingIssues, "reason");
-  const expectedCounts = {
-    reference_unavailable: 37,
-    missing_esto_pair: 149,
-    total_balance_mapping_check: 3,
-  };
-  for (const [key, expected] of Object.entries(expectedCounts)) {
-    const actual = statusCounts[key] ?? issueCounts[key] ?? 0;
-    if (actual !== expected) {
-      throw new Error(`Expected ${expected} ${key} rows, found ${actual}`);
-    }
-  }
-  if (mappingIssues.length !== 152) {
-    throw new Error(`Expected 152 mapping/check rows, found ${mappingIssues.length}`);
-  }
 
   sourceSheet.name = LEAP_SHEET_NAME;
   sourceSheet.freezePanes.freezeRows(3);
@@ -373,17 +443,17 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
   setDiagnosticTitle(
     errorSheet,
     `LEAP - Source Error for Area "${ECONOMY}"`,
-    `Scenario: ${SCENARIO}, Year: ${YEAR}, Units: ${UNITS} | Red = LEAP minus source; yellow blank = no safe comparator`,
+    `Scenario: ${sourceMetadata.scenario}, Year: ${sourceMetadata.year}, Units: ${UNITS} | Red = LEAP minus source; yellow blank = no safe comparator`,
   );
   setDiagnosticTitle(
     correctSheet,
     `Correct Source Values for Area "${ECONOMY}"`,
-    `Scenario: ${SCENARIO}, Year: ${YEAR}, Units: ${UNITS} | Blue = source value; yellow blank = no safe comparator`,
+    `Scenario: ${sourceMetadata.scenario}, Year: ${sourceMetadata.year}, Units: ${UNITS} | Blue = source value; yellow blank = no safe comparator`,
   );
   setDiagnosticTitle(
     fullExpectedSheet,
     `Full Expected Source for Area "${ECONOMY}"`,
-    `Scenario: ${SCENARIO}, Year: ${YEAR}, Units: ${UNITS} | Blue = source-backed expected value; yellow = known comparator unavailable; grey = structurally absent or not comparable`,
+    `Scenario: ${sourceMetadata.scenario}, Year: ${sourceMetadata.year}, Units: ${UNITS} | Blue = source-backed expected value; yellow = known comparator unavailable; grey = structurally absent or not comparable`,
   );
 
   const resolver = makeStructureResolver(sourceValues);
@@ -511,8 +581,8 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
       makeMissingRecord({
         category: isBoundary ? "aggregate_boundary_error" : "missing_esto_pair",
         economy: issue.economy || ECONOMY,
-        scenario: issue.scenario || SCENARIO,
-        year: issue.year || YEAR,
+        scenario: issue.scenario || sourceMetadata.scenario,
+        year: issue.year || sourceMetadata.year,
         rowLabel: labels.rowLabel,
         fuelLabel: labels.fuelLabel,
         leapValue: issue.value_petajoule,
@@ -549,8 +619,15 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
       `Comparison audit lost rows: accounted for ${accountedComparisonRows} of ${reviews.length}`,
     );
   }
-  if (missingRecords.length !== 37 + 24 + 152) {
-    throw new Error(`Expected 213 missing/audit records, found ${missingRecords.length}`);
+  const expectedMissingRecordCount =
+    comparisonStateCounts.reference_unavailable +
+    comparisonStateCounts.missing_visible_structure +
+    comparisonStateCounts.ambiguous_structure_resolution +
+    mappingIssues.length;
+  if (missingRecords.length !== expectedMissingRecordCount) {
+    throw new Error(
+      `Missing/audit reconciliation expected ${expectedMissingRecordCount} rows, found ${missingRecords.length}`,
+    );
   }
 
   const missingHeaders = [
@@ -571,7 +648,9 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
   ];
   missingSheet.showGridLines = false;
   missingSheet.getRange("A1:N1").merge();
-  missingSheet.getRange("A1").values = [["AUS 2022 Balance Diagnostic - Missing and Unavailable Combinations"]];
+  missingSheet.getRange("A1").values = [[
+    `${ECONOMY} ${sourceMetadata.scenario} ${sourceMetadata.year} Balance Diagnostic - Missing and Unavailable Combinations`,
+  ]];
   missingSheet.getRange("A1:N1").format = {
     fill: HEADER_FILL,
     font: { bold: true, color: HEADER_FONT, size: 14 },
@@ -631,12 +710,15 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     missingSheet.getRange(`A${excelRow}:N${excelRow}`).format.fill =
       category === "aggregate_boundary_error" ? PALE_RED_FILL : YELLOW_FILL;
   }
-  const widths = [145, 80, 85, 55, 220, 160, 95, 150, 330, 110, 90, 105, 140, 300];
+  const widths = [
+    200, 90, 200, 65, 230, 170, 110, 190, 330, 120, 100, 120, 160, 300,
+  ];
   for (let column = 0; column < widths.length; column += 1) {
     missingSheet
       .getRangeByIndexes(0, column, lastDataRow, 1)
       .format.columnWidthPx = widths[column];
   }
+  missingSheet.getRange("A4:D8").format.rowHeightPx = 24;
   missingSheet.getRange(`A${headerRow}:N${headerRow}`).format.rowHeightPx = 36;
   missingSheet.freezePanes.freezeRows(headerRow);
 
@@ -664,7 +746,9 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     MISSING_SHEET_NAME,
   ]) {
     const range =
-      sheetName === MISSING_SHEET_NAME ? `A1:N${lastDataRow}` : "A1:AM138";
+      sheetName === MISSING_SHEET_NAME
+        ? `A1:N${lastDataRow}`
+        : `A1:${columnName(sourceColumns - 1)}${sourceRows}`;
     const rendered = await workbook.render({
       sheetName,
       range,
@@ -726,7 +810,14 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
   const result = {
     sourceWorkbook: sourceWorkbookPath,
     outputWorkbook: outputWorkbookPath,
-    metadata: { title, scenario: SCENARIO, year: YEAR, units: UNITS },
+    metadata: {
+      title,
+      scenario: sourceMetadata.scenario,
+      year: sourceMetadata.year,
+      sourceUnits: sourceMetadata.units,
+      outputUnits: UNITS,
+      sourceUnitMultiplier,
+    },
     sourceShape: { rows: sourceRows, columns: sourceColumns },
     statusCounts,
     issueCounts,
