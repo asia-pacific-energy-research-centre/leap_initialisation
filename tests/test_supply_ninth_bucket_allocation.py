@@ -180,6 +180,8 @@ def test_supply_quantity_flows_use_positive_magnitudes() -> None:
          "subfuels": "01_01_coking_coal", 2022: -3.0, 2023: -4.0},
         {"economy": "20_USA", "sectors": "06_stock_changes", "fuels": "01_coal",
          "subfuels": "01_01_coking_coal", 2022: -2.0, 2023: -1.0},
+        {"economy": "20_USA", "sectors": "11_statistical_discrepancy", "fuels": "01_coal",
+         "subfuels": "01_01_coking_coal", 2022: 2.5, 2023: -1.5},
     ])
     data = pd.concat([data, negative_rows], ignore_index=True)
     fuel = _fuel_config()["01.01 Coking coal"]
@@ -193,12 +195,24 @@ def test_supply_quantity_flows_use_positive_magnitudes() -> None:
     stock_changes = build_supply_value_by_year(
         data, [2022, 2023], "20_USA", fuel, "stock_changes", "06_stock_changes", 2022, 2023
     )
+    statistical_differences = build_supply_value_by_year(
+        data,
+        [2022, 2023],
+        "20_USA",
+        fuel,
+        "statistical_discrepancy",
+        "11_statistical_discrepancy",
+        2022,
+        2023,
+    )
 
     # Existing positive coking rows plus the negative rows above are summed,
-    # then supply quantities use magnitude; signed balance flows remain signed.
+    # then supply quantities use magnitude. Stock changes remain signed, while
+    # statistical differences use the opposite sign from the balance row.
     assert production == {2022: 3.0, 2023: 4.0}
     assert imports == {2022: 3.0, 2023: 4.0}
     assert stock_changes == {2022: -2.0, 2023: -1.0}
+    assert statistical_differences == {2022: -2.5, 2023: 1.5}
 
 
 #%%

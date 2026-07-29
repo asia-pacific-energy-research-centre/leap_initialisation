@@ -75,9 +75,11 @@ def test_build_supply_log_rows_creates_rows_from_tiny_esto_dataset(
 def test_build_supply_log_rows_records_nonzero_esto_stock_and_statistical_values(
     monkeypatch,
 ) -> None:
-    """Regression guard for the main goal: a nonzero ESTO stock-change or
-    statistical-discrepancy value must show up in Current Accounts output,
-    and must NOT be projected into Reference/Target (left at 0 there)."""
+    """ESTO balancing values must use their LEAP signs in Current Accounts.
+
+    Stock changes preserve the ESTO sign, statistical differences use the
+    opposite ESTO sign, and neither is projected into Reference/Target.
+    """
     esto_data = pd.DataFrame(
         {
             "economy": ["20_USA", "20_USA", "20_USA", "20_USA"],
@@ -125,13 +127,13 @@ def test_build_supply_log_rows_records_nonzero_esto_stock_and_statistical_values
         (row["Branch_Path"], row["Measure"], row["Scenario"]): row["Value"] for row in rows
     }
 
-    # Nonzero ESTO actuals land in Current Accounts, sign preserved.
+    # Stock changes preserve the ESTO sign; statistical differences invert it.
     assert by_key[("Stock Changes\\Primary\\Coal", "Stock Change", "Current Accounts")] == -1.5
     assert (
         by_key[
             ("Statistical Differences\\Primary\\Coal", "Statistical Differences", "Current Accounts")
         ]
-        == 0.75
+        == -0.75
     )
     # A zero ESTO actual still produces a Current Accounts row, just at 0.
     assert (
@@ -158,9 +160,7 @@ def test_build_supply_log_rows_records_nonzero_esto_stock_and_statistical_values
 def test_nonzero_esto_stock_and_statistical_values_survive_to_the_finished_export(
     monkeypatch,
 ) -> None:
-    """End-to-end guard: a nonzero ESTO stock-change/statistical-discrepancy
-    value must still be present, with its sign intact, in the pivoted export
-    the LEAP import file is built from -- not just in the raw log rows."""
+    """End-to-end guard for balancing-item signs in the pivoted LEAP export."""
     esto_data = pd.DataFrame(
         {
             "economy": ["20_USA", "20_USA"],
@@ -213,7 +213,7 @@ def test_nonzero_esto_stock_and_statistical_values_survive_to_the_finished_expor
         current_accounts[
             ("Statistical Differences\\Primary\\Coal", "Statistical Differences")
         ]
-        == 0.75
+        == -0.75
     )
 
 
@@ -282,6 +282,6 @@ def test_balance_adjustment_rows_are_created_without_template_branches(
         (
             "Statistical Differences\\Primary\\Coal",
             "Statistical Differences",
-            1.25,
+            -1.25,
         ),
     }
