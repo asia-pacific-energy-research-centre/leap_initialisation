@@ -602,6 +602,8 @@ def apply_explicit_sector_reassignments(
                 "rule_name": rule_name,
                 "dataset": "base_df",
                 "matched_rows": base_match_count,
+                "source_esto_flow": _clean_token(rule.get("source_esto_flow")),
+                "source_esto_product": _clean_token(rule.get("source_esto_product")),
                 "target_esto_flow": _clean_token(rule.get("target_esto_flow")),
                 "target_esto_product": _clean_token(rule.get("target_esto_product")),
                 "notes": notes,
@@ -635,6 +637,8 @@ def apply_explicit_sector_reassignments(
                 "rule_name": rule_name,
                 "dataset": "ninth_df",
                 "matched_rows": ninth_match_count,
+                "source_esto_flow": _clean_token(rule.get("source_esto_flow")),
+                "source_esto_product": _clean_token(rule.get("source_esto_product")),
                 "target_esto_flow": _clean_token(rule.get("target_esto_flow")),
                 "target_esto_product": _clean_token(rule.get("target_esto_product")),
                 "notes": notes,
@@ -1443,6 +1447,45 @@ def pull_projection_series_from_descendants(
     return pd.concat(parts, axis=1).sum(axis=1, min_count=1), selected_codes
 
 
+def _expand_esto_flow_code_selector(esto_flow: object) -> list[str]:
+    """Expand a maintained ESTO rollup label into its encoded component codes."""
+    selector_match = re.match(
+        r"^(\d+(?:\.\d+)*(?:-\d+(?:\.\d+)*)?(?:,\d+(?:\.\d+)*(?:-\d+(?:\.\d+)*)?)*)",
+        str(esto_flow or "").strip(),
+    )
+    if not selector_match:
+        return []
+
+    expanded: list[str] = []
+    for token in selector_match.group(1).split(","):
+        if "-" not in token:
+            expanded.append(token)
+            continue
+        start, end = token.split("-", maxsplit=1)
+        start_parts = start.split(".")
+        end_parts = end.split(".")
+        if len(start_parts) != len(end_parts) or start_parts[:-1] != end_parts[:-1]:
+            return []
+        try:
+            start_number = int(start_parts[-1])
+            end_number = int(end_parts[-1])
+        except ValueError:
+            return []
+        if end_number < start_number:
+            return []
+        width = max(len(start_parts[-1]), len(end_parts[-1]))
+        prefix = ".".join(start_parts[:-1])
+        expanded.extend(
+            (
+                f"{prefix}.{number:0{width}d}"
+                if prefix
+                else f"{number:0{width}d}"
+            )
+            for number in range(start_number, end_number + 1)
+        )
+    return list(dict.fromkeys(expanded))
+
+
 def pull_base_year_value(
     esto_df: pd.DataFrame,
     base_year: int,
@@ -1467,11 +1510,10 @@ def pull_base_year_value(
             working = working[working["__product_norm"] == eso_product.lower()]
         else:
             working = working[working["products"].astype(str).str.lower() == eso_product.lower()]
-    # If parent-flow exact match is unavailable, fallback to summing child flows under that parent code (e.g., 14.03.*).
+    # If an exact match is unavailable, use the component codes encoded by a
+    # maintained rollup label (for example 16.01-16.02 Buildings). Prefer an
+    # exact component row over its descendants to avoid double counting.
     if working.empty and esto_flow and eso_product:
-        parent = str(esto_flow).strip().lower()
-        parent_code_match = re.match(r"^(\d+(?:\.\d+)*)", parent)
-        parent_code = parent_code_match.group(1) if parent_code_match else ""
         fallback = esto_df
         if prepared and "__economy_norm" in fallback.columns:
             fallback = fallback[fallback["__economy_norm"] == str(economy_code or "").strip()]
@@ -1481,17 +1523,55 @@ def pull_base_year_value(
             fallback = fallback[fallback["__product_norm"] == eso_product.lower()]
         else:
             fallback = fallback[fallback["products"].astype(str).str.lower() == eso_product.lower()]
-        if parent_code:
+        component_codes = _expand_esto_flow_code_selector(esto_flow)
+        if len(component_codes) > 1:
             if prepared and "__flow_code" in fallback.columns:
                 flow_codes = fallback["__flow_code"].fillna("")
             else:
-                flow_codes = fallback["flows"].astype(str).str.extract(r"^(\d+(?:\.\d+)*)", expand=False).fillna("")
-            fallback = fallback[flow_codes.str.startswith(parent_code + ".")]
+                flow_codes = (
+                    fallback["flows"]
+                    .astype(str)
+                    .str.extract(r"^(\d+(?:\.\d+)*)", expand=False)
+                    .fillna("")
+                )
+            component_masks: list[pd.Series] = []
+            for component_code in component_codes:
+                exact_mask = flow_codes.eq(component_code)
+                component_masks.append(
+                    exact_mask
+                    if bool(exact_mask.any())
+                    else flow_codes.str.startswith(component_code + ".")
+                )
+            combined_mask = component_masks[0].copy()
+            for component_mask in component_masks[1:]:
+                combined_mask |= component_mask
+            fallback = fallback[combined_mask]
         else:
-            if prepared and "__flow_norm" in fallback.columns:
-                fallback = fallback[fallback["__flow_norm"].str.startswith(parent + ".")]
+            parent_code = component_codes[0] if component_codes else ""
+            if parent_code:
+                if prepared and "__flow_code" in fallback.columns:
+                    flow_codes = fallback["__flow_code"].fillna("")
+                else:
+                    flow_codes = (
+                        fallback["flows"]
+                        .astype(str)
+                        .str.extract(r"^(\d+(?:\.\d+)*)", expand=False)
+                        .fillna("")
+                    )
+                fallback = fallback[flow_codes.str.startswith(parent_code + ".")]
             else:
-                fallback = fallback[fallback["flows"].astype(str).str.lower().str.startswith(parent + ".")]
+                parent = str(esto_flow).strip().lower()
+                if prepared and "__flow_norm" in fallback.columns:
+                    fallback = fallback[
+                        fallback["__flow_norm"].str.startswith(parent + ".")
+                    ]
+                else:
+                    fallback = fallback[
+                        fallback["flows"]
+                        .astype(str)
+                        .str.lower()
+                        .str.startswith(parent + ".")
+                    ]
         working = fallback
     if working.empty:
         return float("nan")

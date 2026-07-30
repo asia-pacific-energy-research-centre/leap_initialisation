@@ -8157,7 +8157,17 @@ def load_balance_leap_long_esto_axis(
         errors="coerce",
     )
 
-    for col in ["leap_sector", "leap_fuel", "leap_sector_name", "leap_fuel_name", "esto_flow", "esto_product"]:
+    for col in [
+        "leap_sector",
+        "leap_fuel",
+        "leap_sector_name",
+        "mapped_leap_sector_name",
+        "leap_sector_name_full_path",
+        "mapping_key_sector",
+        "leap_fuel_name",
+        "esto_flow",
+        "esto_product",
+    ]:
         if col not in combined.columns:
             combined[col] = ""
         combined[col] = combined[col].fillna("").astype(str).str.strip()
@@ -8209,6 +8219,9 @@ def load_balance_leap_long_esto_axis(
             leap_sector=("leap_sector", _coalesce_pipe_tokens_unique),
             leap_fuel=("leap_fuel", _coalesce_pipe_tokens_unique),
             leap_sector_name=("leap_sector_name", _coalesce_unique),
+            mapped_leap_sector_name=("mapped_leap_sector_name", _coalesce_unique),
+            leap_sector_name_full_path=("leap_sector_name_full_path", _coalesce_unique),
+            mapping_key_sector=("mapping_key_sector", _coalesce_unique),
             leap_fuel_name=("leap_fuel_name", _coalesce_unique),
             is_subtotal=("is_subtotal", "max"),
             esto_is_subtotal=("esto_is_subtotal", "max"),
@@ -8259,6 +8272,9 @@ def load_balance_leap_long_esto_axis(
             "leap_sector",
             "leap_fuel",
             "leap_sector_name",
+            "mapped_leap_sector_name",
+            "leap_sector_name_full_path",
+            "mapping_key_sector",
             "leap_fuel_name",
             "is_subtotal",
             "esto_is_subtotal",
@@ -8279,6 +8295,9 @@ def load_balance_leap_long_esto_axis(
             "ninth_fuel_code",
             "esto_flow",
             "esto_product",
+            "mapped_leap_sector_name",
+            "leap_sector_name_full_path",
+            "mapping_key_sector",
         ]
     ].drop_duplicates().rename(columns={"sheet_name": "sheet"})
     mapping_status["mapped"] = True
@@ -8599,12 +8618,18 @@ def build_balance_comparison_esto_axis(
     chart_navigation_guide_path: Path | str | None = None,
     balance_mapping_workbook_path: Path | str | None = None,
     known_issues: dict[str, Any] | None = None,
+    base_subtotal_comparator_flows: Iterable[str] | None = None,
     base_df: pd.DataFrame | None = None,
     ninth_df: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     if leap_long.empty:
         raise RuntimeError("leap_long is empty; cannot build ESTO-axis comparison outputs.")
 
+    allowed_base_subtotal_flows = {
+        _clean_token(flow)
+        for flow in (base_subtotal_comparator_flows or [])
+        if _clean_token(flow)
+    }
     mapping_inputs: dict[str, Any] | None = None
     reassignment_status = pd.DataFrame()
     synthetic_reference_status = pd.DataFrame()
@@ -9160,7 +9185,7 @@ def build_balance_comparison_esto_axis(
 
         base_key = (esto_flow, esto_product)
         if base_key not in base_cache:
-            if esto_is_subtotal:
+            if esto_is_subtotal and esto_flow not in allowed_base_subtotal_flows:
                 base_cache[base_key] = float("nan")
             else:
                 base_cache[base_key] = pull_base_year_value(

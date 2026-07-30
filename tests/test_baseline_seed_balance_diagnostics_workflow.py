@@ -157,6 +157,187 @@ def test_base_year_uses_esto_and_matches_across_economy_code_formats() -> None:
     assert bool(row["update_allocation_required"]) is False
 
 
+def test_base_year_backfills_mapped_pair_when_comparison_row_is_empty() -> None:
+    comparison = _comparison_rows(
+        scenario="Reference",
+        year=2022,
+        leap_value=3.994348,
+        source="base",
+        source_value=None,
+    )
+    comparison["sheet"] = "Road"
+    comparison["fuel_label"] = "07.08 Fuel oil"
+    mapping_status = pd.DataFrame(
+        [
+            {
+                "sheet": "Road",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "07.08 Fuel oil",
+                "esto_flow": "15.02 Road",
+                "esto_product": "07.08 Fuel oil",
+                "sector_code_9th": "15_02_road",
+                "ninth_fuel_code": "07_08_fuel_oil",
+            }
+        ]
+    )
+    base_df = pd.DataFrame(
+        [
+            {
+                "economy": "05PRC",
+                "flows": "15.02 Road",
+                "products": "07.08 Fuel oil",
+                "2022": 3.994348,
+            }
+        ]
+    )
+
+    table = diagnostics.build_leap_source_difference_table(
+        comparison_long=comparison,
+        mapping_status=mapping_status,
+        leap_long=None,
+        base_df=base_df,
+        economy="05_PRC",
+        years=[2022],
+        scenarios=["Reference"],
+    )
+
+    row = table.iloc[0]
+    assert row["source_value_pj"] == pytest.approx(3.994348)
+    assert row["status"] == "match"
+
+
+def test_base_year_does_not_backfill_ambiguous_multi_pair_cell() -> None:
+    comparisons = []
+    for sheet in [
+        "esto__09_06_02_01__Liquefaction",
+        "esto__09_06_02_02__Regasification",
+    ]:
+        comparison = _comparison_rows(
+            scenario="Reference",
+            year=2022,
+            leap_value=-3292.703662,
+            source="base",
+            source_value=None,
+        )
+        comparison["sheet"] = sheet
+        comparison["fuel_label"] = "LNG"
+        comparisons.append(comparison)
+    comparison = pd.concat(comparisons, ignore_index=True)
+    mapping_status = pd.DataFrame(
+        [
+            {
+                "sheet": sheet,
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "LNG",
+                "esto_flow": esto_flow,
+                "esto_product": "08.02 LNG",
+                "sector_code_9th": "",
+                "ninth_fuel_code": "",
+            }
+            for sheet, esto_flow in [
+                (
+                    "esto__09_06_02_01__Liquefaction",
+                    "09.06.02.01 Liquefaction",
+                ),
+                (
+                    "esto__09_06_02_02__Regasification",
+                    "09.06.02.02 Regasification",
+                ),
+            ]
+        ]
+    )
+    leap_long = pd.DataFrame(
+        [
+            {
+                "sheet_name": sheet,
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "LNG",
+                "leap_sector_name": "LNG regasification/Regasification",
+                "leap_fuel_name": "LNG",
+            }
+            for sheet in [
+                "esto__09_06_02_01__Liquefaction",
+                "esto__09_06_02_02__Regasification",
+            ]
+        ]
+    )
+    base_df = pd.DataFrame(
+        [
+            {
+                "economy": "05PRC",
+                "flows": "09.06.02.02 Regasification",
+                "products": "08.02 LNG",
+                "2022": -3292.703662,
+            }
+        ]
+    )
+
+    table = diagnostics.build_leap_source_difference_table(
+        comparison_long=comparison,
+        mapping_status=mapping_status,
+        leap_long=leap_long,
+        base_df=base_df,
+        economy="05_PRC",
+        years=[2022],
+        scenarios=["Reference"],
+    )
+
+    assert len(table) == 2
+    assert table["source_value_pj"].isna().all()
+    assert set(table["status"]) == {"reference_unavailable"}
+
+
+def test_single_target_reassigned_base_pair_is_expected_zero() -> None:
+    comparison = _comparison_rows(
+        scenario="Reference",
+        year=2022,
+        leap_value=3.994348,
+        source="base",
+        source_value=None,
+    )
+    comparison["sheet"] = "Road"
+    comparison["fuel_label"] = "07.08 Fuel oil"
+    mapping_status = pd.DataFrame(
+        [
+            {
+                "sheet": "Road",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "07.08 Fuel oil",
+                "esto_flow": "15.02 Road",
+                "esto_product": "07.08 Fuel oil",
+                "sector_code_9th": "15_02_road",
+                "ninth_fuel_code": "07_08_fuel_oil",
+            }
+        ]
+    )
+    reassignment_status = pd.DataFrame(
+        [
+            {
+                "dataset": "base_df",
+                "matched_rows": 1,
+                "source_esto_flow": "15.02 Road",
+                "source_esto_product": "07.08 Fuel oil",
+                "target_esto_flow": "15.06 Non-specified transport",
+                "target_esto_product": "07.08 Fuel oil",
+            }
+        ]
+    )
+
+    table = diagnostics.build_leap_source_difference_table(
+        comparison_long=comparison,
+        mapping_status=mapping_status,
+        leap_long=None,
+        reassignment_status=reassignment_status,
+        economy="05_PRC",
+        years=[2022],
+        scenarios=["Reference"],
+    )
+
+    row = table.iloc[0]
+    assert row["source_value_pj"] == 0.0
+    assert row["status"] == "value_mismatch"
+
+
 def test_oil_refining_base_comparator_adds_only_configured_own_use_flow() -> None:
     comparison = _comparison_rows(
         scenario="Reference",
@@ -980,6 +1161,7 @@ def test_comparison_partition_ignores_selected_aggregate_boundaries() -> None:
     differences = pd.DataFrame(
         [
             {"leap_sector_names": "Total final energy consumption", "status": "value_mismatch"},
+            {"leap_sector_names": "All demand aggregated", "status": "value_mismatch"},
             {"leap_sector_names": "All demand aggregated/Road", "status": "value_mismatch"},
             {"leap_sector_names": "Total Primary Supply", "status": "value_mismatch"},
         ]
@@ -987,11 +1169,38 @@ def test_comparison_partition_ignores_selected_aggregate_boundaries() -> None:
 
     active, ignored = diagnostics._partition_comparison_rows(differences)
 
-    assert active["leap_sector_names"].tolist() == ["Total Primary Supply"]
+    assert active["leap_sector_names"].tolist() == [
+        "All demand aggregated/Road",
+        "Total Primary Supply",
+    ]
     assert ignored["leap_sector_names"].tolist() == [
         "Total final energy consumption",
-        "All demand aggregated/Road",
+        "All demand aggregated",
     ]
+
+
+def test_all_demand_subtotal_flows_come_from_mapped_child_rows() -> None:
+    mapping_status = pd.DataFrame(
+        [
+            {
+                "leap_sector_name_full_path": "",
+                "mapped_leap_sector_name": "All demand aggregated/Road",
+                "esto_flow": "15.02 Road",
+            },
+            {
+                "leap_sector_name_full_path": "All demand aggregated/Buildings",
+                "esto_flow": "16.01-16.02 Buildings",
+            },
+            {
+                "leap_sector_name_full_path": "LNG regasification/Regasification",
+                "esto_flow": "09.06.02.01 Liquefaction",
+            },
+        ]
+    )
+
+    flows = diagnostics._all_demand_subtotal_comparator_flows(mapping_status)
+
+    assert flows == {"15.02 Road", "16.01-16.02 Buildings"}
 
 
 def test_esto_extraction_mapping_expands_transfer_rollup_components(

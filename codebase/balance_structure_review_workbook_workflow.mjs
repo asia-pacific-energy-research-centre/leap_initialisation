@@ -487,6 +487,7 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     ambiguous_structure_resolution: 0,
   };
   const populatedKeys = new Set();
+  const comparableCellStates = new Map();
   const yellowKeys = new Set();
   const noComparatorKeys = new Set();
   const affectedSupplyKeys = new Set();
@@ -572,11 +573,6 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
 
     comparisonStateCounts.mapped += 1;
     const key = `${resolution.row},${resolution.column}`;
-    if (populatedKeys.has(key)) {
-      throw new Error(`Multiple comparable diagnostics resolve to ${cellAddress(resolution.row, resolution.column)}`);
-    }
-    populatedKeys.add(key);
-
     const address = cellAddress(resolution.row, resolution.column);
     const errorCell = errorSheet.getRange(address);
     const correctCell = correctSheet.getRange(address);
@@ -584,10 +580,38 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     const leapValue = asNumber(review.leap_value_pj);
     const sourceValue = asNumber(review.source_value_pj);
     const reportedDifference = asNumber(review.difference_pj);
-    const displayedError = review.status === "match" ? 0 : reportedDifference;
+    const existingState = comparableCellStates.get(key);
+    const state = existingState ?? {
+      leapValue: 0,
+      sourceValue: 0,
+      reportedDifference: 0,
+      hasMismatch: false,
+      componentCount: 0,
+      row: resolution.row,
+      column: resolution.column,
+      address,
+    };
+    if (
+      leapValue === null ||
+      sourceValue === null ||
+      reportedDifference === null
+    ) {
+      throw new Error(
+        `Comparable diagnostic for ${address} has a non-numeric LEAP, source, or difference value.`,
+      );
+    }
+    state.leapValue += leapValue;
+    state.sourceValue += sourceValue;
+    state.reportedDifference += reportedDifference;
+    state.hasMismatch ||= review.status === "value_mismatch";
+    state.componentCount += 1;
+    comparableCellStates.set(key, state);
+    populatedKeys.add(key);
+
+    const displayedError = state.hasMismatch ? state.reportedDifference : 0;
 
     errorCell.values = [[displayedError]];
-    if (review.status === "value_mismatch") {
+    if (state.hasMismatch) {
       styleCell(errorCell, RED_FILL, RED_FONT, true);
       correctCell.formulas = [
         [`='${LEAP_SHEET_NAME}'!${address}-'${ERROR_SHEET_NAME}'!${address}`],
@@ -599,28 +623,50 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
       styleCell(errorCell, NEUTRAL_FILL, "#666666", false);
       // Match errors intentionally display as zero. Preserve the exact source
       // value numerically so micro-PJ within-tolerance differences are not lost.
-      correctCell.values = [[sourceValue]];
-      fullExpectedCell.values = [[sourceValue]];
+      correctCell.values = [[state.sourceValue]];
+      fullExpectedCell.values = [[state.sourceValue]];
     }
     styleCell(correctCell, BLUE_FILL, BLUE_FONT, false);
     styleCell(fullExpectedCell, BLUE_FILL, BLUE_FONT, false);
 
     if (
       reconciliationSamples.length < 50 &&
-      leapValue !== null &&
-      sourceValue !== null &&
       displayedError !== null
     ) {
-      reconciliationSamples.push({
+      const existingSample = reconciliationSamples.find(
+        (sample) => sample.address === address,
+      );
+      const sample = {
         owner: review.preliminary_owner,
         row: labels.rowLabel,
         fuel: labels.fuelLabel,
         address,
-        status: review.status,
-        leapValue,
+        status: state.hasMismatch ? "value_mismatch" : "match",
+        leapValue: state.leapValue,
         displayedError,
-        sourceValue,
-      });
+        sourceValue: state.sourceValue,
+      };
+      if (existingSample) {
+        Object.assign(existingSample, sample);
+      } else {
+        reconciliationSamples.push(sample);
+      }
+    }
+  }
+
+  for (const state of comparableCellStates.values()) {
+    if (state.componentCount <= 1) {
+      continue;
+    }
+    const visibleLeapValue = asNumber(sourceValues[state.row][state.column]);
+    const tolerance = 1e-6 * Math.max(1, Math.abs(visibleLeapValue ?? 0));
+    if (
+      visibleLeapValue === null ||
+      Math.abs(state.leapValue - visibleLeapValue) > tolerance
+    ) {
+      throw new Error(
+        `Multiple diagnostics for ${state.address} do not reconstruct the visible LEAP value.`,
+      );
     }
   }
 
