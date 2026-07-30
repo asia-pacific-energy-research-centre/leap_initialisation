@@ -888,6 +888,19 @@ def build_leap_balance_proxy_activity_series(
     if not nonzero_candidates:
         return primary_series
 
+    # Results-update validation includes the base year. If the configured
+    # primary balance rows are zero in that year but a documented fallback has
+    # activity there, prefer the fallback so a later-year coverage score does
+    # not hide a base-year consistency failure.
+    primary_base_value = float(primary_series.get(int(base_year), 0.0))
+    base_year_candidates = [
+        item
+        for item in nonzero_candidates
+        if abs(float(item[0].get(int(base_year), 0.0))) > 0.0
+    ]
+    if primary_base_value == 0.0 and base_year_candidates:
+        nonzero_candidates = base_year_candidates
+
     def _projection_coverage(series_values: dict[int, float]) -> int:
         return sum(
             1
