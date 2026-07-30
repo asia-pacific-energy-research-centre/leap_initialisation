@@ -246,6 +246,15 @@ def _ignored_mapping_issue_reason(row: pd.Series) -> str:
             "leap_sector_name_full_path",
         ),
     )
+    if (
+        _normalize_diagnostic_label(sector_label).replace("\\", "/")
+        == "transmission and distribution/electricity"
+        and _normalize_diagnostic_label(fuel_label) == "electricity"
+    ):
+        return (
+            "structural Electricity child mirrors the Transmission and "
+            "Distribution parent and must not be mapped separately"
+        )
     sector_root = re.split(r"[/\\]", sector_label, maxsplit=1)[0]
     if _normalize_diagnostic_label(sector_root) in IGNORED_BALANCE_DIAGNOSTIC_ROWS:
         return f"{sector_root} is an excluded aggregate or diagnostic-only balance row"

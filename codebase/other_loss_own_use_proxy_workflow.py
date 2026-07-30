@@ -236,9 +236,10 @@ OUTPUT_FUEL_VALIDATION_SCOPE = "economy"
 # DEFAULT_MEASURE_UNITS, LEAP_BALANCE_FUEL_SETS, LEAP_BALANCE_ACTIVITY_FALLBACKS
 # imported from other_loss_own_use_proxy_utils
 
-# Keep electricity inside transmission/distribution losses for now.
-# Flip this to False if the branch should go back to excluding electricity.
-INCLUDE_ELECTRICITY_IN_TD_LOSSES = True
+# Electricity losses are already represented by LEAP's transformation-side
+# Transmission and Distribution module. Writing the same target to the demand
+# own-use branch double-counts it in balance comparisons.
+INCLUDE_ELECTRICITY_IN_TD_LOSSES = False
 TD_LOSSES_EXCLUDED_ELECTRICITY_PRODUCTS = [] if INCLUDE_ELECTRICITY_IN_TD_LOSSES else ["17 Electricity"]
 TD_LOSSES_EXCLUDED_ELECTRICITY_FUELS = [] if INCLUDE_ELECTRICITY_IN_TD_LOSSES else ["17_electricity"]
 TD_LOSSES_LEAP_BALANCE_FUEL_SET = (

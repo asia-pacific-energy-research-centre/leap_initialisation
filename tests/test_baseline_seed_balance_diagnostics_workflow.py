@@ -957,6 +957,11 @@ def test_mapping_issue_partition_ignores_totals_and_selected_aggregate_rows() ->
                 "mapping_key_fuel": "Natural gas",
                 "reason": "missing_esto_pair",
             },
+            {
+                "mapping_key_sector": "Transmission and Distribution/Electricity",
+                "mapping_key_fuel": "Electricity",
+                "reason": "missing_esto_pair",
+            },
         ]
     )
 
@@ -966,6 +971,7 @@ def test_mapping_issue_partition_ignores_totals_and_selected_aggregate_rows() ->
     assert ignored["mapping_key_sector"].tolist() == [
         "Other loss and own use/Coal mines",
         "Total Transformation",
+        "Transmission and Distribution/Electricity",
     ]
     assert ignored["diagnostic_disposition_reason"].str.len().gt(0).all()
 
