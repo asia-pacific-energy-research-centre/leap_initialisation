@@ -299,7 +299,11 @@ def _demand_branch_from_esto_flow(flow: object) -> str:
         return "Transport non road"
     if flow_text.startswith("14"):
         return "Industry"
-    if flow_text.startswith("16.01"):
+    # ESTO's flow numbering differs from the 9th Outlook sector numbering:
+    # 16.01 is commercial/public services and 16.02 is residential. Together
+    # they form the 9th ``16_01_buildings`` sector. Agriculture/fishing begins
+    # at ESTO 16.03, so 16.02 must not fall through to Other sector.
+    if flow_text.startswith(("16.01", "16.02")):
         return "Buildings"
     # This covers other-sector, non-energy-use, and any own-use/loss rows when
     # the optional other-loss proxy exclusion is disabled.

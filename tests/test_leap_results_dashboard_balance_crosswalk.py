@@ -110,6 +110,41 @@ def test_base_rollup_label_sums_exact_component_flows_without_descendants() -> N
     assert value == 30.0
 
 
+def test_base_rollup_label_counts_duplicate_exact_component_once() -> None:
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "20USA",
+                "flows": "16.01 Commercial and public services",
+                "products": "17 Electricity",
+                "2022": 10.0,
+            },
+            {
+                "economy": "20USA",
+                "flows": "16.01 Synthetic duplicate",
+                "products": "17 Electricity",
+                "2022": 10.0,
+            },
+            {
+                "economy": "20USA",
+                "flows": "16.02 Residential",
+                "products": "17 Electricity",
+                "2022": 20.0,
+            },
+        ]
+    )
+
+    value = pull_base_year_value(
+        esto_df=esto,
+        base_year=2022,
+        economy_code="20USA",
+        esto_flow="16.01-16.02 Buildings",
+        esto_product="17 Electricity",
+    )
+
+    assert value == 30.0
+
+
 def test_base_rollup_label_expands_comma_separated_ranges() -> None:
     esto = pd.DataFrame(
         [

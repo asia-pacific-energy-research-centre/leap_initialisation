@@ -26,7 +26,10 @@ from codebase.utilities.leap_balance_export_resolver import (
     resolve_balance_export_workbook,
     select_balance_export_sheets,
 )
-from codebase.utilities.leap_results_dashboard_utils import pull_base_year_value
+from codebase.utilities.leap_results_dashboard_utils import (
+    _expand_esto_flow_code_selector,
+    pull_base_year_value,
+)
 from codebase.functions.transformation_analysis_utils import MAJOR_SECTOR_CONFIG
 
 
@@ -1365,6 +1368,73 @@ def apply_canonical_projection_comparators(
         )["_allocated_projection_value"]
         .sum(min_count=1)
     )
+    # Canonical projection allocation is stored at detailed ESTO flows, while
+    # a visible LEAP balance row may map to an honest parent/range selector
+    # such as ``14 Industry sector`` or ``16.01-16.02 Buildings``. Materialize
+    # only the requested rollup aliases so each detailed ESTO product receives
+    # its allocated share instead of comparing one leaf with the entire 9th
+    # fuel aggregate.
+    requested_pairs = expanded[["esto_flow", "esto_product"]].drop_duplicates()
+    existing_pairs = set(
+        projection_long[["esto_flow", "esto_product"]].itertuples(
+            index=False,
+            name=None,
+        )
+    )
+    projection_flow_codes = (
+        projection_long["esto_flow"]
+        .astype(str)
+        .str.extract(r"^(\d+(?:\.\d+)*)", expand=False)
+        .fillna("")
+    )
+    rollup_aliases: list[pd.DataFrame] = []
+    for requested_flow, requested_product in requested_pairs.itertuples(
+        index=False,
+        name=None,
+    ):
+        pair = (_clean_token(requested_flow), _clean_token(requested_product))
+        if not all(pair) or pair in existing_pairs:
+            continue
+        component_codes = _expand_esto_flow_code_selector(pair[0])
+        if not component_codes:
+            continue
+        product_mask = projection_long["esto_product"].eq(pair[1])
+        component_masks: list[pd.Series] = []
+        for component_code in component_codes:
+            exact_mask = product_mask & projection_flow_codes.eq(component_code)
+            component_masks.append(
+                exact_mask
+                if bool(exact_mask.any())
+                else (
+                    product_mask
+                    & projection_flow_codes.str.startswith(component_code + ".")
+                )
+            )
+        if not component_masks:
+            continue
+        rollup_mask = component_masks[0].copy()
+        for component_mask in component_masks[1:]:
+            rollup_mask |= component_mask
+        components = projection_long.loc[rollup_mask]
+        if components.empty:
+            continue
+        alias = (
+            components.groupby(
+                ["scenario", "year"],
+                as_index=False,
+                dropna=False,
+            )["_allocated_projection_value"]
+            .sum(min_count=1)
+        )
+        alias["esto_flow"] = pair[0]
+        alias["esto_product"] = pair[1]
+        rollup_aliases.append(alias)
+    if rollup_aliases:
+        projection_long = pd.concat(
+            [projection_long, *rollup_aliases],
+            ignore_index=True,
+            sort=False,
+        )
 
     expanded = expanded.merge(
         projection_long,
@@ -2187,6 +2257,34 @@ def build_leap_source_difference_table(
     wide.loc[has_base & has_projection, "reference_source"] = "ambiguous"
     wide["source_value_pj"] = wide["base"].combine_first(wide["projection"])
     wide["leap_value_pj"] = wide["leap"]
+    # Aggregated demand is written to LEAP as positive energy demand. ESTO and
+    # 9th balance tables retain international bunkers as negative withdrawals.
+    # Compare magnitudes at this demand boundary so an exact match is not
+    # reported as an artificial two-times-value error.
+    international_demand = (
+        (
+            wide["sheet"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+            .eq("international transport")
+            | wide["leap_sector_names"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+            .eq("international transport")
+        )
+        & wide["esto_flow"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.startswith(("04", "05"))
+    )
+    wide.loc[international_demand, "source_value_pj"] = wide.loc[
+        international_demand, "source_value_pj"
+    ].abs()
 
     both_present = wide["leap_value_pj"].notna() & wide["source_value_pj"].notna()
     wide["difference_pj"] = wide["leap_value_pj"] - wide["source_value_pj"]

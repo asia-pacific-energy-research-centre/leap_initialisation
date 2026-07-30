@@ -1546,6 +1546,25 @@ def pull_base_year_value(
             for component_mask in component_masks[1:]:
                 combined_mask |= component_mask
             fallback = fallback[combined_mask]
+            # Reference-table preparation can retain two equivalent exact
+            # subtotal rows for the same component code. A rollup such as
+            # 16.01-16.02 must count each exact component once, while still
+            # retaining every distinct descendant when no exact row exists.
+            selected_flow_codes = flow_codes.loc[fallback.index]
+            exact_component = selected_flow_codes.isin(component_codes)
+            exact_rows = fallback.loc[exact_component].copy()
+            if not exact_rows.empty:
+                exact_rows["__rollup_component_code"] = selected_flow_codes.loc[
+                    exact_rows.index
+                ]
+                exact_rows = exact_rows.drop_duplicates(
+                    subset=["__rollup_component_code"],
+                    keep="first",
+                ).drop(columns="__rollup_component_code")
+            fallback = pd.concat(
+                [exact_rows, fallback.loc[~exact_component]],
+                axis=0,
+            ).sort_index()
         else:
             parent_code = component_codes[0] if component_codes else ""
             if parent_code:

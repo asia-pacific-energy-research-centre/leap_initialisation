@@ -157,6 +157,51 @@ def test_base_year_uses_esto_and_matches_across_economy_code_formats() -> None:
     assert bool(row["update_allocation_required"]) is False
 
 
+def test_international_demand_compares_positive_bunker_magnitude() -> None:
+    comparison = _comparison_rows(
+        scenario="Reference",
+        year=2022,
+        leap_value=25.0,
+        source="base",
+        source_value=-25.0,
+    )
+    comparison["sheet"] = "International transport"
+    comparison["fuel_label"] = "07.08 Fuel oil"
+    mapping_status = pd.DataFrame(
+        [
+            {
+                "sheet": "International transport",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "07.08 Fuel oil",
+                "esto_flow": "04-05 International transport (bunkers)",
+                "esto_product": "07.08 Fuel oil",
+                "sector_code_9th": "04_international_marine_bunkers",
+                "ninth_fuel_code": "07_08_fuel_oil",
+                "leap_sector_name_full_path": (
+                    "All demand aggregated/International transport"
+                ),
+                "mapped_leap_sector_name": "International transport",
+                "raw_leap_fuel_name": "Fuel oil",
+            }
+        ]
+    )
+
+    table = diagnostics.build_leap_source_difference_table(
+        comparison_long=comparison,
+        mapping_status=mapping_status,
+        leap_long=None,
+        economy="20_USA",
+        years=[2022],
+        scenarios=["Reference"],
+    )
+
+    row = table.iloc[0]
+    assert row["sheet"] == "International transport"
+    assert row["source_value_pj"] == pytest.approx(25.0)
+    assert row["difference_pj"] == pytest.approx(0.0)
+    assert row["status"] == "match"
+
+
 def test_base_year_backfills_mapped_pair_when_comparison_row_is_empty() -> None:
     comparison = _comparison_rows(
         scenario="Reference",
@@ -686,6 +731,84 @@ def test_canonical_projection_allocation_resolves_shared_ninth_pair() -> None:
     assert row["comparison_grain"] == "canonical_allocated_ninth_to_esto_pair"
     assert bool(row["update_allocation_required"]) is False
     assert row["update_allocation_reason"] == ""
+
+
+def test_canonical_projection_allocation_rolls_detailed_flows_to_parent() -> None:
+    comparison = _comparison_rows(
+        scenario="Reference",
+        year=2023,
+        leap_value=30.0,
+        source="projection",
+        source_value=500.0,
+    )
+    comparison["sheet"] = "Industry"
+    comparison["fuel_label"] = "02.08 BKB/PB"
+    mapping_status = pd.DataFrame(
+        [
+            {
+                "sheet": "Industry",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "02.08 BKB/PB",
+                "esto_flow": "14 Industry sector",
+                "esto_product": "02.08 BKB/PB",
+                "sector_code_9th": "14_industry_sector",
+                "ninth_fuel_code": "02_coal_products",
+            },
+            {
+                "sheet": "Industry",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "02.01 Coke oven coke",
+                "esto_flow": "14 Industry sector",
+                "esto_product": "02.01 Coke oven coke",
+                "sector_code_9th": "14_industry_sector",
+                "ninth_fuel_code": "02_coal_products",
+            },
+        ]
+    )
+    projection_tables = pd.DataFrame(
+        [
+            {
+                "scenario": "Reference",
+                "esto_flow": "14.01 Mining and quarrying",
+                "esto_product": "02.08 BKB/PB",
+                2023: 10.0,
+            },
+            {
+                "scenario": "Reference",
+                "esto_flow": "14.03.11 Non-specified industry",
+                "esto_product": "02.08 BKB/PB",
+                2023: 20.0,
+            },
+        ]
+    )
+
+    allocated, allocation_status = (
+        diagnostics.apply_canonical_projection_comparators(
+            comparison_long=comparison,
+            mapping_status=mapping_status,
+            projection_tables=projection_tables,
+            allocation_provenance=pd.DataFrame(),
+        )
+    )
+    table = diagnostics.build_leap_source_difference_table(
+        comparison_long=allocated,
+        mapping_status=mapping_status,
+        leap_long=None,
+        projection_allocation_status=allocation_status,
+        economy="20_USA",
+        years=[2023],
+        scenarios=["Reference"],
+    )
+
+    row = table.iloc[0]
+    assert row["source_value_pj"] == pytest.approx(30.0)
+    assert row["difference_pj"] == pytest.approx(0.0)
+    assert row["status"] == "match"
+    assert bool(row["projection_allocation_complete"]) is True
+    assert row["projection_target_pair_count"] == 1
+    assert row["projection_matched_pair_count"] == 1
+    assert row["comparison_grain"] == "canonical_allocated_ninth_to_esto_pair"
+    assert bool(row["update_allocation_required"]) is False
 
 
 def test_missing_reference_is_visible_but_not_called_a_mismatch() -> None:

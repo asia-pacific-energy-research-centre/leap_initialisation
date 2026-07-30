@@ -805,8 +805,9 @@ class TestAggregatedDemandWorkbookModes:
             ("05 International aviation bunkers", "International transport"),
             ("15.01 Domestic aviation", "Transport non road"),
             ("14.03 Manufacturing", "Industry"),
-            ("16.01 Buildings", "Buildings"),
-            ("16.02 Agriculture", "Other sector"),
+            ("16.01 Commercial and public services", "Buildings"),
+            ("16.02 Residential", "Buildings"),
+            ("16.03 Agriculture", "Other sector"),
             ("17 Non-energy use", "Other sector"),
         ],
     )
