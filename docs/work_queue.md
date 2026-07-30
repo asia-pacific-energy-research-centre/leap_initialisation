@@ -1,5 +1,49 @@
 # Remaining work queue
 
+## [25] Add a Non energy branch to All demand aggregated
+
+**Status: structural handoff prepared 2026-07-30; LEAP branch creation and
+template export pending.**
+
+The current sectorized placeholder has Road, Transport non road,
+International transport, Industry, Other sector, and Buildings, but no
+separate Non energy branch. This is not only a dashboard omission:
+`aggregated_demand_workflow._demand_branch_from_esto_flow()` currently routes
+non-subtotal ESTO `17.*` rows into `Other sector`, while Ninth
+`17_nonenergy_use` rows retain their own sector code.
+
+`codebase/scrapbook/non_energy_aggregated_demand_rows_exploration.py` applies
+the maintained single-axis fuel mappings and a strict three-source rule:
+
+- non-zero in ESTO 2025 final year 2023 under non-energy;
+- non-zero in ESTO 2024 final year 2022 under non-energy; and
+- non-zero in at least one Ninth reference or target year from 2023 onward
+  under `17_nonenergy_use`.
+
+The resulting structural handoff contains 25
+`Demand\All demand aggregated\Non energy\{fuel}` leaves. Seven of those are
+currently non-zero for Australia in all three evidence sources; the shared
+template retains all 25 so structure is not economy- or vintage-specific.
+Eight near misses remain visible in the review workbook and are excluded from
+the branch handoff.
+
+After a person creates the branches in LEAP and exports the refreshed
+template:
+
+1. update the maintained aggregated-demand structural CSV from that template;
+2. route ESTO `17.*` and Ninth `17_nonenergy_use` to the exact LEAP
+   `Non energy` branch spelling;
+3. add `Non energy: ["17_nonenergy_use"]` to the detailed-demand source-scope
+   map so later ownership transfer can exclude it safely;
+4. add the new LEAP sector-axis relationships in `leap_mappings`;
+5. regenerate LEAP key-pair authority, the mapping master, Common ESTO, and
+   dashboards; and
+6. verify `Other sector` loses the former non-energy contribution so no value
+   is duplicated.
+
+Do not enable value writing to the new branch before step 2. Until routing is
+changed, ESTO history would remain classified as `Other sector`.
+
 ## [24] Subtotal mapping mismatches warn without stopping updates
 
 **Status: completed 2026-07-29.**
