@@ -483,6 +483,7 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
     mapped: 0,
     no_direct_projection_comparator: 0,
     reference_unavailable: 0,
+    missing_in_leap: 0,
     missing_visible_structure: 0,
     ambiguous_structure_resolution: 0,
   };
@@ -520,6 +521,33 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
       );
       if (resolution.status === "unique") {
         noComparatorKeys.add(`${resolution.row},${resolution.column}`);
+      }
+      continue;
+    }
+
+    if (review.status === "missing_in_leap") {
+      comparisonStateCounts.missing_in_leap += 1;
+      missingRecords.push(
+        makeMissingRecord({
+          category: "missing_in_leap",
+          economy: review.economy,
+          scenario: review.scenario,
+          year: review.year,
+          rowLabel: labels.rowLabel,
+          fuelLabel: labels.fuelLabel,
+          leapValue: review.leap_value_pj,
+          status: review.status,
+          details:
+            review.evidence_note ||
+            `The source contains ${review.source_value_pj} PJ, but the LEAP balance export has no numeric value for this mapped combination.`,
+          resolution,
+          recommendation:
+            review.next_action ||
+            "Review the mapping and LEAP branch state; do not treat the absent LEAP value as a comparable zero.",
+        }),
+      );
+      if (resolution.status === "unique") {
+        yellowKeys.add(`${resolution.row},${resolution.column}`);
       }
       continue;
     }
@@ -763,6 +791,7 @@ async function buildBalanceStructureReviewWorkbook(config = {}) {
   const expectedMissingRecordCount =
     comparisonStateCounts.no_direct_projection_comparator +
     comparisonStateCounts.reference_unavailable +
+    comparisonStateCounts.missing_in_leap +
     comparisonStateCounts.missing_visible_structure +
     comparisonStateCounts.ambiguous_structure_resolution +
     mappingIssues.length;
