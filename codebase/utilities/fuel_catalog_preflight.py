@@ -67,7 +67,19 @@ def _template_source_paths(
 ) -> list[Path]:
     """Return the distinct LEAP export workbooks that form the catalog union."""
     directory = _resolve(template_directory)
-    paths = sorted(directory.glob("leap_export_template *.xlsx")) if directory.exists() else []
+    # Template filenames are operator-facing labels and may be changed when a
+    # workbook is re-exported (for example, ``USA clean slate 29_07.xlsx``).
+    # Discovery must therefore be based on workbook structure during parsing,
+    # not on the historical ``leap_export_template`` filename prefix.
+    paths = (
+        sorted(
+            path
+            for path in directory.glob("*.xlsx")
+            if not path.name.startswith("~$")
+        )
+        if directory.exists()
+        else []
+    )
     if full_model_export_path is not None:
         full_model_path = _resolve(full_model_export_path)
         if full_model_path.exists():
@@ -1093,7 +1105,13 @@ def load_fuel_catalog(
         if legacy_path.exists():
             path = legacy_path
     if path.exists():
-        df = pd.read_csv(path)
+        try:
+            df = pd.read_csv(path)
+        except pd.errors.EmptyDataError:
+            # A previous empty catalog should be treated as unavailable, not
+            # as a fatal parser error. The caller can then skip preflight or
+            # use the optional full-model fallback.
+            df = pd.DataFrame()
     elif allow_full_model_fallback:
         rows = _catalog_rows_from_full_model_export(
             source_path=full_model_export_path,
@@ -1102,6 +1120,14 @@ def load_fuel_catalog(
         df = pd.DataFrame(rows)
     else:
         return pd.DataFrame()
+
+    if df.empty and allow_full_model_fallback:
+        rows = _catalog_rows_from_full_model_export(
+            source_path=full_model_export_path,
+            sheet_name=full_model_sheet,
+        )
+        if rows:
+            df = pd.DataFrame(rows)
 
     required = {"catalog_type", "scenario", "module_or_root", "fuel_name"}
     if df.empty or not required.issubset(df.columns):
