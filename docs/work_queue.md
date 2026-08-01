@@ -2,15 +2,16 @@
 
 ## [25] Add a Non energy branch to All demand aggregated
 
-**Status: structural handoff prepared 2026-07-30; LEAP branch creation and
-template export pending.**
+**Status: source routing and maintained scope map fixed 2026-08-01; LEAP branch
+creation, template export, and authority regeneration remain pending.**
 
-The current sectorized placeholder has Road, Transport non road,
+The current LEAP sectorized placeholder has Road, Transport non road,
 International transport, Industry, Other sector, and Buildings, but no
-separate Non energy branch. This is not only a dashboard omission:
-`aggregated_demand_workflow._demand_branch_from_esto_flow()` currently routes
-non-subtotal ESTO `17.*` rows into `Other sector`, while Ninth
-`17_nonenergy_use` rows retain their own sector code.
+separate Non energy branch in the last known exported template. The Python
+source routing now sends non-subtotal ESTO `17.*` rows to exact branch label
+`Non energy`, and the maintained detailed-demand scope map assigns Ninth
+`17_nonenergy_use` to that group. This prevents those values from being folded
+into `Other sector` while the LEAP structure is completed.
 
 `codebase/scrapbook/non_energy_aggregated_demand_rows_exploration.py` applies
 the maintained single-axis fuel mappings and a strict three-source rule:
@@ -31,18 +32,19 @@ After a person creates the branches in LEAP and exports the refreshed
 template:
 
 1. update the maintained aggregated-demand structural CSV from that template;
-2. route ESTO `17.*` and Ninth `17_nonenergy_use` to the exact LEAP
-   `Non energy` branch spelling;
-3. add `Non energy: ["17_nonenergy_use"]` to the detailed-demand source-scope
-   map so later ownership transfer can exclude it safely;
+2. ~~route ESTO `17.*` and Ninth `17_nonenergy_use` to the exact LEAP
+   `Non energy` branch spelling~~ (completed 2026-08-01);
+3. ~~add `Non energy: ["17_nonenergy_use"]` to the detailed-demand source-scope
+   map so later ownership transfer can exclude it safely~~ (completed
+   2026-08-01);
 4. add the new LEAP sector-axis relationships in `leap_mappings`;
 5. regenerate LEAP key-pair authority, the mapping master, Common ESTO, and
    dashboards; and
 6. verify `Other sector` loses the former non-energy contribution so no value
    is duplicated.
 
-Do not enable value writing to the new branch before step 2. Until routing is
-changed, ESTO history would remain classified as `Other sector`.
+Do not treat generated Non energy rows as LEAP-import-ready until the branch is
+created and a refreshed economy template supplies its branch and variable IDs.
 
 ## [24] Subtotal mapping mismatches warn without stopping updates
 

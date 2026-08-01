@@ -511,6 +511,7 @@ class TestLeapDemandGroupEstoSectorMapConfig:
             "Industry",
             "Other sector",
             "Buildings",
+            "Non energy",
         }
         assert set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP.keys()) == expected_groups
 
@@ -533,6 +534,10 @@ class TestLeapDemandGroupEstoSectorMapConfig:
         assert "16_05_nonspecified_others" in other_codes
         # Should not accidentally include buildings
         assert "16_01_buildings" not in other_codes
+
+    def test_non_energy_maps_only_to_nonenergy_use(self):
+        assert LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Non energy"] == ["17_nonenergy_use"]
+        assert "17_nonenergy_use" not in LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Other sector"]
 
     def test_international_transport_includes_bunkers(self):
         international = set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["International transport"])
@@ -808,11 +813,44 @@ class TestAggregatedDemandWorkbookModes:
             ("16.01 Commercial and public services", "Buildings"),
             ("16.02 Residential", "Buildings"),
             ("16.03 Agriculture", "Other sector"),
-            ("17 Non-energy use", "Other sector"),
+            ("17 Non-energy use", "Non energy"),
         ],
     )
     def test_requested_sector_branches_classify_source_flows(self, flow, expected_branch):
         assert _demand_branch_from_esto_flow(flow) == expected_branch
+
+    def test_base_year_keeps_nonenergy_out_of_other_sector(self):
+        source = pd.DataFrame(
+            [
+                {
+                    "economy": "01_AUS",
+                    "flows": "16.05 Non-specified others",
+                    "products": "07.17 Other products",
+                    "is_subtotal": False,
+                    "2022": 0.000641,
+                },
+                {
+                    "economy": "01_AUS",
+                    "flows": "17 Non-energy use",
+                    "products": "07.17 Other products",
+                    "is_subtotal": False,
+                    "2022": 78.873358,
+                },
+            ]
+        )
+
+        result = aggregated_demand_workflow._extract_base_year(
+            source,
+            base_year=2022,
+            exclude_own_use_td_losses=True,
+            use_sector_branches=True,
+        )
+        values = result.set_index("sector")["value"].to_dict()
+
+        assert values == pytest.approx(
+            {"Other sector": 0.000641, "Non energy": 78.873358}
+        )
+        assert sum(values.values()) == pytest.approx(78.873999)
 
 
 class TestReconciliationDemandInference:

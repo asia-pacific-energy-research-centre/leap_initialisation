@@ -1111,7 +1111,8 @@ AGGREGATED_DEMAND_EXCLUDED_SECTORS: list[str] | None = None
 # When True, aggregated demand branches are written as
 # Demand\All demand aggregated\{SectorLabel}\{fuel} instead of the flat
 # Demand\All demand aggregated\{fuel} path. The configured split uses Road,
-# Transport non road, Industry, Other sector, and Buildings.
+# Transport non road, International transport, Industry, Other sector,
+# Buildings, and Non energy.
 # PRESET-CONTROLLED DEFAULT: both active presets replace this value.
 AGGREGATED_DEMAND_USE_SECTOR_BRANCHES: bool = True
 
@@ -1157,6 +1158,7 @@ LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP: dict[str, list[str]] = {
     "Industry":           ["14_industry_sector"],
     "Other sector":       ["16_02_agriculture_and_fishing", "16_05_nonspecified_others"],
     "Buildings":          ["16_01_buildings"],
+    "Non energy":         ["17_nonenergy_use"],
 }
 
 # LEAP demand group names whose detailed branches are currently active in LEAP.
