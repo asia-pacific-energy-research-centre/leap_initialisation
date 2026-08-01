@@ -11,6 +11,15 @@ was caused by the diagnostic's Correct Source Values selector using only ESTO
 `16.03-16.05`. The diagnostic now compares the same scope written to LEAP:
 `16.03-16.05,17`.
 
+**Cardinality warning:** this is an aggregation rule, not a clean canonical
+one-to-one mapping. One LEAP `Other sector` cell can combine several ESTO flow
+families, including non-energy use, while the Ninth-to-ESTO fuel/sector bridge
+can contribute several source pairs to the same displayed cell. That can become
+many-to-many when projections are allocated. Keep component provenance and the
+existing cardinality/allocation-completeness gates; do not reuse the combined
+`16.03-16.05,17` selector for detailed-demand ownership, correction allocation,
+or canonical mapping generation without a separate mapping review.
+
 `codebase/scrapbook/non_energy_aggregated_demand_rows_exploration.py` applies
 the maintained single-axis fuel mappings and a strict three-source rule:
 
