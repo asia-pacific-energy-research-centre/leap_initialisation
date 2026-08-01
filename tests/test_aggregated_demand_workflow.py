@@ -511,7 +511,6 @@ class TestLeapDemandGroupEstoSectorMapConfig:
             "Industry",
             "Other sector",
             "Buildings",
-            "Non energy",
         }
         assert set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP.keys()) == expected_groups
 
@@ -532,12 +531,9 @@ class TestLeapDemandGroupEstoSectorMapConfig:
         other_codes = set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Other sector"])
         assert "16_02_agriculture_and_fishing" in other_codes
         assert "16_05_nonspecified_others" in other_codes
+        assert "17_nonenergy_use" in other_codes
         # Should not accidentally include buildings
         assert "16_01_buildings" not in other_codes
-
-    def test_non_energy_maps_only_to_nonenergy_use(self):
-        assert LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Non energy"] == ["17_nonenergy_use"]
-        assert "17_nonenergy_use" not in LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Other sector"]
 
     def test_international_transport_includes_bunkers(self):
         international = set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["International transport"])
@@ -813,13 +809,13 @@ class TestAggregatedDemandWorkbookModes:
             ("16.01 Commercial and public services", "Buildings"),
             ("16.02 Residential", "Buildings"),
             ("16.03 Agriculture", "Other sector"),
-            ("17 Non-energy use", "Non energy"),
+            ("17 Non-energy use", "Other sector"),
         ],
     )
     def test_requested_sector_branches_classify_source_flows(self, flow, expected_branch):
         assert _demand_branch_from_esto_flow(flow) == expected_branch
 
-    def test_base_year_keeps_nonenergy_out_of_other_sector(self):
+    def test_base_year_includes_nonenergy_in_other_sector(self):
         source = pd.DataFrame(
             [
                 {
@@ -845,12 +841,9 @@ class TestAggregatedDemandWorkbookModes:
             exclude_own_use_td_losses=True,
             use_sector_branches=True,
         )
-        values = result.set_index("sector")["value"].to_dict()
+        values = result.groupby("sector")["value"].sum().to_dict()
 
-        assert values == pytest.approx(
-            {"Other sector": 0.000641, "Non energy": 78.873358}
-        )
-        assert sum(values.values()) == pytest.approx(78.873999)
+        assert values == pytest.approx({"Other sector": 78.873999})
 
 
 class TestReconciliationDemandInference:

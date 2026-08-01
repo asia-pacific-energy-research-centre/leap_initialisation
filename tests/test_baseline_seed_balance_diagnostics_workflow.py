@@ -1366,6 +1366,53 @@ def test_all_demand_subtotal_flows_come_from_mapped_child_rows() -> None:
     assert flows == {"15.02 Road", "16.01-16.02 Buildings"}
 
 
+def test_other_sector_comparator_includes_nonenergy_base_value() -> None:
+    mapping = pd.DataFrame(
+        [
+            {
+                "leap_sector_name_full_path": "All demand aggregated/Other sector",
+                "esto_flow": "16.03-16.05 Other sector (all demand aggregate)",
+                "esto_product": "07.17 Other products",
+            },
+            {
+                "leap_sector_name_full_path": "All demand aggregated/Buildings",
+                "esto_flow": "16.01-16.02 Buildings",
+                "esto_product": "07.17 Other products",
+            },
+        ]
+    )
+    adjusted = diagnostics._include_nonenergy_in_other_sector_comparator_mapping(
+        mapping
+    )
+    selector = adjusted.loc[0, "esto_flow"]
+    source = pd.DataFrame(
+        [
+            {
+                "economy": "01AUS",
+                "flows": "16.05 Non-specified others",
+                "products": "07.17 Other products",
+                "2022": 0.000641,
+            },
+            {
+                "economy": "01AUS",
+                "flows": "17 Non-energy use",
+                "products": "07.17 Other products",
+                "2022": 78.873358,
+            },
+        ]
+    )
+
+    assert selector == diagnostics.OTHER_SECTOR_WITH_NONENERGY_COMPARATOR_FLOW
+    assert adjusted.loc[1, "esto_flow"] == "16.01-16.02 Buildings"
+    assert diagnostics.pull_base_year_value(
+        source,
+        base_year=2022,
+        economy_code="01AUS",
+        esto_flow=selector,
+        esto_product="07.17 Other products",
+    ) == pytest.approx(78.873999)
+
+
 def test_esto_extraction_mapping_expands_transfer_rollup_components(
     tmp_path: Path,
 ) -> None:

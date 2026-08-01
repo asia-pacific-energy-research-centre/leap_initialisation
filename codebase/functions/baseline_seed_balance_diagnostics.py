@@ -84,6 +84,9 @@ DEFAULT_BALANCE_VARIABLE_RULES_PATH = (
 )
 DEFAULT_BASE_TABLE_PATH = workflow_cfg.get_energy_source_config().esto_base_table_path
 DEFAULT_PROJECTION_TABLE_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
+OTHER_SECTOR_WITH_NONENERGY_COMPARATOR_FLOW = (
+    "16.03-16.05,17 Other sector including non-energy (all demand aggregate)"
+)
 
 DIFFERENCE_OUTPUT_COLUMNS = [
     "economy",
@@ -352,6 +355,34 @@ def _all_demand_subtotal_comparator_flows(
         for flow in child_rows["esto_flow"]
         if _clean_token(flow)
     }
+
+
+def _include_nonenergy_in_other_sector_comparator_mapping(
+    esto_mapping: pd.DataFrame,
+) -> pd.DataFrame:
+    r"""Align the diagnostic's Other-sector comparator with the seed branch.
+
+    ``Demand\All demand aggregated\Other sector`` deliberately contains ESTO
+    flows 16.03-16.05 plus flow 17 non-energy use. The maintained canonical
+    mapping retains the ordinary Other-sector selector because it serves wider
+    mapping purposes; this diagnostic-only copy needs the combined selector so
+    its Correct Source Values compare the same scope written to LEAP.
+    """
+    out = esto_mapping.copy()
+    path_column = "leap_sector_name_full_path"
+    if path_column not in out.columns or "esto_flow" not in out.columns:
+        return out
+    normalized_paths = (
+        out[path_column]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.replace("\\", "/", regex=False)
+        .map(_normalize_diagnostic_label)
+    )
+    other_sector = normalized_paths.eq("all demand aggregated/other sector")
+    out.loc[other_sector, "esto_flow"] = OTHER_SECTOR_WITH_NONENERGY_COMPARATOR_FLOW
+    return out
 
 
 def load_balance_variable_rules(
@@ -999,6 +1030,9 @@ def _write_esto_axis_extraction_mapping_workbook(
         codebook_path,
         sheet_name="leap_combined_esto",
         dtype=str,
+    )
+    esto_mapping = _include_nonenergy_in_other_sector_comparator_mapping(
+        esto_mapping
     )
     rollup_rules = read_config_table(
         codebook_path,

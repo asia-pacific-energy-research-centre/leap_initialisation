@@ -299,16 +299,14 @@ def _demand_branch_from_esto_flow(flow: object) -> str:
         return "Transport non road"
     if flow_text.startswith("14"):
         return "Industry"
-    if flow_text.startswith("17"):
-        return "Non energy"
     # ESTO's flow numbering differs from the 9th Outlook sector numbering:
     # 16.01 is commercial/public services and 16.02 is residential. Together
     # they form the 9th ``16_01_buildings`` sector. Agriculture/fishing begins
     # at ESTO 16.03, so 16.02 must not fall through to Other sector.
     if flow_text.startswith(("16.01", "16.02")):
         return "Buildings"
-    # This covers other-sector and any own-use/loss rows when the optional
-    # other-loss proxy exclusion is disabled.
+    # This covers other-sector, non-energy-use, and any own-use/loss rows when
+    # the optional other-loss proxy exclusion is disabled.
     return "Other sector"
 
 _SECTOR_SHORT_CODES: dict[str, str] = {
@@ -1020,7 +1018,7 @@ def build_aggregated_demand(
     Returns DataFrame with columns:
         economy, scenario, leap_fuel_name, year, value  (value in PJ, positive)
     When use_sector_branches=True, also includes a 'sector' column with the
-    requested LEAP demand group name (e.g. 'Industry' or 'Non energy').
+    requested LEAP demand group name (e.g. 'Industry' or 'Other sector').
 
     ESTO base-year products and ninth projection fuels not found in the active
     canonical mapping sheets are dropped with a warning.
