@@ -202,6 +202,46 @@ def test_international_demand_compares_positive_bunker_magnitude() -> None:
     assert row["status"] == "match"
 
 
+def test_transfer_preserves_signed_leap_balance_mismatch() -> None:
+    comparison = _comparison_rows(
+        scenario="Reference",
+        year=2022,
+        leap_value=-1.967001,
+        source="base",
+        source_value=1.967001,
+    )
+    comparison["sheet"] = "esto__08__Transfers"
+    comparison["fuel_label"] = "Bitumen"
+    mapping_status = pd.DataFrame(
+        [
+            {
+                "sheet": "esto__08__Transfers",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "Bitumen",
+                "esto_flow": "08 Transfers",
+                "esto_product": "07.14 Bitumen",
+                "sector_code_9th": "",
+                "ninth_fuel_code": "",
+            }
+        ]
+    )
+
+    table = diagnostics.build_leap_source_difference_table(
+        comparison_long=comparison,
+        mapping_status=mapping_status,
+        economy="20_USA",
+        years=[2022],
+        scenarios=["Reference"],
+    )
+
+    row = table.iloc[0]
+    assert row["leap_value_pj"] == pytest.approx(-1.967001)
+    assert row["source_value_pj"] == pytest.approx(1.967001)
+    assert row["difference_pj"] == pytest.approx(-3.934002)
+    assert row["status"] == "value_mismatch"
+    assert bool(row["is_mismatch"]) is True
+
+
 def test_base_year_backfills_mapped_pair_when_comparison_row_is_empty() -> None:
     comparison = _comparison_rows(
         scenario="Reference",
