@@ -147,7 +147,7 @@ def test_non_overlapping_auxiliary_fuels_leave_process_record_unchanged() -> Non
     assert record["process_boundary_status"] == "no_output_auxiliary_overlap"
 
 
-def test_capacity_uses_net_output_and_preserves_runtime_additions(
+def test_refinery_capacity_uses_gross_output_and_preserves_runtime_additions(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -195,8 +195,11 @@ def test_capacity_uses_net_output_and_preserves_runtime_additions(
         "Current Accounts",
     )[0]
 
-    assert updated["exogenous_capacity_by_year"][2022] == pytest.approx(85.0)
-    assert updated["historical_production_by_year"][2022] == pytest.approx(85.0)
+    # Refinery capacity is based on gross 09.07 output; same-module own use
+    # remains represented in auxiliary values but is not subtracted from
+    # capacity/historical production.
+    assert updated["exogenous_capacity_by_year"][2022] == pytest.approx(105.0)
+    assert updated["historical_production_by_year"][2022] == pytest.approx(105.0)
 
 
 def test_auxiliary_above_matching_output_preserves_excess_as_external() -> None:

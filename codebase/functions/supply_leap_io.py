@@ -509,6 +509,16 @@ def apply_transformation_target_overrides_for_scenario(
             instance = int(instance_counter[counter_key])
             output_total_by_year: dict[int, float] = {int(year): 0.0 for year in all_years}
             output_values = record.get("output_values") or {}
+            # Refinery exogenous capacity is defined by gross refinery output
+            # from ESTO flow 09.07.  ``output_values`` is normally the LEAP
+            # net-deliverable boundary after same-module own-use is removed;
+            # using it here understated PRC 2022 capacity by exactly the
+            # petroleum-products own-use amount (2,252.357689 PJ).  Keep the
+            # net values for LEAP trade-target handling, but use the preserved
+            # gross output map for refinery capacity/historical production.
+            capacity_output_values = output_values
+            if str(module_name).strip().casefold() == "oil refining":
+                capacity_output_values = record.get("gross_output_values") or output_values
             # Only add observed output labels to the trade-target reset when the
             # process actually produces them.  Projection disaggregation keeps
             # zero-valued child fuels in ``output_values``; adding every such
@@ -573,15 +583,39 @@ def apply_transformation_target_overrides_for_scenario(
                 record["output_import_targets"] = {label: dict(zero_map) for label in sorted(target_labels)}
                 record["output_export_targets"] = {label: dict(zero_map) for label in sorted(target_labels)}
 
+            capacity_output_total_by_year: dict[int, float] = {int(year): 0.0 for year in all_years}
+            for label, raw_value in capacity_output_values.items():
+                if not str(label or "").strip():
+                    continue
+                year_map = coerce_value_by_year(raw_value, BASE_YEAR, FINAL_YEAR)
+                for year, value in year_map.items():
+                    year_int = int(year)
+                    if year_int < BASE_YEAR or year_int > FINAL_YEAR:
+                        continue
+                    capacity_output_total_by_year[year_int] = (
+                        capacity_output_total_by_year.get(year_int, 0.0)
+                        + max(float(value), 0.0)
+                    )
+            # Runtime capacity additions are part of the capacity-like
+            # totals for refinery records just as they were for the former
+            # net-output calculation.
+            for year, add_value in capacity_additions_by_year.items():
+                if year < BASE_YEAR or year > FINAL_YEAR:
+                    continue
+                capacity_output_total_by_year[int(year)] = (
+                    capacity_output_total_by_year.get(int(year), 0.0)
+                    + max(float(add_value), 0.0)
+                )
+
             record["exogenous_capacity_by_year"] = {
                 int(year): max(float(value), 0.0) * float(CAPACITY_CONSTRAINT_FACTOR)
-                for year, value in output_total_by_year.items()
+                for year, value in capacity_output_total_by_year.items()
             }
             record["capacity_units"] = str(CAPACITY_CONSTRAINT_UNITS)
             record["capacity_scale"] = str(CAPACITY_CONSTRAINT_SCALE)
             record["historical_production_by_year"] = {
                 int(year): max(float(value), 0.0)
-                for year, value in output_total_by_year.items()
+                for year, value in capacity_output_total_by_year.items()
             }
         if missing_output_scope_modules:
             missing_preview = ", ".join(sorted({item for item in missing_output_scope_modules if item}))
