@@ -9,6 +9,13 @@ corresponding workflows in `leap_utilities`.
 For the connected three-repository ownership and reading route, start with
 [`leap_mappings/docs/start_here.md`](../leap_mappings/docs/start_here.md).
 
+Mapping semantics are maintained upstream in
+`../leap_mappings/config/outlook_mappings_single_axis.xlsx`. The mappings
+repository must run its separate-axis refresh as the preliminary production
+gate before this repository consumes the generated
+`outlook_mappings_master.xlsx`. Do not repair mapping relationships in a copied
+initialisation workbook or in a generated master pair sheet.
+
 Within this repository:
 
 | Need | Authoritative route |
