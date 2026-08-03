@@ -233,9 +233,30 @@ Local time is **UTC+0900**. This plan was written at 2026-08-03 23:35 local.
 |---|---|---|
 | 0 | 23:35, 3 Aug (already run) | remainder of the current window (~50%) |
 | 1 | 03:40, 4 Aug | full window |
-| 2 | 08:40, 4 Aug | full window |
-| 3 | 13:40, 4 Aug | full window |
-| 4 | 18:40, 4 Aug | full window |
+| 2 | ~08:40, 4 Aug | full window |
+| 3 | ~13:40, 4 Aug | full window |
+| 4 | ~18:40, 4 Aug | full window |
+
+### Sessions schedule their own successor
+
+Only session 1 is pre-created. **Each session creates the next one itself**,
+because only the running session knows when it actually finished and how much
+budget it consumed — a fixed timetable set in advance drifts as soon as one
+session runs long or short.
+
+At the **start** of each session, note the session number from the scheduled
+task's prompt. Before finishing, if that number is **less than 4**:
+
+1. create a one-time scheduled task named `leap-review-tools-build-<n+1>`,
+   firing **5 hours from now**, with the same prompt but the session number
+   incremented;
+2. record in §6 that you scheduled it, with the fire time.
+
+If the number is 4, do not schedule another; instead append a short summary to
+§6 saying the unattended run is finished and what remains.
+
+If a session finds §3 fully complete, do not schedule a successor — record that
+in §6 and stop.
 
 ### The rule that matters most
 
