@@ -1,0 +1,30 @@
+# Example developer-mode settings for the LEAP review tools.
+#
+# Copy this to your per-user settings location and edit the paths:
+#
+#   %LOCALAPPDATA%\leap-review-tools\developer_settings.toml
+#
+# or point the LEAP_REVIEW_TOOLS_SETTINGS environment variable at any file.
+# Generate a pre-filled copy instead of editing by hand:
+#
+#   from codebase.portable_release.settings import write_example_settings
+#   write_example_settings()
+#
+# This file is the *only* thing developer mode uses to locate the repositories.
+# Nothing is inferred from the current working directory, so the launcher
+# behaves identically from a notebook, a terminal, or an IDE run configuration.
+#
+# Every path must be absolute. Forward slashes are fine on Windows.
+
+[repositories]
+leap_initialisation = "C:/Users/Work/github/leap_initialisation"
+leap_mappings = "C:/Users/Work/github/leap_mappings"
+leap_dashboard = "C:/Users/Work/github/leap_dashboard"
+
+[paths]
+# Where developer-mode runs write their results, read their inputs from, and
+# write their logs. These are deliberately outside the repositories so a run
+# never dirties a working tree.
+output_root = "C:/Users/Work/leap_review_tools/output"
+input_root = "C:/Users/Work/leap_review_tools/input"
+log_root = "C:/Users/Work/leap_review_tools/logs"
