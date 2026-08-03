@@ -19,8 +19,10 @@ from typing import Any, Iterable, Sequence
 
 
 #: Diagnostic artifacts the balance-review command reads. The two required files
-#: are produced together by a supported reconciliation/diagnostics run; the
-#: mapping-issue file is optional because a clean run may not produce one.
+#: are produced together by the balance-diagnostics step
+#: (``run_baseline_seed_balance_diagnostics``, which reads a LEAP balance export
+#: against the ESTO and 9th-edition source tables). The mapping-issue file is
+#: optional because a clean run may not produce one.
 BALANCE_REVIEW_REQUIRED_ARTIFACTS = (
     "leap_balance_source_review.csv",
     "leap_balance_source_differences.csv",
@@ -246,7 +248,7 @@ def validate_balance_review_inputs(
     """Validate the inputs for one balance-review workbook.
 
     This is the *existing diagnostic artifacts* input mode: the caller already
-    has a diagnostics directory produced by a supported reconciliation run, plus
+    has a diagnostics directory produced by the balance-diagnostics step, plus
     the LEAP balance export those diagnostics were computed against.
     """
     report = ValidationReport(command="balance-review")
@@ -300,8 +302,10 @@ def validate_balance_review_inputs(
             False,
             "The diagnostics folder does not exist at:\n"
             f"      {diagnostics_dir}\n"
-            "    This command needs the comparison artifacts from a supported "
-            "reconciliation run. It cannot be produced from a LEAP export alone.",
+            "    This command builds the workbook from an existing diagnostics "
+            "folder. Generating one from a LEAP balance export is a separate "
+            "step that reads the ESTO and 9th-edition source tables, and is not "
+            "part of this release.",
         )
     else:
         report.add(

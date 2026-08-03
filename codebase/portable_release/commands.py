@@ -201,10 +201,15 @@ def run_balance_review(
     """Build one balance-review workbook from existing diagnostic artifacts.
 
     Input mode: **existing comparison/diagnostic artifacts**. The caller supplies
-    the LEAP balance export and the diagnostics directory a supported
-    reconciliation run already produced. This command does not run the
-    reconciliation itself, and a balance-review workbook cannot be produced from
-    a raw LEAP export alone — see ``docs/leap_review_tools.md``.
+    the LEAP balance export and a diagnostics directory the balance-diagnostics
+    step already produced.
+
+    This command does not run that step. Generating diagnostics from a LEAP
+    export needs the mapping codebook and the ESTO and 9th-edition source tables
+    (314 MB), so it stays in developer mode
+    (``balance_update_workflow._PRESET_REVIEW_ONLY``) rather than shipping in a
+    release. A results update / supply reconciliation run is *not* involved in
+    producing a review workbook — see ``docs/leap_review_tools.md``.
     """
     workbook_path = _resolve_user_path(context, balance_export_workbook)
     diagnostics_dir = _resolve_user_path(context, diagnostics_directory)

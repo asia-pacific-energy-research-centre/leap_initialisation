@@ -176,9 +176,10 @@ computed against. Export at Level 2 detail or deeper."""
   description = """\
 Folder holding leap_balance_source_review.csv and \
 leap_balance_source_differences.csv (both required) and \
-leap_balance_mapping_issues.csv (optional), produced by a supported \
-reconciliation run. A balance-review workbook cannot be built from a LEAP \
-export alone."""
+leap_balance_mapping_issues.csv (optional), produced by the balance-diagnostics \
+step. That step reads a LEAP balance export against the ESTO and 9th-edition \
+source tables (314 MB), so it runs in developer mode rather than in a release. \
+A results update / supply reconciliation run is not involved."""
 
 [[commands]]
 name = "dashboard"

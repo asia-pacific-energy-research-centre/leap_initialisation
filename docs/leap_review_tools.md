@@ -178,22 +178,31 @@ Input mode: **existing comparison/diagnostic artifacts**.
 | `diagnostics_directory` | A folder containing `leap_balance_source_review.csv` and `leap_balance_source_differences.csv` (both required) and `leap_balance_mapping_issues.csv` (optional). |
 | `economy`, `scenario`, `year` | Which cell of those diagnostics to build. |
 
-> **A balance-review workbook cannot be built from a raw LEAP export alone.**
-> The workbook's whole content is the *comparison* between LEAP and the source,
-> and that comparison is computed upstream. There are two ways to obtain the
-> diagnostics directory:
+> The workbook's content is the *comparison* between LEAP and the source data,
+> and that comparison is computed by the **balance diagnostics** step, which is
+> separate from the workbook build. There are two ways to obtain the diagnostics
+> directory:
 >
-> 1. **Use artifacts that already exist** — the output folder of a previous
->    supported reconciliation/diagnostics run. This is the only mode the
->    portable release supports.
-> 2. **Run a full supported reconciliation** —
+> 1. **Generate it from a LEAP balance export** — run
 >    `codebase/balance_update_workflow.py` with `_PRESET_REVIEW_ONLY`, which
->    calls `run_baseline_seed_balance_diagnostics`. This is **developer mode
->    only**: it needs the canonical mapping workbook, the ESTO base table, and
->    the 288 MB 9th-edition projection table, plus a 38-module dependency
->    closure that reaches the LEAP COM API, `win32com`, `matplotlib`, and
->    `IPython`. Bundling that would roughly triple the package size and would
->    ship code that cannot run off a modelling workstation.
+>    calls `run_baseline_seed_balance_diagnostics` and then builds the workbook
+>    in one go. A fresh Level 2+ export is all you need; the diagnostics step
+>    computes the comparison itself. This is **developer mode only** — see
+>    below for why.
+> 2. **Use a diagnostics folder that already exists** — the output of a previous
+>    such run. This is what the portable release supports.
+>
+> **A results update / supply reconciliation run is *not* required.** That
+> workflow writes values back into LEAP and is a separate, optional activity.
+> Producing a review workbook does not involve it. (An earlier version of this
+> document said otherwise; it was wrong.)
+>
+> The diagnostics step is developer-mode-only for one reason: **data size**. It
+> reads the canonical mapping codebook (478 KB), the ESTO base table (26 MB),
+> and the 9th-edition projection table (288 MB). Bundling those would take the
+> download from roughly 110 MB to roughly 450 MB. It is otherwise a read-only
+> step with no LEAP COM dependency at run time, so adding it to a release is a
+> size decision rather than a technical blocker.
 
 ### `dashboard`
 
@@ -327,9 +336,12 @@ patch version instead, so a run manifest always identifies exactly one build.
 
 ## 6. Known limitations
 
-- **The full reconciliation run is developer-mode only.** See section 3. The
-  portable release builds balance-review workbooks from existing diagnostic
-  artifacts only.
+- **The balance-diagnostics step is developer-mode only, for size reasons.**
+  The portable release builds a balance-review workbook from an existing
+  diagnostics folder; it does not generate one from a LEAP export, because that
+  needs the 288 MB 9th-edition projection table and the 26 MB ESTO base table.
+  This is *not* because a reconciliation run is required — it is not. See
+  section 3.
 - **The dashboard's mapping-diagnostics page, full mapping tree explorer, and
   capacity-unmet convergence page are not in the portable release.** They read
   `leap_mappings` QA artifacts and a `leap_initialisation` run CSV — in one case
