@@ -192,6 +192,10 @@ def build_parser(frozen: dict[str, Any]) -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("info", help="Show this release's contents, commands, and folders.")
+    sub.add_parser(
+        "selfcheck",
+        help="Import everything a run needs and confirm the package is intact.",
+    )
 
     declared = {spec["name"] for spec in frozen.get("commands", [])}
     if "balance-review" in declared:
@@ -245,6 +249,91 @@ def _print_info(context, frozen: dict[str, Any]) -> int:
     return 0
 
 
+#: Standard-library modules a run reaches for, together with an attribute that
+#: only the real module has. A packaging accident that replaces one of these
+#: with an empty namespace package imports cleanly and then fails deep inside a
+#: run, so the attribute is checked too.
+_REQUIRED_STDLIB = [
+    ("csv", "reader"),
+    ("json", "loads"),
+    ("hashlib", "sha256"),
+    ("zipfile", "ZipFile"),
+    ("zoneinfo", "ZoneInfo"),
+    ("re", "compile"),
+    ("logging", "getLogger"),
+    ("subprocess", "run"),
+]
+
+#: Third-party and packaged modules every supported command needs.
+_REQUIRED_MODULES = [
+    "pandas",
+    "numpy",
+    "openpyxl",
+    "plotly.graph_objects",
+    "codebase.portable_release.commands",
+    "codebase.portable_release.validation",
+    "codebase.portable_release.provenance",
+    "codebase.portable_release.runtime",
+    "codebase.functions.balance_review_workbook_builder",
+    "codebase.utilities.leap_balance_export_resolver",
+    "common_esto_dashboard_portable",
+    "mapping_tools.source_branch_preflight",
+]
+
+
+def selfcheck(context, frozen: dict[str, Any]) -> tuple[int, list[str]]:
+    """Import everything a run needs and confirm the configuration is present.
+
+    This is what the builder runs against a freshly frozen executable, and what
+    a colleague can run when something looks wrong. It exists because a packaged
+    program can start, print its own version, and still be broken: a missing
+    hidden import or a shadowed standard-library module only surfaces once a
+    real command reaches for it.
+    """
+    import importlib
+
+    problems: list[str] = []
+    for name, attribute in _REQUIRED_STDLIB:
+        try:
+            module = importlib.import_module(name)
+        except Exception as exc:  # noqa: BLE001
+            problems.append(f"standard library module {name!r} does not import: {exc}")
+            continue
+        if not hasattr(module, attribute):
+            problems.append(
+                f"standard library module {name!r} is shadowed: it has no {attribute!r} "
+                f"(loaded from {getattr(module, '__file__', 'an unknown location')})."
+            )
+    for name in _REQUIRED_MODULES:
+        try:
+            importlib.import_module(name)
+        except Exception as exc:  # noqa: BLE001
+            problems.append(f"module {name!r} does not import: {exc}")
+
+    for asset in frozen.get("config_assets", []):
+        path = context.config_asset(asset["role"])
+        if path is None or not path.is_file():
+            problems.append(f"configuration asset {asset['role']!r} is missing: {path}")
+
+    for name in ("input", "output", "logs", "config"):
+        directory = context.package_root / name
+        if not directory.is_dir():
+            problems.append(f"package folder {name}/ is missing.")
+
+    print(f"{context.release_name} {context.release_version} self-check")
+    print("-" * 72)
+    print(f"  standard library modules : {len(_REQUIRED_STDLIB)}")
+    print(f"  program modules          : {len(_REQUIRED_MODULES)}")
+    print(f"  configuration assets     : {len(frozen.get('config_assets', []))}")
+    if problems:
+        print("  result                   : FAILED")
+        for problem in problems:
+            print(f"    - {problem}")
+        return 2, problems
+    print("  result                   : OK")
+    return 0, problems
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     context, frozen = build_portable_context()
@@ -267,6 +356,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     namespace = parser.parse_args(args)
     if namespace.command in (None, "info"):
         return _print_info(context, frozen)
+    if namespace.command == "selfcheck":
+        return selfcheck(context, frozen)[0]
 
     from codebase.portable_release.commands import (
         run_balance_review,

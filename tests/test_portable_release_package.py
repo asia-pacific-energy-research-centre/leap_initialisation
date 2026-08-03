@@ -156,6 +156,31 @@ def test_builder_rejects_a_package_containing_a_junction(
     assert any(".git" in problem for problem in inspection["problems"])
 
 
+def test_entry_point_never_scans_its_own_directory(staged_package: Path) -> None:
+    """The stage directories must be baked in, not discovered.
+
+    A scan is correct in a staged package and catastrophic in a frozen one,
+    where the entry point's directory is PyInstaller's bundle: putting every
+    subfolder of it on sys.path shadows standard-library modules with
+    third-party package internals.
+    """
+    source = (staged_package / "code" / "entry_point.py").read_text(encoding="utf-8")
+    assert "iterdir()" not in source
+    assert 'getattr(sys, "frozen", False)' in source
+    manifest = load_release_manifest(MANIFEST_PATH)
+    for stage_dir in manifest.sys_path_stage_dirs():
+        assert repr(stage_dir) in source
+
+
+def test_staged_package_passes_its_own_selfcheck(
+    staged_package: Path,
+    tmp_path: Path,
+) -> None:
+    result = _run_package(staged_package, ["selfcheck"], cwd=tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "result                   : OK" in result.stdout
+
+
 def test_package_config_is_external_and_editable(staged_package: Path) -> None:
     config_root = staged_package / "config"
     assert (config_root / "dashboard" / "common_esto_dashboard_template.json").is_file()

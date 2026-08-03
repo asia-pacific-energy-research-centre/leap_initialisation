@@ -580,13 +580,18 @@ def _freeze(
 
 
 def verify_frozen_package(package_root: Path, executable_name: str) -> dict[str, Any]:
-    """Start the built executable and require it to report on itself.
+    """Run the built executable's ``info`` and ``selfcheck`` commands.
 
-    This is the build's own proof that the package is self-contained: it runs
-    from a directory unrelated to any repository, with ``PYTHONPATH`` stripped,
-    so any import that reached back into a checkout — or any dependency the
-    freeze left behind — shows up as a non-zero exit here rather than on a
+    This is the build's own proof that the package works: it runs from a
+    directory unrelated to any repository, with ``PYTHONPATH`` stripped, so an
+    import that reached back into a checkout shows up here rather than on a
     colleague's machine.
+
+    ``info`` alone is not enough. A packaged program can start and print its own
+    version while a missing hidden import or a shadowed standard-library module
+    waits to break the first real run — which is exactly what happened once.
+    ``selfcheck`` imports every module a command needs and checks that each
+    standard-library module it relies on is the real one.
     """
     executable = package_root / f"{executable_name}.exe"
     if not executable.is_file():
@@ -598,23 +603,25 @@ def verify_frozen_package(package_root: Path, executable_name: str) -> dict[str,
         for key, value in os.environ.items()
         if key.upper() not in {"PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP"}
     }
-    result = subprocess.run(
-        [str(executable), "info"],
-        cwd=str(package_root.parent),
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise ReleaseBuildError(
-            "The built executable does not start:\n"
-            + (result.stderr or result.stdout).strip()[-4000:]
+    outputs: dict[str, str] = {}
+    for command in ("info", "selfcheck"):
+        result = subprocess.run(
+            [str(executable), command],
+            cwd=str(package_root.parent),
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
         )
+        outputs[command] = result.stdout
+        if result.returncode != 0:
+            raise ReleaseBuildError(
+                f"The built executable failed `{command}`:\n"
+                + (result.stdout + "\n" + result.stderr).strip()[-4000:]
+            )
     return {
         "executable": str(executable),
-        "returncode": result.returncode,
-        "stdout_head": result.stdout[:2000],
+        "selfcheck": outputs["selfcheck"].strip().splitlines()[-1].strip(),
     }
 
 
@@ -758,7 +765,10 @@ def build(
             shutil.copy2(staging_dir / name, package_dir / name)
         report.frozen = True
         verification = verify_frozen_package(package_dir, manifest.name)
-        report.notes.append(f"Executable start-up check passed: {verification['executable']}")
+        report.notes.append(
+            f"Executable info + selfcheck passed: {verification['executable']} "
+            f"({verification['selfcheck']})"
+        )
 
     report.package_dir = package_dir
     inspection = inspect_package(package_dir)
