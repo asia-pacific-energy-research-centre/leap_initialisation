@@ -147,7 +147,7 @@ def test_esto_product_mapping_reads_only_canonical_sheet(monkeypatch: pytest.Mon
     assert mapping["12.99 Solar nonspecified"] == "12_solar_unallocated"
 
 
-def test_no_data_chp_skeleton_emits_output_and_capacity_rows(
+def test_no_data_chp_skeleton_anchors_shares_but_keeps_energy_rows_zero(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(workflow.core, "esto_data", pd.DataFrame(columns=["economy", "flows"]))
@@ -204,8 +204,33 @@ def test_no_data_chp_skeleton_emits_output_and_capacity_rows(
         "Transformation\\CHP interim\\Processes\\CHP interim",
         "Exogenous Capacity",
     ) in paths_by_measure
-    zero_measures = {
-        "Output Share",
+    output_share_rows = [
+        row for row in rows if row["Measure"] == "Output Share"
+    ]
+    output_share_values = {
+        (
+            row["Branch_Path"].rsplit("\\", 1)[-1],
+            int(row["Date"]),
+        ): float(row["Value"])
+        for row in output_share_rows
+    }
+    assert output_share_values == {
+        ("Electricity", 2022): 100.0,
+        ("Electricity", 2023): 100.0,
+        ("Heat", 2022): 0.0,
+        ("Heat", 2023): 0.0,
+    }
+    assert all(
+        sum(
+            value
+            for (_fuel, row_year), value in output_share_values.items()
+            if row_year == year
+        )
+        == pytest.approx(100.0)
+        for year in [2022, 2023]
+    )
+
+    zero_energy_measures = {
         "Import Target",
         "Export Target",
         "Historical Production",
@@ -214,7 +239,7 @@ def test_no_data_chp_skeleton_emits_output_and_capacity_rows(
     assert all(
         float(row["Value"]) == 0.0
         for row in rows
-        if row["Measure"] in zero_measures
+        if row["Measure"] in zero_energy_measures
     )
 
 

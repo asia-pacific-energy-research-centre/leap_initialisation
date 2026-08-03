@@ -531,6 +531,7 @@ class TestLeapDemandGroupEstoSectorMapConfig:
         other_codes = set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Other sector"])
         assert "16_02_agriculture_and_fishing" in other_codes
         assert "16_05_nonspecified_others" in other_codes
+        assert "17_nonenergy_use" in other_codes
         # Should not accidentally include buildings
         assert "16_01_buildings" not in other_codes
 
@@ -805,13 +806,44 @@ class TestAggregatedDemandWorkbookModes:
             ("05 International aviation bunkers", "International transport"),
             ("15.01 Domestic aviation", "Transport non road"),
             ("14.03 Manufacturing", "Industry"),
-            ("16.01 Buildings", "Buildings"),
-            ("16.02 Agriculture", "Other sector"),
+            ("16.01 Commercial and public services", "Buildings"),
+            ("16.02 Residential", "Buildings"),
+            ("16.03 Agriculture", "Other sector"),
             ("17 Non-energy use", "Other sector"),
         ],
     )
     def test_requested_sector_branches_classify_source_flows(self, flow, expected_branch):
         assert _demand_branch_from_esto_flow(flow) == expected_branch
+
+    def test_base_year_includes_nonenergy_in_other_sector(self):
+        source = pd.DataFrame(
+            [
+                {
+                    "economy": "01_AUS",
+                    "flows": "16.05 Non-specified others",
+                    "products": "07.17 Other products",
+                    "is_subtotal": False,
+                    "2022": 0.000641,
+                },
+                {
+                    "economy": "01_AUS",
+                    "flows": "17 Non-energy use",
+                    "products": "07.17 Other products",
+                    "is_subtotal": False,
+                    "2022": 78.873358,
+                },
+            ]
+        )
+
+        result = aggregated_demand_workflow._extract_base_year(
+            source,
+            base_year=2022,
+            exclude_own_use_td_losses=True,
+            use_sector_branches=True,
+        )
+        values = result.groupby("sector")["value"].sum().to_dict()
+
+        assert values == pytest.approx({"Other sector": 78.873999})
 
 
 class TestReconciliationDemandInference:
@@ -973,7 +1005,7 @@ class TestReconciliationAccountingLogic:
 
 
 class TestAllZeroDemandBranchExportFilter:
-    """All sibling LEAP rows are omitted only when the whole branch is zero."""
+    """All-zero branches clear existing template branches but do not create new ones."""
 
     @staticmethod
     def _row(
@@ -1024,6 +1056,73 @@ class TestAllZeroDemandBranchExportFilter:
         }
         pd.testing.assert_frame_equal(demand, original)
         assert demand["value"].sum() == pytest.approx(9.0, abs=1e-12)
+
+    def test_all_zero_branch_is_retained_only_when_present_in_template(self, tmp_path):
+        demand = pd.DataFrame(
+            [
+                self._row("Road", "Wind", "Current Accounts", 2022, 0.0),
+                self._row("Road", "Wind", "Reference", 2023, 0.0),
+                self._row("Road", "Wind", "Target", 2023, 0.0),
+                self._row("Road", "Solar", "Current Accounts", 2022, 0.0),
+                self._row("Road", "Solar", "Reference", 2023, 0.0),
+                self._row("Road", "Solar", "Target", 2023, 0.0),
+            ]
+        )
+        template_path = tmp_path / "template.xlsx"
+        pd.DataFrame(
+            [
+                {
+                    "BranchID": 101,
+                    "VariableID": variable_index,
+                    "ScenarioID": scenario_index,
+                    "Branch Path": r"Demand\All demand aggregated\Road\Wind",
+                    "Variable": variable,
+                    "Scenario": scenario,
+                }
+                for scenario_index, scenario in enumerate(
+                    ["Current Accounts", "Reference", "Target"], start=1
+                )
+                for variable_index, variable in enumerate(
+                    [
+                        aggregated_demand_workflow.ACTIVITY_VARIABLE_NAME,
+                        aggregated_demand_workflow.INTENSITY_VARIABLE_NAME,
+                    ],
+                    start=1,
+                )
+            ]
+        ).to_excel(template_path, index=False, startrow=2)
+
+        output_path = tmp_path / "aggregated_demand.xlsx"
+        aggregated_demand_workflow.save_aggregated_demand_as_leap_workbook(
+            economy="20_USA",
+            output_path=output_path,
+            scenarios=["Current Accounts", "Reference", "Target"],
+            id_lookup_path=template_path,
+            use_sector_branches=True,
+            demand=demand,
+        )
+
+        written = pd.read_excel(output_path, sheet_name="LEAP", header=2)
+        wind_rows = written[
+            written["Branch Path"].eq(r"Demand\All demand aggregated\Road\Wind")
+        ]
+        assert not wind_rows.empty
+        assert set(wind_rows["Scenario"]) == {"Current Accounts", "Reference", "Target"}
+        viewing = pd.read_excel(output_path, sheet_name="FOR_VIEWING", header=2)
+        wind_activity = viewing[
+            viewing["Branch Path"].eq(r"Demand\All demand aggregated\Road\Wind")
+            & viewing["Variable"].eq(aggregated_demand_workflow.ACTIVITY_VARIABLE_NAME)
+        ]
+        current_accounts = wind_activity[
+            wind_activity["Scenario"].eq("Current Accounts")
+        ]
+        projection_rows = wind_activity[
+            wind_activity["Scenario"].isin(["Reference", "Target"])
+        ]
+        assert current_accounts["2022"].eq(0.0).all()
+        projection_year_columns = [str(year) for year in range(2023, 2061)]
+        assert projection_rows[projection_year_columns].eq(0.0).all().all()
+        assert not written["Branch Path"].str.endswith(r"\Solar").any()
 
     def test_any_nonzero_value_retains_all_requested_scenarios(self, tmp_path):
         demand = pd.DataFrame(
@@ -1109,6 +1208,15 @@ class TestContributionsSheet:
         contributions.loc[0, "allocated_value"] = 6.5  # 2022 total now 10.5, not 10.0
         aggregated_demand_workflow._warn_contributions_do_not_reconcile(demand, contributions)
         assert "WARN" in capsys.readouterr().out
+
+    def test_raw_contribution_sign_is_preserved_separately(self):
+        provenance = pd.DataFrame({"allocated_value": [-4.5, 2.0]})
+        provenance = aggregated_demand_workflow._format_contribution_demand_magnitudes(
+            provenance
+        )
+
+        assert provenance["allocated_value"].tolist() == [4.5, 2.0]
+        assert provenance["raw_allocated_value"].tolist() == [-4.5, 2.0]
 
     def test_save_workbook_writes_contributions_sheet_when_opted_in(self, tmp_path, monkeypatch):
         demand, contributions = self._demand_and_contributions()

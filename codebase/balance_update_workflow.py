@@ -55,7 +55,6 @@ def run_balance_update_workflow(
     update_run_output_label: str | None = None,
     date_ids_by_economy: dict[str, dict[str, str | None]] | None = None,
     workbook_paths_by_economy: dict[str, Path | str] | None = None,
-    node_executable: Path | str | None = None,
     render_previews: bool = False,
     diagnostic_runner: Callable[..., dict[str, Any]] = (
         run_baseline_seed_balance_diagnostics
@@ -94,7 +93,6 @@ def run_balance_update_workflow(
             diagnostic_results=diagnostics["economy_results"],
             diagnostics_directory=diagnostic_output_dir,
             output_directory=diagnostic_output_dir / "comparison_workbooks",
-            node_executable=node_executable,
             render_previews=render_previews,
         )
         results["diagnostics"] = diagnostics
@@ -143,8 +141,6 @@ UPDATE_RUN_OUTPUT_LABEL = None
 
 # The workbook writer runs programmatically and does not render sheet images.
 RENDER_PREVIEWS = False
-NODE_EXECUTABLE: Path | str | None = None
-
 if RUN_WORKFLOW:
     WORKFLOW_RESULT = run_balance_update_workflow(
         preset=ACTIVE_PRESET,
@@ -159,7 +155,6 @@ if RUN_WORKFLOW:
         update_run_output_label=UPDATE_RUN_OUTPUT_LABEL,
         date_ids_by_economy=DATE_IDS_BY_ECONOMY,
         workbook_paths_by_economy=WORKBOOK_PATHS_BY_ECONOMY,
-        node_executable=NODE_EXECUTABLE,
         render_previews=RENDER_PREVIEWS,
     )
 

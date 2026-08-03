@@ -227,18 +227,33 @@ def test_direct_target_only_resolution_does_not_require_reference(monkeypatch, t
     assert resolved_tgt == sdm._resolve(tgt)
 
 
-def test_direct_target_resolution_requires_configured_target_path(monkeypatch) -> None:
+def test_direct_resolution_falls_back_to_relaxed_export_filenames(
+    monkeypatch,
+    tmp_path,
+) -> None:
     import codebase.supply_reconciliation.demand_mapping as sdm
 
-    monkeypatch.setattr(sdm, "DIRECT_DEMAND_PROJECTION_ECONOMY", "12_NZ")
+    economy_dir = tmp_path / "20_USA"
+    economy_dir.mkdir()
+    ref = economy_dir / "REF 2907.xlsx"
+    tgt = economy_dir / "TGT 2907.xlsx"
+    ref.touch()
+    tgt.touch()
+
+    monkeypatch.setattr(sdm, "DIRECT_DEMAND_PROJECTION_ECONOMY", "20_USA")
     monkeypatch.setattr(sdm, "BALANCE_DEMAND_REF_WORKBOOK_PATH", None)
     monkeypatch.setattr(sdm, "BALANCE_DEMAND_TGT_WORKBOOK_PATH", None)
+    monkeypatch.setattr(sdm, "BALANCE_DEMAND_EXPORTS_ROOT", tmp_path)
+    monkeypatch.setattr(sdm, "BALANCE_DEMAND_REF_BALANCE_EXPORT_DATE_ID", None)
+    monkeypatch.setattr(sdm, "BALANCE_DEMAND_TGT_BALANCE_EXPORT_DATE_ID", None)
 
-    with pytest.raises(ValueError, match="BALANCE_DEMAND_TGT_WORKBOOK_PATH"):
-        sdm._resolve_balance_demand_workbooks_for_economy(
-            "12_NZ",
-            scenarios=["Target"],
-        )
+    resolved_ref, resolved_tgt = sdm._resolve_balance_demand_workbooks_for_economy(
+        "20_USA",
+        scenarios=["Reference", "Target"],
+    )
+
+    assert resolved_ref == ref.resolve()
+    assert resolved_tgt == tgt.resolve()
 
 
 def test_deferred_balance_failure_returns_schema_safe_empty_tables(

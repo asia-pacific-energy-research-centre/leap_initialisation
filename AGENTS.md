@@ -676,8 +676,8 @@ or exports.
 
 ### D2. LEAP export process - complete
 
-Completed in guide section 9b, including results view, units, detail level,
-Malaysia exception, export action, expected time, and placement guidance.
+Completed in guide section 9b, including results view, units, the universal
+Level 2 minimum, export action, expected time, and placement guidance.
 
 ### D3. Seven supporting workflow scripts - complete
 

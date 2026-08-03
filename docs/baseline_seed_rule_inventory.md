@@ -88,7 +88,7 @@ not permanent API references.
 | SEED-C022 | Unknown non-excepted branch paths remain errors; allowlists are explicit. | No automatic expansion from observed backup rows. | Legacy validator had prefix and fuel allowlists. | SEED-011 exception records match explicit fields. | `confirmed_rule` |
 | SEED-C023 | Demand zeroing excludes the aggregated-demand branch and Other loss and own use branches, preserving values owned by their workflows. | Scenario coverage follows the zeroing workbook. | `aggregated_demand_workflow.py:182-197,918-1008`; `supply_reconciliation_workflow.py:1065-1075`. | Current aggregated demand workflow. | `confirmed_exception` |
 | SEED-C024 | Resources, Stock Changes, and Statistical Differences paths are classified against the resolved economy template; unmatched all-zero rows are omitted, while unmatched nonzero rows are diagnostic failures. | All scenarios/years. These roots may legitimately lack an unused economy-specific fuel branch. | Final ID resolution and `baseline_seed_validation.drop_zero_only_optional_unmatched_rows`. | Current supply reconciliation functions and optional-root regression tests. | `confirmed_rule` |
-| SEED-C025 | Transformation Process Efficiency uses gross output divided by feedstock. When an auxiliary fuel is also a module output, same-module auxiliary use is capped at that fuel's gross output and deliverable output subtracts that portion; any excess remains external auxiliary input. Exogenous Capacity and Output Share use deliverable output, and all auxiliary ratios use deliverable output as denominator. A fully self-consuming zero-net process temporarily preserves its gross representation because LEAP has no valid auxiliary-per-zero-output denominator. | All transformation process records and scenarios. | `functions/transformation_record_builder.build_process_record`; `functions/supply_leap_io.apply_transformation_target_overrides_for_scenario`. | Feedstock-only efficiency and process-boundary regression tests | `confirmed_rule`; zero-net edge case remains explicit |
+| SEED-C025 | Transformation Process Efficiency, Exogenous Capacity, and Historical Production use gross output divided by feedstock / gross-output basis. When an auxiliary fuel is also a module output, same-module auxiliary use is capped at that fuel's gross output and deliverable output subtracts that portion; any excess remains external auxiliary input. Output Share and all auxiliary ratios use deliverable output as denominator. A fully self-consuming zero-net process temporarily preserves its gross representation because LEAP has no valid auxiliary-per-zero-output denominator. | All transformation process records and scenarios. | `functions/transformation_record_builder.build_process_record`; `functions/supply_leap_io.apply_transformation_target_overrides_for_scenario`. | Feedstock-only efficiency and process-boundary regression tests | `confirmed_rule`; zero-net edge case remains explicit |
 | SEED-C026 | Transfers use configured process relationships and transformation share/zero-fill builders. | Current Accounts handling is explicitly configurable. | `transfers_workflow.py:1754+`; `configuration/workflow_config.py:240-252`. | Current transfers workflow and shared transformation functions. | `implementation_detail`; mapping semantics remain owned by `leap_mappings` |
 | SEED-C027 | `Minimum Share of Production` exists in the model but is not a sibling allocation that must sum to 100%. | Constraint semantics, not an allocation group. | Present in the reviewed USA template; absent from the June USA seed. | Deliberately excluded from `SHARE_VARIABLE_RULE_IDS`. | `implementation_detail` |
 | SEED-C028 | Workbook metadata (`Units`, `Scale`, `Per...`) and LEAP preamble are preserved from templates. | All rows/scenarios. | Legacy Excel writers and `AGENTS_LEAP_EXPORT.md`. | Comparator metadata differences and existing workbook writers. | `confirmed_rule` |
@@ -144,6 +144,34 @@ the error is re-raised. Deferring an exception never permits invalid rows to
 reach a final LEAP import workbook. Diagnostics must identify the source
 workflow, logical key, scenario and year where applicable, rule ID, severity,
 blocking status, and reason.
+
+## Post-write final-artifact contract (BSA audit gate)
+
+The SEED rules above remain the pre-write assembly and validation contract. They
+are now traced into a second, run-level final-artifact contract, BSA-001–BSA-010,
+defined in [baseline_seed_final_artifact_contract.md](baseline_seed_final_artifact_contract.md).
+The final gate is invoked by `write_per_economy_combined_workbooks` only after
+the actual `LEAP` and `FOR_VIEWING` sheets are saved.
+
+The following final rules deliberately reuse SEED implementations:
+
+| Final rule | Existing SEED implementation reused after reopen |
+|---|---|
+| BSA-003 | `resolve_logical_duplicates` / SEED-001–002 |
+| BSA-004/005 | `build_template_id_lookup`, `apply_template_ids`, and `validate_seed_rows` / SEED-003–005, 011, 013 |
+| BSA-006 | `validate_seed_rows` share and canonical-sibling checks / SEED-006–008 |
+| BSA-007 | `validate_seed_rows` scenario/year checks / SEED-009–010 |
+
+BSA-001/002/008/009/010 add information that the pre-write row validator does
+not own: complete artifact inventory, physical workbook structure, explicit
+zero/reset authorization, post-assembly-to-serialized value conservation, and
+diagnostic/manifest completeness. Missing evidence produces `INCOMPLETE`.
+
+All BSA rules have hard contract severity but run in audit mode during the
+qualification phase. They report what would block without changing current
+writer, completion, or promotion behaviour. See
+[baseline_seed_gate_consolidation_review.md](baseline_seed_gate_consolidation_review.md)
+for every retained local check and automated-test disposition.
 
 ## Resolved modelling decisions
 

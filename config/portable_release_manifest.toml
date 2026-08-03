@@ -1,0 +1,208 @@
+# Release contract for the portable LEAP review tools.
+#
+# This file is the single declaration of what a release contains. The builder
+# reads every source file out of Git at the commit pinned below - never out of a
+# working tree - so a release is reproducible from this manifest alone and
+# uncommitted work-in-progress can never reach a colleague's copy.
+#
+# Validated by codebase/portable_release/manifest.py before any staging happens.
+# See docs/leap_review_tools.md for the release and rollback procedure.
+
+schema_version = 1
+
+[release]
+name = "leap-review-tools"
+version = "0.1.0"
+description = """\
+Portable Windows build of two LEAP review tools: the Common ESTO dashboard \
+renderer, and the balance-review workbook builder. Runs without Python, Conda, \
+Git, or a repository checkout."""
+
+[runtime]
+# The interpreter the release is built and tested against. The frozen package
+# carries its own interpreter; this records what a rebuild needs.
+python = ">=3.11,<3.14"
+packages = [
+    "pandas>=2.0",
+    "numpy>=1.26",
+    "openpyxl>=3.1",
+    "plotly>=5.20",
+    "pyinstaller>=6.0",
+]
+
+# ---------------------------------------------------------------------------
+# Participating repositories
+# ---------------------------------------------------------------------------
+#
+# `paths` allowlists whole Python modules only. Configuration, templates, and
+# other assets go in [[config_assets]] so they can be replaced without a
+# rebuild.
+#
+# Note on package __init__ files: `codebase/__init__.py` in leap_initialisation
+# is a re-export hub that imports the LEAP COM API, Excel I/O, and the
+# comparison stack. None of that is needed by the supported commands, and much
+# of it cannot run off a modelling workstation. It is deliberately NOT
+# allowlisted, which makes `codebase` an implicit namespace package (PEP 420) in
+# the package. The empty sub-package __init__ files below are allowlisted as
+# complete files so the regular sub-packages keep their normal import
+# behaviour.
+
+[repositories.leap_initialisation]
+commit = "4ea6ffedc246306c3964bb430dfc77ff70da9e0b"
+stage_dir = "leap_initialisation"
+on_sys_path = true
+paths = [
+    "codebase/configuration/__init__.py",
+    "codebase/configuration/workflow_config.py",
+    "codebase/functions/__init__.py",
+    "codebase/functions/balance_review_workbook_builder.py",
+    "codebase/functions/balance_review_workbooks.py",
+    "codebase/utilities/__init__.py",
+    "codebase/utilities/leap_balance_export_resolver.py",
+    "codebase/utilities/output_paths.py",
+    "codebase/portable_release/__init__.py",
+    "codebase/portable_release/commands.py",
+    "codebase/portable_release/portable_main.py",
+    "codebase/portable_release/provenance.py",
+    "codebase/portable_release/runtime.py",
+    "codebase/portable_release/validation.py",
+]
+# manifest.py, settings.py, build_release.py, and developer_launcher.py are
+# maintainer-side only: nothing on a portable run's import path reaches them,
+# and a colleague's copy has no repositories to configure or release to build.
+
+# The dashboard modules are imported flat (``import common_esto_dashboard_data``),
+# so `codebase/` is stripped when staging. That also keeps this repository's
+# `codebase` package name from colliding with leap_initialisation's.
+[repositories.leap_dashboard]
+commit = "f5aaf94f72078e51d4932d0a4cfb2d1062c432be"
+stage_dir = "leap_dashboard"
+strip_prefix = "codebase"
+on_sys_path = true
+paths = [
+    "codebase/common_esto_dashboard_data.py",
+    "codebase/common_esto_dashboard_output_layout.py",
+    "codebase/common_esto_dashboard_portable.py",
+    "codebase/common_esto_dashboard_renderer.py",
+]
+
+# `mapping_tools` has no __init__.py in its own repository either; it works as
+# an implicit namespace package here exactly as it does there.
+[repositories.leap_mappings]
+commit = "3787addfe38b4cce5b4961c8a29e4b8be580d56b"
+stage_dir = "leap_mappings"
+strip_prefix = "codebase"
+on_sys_path = true
+paths = [
+    "codebase/mapping_tools/source_branch_preflight.py",
+]
+
+# ---------------------------------------------------------------------------
+# External configuration assets
+# ---------------------------------------------------------------------------
+#
+# Copied into the package's config/ directory, not embedded in the executable.
+# Their SHA-256 values are recorded in the release report and re-hashed into
+# every run manifest, so replacing one with an approved newer version changes
+# the next run and is visible in that run's record.
+
+[[config_assets]]
+repository = "leap_dashboard"
+path = "config/common_esto_dashboard/common_esto_dashboard_template.json"
+dest = "dashboard/common_esto_dashboard_template.json"
+role = "dashboard_template"
+description = "Page rules, chart generation settings, and sign semantics."
+
+[[config_assets]]
+repository = "leap_dashboard"
+path = "config/common_esto_dashboard/series_config.json"
+dest = "dashboard/series_config.json"
+role = "dashboard_series_config"
+description = "Series labels, visible-series rules, and the economy list."
+
+[[config_assets]]
+repository = "leap_dashboard"
+path = "config/common_esto_dashboard/code_colors.json"
+dest = "dashboard/code_colors.json"
+role = "dashboard_code_colors"
+description = "Per-axis ESTO code colour map."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/all_demand_aggregated_components.json"
+dest = "mappings/all_demand_aggregated_components.json"
+role = "all_demand_aggregated_components"
+description = """\
+Which demand sectors have no separately modelled LEAP detail per economy. \
+Owned by leap_mappings; decides which sector pages are hidden."""
+
+# ---------------------------------------------------------------------------
+# Supported commands
+# ---------------------------------------------------------------------------
+
+[[commands]]
+name = "balance-review"
+summary = "Build the five-sheet balance-review workbook for one economy, scenario, and year."
+input_mode = "existing_diagnostic_artifacts"
+outputs = """\
+One balance_review_<economy>_<scenario>_<year>.xlsx workbook, plus a run \
+manifest and an input validation report, in a dated folder under output/."""
+
+  [[commands.inputs]]
+  key = "economy"
+  kind = "file"
+  description = "Economy code, for example 20_USA."
+
+  [[commands.inputs]]
+  key = "scenario"
+  kind = "file"
+  description = "Scenario name or code, for example Target or TGT."
+
+  [[commands.inputs]]
+  key = "year"
+  kind = "file"
+  description = "Four-digit review year, for example 2022."
+
+  [[commands.inputs]]
+  key = "balance_export_workbook"
+  kind = "file"
+  description = """\
+The LEAP Energy Balance export workbook (.xlsx) these diagnostics were \
+computed against. Export at Level 2 detail or deeper."""
+
+  [[commands.inputs]]
+  key = "diagnostics_directory"
+  kind = "directory"
+  description = """\
+Folder holding leap_balance_source_review.csv and \
+leap_balance_source_differences.csv (both required) and \
+leap_balance_mapping_issues.csv (optional), produced by the balance-diagnostics \
+step. That step reads a LEAP balance export against the ESTO and 9th-edition \
+source tables (314 MB), so it runs in developer mode rather than in a release. \
+A results update / supply reconciliation run is not involved."""
+
+[[commands]]
+name = "dashboard"
+summary = "Render the Common ESTO comparison dashboard for one economy."
+input_mode = "existing_common_esto_comparison_data"
+outputs = """\
+A dashboard folder with index.html, per-sector pages, Plotly chart bundles, \
+chart_manifest.csv, and a run manifest, in a dated folder under output/."""
+
+  [[commands.inputs]]
+  key = "economy"
+  kind = "file"
+  description = "Economy code, for example 20_USA."
+
+  [[commands.inputs]]
+  key = "comparison_data_path"
+  kind = "file"
+  description = """\
+common_esto_comparison_data.csv from the leap_mappings pipeline. This file is \
+close to a gigabyte for the full economy set, so it is a run input rather than \
+part of the package."""
+
+  [[commands.inputs]]
+  key = "common_rows_path"
+  kind = "file"
+  description = "common_esto_rows.csv from the same leap_mappings run."

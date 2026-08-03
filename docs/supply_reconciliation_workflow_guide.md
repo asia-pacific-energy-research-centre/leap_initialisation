@@ -120,9 +120,27 @@ The final baseline seed combines the current run's supply, transformation
 (including oil refining), transfers, interim electricity/CHP/heat,
 loss/own-use proxy, aggregated-demand, and demand-zeroing workbooks. Every
 configured producer must supply a readable workbook for each requested
-economy. The writer validates all economies before replacing any final seed.
+economy. Each final seed is validated and reported for its own economy; a
+finding in one economy does not suppress an otherwise valid economy artifact.
 Default scenario coverage is Current Accounts 2022 and Reference/Target
 2023–2060; both endpoints are configurable in `workflow_config.py`.
+
+After the economy workbooks are physically saved, the final writer runs the
+central BSA-001–BSA-010 artifact gate. It reopens both `LEAP` and `FOR_VIEWING`,
+checks the explicit economy/template/artifact set, reruns shared duplicate,
+ID/share/coverage validation, compares post-assembly values with serialized
+values, and checks required evidence. Outputs are:
+
+- `supporting_files/baseline_seed_artifact_validation/baseline_seed_artifact_findings.csv`;
+- `supporting_files/baseline_seed_artifact_validation/baseline_seed_artifact_summary.csv`;
+- `supporting_files/baseline_seed_artifact_validation/baseline_seed_artifact_manifest.json`.
+
+This is currently a shadow audit. Hard failures stay labelled hard and record
+`would_block`, but the audit does not stop the run or change promotion. Missing
+evidence gives `SHADOW_INCOMPLETE`, not a pass. See
+`docs/baseline_seed_final_artifact_contract.md` for the normative contract and
+`docs/baseline_seed_gate_consolidation_review.md` for why each earlier check was
+kept, reused, or left local.
 
 Mapping inputs for supporting producers and reconciliation now come from
 `leap_mappings/config/outlook_mappings_master.xlsx`. Operational configuration
@@ -294,7 +312,7 @@ A later structural or data update starts a new decision at the top.
 
 **`patch_baseline_seeds` in detail.** When `RUN_MODE == "patch_baseline_seeds"`, `_run_with_config_inner()` skips `run_results_linked_transformation_supply_workflow` entirely and instead calls `codebase/functions/patch_baseline_seeds.py::run_patch()` once per module in `PATCH_MODULE`:
 
-- **`PATCH_MODULE`** — a module name (or list of names) from `patch_baseline_seeds.MODULE_REGISTRY`. Patchable today: `"supply"`, `"transfers"`, `"power_interim"`, `"aggregated_demand"`, `"losses_own_use"` — all spot-verified against a full-run seed with zero row/expression diffs (see the "Audited 2026-07-XX" comment blocks above `_PRESET_PATCH_BASELINE_SEEDS`, ~lines 727-774, for the verification history). The transformation auto-regen sectors (`"oil_refineries"`, `"lng"`, `"hydrogen"`, `"gas_processing"`, `"coal_transformation"`, `"petrochemical"`, `"charcoal"`, `"biofuels"`, `"nonspecified_transformation"`, `"transformation"` — anything with `auto_sector_keys` set in `MODULE_REGISTRY`) are gated: `run_patch()` raises `NotImplementedError` for them, because the simplified auto-regen path was found to change process-efficiency and auxiliary-fuel expressions relative to a genuine full run (`patch_baseline_seeds.py:1024-1032`). Refresh those sectors via a full `baseline_seed`/`results_update` run instead.
+- **`PATCH_MODULE`** — a module name (or list of names) from `patch_baseline_seeds.MODULE_REGISTRY`. Patchable modules include `"supply"`, `"transfers"`, `"power_interim"`, `"aggregated_demand"`, `"losses_own_use"`, and the listed transformation modules (including `"oil_refineries"` and `"nonspecified_transformation"`). Transformation patches regenerate their source workbooks through the owning producer, then replace only the configured module branch prefixes in the existing seed. Review the per-run archive, diagnostics, and validation output when applying a transformation patch.
 - **`PATCH_ECONOMIES`** — `None` patches every economy found in the baseline-seed directory; otherwise a list of economy tokens (e.g. `["20_USA", "01_AUS"]`) limits scope.
 - **`PATCH_RUN_WORKFLOW`** — `True` (default) re-runs the module's upstream source workflow fresh before patching, so workbook-based modules (`power_interim`, `transfers`, `aggregated_demand`, `supply`, `losses_own_use`) always patch from current data rather than whatever happens to be on disk. Set `False` only when you deliberately want to patch from already-generated workbooks.
 - The patcher still crosses the same F2 emit-boundary validator (`prepare_seed_rows_for_write`) as a full run — see [4e](#4e-checks-and-validation-link-to-the-check-registry).
@@ -579,16 +597,15 @@ Exporting results is required before every reconciliation pass. Results must be 
    | Level | What is included | When to use |
    |---|---|---|
    | Level 1 | Balance totals; no transformation activity by process | Not usually sufficient for reconciliation |
-   | Level 2 | Sector-level demand; transformation by module | Sufficient for most reconciliation passes |
+   | Level 2 | Sector-level demand; transformation by module | Required minimum for reconciliation and results-update runs |
    | Level 4 | All detail including demand sub-sector end-uses | Use when you also need detailed demand sector outputs |
-
-   Malaysia (`10_MAS`) is the main exception: it needs Level 2 balance detail when running `results_update`, because the hydrogen transformation sector can use both `Electrolysers` and `SMR with CCS` and the workflow checks for those process rows explicitly.
 
 5. Click the **Excel symbol** and select **All** to export all results.
 6. Wait for the export to complete. A full area at Level 2 covering 2022–2060 typically takes **3–4 hours**. Higher detail levels or more years will take longer. This is best run on a spare machine or out of hours.
 7. Place the exported file in the directory expected by `supply_reconciliation_workflow.py` — check the script's input path settings to confirm the correct location.
 
-> If you are exporting for the first time, choose Level 2 unless there is a specific reason to need Level 4. Level 4 significantly increases export time and file size.
+> Use Level 2 by default unless there is a specific reason to need Level 4.
+> Level 4 significantly increases export time and file size.
 
 ## 9c. Fast preflight checks
 

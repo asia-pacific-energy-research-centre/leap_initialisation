@@ -223,4 +223,41 @@ def test_transfer_projection_routes_generic_crosswalk_flow_to_active_subflow() -
     assert routed.loc[0, 2023] == 25.0
 
 
+def test_transfer_projection_profile_rolls_active_subflow_up_before_allocation() -> None:
+    """Parent-flow allocation must use the active child flow's product profile."""
+    history = pd.DataFrame(
+        {
+            "economy": ["20_USA"] * 5,
+            "flows": [
+                "08 Transfers",
+                "08 Transfers",
+                "08.99 Transfers nonspecified",
+                "08.99 Transfers nonspecified",
+                "08.99 Transfers nonspecified",
+            ],
+            "products": [
+                "06.03 Refinery feedstocks",
+                "06.04 Additives/ oxygenates",
+                "06.03 Refinery feedstocks",
+                "06.04 Additives/ oxygenates",
+                "06.05 Other hydrocarbons",
+            ],
+            2022: [999.0, 999.0, 30.0, 0.0, 0.0],
+        }
+    )
+
+    profile = transfers_workflow._build_transfer_projection_profile_history(
+        history,
+        base_year=2022,
+    )
+
+    assert set(profile["flows"]) == {"08 Transfers"}
+    values = profile.groupby("products")[2022].sum().to_dict()
+    assert values == {
+        "06.03 Refinery feedstocks": 30.0,
+        "06.04 Additives/ oxygenates": 0.0,
+        "06.05 Other hydrocarbons": 0.0,
+    }
+
+
 #%%

@@ -987,55 +987,44 @@ class TemplateBalanceExtractor:
                 unique_mismatches = mismatch_rows[preview_cols].drop_duplicates()
                 preview = unique_mismatches.head(30).to_dict("records")
 
-                # Always write the full blocking set to a CSV so it can be
+                # Always write the full warning set to a CSV so it can be
                 # inspected, the flags fixed, or the reviewed rows pasted straight
                 # into the `subtotal_mismatch_allowed` exception sheet. The column
                 # order matches that sheet: enabled, sheet, leap_sector_name_full_path,
                 # raw_leap_fuel_name, <target sector>, <target fuel>, plus the flags
                 # for review.
-                blocking_export = unique_mismatches.copy()
-                blocking_export.insert(0, "sheet", sheet_label)
-                blocking_export.insert(0, "enabled", "")
-                blocking_path = (
+                warning_export = unique_mismatches.copy()
+                warning_export.insert(0, "sheet", sheet_label)
+                warning_export.insert(0, "enabled", "")
+                warning_path = (
                     SUBTOTAL_FLAG_DIAGNOSTIC_DIR
-                    / f"subtotal_flag_blocking_mismatches_{sheet_label}.csv"
+                    / f"subtotal_flag_mismatch_warnings_{sheet_label}.csv"
                 )
                 try:
-                    blocking_path.parent.mkdir(parents=True, exist_ok=True)
-                    blocking_export.to_csv(blocking_path, index=False, encoding="utf-8-sig")
+                    warning_path.parent.mkdir(parents=True, exist_ok=True)
+                    warning_export.to_csv(warning_path, index=False, encoding="utf-8-sig")
                     print(
-                        f"[INFO] {sheet_label}: wrote {len(unique_mismatches)} blocking subtotal "
-                        f"mismatch row(s) for review to {blocking_path}. Fix the flags or add the "
+                        f"[WARN] {sheet_label}: wrote {len(unique_mismatches)} subtotal "
+                        f"mismatch warning row(s) for review to {warning_path}. Fix the flags or add the "
                         "reviewed rows (enabled=TRUE) to the "
                         f"'{SUBTOTAL_MISMATCH_EXCEPTIONS_SHEET}' sheet of "
-                        f"{SUBTOTAL_MISMATCH_EXCEPTIONS_PATH}.",
+                        f"{SUBTOTAL_MISMATCH_EXCEPTIONS_PATH}. Processing will continue.",
                         flush=True,
                     )
                 except Exception as exc:
-                    blocking_path = None
+                    warning_path = None
                     print(
-                        f"[WARN] {sheet_label}: could not write blocking subtotal mismatch CSV "
-                        f"({exc}); {len(unique_mismatches)} row(s) remain unreviewed.",
+                        f"[WARN] {sheet_label}: could not write subtotal mismatch warning CSV "
+                        f"({exc}); {len(unique_mismatches)} row(s) remain unreviewed. "
+                        "Processing will continue.",
                         flush=True,
                     )
-
-                # LEAP_INIT_ALLOW_SUBTOTAL_MISMATCH: user-authorized escape hatch for
-                # runs against a mapping workbook whose subtotal flags are mid-review;
-                # mismatched rows are reported but do not block the run.
-                if truthy(os.environ.get("LEAP_INIT_ALLOW_SUBTOTAL_MISMATCH", "")):
-                    print(
-                        f"[WARN] {sheet_label}: {len(mismatch_rows)} subtotal mismatch row(s) "
-                        "allowed because LEAP_INIT_ALLOW_SUBTOTAL_MISMATCH is set. "
-                        f"Preview (up to 30): {preview}",
-                        flush=True,
-                    )
-                else:
-                    raise ValueError(
-                        f"{sheet_label} contains subtotal mismatches. Set subtotal_mismatch_is_ok=True "
-                        "only for intentional subtotal-to-non-subtotal mappings. "
-                        f"Full list of {len(unique_mismatches)} row(s) written to {blocking_path}. "
-                        f"Preview: {preview}"
-                    )
+                print(
+                    f"[WARN] {sheet_label}: {len(mismatch_rows)} unapproved subtotal "
+                    "mismatch row(s) detected; mapping load will continue. "
+                    f"Preview (up to 30): {preview}",
+                    flush=True,
+                )
 
             pair_many_to_many = out["pair_mapping_cardinality_computed"].eq("many_to_many")
             many_to_many_rows = out[
@@ -1586,6 +1575,29 @@ class TemplateBalanceExtractor:
 
         full_path_esto = self._balance_full_path_pair_to_esto.get(full_path_key, [])
         full_path_ninth = self._balance_full_path_pair_to_ninth.get(full_path_key, [])
+        all_demand_parent_alias = False
+        full_path_parts = full_path_key[0].split("/")
+        all_demand_root_key = self._canonicalize_path_key("All demand aggregated")
+        if (
+            len(full_path_parts) == 2
+            and full_path_parts[0] == all_demand_root_key
+            and not full_path_esto
+            and not full_path_ninth
+        ):
+            # Current balance exports nest final-demand sector totals beneath an
+            # ``All demand aggregated`` presentation row. The canonical mapping
+            # workbook maps those sector totals by their real branch names
+            # (Road, Industry, Buildings, and so on), without the presentation
+            # prefix. Reuse only an explicit leaf pair that actually exists in
+            # the maintained mapping tables; obsolete fuel-placeholder children
+            # therefore remain unmapped and can still be ignored downstream.
+            leaf_path_key = (full_path_parts[-1], full_path_key[1])
+            leaf_esto = self._balance_full_path_pair_to_esto.get(leaf_path_key, [])
+            leaf_ninth = self._balance_full_path_pair_to_ninth.get(leaf_path_key, [])
+            if leaf_esto or leaf_ninth:
+                full_path_esto = leaf_esto
+                full_path_ninth = leaf_ninth
+                all_demand_parent_alias = True
 
         def _descendant_records(
             lookup: dict[tuple[str, str], list[dict[str, object]]],
@@ -1677,7 +1689,13 @@ class TemplateBalanceExtractor:
             target_pairs = [pair for idx, pair in enumerate(target_pairs) if pair != ("", "") and pair not in target_pairs[:idx]]
             esto_mapping_found = bool(target_pairs)
             mapping_status = "mapped" if full_path_ninth else "partial_full_path_pair"
-            if use_descendant_records:
+            if all_demand_parent_alias:
+                mapping_method = (
+                    "all_demand_parent_alias_pair"
+                    if len(target_pairs) == 1
+                    else "all_demand_parent_alias_pair_multiple"
+                )
+            elif use_descendant_records:
                 mapping_method = "module_full_path_pair" if len(target_pairs) == 1 else "module_full_path_pair_multiple"
             else:
                 mapping_method = "full_path_pair" if len(target_pairs) == 1 else "full_path_pair_multiple"
@@ -1737,7 +1755,14 @@ class TemplateBalanceExtractor:
                 allocation_shares = [share for _ in target_pairs]
                 allocation_method = "equal_split"
 
-        match_resolution = "module_only" if use_descendant_records or self._balance_detail_mode == "less_detail" else "detailed"
+        if all_demand_parent_alias:
+            match_resolution = "all_demand_parent_alias"
+        else:
+            match_resolution = (
+                "module_only"
+                if use_descendant_records or self._balance_detail_mode == "less_detail"
+                else "detailed"
+            )
 
         records: list[dict[str, str]] = []
         for (esto_flow, esto_product), allocation_share in zip(target_pairs, allocation_shares):

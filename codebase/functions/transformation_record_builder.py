@@ -2956,19 +2956,28 @@ def save_transformation_export(
     id_lookup_path: Path | str | None = None,
     full_branch_catalog_df=None,
     in_scope_sector_titles: set[str] | None = None,
+    process_records_by_scenario: dict[str, list[dict]] | None = None,
 ):
     """Save a LEAP import file built from process records across scenarios."""
     try:
-        region = resolve_export_region_from_process_economies(process_records, region)
+        region_records = process_records
+        if process_records_by_scenario:
+            region_records = [
+                record
+                for scenario_records in process_records_by_scenario.values()
+                for record in (scenario_records or [])
+            ]
+        region = resolve_export_region_from_process_economies(region_records, region)
+        has_process_records = bool(region_records)
         can_build_catalog_zero_skeleton = (
             full_branch_catalog_df is not None
             and not full_branch_catalog_df.empty
             and bool(in_scope_sector_titles)
         )
-        if not process_records and not can_build_catalog_zero_skeleton:
+        if not has_process_records and not can_build_catalog_zero_skeleton:
             print("No process records available for LEAP export.")
             return None
-        if not process_records:
+        if not has_process_records:
             print(
                 "No process records available; building a canonical zero skeleton "
                 "from the full-model branch catalog."
@@ -2987,9 +2996,14 @@ def save_transformation_export(
         combined_rows = []
         for scenario in scenarios:
             scenario_config = scenario_configs.get(scenario, {})
+            scenario_records = (
+                process_records_by_scenario.get(str(scenario), process_records)
+                if process_records_by_scenario
+                else process_records
+            )
             combined_rows.extend(
                 build_transformation_log_rows(
-                    process_records,
+                    scenario_records,
                     scenario,
                     region,
                     combined_base_year,

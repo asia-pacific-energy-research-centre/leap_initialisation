@@ -545,8 +545,8 @@ def refresh_output_paths_for_pass_mode(
 
 CAPACITY_UNMET_PRIORITY_BY_PRODUCT: dict[str, list[str]] = {
     # When RUN_ELECTRICITY_HEAT_INTERIM=True the three interim modules take
-    # priority; they use exogenous capacity so the capacity_unmet system cannot
-    # grow them — remaining gaps fall through to the import fallback.
+    # priority. Their exogenous capacity is adjusted through the same runtime
+    # capacity ledger used by the other transformation modules.
     "17 Electricity": [
         "Electricity interim",
         "CHP interim",
@@ -743,11 +743,14 @@ CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS: dict[str, dict[str, dict]] = {
             "Transfers unallocated":           _LOCKED_AT_BASE_YEAR,
             "Upstream liquids transfers":      _LOCKED_AT_BASE_YEAR,
             # Modules allowed to grow freely.
+            "CHP interim":                           UNLIMITED,
             "CHP plants":                           UNLIMITED,
             "Chemical heat for electricity production": UNLIMITED,
             "Electric boilers":                     UNLIMITED,
+            "Electricity interim":                   UNLIMITED,
             "Electricity Generation":               UNLIMITED,
             "Gas to liquids plants":                UNLIMITED,
+            "Heat plant interim":                    UNLIMITED,
             "Heat plants":                          UNLIMITED,
             "Hydrogen transformation":              UNLIMITED,
             "LNG regasification":                   UNLIMITED,
@@ -771,11 +774,14 @@ CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS: dict[str, dict[str, dict]] = {
             "Transfers unallocated":           _LOCKED_AT_BASE_YEAR,
             "Upstream liquids transfers":      _LOCKED_AT_BASE_YEAR,
             # Modules allowed to grow freely.
+            "CHP interim":                           UNLIMITED,
             "CHP plants":                           UNLIMITED,
             "Chemical heat for electricity production": UNLIMITED,
             "Electric boilers":                     UNLIMITED,
+            "Electricity interim":                   UNLIMITED,
             "Electricity Generation":               UNLIMITED,
             "Gas to liquids plants":                UNLIMITED,
+            "Heat plant interim":                    UNLIMITED,
             "Heat plants":                          UNLIMITED,
             "Hydrogen transformation":              UNLIMITED,
             "LNG regasification":                   UNLIMITED,
@@ -1105,7 +1111,8 @@ AGGREGATED_DEMAND_EXCLUDED_SECTORS: list[str] | None = None
 # When True, aggregated demand branches are written as
 # Demand\All demand aggregated\{SectorLabel}\{fuel} instead of the flat
 # Demand\All demand aggregated\{fuel} path. The configured split uses Road,
-# Transport non road, Industry, Other sector, and Buildings.
+# Transport non road, International transport, Industry, Other sector, and
+# Buildings. Non-energy use remains included in Other sector.
 # PRESET-CONTROLLED DEFAULT: both active presets replace this value.
 AGGREGATED_DEMAND_USE_SECTOR_BRANCHES: bool = True
 
@@ -1135,6 +1142,7 @@ AGGREGATED_DEMAND_WRITE_CONTRIBUTIONS: bool = True
 # Commercial and public services, 16.01.02 Residential, etc.).
 # Other sector note: ESTO does not separate agriculture (16.02.03) and fishing
 # (16.02.04) at sub1sector level — both fall under 16_02_agriculture_and_fishing.
+# The aggregated Other sector branch also owns 17_nonenergy_use.
 LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP: dict[str, list[str]] = {
     "Road":               ["15_02_road"],
     "Transport non road": [
@@ -1149,7 +1157,11 @@ LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP: dict[str, list[str]] = {
         "05_international_aviation_bunkers",
     ],
     "Industry":           ["14_industry_sector"],
-    "Other sector":       ["16_02_agriculture_and_fishing", "16_05_nonspecified_others"],
+    "Other sector":       [
+        "16_02_agriculture_and_fishing",
+        "16_05_nonspecified_others",
+        "17_nonenergy_use",
+    ],
     "Buildings":          ["16_01_buildings"],
 }
 

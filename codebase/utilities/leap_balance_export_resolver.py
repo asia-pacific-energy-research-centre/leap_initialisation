@@ -25,6 +25,21 @@ BALANCE_EXPORT_FILENAME_PATTERN = re.compile(
 )
 
 
+_ECONOMY_AREA_ALIASES = {
+    "01_AUS": ("aus", "australia"),
+    "02_BD": ("bd", "brunei", "brunei darussalam"),
+    "05_PRC": ("prc", "china", "people's republic of china"),
+    "10_MAS": ("mas", "malaysia"),
+    "11_MEX": ("mex", "mexico"),
+    "12_NZ": ("nz", "new zealand"),
+    "13_PNG": ("png", "papua new guinea"),
+    "15_PHL": ("phl", "philippines"),
+    "19_THA": ("tha", "thailand"),
+    "20_USA": ("usa", "united states", "united states of america"),
+    "21_VN": ("vn", "vietnam", "viet nam"),
+}
+
+
 SCENARIO_CODE_ALIASES = {
     "ref": "REF",
     "reference": "REF",
@@ -64,6 +79,11 @@ class BalanceExportSheet:
     units: str
 
 
+BALANCE_LABEL_ALIASES = {
+    "total transformation sector": "total transformation",
+}
+
+
 def normalize_balance_scenario_code(scenario: str) -> str:
     """Return the balance-export filename scenario token."""
     text = str(scenario).strip()
@@ -74,7 +94,8 @@ def normalize_balance_scenario_code(scenario: str) -> str:
 
 def normalize_balance_label(value: object) -> str:
     """Return a compact lowercase key for LEAP balance row/fuel matching."""
-    return " ".join(str(value or "").strip().lower().split())
+    normalized = " ".join(str(value or "").strip().lower().split())
+    return BALANCE_LABEL_ALIASES.get(normalized, normalized)
 
 
 def inspect_balance_export_detail(
@@ -259,6 +280,63 @@ def _balance_export_filename_parts(path: Path) -> tuple[str, str] | None:
     return date_id, normalize_balance_scenario_code(scenario)
 
 
+def _inspect_balance_export_identity(
+    path: Path,
+    *,
+    economy: str,
+    scenario_code: str,
+) -> tuple[str, str] | None:
+    """Read economy/scenario identity from workbook headers for nonstandard names."""
+    from openpyxl import load_workbook
+
+    aliases = _ECONOMY_AREA_ALIASES.get(economy, (economy.rsplit("_", 1)[-1],))
+    alias_pattern = re.compile(
+        r"(?:^|[^a-z])(?:" + "|".join(re.escape(alias) for alias in aliases) + r")(?:[^a-z]|$)",
+        re.IGNORECASE,
+    )
+    area_pattern = re.compile(
+        r"Energy Balance for Area\s*[\"'](?P<area>.+?)[\"']",
+        re.IGNORECASE,
+    )
+    scenario_pattern = re.compile(
+        r"Scenario:\s*(?P<scenario>[^,]+)",
+        re.IGNORECASE,
+    )
+
+    try:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+    except Exception:
+        return None
+    try:
+        area_matches: list[str] = []
+        scenario_matches: set[str] = set()
+        for sheet in workbook.worksheets:
+            for row_number in range(1, min(sheet.max_row, 3) + 1):
+                values = [sheet.cell(row_number, column).value for column in range(1, 5)]
+                text = " ".join(str(value).strip() for value in values if value is not None)
+                area_match = area_pattern.search(text)
+                if area_match:
+                    area_matches.append(area_match.group("area"))
+                scenario_match = scenario_pattern.search(text)
+                if scenario_match:
+                    scenario_matches.add(normalize_balance_scenario_code(scenario_match.group("scenario")))
+            if area_matches and scenario_matches:
+                break
+    finally:
+        workbook.close()
+
+    if not area_matches or not any(alias_pattern.search(area) for area in area_matches):
+        return None
+    if scenario_code not in scenario_matches:
+        return None
+
+    date_id = next(
+        (match.group(0) for match in re.finditer(r"\d{4,8}", path.stem)),
+        str(int(path.stat().st_mtime)),
+    )
+    return date_id, scenario_code
+
+
 def _iter_balance_export_workbooks(
     export_dir: Path,
     *,
@@ -272,7 +350,13 @@ def _iter_balance_export_workbooks(
             continue
         parts = _balance_export_filename_parts(path)
         if parts is None:
-            continue
+            parts = _inspect_balance_export_identity(
+                path,
+                economy=economy,
+                scenario_code=scenario_code,
+            )
+            if parts is None:
+                continue
         date_id, candidate_scenario_code = parts
         if candidate_scenario_code != scenario_code:
             continue

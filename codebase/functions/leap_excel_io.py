@@ -27,6 +27,65 @@ LEAP_HEADER_TOKENS: tuple[str, ...] = ("branch path", "variable")
 SIGNED_SUPPLY_MEASURES: frozenset[str] = frozenset({"Stock Change", "Statistical Differences"})
 
 
+def _complete_partial_share_profiles(log_df: pd.DataFrame, tolerance: float = 1e-9) -> pd.DataFrame:
+    """Carry a valid share profile into explicit zero-total years.
+
+    Transformation and other LEAP producers can assemble rows in more than
+    one pass.  A later catalog/zero-fill pass may therefore leave an explicit
+    zero row for a year whose sibling group was valid in another year.  LEAP
+    rejects that group because shares must sum to 100 for every represented
+    year.  Preserve genuinely all-zero groups for their producer-specific
+    fallback logic, but repair only groups that have at least one valid profile.
+    """
+    if log_df is None or log_df.empty or "Measure" not in log_df.columns:
+        return log_df
+
+    share_mask = log_df["Measure"].astype(str).str.endswith("Share")
+    if not share_mask.any():
+        return log_df
+
+    work = log_df.copy()
+    work["_share_parent"] = work["Branch_Path"].astype(str).str.rsplit("\\", n=1).str[0]
+    group_columns = [
+        "_share_parent",
+        "Scenario",
+        "Measure",
+        "Units",
+        "Scale",
+        "Per...",
+    ]
+    share_rows = work.loc[share_mask].copy()
+    replacement_rows = []
+    drop_indices = set()
+
+    for _, group in share_rows.groupby(group_columns, dropna=False, sort=False):
+        totals = group.groupby("Date", dropna=False)["Value"].sum()
+        valid_dates = [date for date, total in totals.items() if float(total) > tolerance]
+        if not valid_dates:
+            continue
+
+        for date, total in totals.items():
+            if float(total) > tolerance:
+                continue
+            nearest_date = min(
+                valid_dates,
+                key=lambda candidate: (abs(float(candidate) - float(date)), float(candidate)),
+            )
+            target_rows = group[group["Date"] == date]
+            source_rows = group[group["Date"] == nearest_date].copy()
+            if source_rows.empty:
+                continue
+            drop_indices.update(target_rows.index.tolist())
+            source_rows["Date"] = date
+            replacement_rows.append(source_rows)
+
+    if replacement_rows:
+        work = work.drop(index=list(drop_indices))
+        work = pd.concat([work, *replacement_rows], ignore_index=True)
+
+    return work.drop(columns=["_share_parent"], errors="ignore")
+
+
 def find_leap_header_row(raw: pd.DataFrame, *, tokens: tuple[str, ...] = LEAP_HEADER_TOKENS) -> int | None:
     """Return the 0-based index of the LEAP column-header row, or None.
 
@@ -352,6 +411,7 @@ def finalise_export_df(log_df, scenario, region, base_year, final_year
         log_df.loc[negative_mask, "Value"] = 0.0
     log_df = log_df.copy()
     log_df["Value"] = pd.to_numeric(log_df["Value"], errors="coerce")
+    log_df = _complete_partial_share_profiles(log_df)
     
     # --- Pivot to wide format ---
     #just so we dont get an empty pivot, if any cols are fully None or na, fille them with str version of na then repalce once pivoted
@@ -622,6 +682,19 @@ def prepare_for_viewing_sheet_df(
                 break
         if source_col is not None:
             year_values[str(year)] = out[source_col]
+            if "Expression" in out.columns:
+                missing_values = year_values[str(year)].isna()
+                if missing_values.any():
+                    # A source year column is normally numeric.  The
+                    # expression fallback can legitimately be ``pd.NA`` for
+                    # an expression that does not supply this year, so use an
+                    # object column before assigning the mixed values.
+                    year_values[str(year)] = year_values[str(year)].astype("object")
+                    year_values.loc[missing_values, str(year)] = out.loc[
+                        missing_values, "Expression"
+                    ].map(
+                        lambda value, _year=year: _expression_value_for_year(value, _year)
+                    )
         elif "Expression" in out.columns:
             year_values[str(year)] = out["Expression"].map(
                 lambda value, _year=year: _expression_value_for_year(value, _year)

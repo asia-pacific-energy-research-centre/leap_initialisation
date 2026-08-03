@@ -1068,19 +1068,47 @@ def _catalog_for_economy(
         template_rows = _read_branch_variable_rows(template_path, sheet_name="Export")
         if template_rows.empty or "Branch Path" not in template_rows.columns:
             return catalog_df.iloc[0:0].copy()
-        allowed_paths = {
-            str(value).strip().casefold()
+        canonical_paths = {
+            str(value).strip().casefold(): str(value).strip()
             for value in template_rows["Branch Path"].dropna()
             if str(value).strip()
         }
         filtered = catalog_df[
-            catalog_df["branch_path"].astype(str).str.strip().str.casefold().isin(allowed_paths)
+            catalog_df["branch_path"]
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+            .isin(canonical_paths)
         ].copy()
+        # The shared catalog is a union of every economy template, so a
+        # case-insensitive match may carry another economy's spelling (for
+        # example, ``Natural Gas`` into NZ where the branch is ``Natural gas``).
+        # Adopt the target template's exact path before zero-fill and collapse
+        # scenario/source repetitions to one structural fuel branch. The zero
+        # builder supplies scenarios itself; retaining catalog repetitions here
+        # creates duplicate share contributions.
+        filtered["branch_path"] = (
+            filtered["branch_path"]
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+            .map(canonical_paths)
+        )
+        if "fuel_name" in filtered.columns:
+            filtered["fuel_name"] = filtered["branch_path"].str.rsplit("\\", n=1).str[-1]
+        structural_key = [
+            column
+            for column in ("catalog_type", "fuel_group", "branch_path")
+            if column in filtered.columns
+        ]
+        if structural_key:
+            filtered = filtered.drop_duplicates(subset=structural_key, keep="first")
         removed = len(catalog_df) - len(filtered)
         if removed:
             print(
                 f"[INFO] Restricted producer branch catalog for {economy} to "
-                f"{len(filtered)} template rows (removed {removed} cross-economy rows)."
+                f"{len(filtered)} structural template rows "
+                f"(removed or collapsed {removed} union rows)."
             )
         return filtered
     except (FileNotFoundError, ValueError) as exc:
@@ -3162,6 +3190,29 @@ def _resolve_results_saver_run_paths(
     }
 
 
+def _build_capacity_allocation_process_records(
+    transformation_process_records: list[dict],
+    *,
+    economies: Iterable[str],
+    include_power_interim: bool,
+) -> list[dict]:
+    """Return every transformation record eligible for capacity allocation.
+
+    Power interim records are produced by a separate workbook workflow, so they
+    are not part of ``transformation_process_records``. Include them explicitly
+    here so electricity and heat residuals can use the same capacity allocator
+    as the other transformation modules.
+    """
+    records = list(transformation_process_records)
+    if include_power_interim:
+        records.extend(
+            electricity_heat_interim_workflow.build_electricity_heat_interim_rows(
+                economies=list(economies)
+            )
+        )
+    return records
+
+
 def run_results_linked_transformation_supply_workflow(
     economies: Iterable[str] | None = None,
     scenario_names: list[str] | None = None,
@@ -3672,6 +3723,12 @@ def run_results_linked_transformation_supply_workflow(
             transformation_process_records = updated_process_records
     timer.lap("build reconciliation and apply trade rules")
 
+    capacity_process_records = _build_capacity_allocation_process_records(
+        transformation_process_records,
+        economies=economy_list,
+        include_power_interim=bool(RUN_ELECTRICITY_HEAT_INTERIM),
+    )
+
     balance_paths = save_year_balance_tables(
         reconciliation_table,
         years=BALANCE_EXPORT_YEARS,
@@ -3685,7 +3742,7 @@ def run_results_linked_transformation_supply_workflow(
     if _use_capacity_unmet_iterative_mode():
         _sra._run_capacity_unmet_iterative_pass(
             reconciliation_table=reconciliation_table,
-            process_records=transformation_process_records,
+            process_records=capacity_process_records,
             economies=economy_list,
             scenarios=export_scenario_list,
             resolve_scenario_key=_resolve_reconciliation_scenario_key,
@@ -3726,7 +3783,7 @@ def run_results_linked_transformation_supply_workflow(
         else:
             _sra._run_capacity_unmet_iterative_balanced_pass(
                 reconciliation_table=reconciliation_table,
-                process_records=transformation_process_records,
+                process_records=capacity_process_records,
                 economies=economy_list,
                 scenarios=balance_scenario_list,
                 resolve_scenario_key=_resolve_reconciliation_scenario_key,
@@ -3891,17 +3948,13 @@ def run_results_linked_transformation_supply_workflow(
         timer.lap(f"generate transfer export workbook ({economy})")
         econ_dummy: list[Path] = []
         if RUN_ELECTRICITY_HEAT_INTERIM:
-            interim_records = electricity_heat_interim_workflow.build_electricity_heat_interim_rows(
-                economies=[economy]
-            )
-            for scenario in export_scenario_list:
-                transformation_records_by_scenario.setdefault(str(scenario), []).extend(
-                    copy.deepcopy(interim_records)
-                )
             econ_dummy = build_electricity_heat_interim_workbooks_for_results_supply(
                 economies=[economy],
                 scenarios=export_scenario_list,
                 output_dir=export_dir,
+                reconciliation_table=reconciliation_table,
+                allocation_ledger=allocation_ledger,
+                records_by_scenario_out=transformation_records_by_scenario,
             )
             timer.lap(f"generate electricity/heat interim workbook ({economy})")
         econ_combined_path = save_combined_supply_transformation_export(

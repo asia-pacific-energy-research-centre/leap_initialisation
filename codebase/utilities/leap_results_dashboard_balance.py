@@ -8157,7 +8157,17 @@ def load_balance_leap_long_esto_axis(
         errors="coerce",
     )
 
-    for col in ["leap_sector", "leap_fuel", "leap_sector_name", "leap_fuel_name", "esto_flow", "esto_product"]:
+    for col in [
+        "leap_sector",
+        "leap_fuel",
+        "leap_sector_name",
+        "mapped_leap_sector_name",
+        "leap_sector_name_full_path",
+        "mapping_key_sector",
+        "leap_fuel_name",
+        "esto_flow",
+        "esto_product",
+    ]:
         if col not in combined.columns:
             combined[col] = ""
         combined[col] = combined[col].fillna("").astype(str).str.strip()
@@ -8209,6 +8219,9 @@ def load_balance_leap_long_esto_axis(
             leap_sector=("leap_sector", _coalesce_pipe_tokens_unique),
             leap_fuel=("leap_fuel", _coalesce_pipe_tokens_unique),
             leap_sector_name=("leap_sector_name", _coalesce_unique),
+            mapped_leap_sector_name=("mapped_leap_sector_name", _coalesce_unique),
+            leap_sector_name_full_path=("leap_sector_name_full_path", _coalesce_unique),
+            mapping_key_sector=("mapping_key_sector", _coalesce_unique),
             leap_fuel_name=("leap_fuel_name", _coalesce_unique),
             is_subtotal=("is_subtotal", "max"),
             esto_is_subtotal=("esto_is_subtotal", "max"),
@@ -8259,6 +8272,9 @@ def load_balance_leap_long_esto_axis(
             "leap_sector",
             "leap_fuel",
             "leap_sector_name",
+            "mapped_leap_sector_name",
+            "leap_sector_name_full_path",
+            "mapping_key_sector",
             "leap_fuel_name",
             "is_subtotal",
             "esto_is_subtotal",
@@ -8279,6 +8295,9 @@ def load_balance_leap_long_esto_axis(
             "ninth_fuel_code",
             "esto_flow",
             "esto_product",
+            "mapped_leap_sector_name",
+            "leap_sector_name_full_path",
+            "mapping_key_sector",
         ]
     ].drop_duplicates().rename(columns={"sheet_name": "sheet"})
     mapping_status["mapped"] = True
@@ -8599,12 +8618,18 @@ def build_balance_comparison_esto_axis(
     chart_navigation_guide_path: Path | str | None = None,
     balance_mapping_workbook_path: Path | str | None = None,
     known_issues: dict[str, Any] | None = None,
+    base_subtotal_comparator_flows: Iterable[str] | None = None,
     base_df: pd.DataFrame | None = None,
     ninth_df: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     if leap_long.empty:
         raise RuntimeError("leap_long is empty; cannot build ESTO-axis comparison outputs.")
 
+    allowed_base_subtotal_flows = {
+        _clean_token(flow)
+        for flow in (base_subtotal_comparator_flows or [])
+        if _clean_token(flow)
+    }
     mapping_inputs: dict[str, Any] | None = None
     reassignment_status = pd.DataFrame()
     synthetic_reference_status = pd.DataFrame()
@@ -8895,6 +8920,16 @@ def build_balance_comparison_esto_axis(
     leap_working["leap_value"] = pd.to_numeric(leap_working["leap_value"], errors="coerce")
     for col in ["sheet_name", "measure", "fuel_label", "esto_flow", "esto_product"]:
         leap_working[col] = leap_working.get(col, "").fillna("").astype(str).str.strip()
+    # The same rendered sheet/fuel can occur under distinct LEAP branches, for
+    # example ``All demand aggregated/Buildings`` and ``Buildings/Services``.
+    # Keep their source comparators separate so one branch cannot inflate the
+    # other branch's base-year reference value.
+    leap_working["comparison_branch_path"] = (
+        leap_working.get("leap_sector_name_full_path", leap_working.get("leap_sector_name", ""))
+        .fillna("")
+        .astype(str)
+        .str.strip()
+    )
     hierarchy_sheet_catalog = (
         build_esto_axis_structure_from_dashboard_template(chart_navigation_guide_path).get("sheet_catalog", {})
         if chart_navigation_guide_path
@@ -8936,6 +8971,7 @@ def build_balance_comparison_esto_axis(
             "esto_flow_group_label",
             "measure",
             "fuel_label",
+            "comparison_branch_path",
             "year",
             "leap_value",
         ]
@@ -8962,6 +8998,7 @@ def build_balance_comparison_esto_axis(
                 "esto_flow_group_label",
                 "measure",
                 "fuel_label",
+                "comparison_branch_path",
                 "source",
                 "year",
                 "value",
@@ -8993,13 +9030,24 @@ def build_balance_comparison_esto_axis(
                 "esto_flow_group_label",
                 "measure",
                 "fuel_label",
+                "comparison_branch_path",
                 "esto_flow",
                 "esto_product",
                 "esto_is_subtotal",
                 "ninth_is_subtotal",
             ]
         ]
-        .drop_duplicates(subset=["scenario", "sheet_name", "measure", "fuel_label", "esto_flow", "esto_product"])
+        .drop_duplicates(
+            subset=[
+                "scenario",
+                "sheet_name",
+                "measure",
+                "fuel_label",
+                "comparison_branch_path",
+                "esto_flow",
+                "esto_product",
+            ]
+        )
         .rename(columns={"sheet_name": "sheet"})
     )
     template_groups = _dashboard_template_esto_axis_records(
@@ -9067,6 +9115,7 @@ def build_balance_comparison_esto_axis(
                         "esto_flow_group_label": leap_multi["esto_flow_group_label_template"],
                         "measure": leap_multi["measure_template"],
                         "fuel_label": leap_multi["fuel_label_template"],
+                        "comparison_branch_path": leap_multi["comparison_branch_path"],
                         "source": "leap",
                         "year": leap_multi["year"],
                         "value": leap_multi["leap_value"],
@@ -9074,9 +9123,21 @@ def build_balance_comparison_esto_axis(
                 )
                 rows.extend(leap_multi_rows.to_dict("records"))
     if not template_groups.empty:
+        if "comparison_branch_path" not in template_groups.columns:
+            template_groups["comparison_branch_path"] = ""
         groups = (
             pd.concat([groups, template_groups], ignore_index=True, sort=False)
-            .drop_duplicates(subset=["scenario", "sheet", "measure", "fuel_label", "esto_flow", "esto_product"])
+            .drop_duplicates(
+                subset=[
+                    "scenario",
+                    "sheet",
+                    "measure",
+                    "fuel_label",
+                    "comparison_branch_path",
+                    "esto_flow",
+                    "esto_product",
+                ]
+            )
             .reset_index(drop=True)
         )
     leap_backed_projection_keys = {
@@ -9160,7 +9221,7 @@ def build_balance_comparison_esto_axis(
 
         base_key = (esto_flow, esto_product)
         if base_key not in base_cache:
-            if esto_is_subtotal:
+            if esto_is_subtotal and esto_flow not in allowed_base_subtotal_flows:
                 base_cache[base_key] = float("nan")
             else:
                 base_cache[base_key] = pull_base_year_value(
@@ -9190,6 +9251,9 @@ def build_balance_comparison_esto_axis(
                 "esto_flow_group_label": esto_flow_group_label,
                 "measure": measure,
                 "fuel_label": fuel_label,
+                "comparison_branch_path": _clean_token(
+                    rd.get("comparison_branch_path", "")
+                ),
                 "source": "base",
                 "year": int(base_year),
                 "value": float(base_cache[base_key]) if pd.notna(base_cache[base_key]) else float("nan"),
@@ -9288,6 +9352,9 @@ def build_balance_comparison_esto_axis(
                     "esto_flow_group_label": esto_flow_group_label,
                     "measure": measure,
                     "fuel_label": fuel_label,
+                    "comparison_branch_path": _clean_token(
+                        rd.get("comparison_branch_path", "")
+                    ),
                     "source": "projection",
                     "year": int(proj_year),
                     "value": float(proj_value) if pd.notna(proj_value) else float("nan"),
@@ -9343,6 +9410,7 @@ def build_balance_comparison_esto_axis(
         "esto_flow_group_label",
         "measure",
         "fuel_label",
+        "comparison_branch_path",
         "source",
         "year",
     ]
@@ -9405,6 +9473,7 @@ def build_balance_comparison_esto_axis(
                 "esto_flow_group_label",
                 "measure",
                 "fuel_label",
+                "comparison_branch_path",
                 "year",
             ],
             columns="source",

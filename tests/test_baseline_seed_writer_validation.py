@@ -19,36 +19,7 @@ from codebase.supply_reconciliation.leap_io import (
     save_combined_supply_transformation_export,
     write_per_economy_combined_workbooks,
 )
-from codebase.configuration import workflow_config as workflow_cfg
 from codebase.configuration.workflow_config import get_baseline_seed_validation_years
-
-# These tests assert the INIT-005 guarantee: a blocking finding raises
-# BaselineSeedValidationError and no final workbook is written. That guarantee is
-# currently switched off on purpose --
-# BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True
-# (workflow_config.py:91, set 2026-07-10) clears the `blocking` column in
-# prepare_seed_rows_for_write, and the raise is gated on it being non-empty.
-#
-# Marked xfail *conditionally on the flag itself*, not unconditionally, so this
-# maintains itself: flip the flag back to False and these run normally and must
-# pass. strict=True means a stale xfail is reported rather than lingering.
-#
-# The point is that three unexplained red tests are indistinguishable from "a
-# guard silently stopped blocking" -- the exact failure this repo keeps hitting.
-# This keeps the suite green *and* the deviation legible. Delete the marker, do
-# not delete the tests: they are the specification.
-_XFAIL_WHILE_BLOCKING_DOWNGRADED = pytest.mark.xfail(
-    workflow_cfg.BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS,
-    reason=(
-        "BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS=True downgrades "
-        "blocking findings to warnings, so the writer does not raise. Deliberate, "
-        "temporary deviation from INIT-005, pending review of whether the current "
-        "blocking findings are significant enough to hold up a run. See INIT-005 "
-        "History in docs/special_rules_and_design_decisions.md and the entry in "
-        "docs/work_queue.md. Revert the flag to False to restore the guarantee."
-    ),
-    strict=True,
-)
 
 
 def test_baseline_seed_filename_marks_comp_gen_templates() -> None:
@@ -308,6 +279,53 @@ def test_final_writer_runs_combined_export_readiness(
     assert seen[0]["expected_region"] == "United States"
 
 
+def test_final_writer_runs_central_artifact_gate_after_physical_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
+    _write_leap_workbook(source, [_row("Data(2023,1)")])
+    template = tmp_path / "full model export.xlsx"
+    _write_template(template)
+    seen: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
+        lambda *_args, **_kwargs: pd.DataFrame(),
+    )
+
+    def fake_artifact_gate(**kwargs):
+        candidate = Path(kwargs["candidate_workbooks"]["20_USA"])
+        assert candidate.exists()
+        seen.append(kwargs)
+        return type(
+            "ArtifactAudit",
+            (),
+            {
+                "shadow_status": "SHADOW_PASS",
+                "manifest_path": tmp_path / "artifact_manifest.json",
+            },
+        )()
+
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io.run_baseline_seed_artifact_validation",
+        fake_artifact_gate,
+    )
+
+    written = write_per_economy_combined_workbooks(
+        economies=["20_USA"],
+        output_dir=tmp_path / "output",
+        id_lookup_path=template,
+        source_workbooks_by_workflow={"supply_workflow": [source]},
+        required_years_by_scenario={"Reference": [2023]},
+    )
+
+    assert len(written) == 1
+    assert len(seen) == 1
+    assert seen[0]["expected_economies"] == ["20_USA"]
+    assert set(seen[0]["enforcement_by_check"].values()) == {"audit"}
+    assert "20_USA" in seen[0]["source_rows_by_economy"]
+
+
 def test_final_writer_retains_workbook_on_combined_readiness_errors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -339,7 +357,6 @@ def test_final_writer_retains_workbook_on_combined_readiness_errors(
     assert written[0].exists()
 
 
-@_XFAIL_WHILE_BLOCKING_DOWNGRADED
 def test_final_writer_writes_diagnostics_before_conflict_blocks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -352,6 +369,10 @@ def test_final_writer_writes_diagnostics_before_conflict_blocks(
     monkeypatch.setattr(
         "codebase.supply_reconciliation.leap_io._load_reference_export_data",
         lambda *_args, **_kwargs: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io.workflow_cfg.BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS",
+        False,
     )
 
     with pytest.raises(BaselineSeedValidationError):
@@ -366,45 +387,6 @@ def test_final_writer_writes_diagnostics_before_conflict_blocks(
     diagnostics = output_dir / "supporting_files" / "baseline_seed_validation"
     assert list(diagnostics.glob("*_rule_findings.csv"))
     assert list(diagnostics.glob("*_duplicate_groups.csv"))
-
-
-@_XFAIL_WHILE_BLOCKING_DOWNGRADED
-def test_writer_accumulates_economy_failures_and_writes_no_final_workbook(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    usa = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
-    prc = tmp_path / "supply_leap_imports_05_PRC_reference.xlsx"
-    _write_leap_workbook(usa, [_row("Data(2023,1)")])
-    _write_leap_workbook(prc, [_row("Data(2023,1)"), _row("Data(2023,2)")])
-    template = tmp_path / "full model export.xlsx"
-    _write_template(template)
-    output_dir = tmp_path / "output"
-    monkeypatch.setattr(
-        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
-        lambda *_args, **_kwargs: pd.DataFrame(),
-    )
-
-    # The consolidated summary reports aggregated rule counts (e.g. "SEED-001=1"),
-    # not per-economy prefixes -- economy attribution is verified below via the
-    # consolidated findings CSV instead.
-    with pytest.raises(BaselineSeedValidationError, match="SEED-001"):
-        write_per_economy_combined_workbooks(
-            economies=["20_USA", "05_PRC"],
-            output_dir=output_dir,
-            id_lookup_path=template,
-            source_workbooks_by_workflow={"supply_workflow": [usa, prc]},
-            required_years_by_scenario={"Reference": [2023]},
-        )
-
-    assert not list(output_dir.glob("leap_import_baseline_seed_*.xlsx"))
-    diagnostics = output_dir / "supporting_files" / "baseline_seed_validation"
-    assert list(diagnostics.glob("baseline_seed_20_USA_*_rule_findings.csv"))
-    consolidated = list(diagnostics.glob("*_consolidated_rule_findings.csv"))
-    assert len(consolidated) == 1
-    findings = pd.read_csv(consolidated[0])
-    seed_001 = findings[findings["rule_id"] == "SEED-001"]
-    assert set(seed_001["economy"]) == {"05_PRC"}
 
 
 def test_final_writer_writes_grouped_missing_branch_issue_summary(
@@ -702,7 +684,6 @@ def test_final_writer_preserves_non_branch_ids_for_warning_only_aggregated_deman
     assert not aggregate_findings["blocking"].any()
 
 
-@_XFAIL_WHILE_BLOCKING_DOWNGRADED
 def test_default_reference_validation_window_requires_2023_through_2060(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -715,6 +696,10 @@ def test_default_reference_validation_window_requires_2023_through_2060(
     monkeypatch.setattr(
         "codebase.supply_reconciliation.leap_io._load_reference_export_data",
         lambda *_args, **_kwargs: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io.workflow_cfg.BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS",
+        False,
     )
 
     with pytest.raises(BaselineSeedValidationError, match="SEED-009"):

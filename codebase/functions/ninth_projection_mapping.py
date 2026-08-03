@@ -827,22 +827,40 @@ def allocate_ninth_projection_to_esto(
         ],
         dropna=False,
     ).transform("max")
+    # An explicit one-to-one relationship to a detailed protected process does
+    # not need a base-year profile: there is no allocation choice to infer.
+    # Parent 09.06/09.08 mappings remain protected because emitting a parent
+    # without a child profile would bypass the established disaggregation rule.
+    detailed_protected_target = merged["esto_flow"].astype(str).str.match(
+        r"^\s*(?:09\.06|09\.08)\.\d{2}(?:\s|$)"
+    )
+    single_target_mask = (
+        fallback_mask
+        & protected_flow_pair
+        & detailed_protected_target
+        & merged["group_count"].eq(1.0)
+    )
+    merged.loc[single_target_mask, "share"] = 1.0
+    merged.loc[single_target_mask, "share_source"] = (
+        "single_target_no_base_year"
+    )
+    split_fallback_mask = fallback_mask & ~single_target_mask
     # Gas/coal transformation aggregates must not borrow another economy's
     # profile or use an arbitrary equal split. Preserve legacy APEC/equal
     # fallback behaviour for other workflow families, whose policies are
     # independently owned.
-    unallocated_mask = fallback_mask & protected_flow_pair
+    unallocated_mask = split_fallback_mask & protected_flow_pair
     merged.loc[unallocated_mask, "share_source"] = (
         "unallocated_no_economy_base_year"
     )
     apec_mask = (
-        fallback_mask
+        split_fallback_mask
         & ~protected_flow_pair
         & merged["apec_group_total"].gt(0.0)
     )
     merged.loc[apec_mask, "share"] = merged.loc[apec_mask, "apec_share"]
     merged.loc[apec_mask, "share_source"] = "apec"
-    equal_mask = fallback_mask & ~protected_flow_pair & ~apec_mask
+    equal_mask = split_fallback_mask & ~protected_flow_pair & ~apec_mask
     merged.loc[equal_mask, "share"] = (
         1.0
         / merged.loc[equal_mask, "group_count"].replace(0, pd.NA)

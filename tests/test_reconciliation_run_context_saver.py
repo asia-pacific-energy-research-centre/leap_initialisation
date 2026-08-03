@@ -11,6 +11,67 @@ import codebase.supply_reconciliation_workflow as workflow
 from codebase.supply_reconciliation import results_saver as saver
 
 
+def test_economy_catalog_uses_target_template_spelling_and_one_structural_row(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Cross-economy case variants cannot create repeated zero-fill shares."""
+    template_path = tmp_path / "nz_template.xlsx"
+    template_path.touch()
+    canonical_path = (
+        "Transformation\\NG Liquefaction\\Processes\\Liquefaction"
+        "\\Feedstock Fuels\\Natural gas"
+    )
+    union_path = canonical_path[:-3] + "Gas"
+    catalog = pd.DataFrame(
+        [
+            {
+                "catalog_type": "transformation",
+                "source_workbook": f"{source_name}_{scenario}.xlsx",
+                "scenario": scenario,
+                "module_or_root": "NG Liquefaction",
+                "fuel_group": "Feedstock Fuels",
+                "fuel_name": branch_path.rsplit("\\", 1)[-1],
+                "branch_path": branch_path,
+                "variable": "Feedstock Fuel Share",
+                "catalog_source": "template",
+                "probe_status": "",
+            }
+            for source_name, branch_path in (
+                ("mex", union_path),
+                ("nz", canonical_path),
+            )
+            for scenario in ("Current Accounts", "Reference", "Target")
+        ]
+    )
+    template_rows = pd.DataFrame(
+        [
+            {
+                "Branch Path": canonical_path,
+                "Variable": "Feedstock Fuel Share",
+                "Scenario": scenario,
+            }
+            for scenario in ("Current Accounts", "Reference", "Target")
+        ]
+    )
+    monkeypatch.setattr(
+        saver.leap_export_template_resolver,
+        "resolve_leap_export_template",
+        lambda economy, warn_on_provisional=False: template_path,
+    )
+    monkeypatch.setattr(
+        saver,
+        "_read_branch_variable_rows",
+        lambda path, sheet_name="Export": template_rows,
+    )
+
+    result = saver._catalog_for_economy(catalog, "12_NZ")
+
+    assert len(result) == 1
+    assert result.iloc[0]["branch_path"] == canonical_path
+    assert result.iloc[0]["fuel_name"] == "Natural gas"
+
+
 def test_results_saver_context_paths_match_legacy_path_view(monkeypatch) -> None:
     """A context preserves the exact four paths legacy globals would resolve."""
     context = config.resolve_reconciliation_run_context(

@@ -1294,23 +1294,31 @@ def _resolve_balance_demand_workbooks_for_economy(
     require_reference = "reference" in requested
     require_target = "target" in requested
     if economy_text == DIRECT_DEMAND_PROJECTION_ECONOMY:
-        if require_reference and BALANCE_DEMAND_REF_WORKBOOK_PATH is None:
-            raise ValueError(
-                "BALANCE_DEMAND_REF_WORKBOOK_PATH is required for a Reference "
-                f"results-update run of {economy_text}."
-            )
-        if require_target and BALANCE_DEMAND_TGT_WORKBOOK_PATH is None:
-            raise ValueError(
-                "BALANCE_DEMAND_TGT_WORKBOOK_PATH is required for a Target "
-                f"results-update run of {economy_text}."
-            )
         ref_workbook = (
-            _resolve(BALANCE_DEMAND_REF_WORKBOOK_PATH)
+            (
+                _resolve(BALANCE_DEMAND_REF_WORKBOOK_PATH)
+                if BALANCE_DEMAND_REF_WORKBOOK_PATH is not None
+                else resolve_balance_export_workbook(
+                    economy=economy_text,
+                    scenario="REF",
+                    date_id=BALANCE_DEMAND_REF_BALANCE_EXPORT_DATE_ID,
+                    exports_root=BALANCE_DEMAND_EXPORTS_ROOT,
+                )
+            )
             if require_reference
             else None
         )
         tgt_workbook = (
-            _resolve(BALANCE_DEMAND_TGT_WORKBOOK_PATH)
+            (
+                _resolve(BALANCE_DEMAND_TGT_WORKBOOK_PATH)
+                if BALANCE_DEMAND_TGT_WORKBOOK_PATH is not None
+                else resolve_balance_export_workbook(
+                    economy=economy_text,
+                    scenario="TGT",
+                    date_id=BALANCE_DEMAND_TGT_BALANCE_EXPORT_DATE_ID,
+                    exports_root=BALANCE_DEMAND_EXPORTS_ROOT,
+                )
+            )
             if require_target
             else None
         )
