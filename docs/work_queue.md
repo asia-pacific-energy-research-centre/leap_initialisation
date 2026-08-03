@@ -1,5 +1,27 @@
 # Remaining work queue
 
+## [28] Remove the balance-review artifact-tool dependency
+
+**Status: completed 2026-08-03.**
+
+The five-sheet balance-review workbook is now authored by
+`codebase/functions/balance_review_workbook_builder.py` with Python and
+`openpyxl`. The former Node.js
+`codebase/balance_structure_review_workbook_workflow.mjs` builder and its
+`@oai/artifact-tool` runtime dependency were removed. The maintained review
+path still preserves the selected LEAP balance layout, PJ normalization,
+LEAP-minus-source formulas, unavailable-comparator styling, and the missing
+combinations audit. An active-code search found no other
+`@oai/artifact-tool` imports in `leap_initialisation`. A wider audit found two
+remaining Python-migration candidates in the sibling `leap_mappings` repo:
+`codebase/separate_axis_mapping_gap_review_artifact_builder.mjs` and
+`codebase/separate_axis_mapping_workbooks_artifact_builder.mjs`, both launched
+through `codebase/separate_axis_mapping_refresh_workflow.py`. They were not
+changed from this repository because the mapping worktree already contains
+unrelated active edits. One local scrapbook docstring that described a JSON
+file as an artifact-tool payload was corrected because that exploration does
+not invoke an artifact-tool builder.
+
 ## [27] Restore electricity T&D losses to Other loss and own use
 
 **Status: completed 2026-08-03.**
@@ -156,7 +178,7 @@ source differences, previews the existing results-update changes, and repeats
 until differences converge or are classified.
 
 The corrected AUS Reference 2022 cycle now also has a reusable, balance-shaped
-review surface. `codebase/balance_structure_review_workbook_workflow.mjs`
+review surface. `codebase/functions/balance_review_workbook_builder.py`
 preserves the original 39-column by 138-row Energy Balance layout and produces
 side-by-side sheets for the unchanged LEAP values, red `LEAP - source` errors,
 blue source values, a full expected-source sheet that distinguishes

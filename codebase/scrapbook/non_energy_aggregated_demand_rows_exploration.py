@@ -400,7 +400,7 @@ def validate_output_payload(payload: dict[str, object]) -> None:
 def write_evidence_json(
     output_path: Path = OUTPUT_JSON_PATH,
 ) -> Path:
-    """Write the workbook payload for the artifact-tool builder."""
+    """Write the reviewed evidence payload for downstream human inspection."""
     evidence = build_non_energy_fuel_evidence()
     payload = build_output_payload(evidence)
     validate_output_payload(payload)

@@ -52,12 +52,13 @@ summary separately counts value mismatches, missing sides, unmapped rows,
 total-balance failures, direct comparisons, and aggregate/shared comparisons
 unsafe for a direct update.
 
-`codebase/balance_structure_review_workbook_workflow.mjs` can place one
-diagnostic result back into the source Energy Balance layout. When the source
-metadata reports `Thousand Petajoule`, it multiplies the displayed LEAP values
-by 1,000 and relabels the copied review sheet as `Petajoule`, keeping the LEAP,
-error, and expected-source sheets on the same PJ basis. Source files are never
-modified.
+`codebase/functions/balance_review_workbook_builder.py` places one diagnostic
+result back into the source Energy Balance layout using Python and `openpyxl`
+only; the review workflow has no Node.js or `@oai/artifact-tool` dependency.
+When the source metadata reports `Thousand Petajoule`, it multiplies the
+displayed LEAP values by 1,000 and relabels the copied review sheet as
+`Petajoule`, keeping the LEAP, error, and expected-source sheets on the same PJ
+basis. Source files are never modified.
 
 The normal review path now reads the maintained all-years files under
 `data/leap balances exports/<economy>/`. Both filename forms are accepted:
