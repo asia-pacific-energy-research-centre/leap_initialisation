@@ -453,5 +453,9 @@ Format:
   picking a `dest` prefix rather than re-discovering this by test failure.
 - Moved on to: updating §4, then scheduling session 2 for §3.3 (the
   two-PyInstaller-target builder) and the rest of §3.4/§3.5.
-- Scheduled `leap-review-tools-build-2`, firing 2026-08-04 05:15 local
-  (2026-08-03T20:15:00Z), 5 hours from this session's finish.
+- Checked `list_scheduled_tasks` before finishing: `leap-review-tools-build-2`
+  (fires 2026-08-04 03:41 local), `-3` (08:41), and `-4` (13:41) were **already
+  scheduled and enabled** — not created by this session. Per the governing
+  instructions this session did not create another; those three will fire on
+  their existing schedule. Whoever pre-created the full chain, note for
+  session 4: do not schedule a session 5 unless §3 is still incomplete.
