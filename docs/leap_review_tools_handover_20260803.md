@@ -275,6 +275,26 @@ progress plus a clear note is far more useful than a clean stop. Only stop early
 if continuing would damage the repositories (see §5 traps) or if every remaining
 item is blocked.
 
+### Sessions cannot see each other
+
+Each scheduled run starts fresh, with **no memory of any previous run and no
+access to its chat log**. This document and the Git history are the only
+channels between sessions. Anything a session learns and does not write down is
+lost.
+
+So every session must, before doing anything else, reconstruct state from both:
+
+```bash
+git -C C:\Users\Work\github\leap_initialisation log --oneline -30
+git -C C:\Users\Work\github\leap_mappings       log --oneline -15
+git -C C:\Users\Work\github\leap_dashboard      log --oneline -10
+```
+
+Read §6 **and** that log. They are deliberately redundant: §6 is richer but
+depends on a previous session having had the budget to write it, whereas the log
+records what actually landed even if a session died mid-item. Where the two
+disagree, believe the log and correct §6.
+
 ### Each session
 
 1. Read this document, then §3 for the ordered work list, then §6 for what
