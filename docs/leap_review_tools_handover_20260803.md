@@ -222,25 +222,47 @@ the old one; rebuild before distributing.
 
 ---
 
-## 4a. Token budget — throttle until ~2026-08-03 23:20 local
+## 4a. START HERE — token budget and how to resume
 
-The session that produced this document ran long and consumed a large share of
-the usage window. **Until roughly 4h10m from the 19:10 handover (about 23:20
-local), keep token use deliberately low.** After that the window rolls over and
-normal pace can resume.
+### The rule
 
-While throttled:
+**Do not start the §3 build before ~23:30 local on 2026-08-03.**
 
-- Do not resume the §3 build. It is a multi-hour job with heavy build/test
-  cycles; starting it inside the throttle window wastes the budget on a partial
-  attempt and then stalls mid-build.
-- If something must be done now, open a **fresh session scoped to one small
-  task** and use a cheaper model. A long-running session is the expensive thing
-  (see below), not the individual edits.
-- Prefer reading this document over re-deriving state from the code.
+The session that produced this document ran long and used a large share of the
+usage window. The window rolls over about 4h10m after the 19:10 handover, i.e.
+around **23:20 local**; the instruction below adds a ten-minute safety margin
+because a run that fires just *before* the reset fails outright.
 
-When the window resets, start the §3 work in a **new** session seeded with this
-document. Do not continue the old one.
+### Instructions for the agent reading this
+
+**If the current time is before ~23:30 local on 2026-08-03:**
+
+1. Do not begin §3. It is a multi-hour job with heavy build and test cycles;
+   started inside the throttle window it will consume the remaining budget on a
+   partial attempt and then stall mid-build, which is worse than not starting.
+2. Set a timer for the remaining time plus a ten-minute margin — a scheduled
+   task, or a wake-up if the session is looping. Target **23:30 local or later**.
+3. Then stop and stay idle. Do not "just read a few files while waiting": in a
+   long session that is exactly the cost being avoided.
+4. When the timer fires, go to §3.1 and work straight through §3.5.
+
+**If the current time is after ~23:30 local on 2026-08-03:** ignore the throttle
+entirely and start at §3.1. Confirm remaining usage first if the account has
+been busy since.
+
+**Either way, work in a fresh session seeded with this document.** Do not
+continue the session that wrote it.
+
+### Why a fresh session is the main lever
+
+Every turn re-sends the whole conversation. In a long session that is by far the
+dominant cost — far more than any single file read or test run. A fresh session
+carrying only this handover starts at a fraction of the cost per turn and stays
+cheap for much longer.
+
+That is the main reason this document exists in the detail it does: it is the
+mechanism for ending a session cheaply and restarting at full speed, rather than
+keeping an expensive one alive.
 
 ### Why a fresh session is the main lever
 
