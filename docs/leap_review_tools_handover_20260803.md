@@ -222,6 +222,53 @@ the old one; rebuild before distributing.
 
 ---
 
+## 4a. Token budget — throttle until ~2026-08-03 23:20 local
+
+The session that produced this document ran long and consumed a large share of
+the usage window. **Until roughly 4h10m from the 19:10 handover (about 23:20
+local), keep token use deliberately low.** After that the window rolls over and
+normal pace can resume.
+
+While throttled:
+
+- Do not resume the §3 build. It is a multi-hour job with heavy build/test
+  cycles; starting it inside the throttle window wastes the budget on a partial
+  attempt and then stalls mid-build.
+- If something must be done now, open a **fresh session scoped to one small
+  task** and use a cheaper model. A long-running session is the expensive thing
+  (see below), not the individual edits.
+- Prefer reading this document over re-deriving state from the code.
+
+When the window resets, start the §3 work in a **new** session seeded with this
+document. Do not continue the old one.
+
+### Why a fresh session is the main lever
+
+Every turn re-sends the whole conversation. In a long session that is by far the
+dominant cost — far more than any single file read or test run. A fresh session
+carrying only this handover starts at a fraction of the cost per turn and stays
+cheap for much longer.
+
+That is the main reason this document exists in the detail it does: it is the
+mechanism for ending a session cheaply and restarting at full speed, rather than
+keeping an expensive one alive.
+
+Ranked levers, most effective first:
+
+1. **End a long session; restart from a handover.** Removes the re-sent context.
+2. **Match the model to the task.** Use the cheaper model for scaffolding,
+   mechanical edits, and test loops; reserve the strongest one for the
+   architecture-sensitive work (§1 and §3.3 here).
+3. **Do not spawn subagents or workflows for this work.** Each one starts cold
+   and re-derives context that is already in hand.
+4. **Read narrowly.** Targeted `Grep` and ranged `Read` rather than whole large
+   modules; pipe long command output through `tail`/`head`.
+5. **Run focused tests.** One test module at a time; do not re-run a suite to
+   confirm something the tool already confirmed.
+6. **Batch independent tool calls** into a single turn.
+
+---
+
 ## 5. Traps worth keeping
 
 - **Two `codebase` packages.** §1. The single most expensive thing to rediscover.
