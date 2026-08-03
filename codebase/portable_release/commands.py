@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from codebase.portable_release import validation
+from codebase.portable_release import validation, workspace
 from codebase.portable_release.provenance import (
     RunManifest,
     describe_directory_files,
@@ -44,6 +44,7 @@ class CommandResult:
     command: str
     ok: bool
     run_directory: Path
+    output_directory: Path
     run_manifest: RunManifest
     manifest_paths: dict[str, Path]
     validation_report: validation.ValidationReport
@@ -54,7 +55,8 @@ class CommandResult:
         lines = [
             f"Command : {self.command}",
             f"Result  : {'succeeded' if self.ok else 'FAILED'}",
-            f"Run dir : {self.run_directory}",
+            f"Results : {self.output_directory}",
+            f"Run log : {self.run_directory}",
         ]
         if self.error:
             lines.append(f"Error   : {self.error}")
@@ -92,11 +94,34 @@ def _resolve_user_path(context: RuntimeContext, value: Path | str) -> Path:
     return from_cwd
 
 
-def _run_directory(context: RuntimeContext, command: str, label: str | None) -> Path:
+def _run_directories(
+    context: RuntimeContext,
+    *,
+    tool: str,
+    economy: str | None,
+    label: str | None,
+) -> tuple[Path, Path]:
+    """Return ``(deliverable_dir, record_dir)`` for one run.
+
+    Deliverables are grouped by economy so runs accumulate instead of
+    overwriting: a balance-review workbook already carries its scenario and year
+    in its filename, so REF/TGT and several years coexist in one folder, and a
+    dashboard is replaced in place for the economy it belongs to.
+
+    The run manifest, validation report, and log go in a per-run sub-folder, so
+    re-running never destroys the record of the previous run either.
+    """
     token = label or datetime.now().strftime("%Y%m%d_%H%M%S")
-    directory = context.output_root / f"{command}_{token}"
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory
+    if economy:
+        deliverable_dir = (
+            workspace.economy_output_root(context.output_root, economy) / tool
+        )
+    else:
+        deliverable_dir = context.output_root / tool
+    record_dir = deliverable_dir / "run_records" / token
+    deliverable_dir.mkdir(parents=True, exist_ok=True)
+    record_dir.mkdir(parents=True, exist_ok=True)
+    return deliverable_dir, record_dir
 
 
 def _configuration_records(
@@ -131,12 +156,16 @@ def _execute(
     validate: Callable[[], validation.ValidationReport],
     config_roles: Sequence[str],
     settings: dict[str, Any],
-    data_roles: Sequence[str] = (),
     work: Callable[[Path], dict[str, Any]],
     output_describer: Callable[[dict[str, Any]], list],
+    tool: str,
+    economy: str | None = None,
+    data_roles: Sequence[str] = (),
 ) -> CommandResult:
     """Run one command with validation, manifest, and log capture around it."""
-    run_dir = _run_directory(context, command, run_label)
+    deliverable_dir, run_dir = _run_directories(
+        context, tool=tool, economy=economy, label=run_label
+    )
     manifest = new_run_manifest(
         release_name=context.release_name,
         release_version=context.release_version,
@@ -159,6 +188,7 @@ def _execute(
             command=command,
             ok=False,
             run_directory=run_dir,
+            output_directory=deliverable_dir,
             run_manifest=manifest,
             manifest_paths=paths,
             validation_report=report,
@@ -167,7 +197,7 @@ def _execute(
         )
 
     try:
-        outputs = work(run_dir)
+        outputs = work(deliverable_dir)
     except Exception as exc:  # noqa: BLE001 - recorded, then re-raised to the caller
         finish_run_manifest(manifest, status="failed", error=f"{type(exc).__name__}: {exc}")
         paths = manifest.write(run_dir)
@@ -175,6 +205,7 @@ def _execute(
             command=command,
             ok=False,
             run_directory=run_dir,
+            output_directory=deliverable_dir,
             run_manifest=manifest,
             manifest_paths=paths,
             validation_report=report,
@@ -191,6 +222,7 @@ def _execute(
         command=command,
         ok=True,
         run_directory=run_dir,
+        output_directory=deliverable_dir,
         run_manifest=manifest,
         manifest_paths=paths,
         validation_report=report,
@@ -289,6 +321,8 @@ def run_balance_review(
     return _execute(
         context,
         command="balance-review",
+        tool=workspace.BALANCE_REVIEW_DIRNAME,
+        economy=economy,
         run_label=run_label,
         validate=validate,
         config_roles=(),
@@ -323,13 +357,53 @@ DIAGNOSTICS_CONFIG_ROLES = (
 )
 
 
+def resolve_export_for(
+    context: RuntimeContext,
+    *,
+    economy: str,
+    scenario: str,
+    explicit: Path | str | None = None,
+) -> Path:
+    """Find the balance export for one economy and scenario.
+
+    An explicit path always wins. Otherwise the workbook is resolved from
+    ``input/leap balances exports/<ECONOMY>/`` by the repository's own resolver,
+    which picks the newest date id and ignores ``archive/``. That is why a user
+    normally passes only ``--economy``: the folder layout carries the rest.
+    """
+    if explicit:
+        return _resolve_user_path(context, explicit)
+
+    from codebase.utilities.leap_balance_export_resolver import (
+        resolve_balance_export_workbook,
+    )
+
+    exports_root = workspace.balance_exports_root(context.input_root)
+    folder = workspace.normalize_economy_folder(economy)
+    try:
+        return Path(
+            resolve_balance_export_workbook(
+                economy=folder,
+                scenario=scenario,
+                exports_root=exports_root,
+            )
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        raise FileNotFoundError(
+            f"No {scenario} balance export was found for {folder}.\n"
+            f"  Looked in: {exports_root / folder}\n"
+            f"  {exc}\n"
+            "Run 'leap-review-tools.exe list' to see what is available."
+        ) from None
+
+
 def run_balance_review_from_export(
     context: RuntimeContext,
     *,
     economy: str,
     scenario: str,
     year: int,
-    balance_export_workbook: Path | str,
+    balance_export_workbook: Path | str | None = None,
     esto_table_path: Path | str | None = None,
     run_label: str | None = None,
 ) -> CommandResult:
@@ -348,7 +422,12 @@ def run_balance_review_from_export(
     supplied table does not carry them. That behaviour is not reimplemented
     here; it is the same code path and the same rules file.
     """
-    workbook_path = _resolve_user_path(context, balance_export_workbook)
+    workbook_path = resolve_export_for(
+        context,
+        economy=economy,
+        scenario=scenario,
+        explicit=balance_export_workbook,
+    )
     supplied_esto = (
         _resolve_user_path(context, esto_table_path) if esto_table_path else None
     )
@@ -447,6 +526,8 @@ def run_balance_review_from_export(
     return _execute(
         context,
         command="balance-review-from-export",
+        tool=workspace.BALANCE_REVIEW_DIRNAME,
+        economy=economy,
         run_label=run_label,
         validate=validate,
         config_roles=DIAGNOSTICS_CONFIG_ROLES,
@@ -568,6 +649,8 @@ def run_dashboard(
     return _execute(
         context,
         command="dashboard",
+        tool=workspace.DASHBOARD_DIRNAME,
+        economy=economy,
         run_label=run_label,
         validate=validate,
         config_roles=(
