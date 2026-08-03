@@ -1350,16 +1350,18 @@ def _filter_all_zero_demand_branches_for_export(
     demand: pd.DataFrame,
     scenarios: list[str],
     use_sector_branches: bool,
+    template_branch_paths: set[str] | None = None,
     tolerance: float = AGGREGATED_DEMAND_ZERO_ABSOLUTE_TOLERANCE,
 ) -> pd.DataFrame:
     """
-    Omit branches whose demand is zero in every requested scenario and year.
+    Omit all-zero branches unless the economy's LEAP template contains them.
 
     This filter belongs at the export boundary: the unfiltered demand table
-    remains available for reconciliation and contribution checks, while all
-    sibling LEAP rows for a no-op branch are omitted together. Missing or
-    non-numeric values are retained so incomplete source data is not silently
-    treated as zero.
+    remains available for reconciliation and contribution checks.  When a
+    template is available, an existing all-zero branch is retained so the
+    export explicitly clears stale values in LEAP. Missing or non-numeric
+    values are retained so incomplete source data is not silently treated as
+    zero.
     """
     branch_keys = (
         ["sector", "leap_fuel_name"]
@@ -1381,7 +1383,29 @@ def _filter_all_zero_demand_branches_for_export(
             and values.abs().le(tolerance).all()
         )
     )
-    zero_branch_keys = all_zero_by_branch[all_zero_by_branch].index
+    all_zero_branch_keys = all_zero_by_branch[all_zero_by_branch].index
+    if len(all_zero_branch_keys) == 0:
+        return demand.copy()
+
+    zero_branch_keys = all_zero_branch_keys
+    if template_branch_paths is not None:
+        retained_zero_keys: list[object] = []
+        for key in all_zero_branch_keys:
+            if len(branch_keys) == 1:
+                sector_name = None
+                fuel_name = key
+            else:
+                sector_name, fuel_name = key
+            sector_label = _SECTOR_LEAP_LABELS.get(str(sector_name), sector_name)
+            branch_path = (
+                f"{DEMAND_BRANCH_ROOT}\\{sector_label}\\{fuel_name}"
+                if sector_name is not None
+                else f"{DEMAND_BRANCH_ROOT}\\{fuel_name}"
+            )
+            if branch_path in template_branch_paths:
+                retained_zero_keys.append(key)
+        zero_branch_keys = all_zero_branch_keys.difference(retained_zero_keys)
+
     if len(zero_branch_keys) == 0:
         return demand.copy()
 
@@ -1562,10 +1586,22 @@ def save_aggregated_demand_as_leap_workbook(
         print("[INFO] save_aggregated_demand_as_leap_workbook: no demand data — workbook not written.")
         return None
 
+    if id_lookup_path == ID_LOOKUP_AUTO:
+        id_lookup_path = _resolve_export_id_lookup(economy)
+    id_lookup_resolved = Path(id_lookup_path) if id_lookup_path is not None else None
+    branch_to_id: dict[str, int] | None = None
+    variable_to_id: dict[str, int] | None = None
+    scenario_to_id: dict[str, int] | None = None
+    if id_lookup_resolved is not None and id_lookup_resolved.exists():
+        branch_to_id, variable_to_id, scenario_to_id = _build_id_lookups(
+            id_lookup_resolved
+        )
+
     export_demand = _filter_all_zero_demand_branches_for_export(
         demand=demand,
         scenarios=use_scenarios,
         use_sector_branches=use_sector_branches,
+        template_branch_paths=(set(branch_to_id) if branch_to_id is not None else None),
     )
     omitted_branch_rows = len(demand) - len(export_demand)
     if omitted_branch_rows:
@@ -1645,11 +1681,7 @@ def save_aggregated_demand_as_leap_workbook(
 
     export_df = pd.DataFrame(rows)
 
-    if id_lookup_path == ID_LOOKUP_AUTO:
-        id_lookup_path = _resolve_export_id_lookup(economy)
-    id_lookup_resolved = Path(id_lookup_path) if id_lookup_path is not None else None
-    if id_lookup_resolved is not None and id_lookup_resolved.exists():
-        branch_to_id, variable_to_id, scenario_to_id = _build_id_lookups(id_lookup_resolved)
+    if branch_to_id is not None and variable_to_id is not None and scenario_to_id is not None:
         export_df.insert(0, "BranchID", export_df["Branch Path"].map(
             lambda x: branch_to_id.get(str(x).strip(), -1)))
         export_df.insert(1, "VariableID", export_df["Variable"].map(
