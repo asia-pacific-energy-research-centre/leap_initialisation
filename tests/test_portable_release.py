@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import sys
 import textwrap
 from pathlib import Path
 
@@ -383,6 +385,69 @@ def test_portable_context_places_everything_inside_the_package(tmp_path: Path) -
     # __post_init__ creates the writable folders a run needs.
     assert context.output_root.is_dir()
     assert context.log_root.is_dir()
+
+
+def _write_fake_package(root: Path) -> Path:
+    """Lay out the minimum a package needs for build_portable_context()."""
+    (root / "config" / "dashboard").mkdir(parents=True)
+    (root / "config" / "dashboard" / "series_config.json").write_text("{}", encoding="utf-8")
+    (root / "code" / "leap_initialisation").mkdir(parents=True)
+    (root / "release_manifest.json").write_text(
+        json.dumps(
+            {
+                "release": {"name": "leap-review-tools", "version": "0.1.0"},
+                "repositories": {
+                    "leap_initialisation": {
+                        "commit": "0" * 40,
+                        "stage_dir": "leap_initialisation",
+                        "on_sys_path": True,
+                    }
+                },
+                "config_assets": [
+                    {"role": "dashboard_series_config", "dest": "dashboard/series_config.json"}
+                ],
+                "commands": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_staged_package_puts_its_code_directories_on_sys_path(tmp_path: Path) -> None:
+    from codebase.portable_release.portable_main import build_portable_context
+
+    package = _write_fake_package(tmp_path / "staged")
+    context, _ = build_portable_context(package)
+    assert context.sys_path_roots == (package / "code" / "leap_initialisation",)
+    assert context.preflight() == []
+
+
+def test_frozen_package_expects_no_code_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A frozen build carries its modules in the executable, not in code/.
+
+    Insisting on a code/ directory made every frozen package refuse to start
+    while the staged one passed, so this asymmetry is pinned.
+    """
+    from codebase.portable_release import portable_main
+
+    package = _write_fake_package(tmp_path / "frozen")
+    shutil.rmtree(package / "code")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    context, _ = portable_main.build_portable_context(package)
+    assert context.sys_path_roots == ()
+    assert context.preflight() == []
+    assert "bundled inside the executable" in context.describe()
+
+
+def test_package_without_a_release_manifest_says_so(tmp_path: Path) -> None:
+    from codebase.portable_release.portable_main import build_portable_context
+
+    with pytest.raises(FileNotFoundError, match="package is incomplete"):
+        build_portable_context(tmp_path)
 
 
 def test_preflight_names_every_missing_location(tmp_path: Path) -> None:

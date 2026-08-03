@@ -26,6 +26,7 @@ Within this repository:
 | understand placeholder demand and interim power branches | [`docs/placeholder_branches_and_interim_models.md`](docs/placeholder_branches_and_interim_models.md) |
 | choose current work | [`docs/handover_work_queue_20260728.md`](docs/handover_work_queue_20260728.md) |
 | inspect detailed engineering history and traps | [`docs/work_queue.md`](docs/work_queue.md) |
+| run the review tools, or ship them to a colleague | [`docs/leap_review_tools.md`](docs/leap_review_tools.md) |
 
 The primary entry point is:
 
