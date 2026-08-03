@@ -450,6 +450,88 @@ def test_package_without_a_release_manifest_says_so(tmp_path: Path) -> None:
         build_portable_context(tmp_path)
 
 
+def _minimal_context(tmp_path: Path):
+    from codebase.portable_release.runtime import RuntimeContext
+
+    return RuntimeContext(
+        mode="portable",
+        release_name="leap-review-tools",
+        release_version="0.1.0",
+        package_root=tmp_path / "package",
+        config_root=tmp_path / "package" / "config",
+        output_root=tmp_path / "package" / "output",
+        log_root=tmp_path / "package" / "logs",
+        input_root=tmp_path / "package" / "input",
+    )
+
+
+def test_relative_input_paths_resolve_against_the_working_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Relative paths must be pinned down before anything else sees them.
+
+    The owning repositories resolve relative paths against their own repository
+    root, which inside a package is PyInstaller's _internal bundle. That made a
+    run pass validation (checked against the working directory) and then fail in
+    the workbook resolver (checked against the repository root).
+    """
+    from codebase.portable_release.commands import _resolve_user_path
+
+    context = _minimal_context(tmp_path)
+    workdir = tmp_path / "workdir"
+    (workdir / "input").mkdir(parents=True)
+    target = workdir / "input" / "export.xlsx"
+    target.write_bytes(b"x")
+    monkeypatch.chdir(workdir)
+
+    assert _resolve_user_path(context, r"input\export.xlsx") == target.resolve()
+    assert _resolve_user_path(context, "input/export.xlsx") == target.resolve()
+
+
+def test_relative_input_paths_fall_back_to_the_package_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _minimal_context(tmp_path)
+    packaged = context.package_root / "input" / "sample.csv"
+    packaged.parent.mkdir(parents=True)
+    packaged.write_text("a\n", encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    assert _resolve_user_path_via(context, r"input\sample.csv") == packaged.resolve()
+
+
+def _resolve_user_path_via(context, value):
+    from codebase.portable_release.commands import _resolve_user_path
+
+    return _resolve_user_path(context, value)
+
+
+def test_absolute_input_paths_are_left_alone(tmp_path: Path) -> None:
+    from codebase.portable_release.commands import _resolve_user_path
+
+    context = _minimal_context(tmp_path)
+    absolute = tmp_path / "somewhere" / "file.csv"
+    assert _resolve_user_path(context, absolute) == absolute
+
+
+def test_a_missing_relative_path_is_reported_from_the_working_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codebase.portable_release.commands import _resolve_user_path
+
+    context = _minimal_context(tmp_path)
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    resolved = _resolve_user_path(context, "input/absent.csv")
+    assert resolved == (workdir / "input" / "absent.csv").resolve()
+
+
 def test_preflight_names_every_missing_location(tmp_path: Path) -> None:
     context = RuntimeContext(
         mode="portable",

@@ -63,6 +63,35 @@ class CommandResult:
         return lines
 
 
+def _resolve_user_path(context: RuntimeContext, value: Path | str) -> Path:
+    """Turn a user-supplied path into an absolute one, predictably.
+
+    Relative paths must be pinned down here, before anything else sees them.
+    The owning repositories resolve relative paths against their own repository
+    root — the right convention inside a checkout, and a meaningless one inside
+    a package, where it lands in PyInstaller's ``_internal`` bundle. Left alone,
+    validation (which checks against the working directory) and the workbook
+    resolver (which checks against the repository root) disagree, so a run gets
+    past validation and then fails.
+
+    A relative path is taken as relative to the working directory, the way any
+    command-line tool behaves. If nothing is there, the package root is tried
+    too, so ``--diagnostics-directory input\\foo`` works from anywhere.
+    """
+    raw = Path(str(value).replace("\\", "/"))
+    if raw.is_absolute():
+        return raw
+    from_cwd = (Path.cwd() / raw).resolve()
+    if from_cwd.exists():
+        return from_cwd
+    from_package = (context.package_root / raw).resolve()
+    if from_package.exists():
+        return from_package
+    # Neither exists: return the working-directory form so the validation
+    # message names the path the user actually typed, relative to where they are.
+    return from_cwd
+
+
 def _run_directory(context: RuntimeContext, command: str, label: str | None) -> Path:
     token = label or datetime.now().strftime("%Y%m%d_%H%M%S")
     directory = context.output_root / f"{command}_{token}"
@@ -177,8 +206,8 @@ def run_balance_review(
     reconciliation itself, and a balance-review workbook cannot be produced from
     a raw LEAP export alone — see ``docs/leap_review_tools.md``.
     """
-    workbook_path = Path(str(balance_export_workbook).replace("\\", "/"))
-    diagnostics_dir = Path(str(diagnostics_directory).replace("\\", "/"))
+    workbook_path = _resolve_user_path(context, balance_export_workbook)
+    diagnostics_dir = _resolve_user_path(context, diagnostics_directory)
 
     def validate() -> validation.ValidationReport:
         return validation.validate_balance_review_inputs(
@@ -301,8 +330,8 @@ def run_dashboard(
     produced by the ``leap_mappings`` pipeline and is far too large to bundle, so
     it is a run input rather than part of the package.
     """
-    comparison_path = Path(str(comparison_data_path).replace("\\", "/"))
-    rows_path = Path(str(common_rows_path).replace("\\", "/"))
+    comparison_path = _resolve_user_path(context, comparison_data_path)
+    rows_path = _resolve_user_path(context, common_rows_path)
     template_path = context.config_asset("dashboard_template")
     series_config_path = context.config_asset("dashboard_series_config")
 
