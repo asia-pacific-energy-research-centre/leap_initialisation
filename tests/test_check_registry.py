@@ -43,6 +43,18 @@ REGISTERED_CHECKS: dict[str, str] = {
     "resolve_logical_duplicates": "codebase/functions/baseline_seed_validation.py",
     "check_producer_coverage": "codebase/functions/baseline_seed_validation.py",
     "validate_seed_files": "codebase/functions/patch_baseline_seeds.py",
+    "run_baseline_seed_artifact_validation": (
+        "codebase/functions/baseline_seed_artifact_validation.py"
+    ),
+    "check_workbook_structure": (
+        "codebase/functions/baseline_seed_artifact_validation.py"
+    ),
+    "check_authorized_zero_scope": (
+        "codebase/functions/baseline_seed_artifact_validation.py"
+    ),
+    "check_serialized_value_conservation": (
+        "codebase/functions/baseline_seed_artifact_validation.py"
+    ),
     # F3 - LEAP-import readiness
     "validate_region": "codebase/functions/leap_exports.py",
     "run_export_readiness": "codebase/utilities/leap_export_readiness.py",

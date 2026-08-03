@@ -57,10 +57,15 @@ from codebase.mappings.canonical_mapping import (
 )
 from codebase.functions import supply_data_pipeline, leap_api, patch_baseline_seeds
 from codebase.functions import baseline_seed_postprocess
+from codebase.functions.baseline_seed_artifact_validation import (
+    DEFAULT_ENFORCEMENT_BY_CHECK as BASELINE_SEED_ARTIFACT_AUDIT_ENFORCEMENT,
+    run_baseline_seed_artifact_validation,
+)
 from codebase.functions.supply_export_rows import coerce_value_by_year
 from codebase.functions.transformation_record_builder import _is_excluded_transformation_record
 from codebase.functions.baseline_seed_validation import (
     BaselineSeedValidationError,
+    LOGICAL_KEY_COLUMNS,
     SOURCE_FILE_COLUMN,
     SOURCE_WORKFLOW_COLUMN,
     build_branch_issue_summary,
@@ -1916,6 +1921,10 @@ def write_per_economy_combined_workbooks(
     prepared_workbooks: list[tuple[str, pd.DataFrame, Path]] = []
     validation_results: list[tuple[str, object]] = []
     producer_coverage_findings: list[dict[str, object]] = []
+    artifact_expected_rows: dict[str, pd.DataFrame] = {}
+    artifact_zero_scope_manifests: dict[str, pd.DataFrame] = {}
+    artifact_candidate_paths: dict[str, Path] = {}
+    artifact_template_paths: dict[str, Path] = {}
 
     def _producer_for_row(configured_source: str, branch_path: object) -> str:
         path = str(branch_path or "").strip().lower()
@@ -1983,6 +1992,7 @@ def write_per_economy_combined_workbooks(
         # Resolve this economy's LEAP area before anything reads IDs or
         # reference rows; BranchIDs differ between areas for the same path.
         id_lookup_resolved = _template_for_economy(economy)
+        artifact_template_paths[econ_token] = id_lookup_resolved
         branch_to_id, variable_to_id, scenario_to_id = _id_lookups_for_template(id_lookup_resolved)
         reference_df = _load_reference_export_data(id_lookup_resolved)
         frames, found_sources, source_probe = _current_source_frames(econ_token)
@@ -2113,6 +2123,30 @@ def write_per_economy_combined_workbooks(
                 raise_on_blocking=False,
             )
             validation_results.append((econ_token, validation))
+            zero_scope_columns = [
+                *LOGICAL_KEY_COLUMNS,
+                "authorized",
+                SOURCE_WORKFLOW_COLUMN,
+                "exception_id",
+            ]
+            resolved_with_provenance = validation.resolved_rows.copy()
+            if SOURCE_WORKFLOW_COLUMN in resolved_with_provenance.columns:
+                declared_zero_mask = resolved_with_provenance[
+                    SOURCE_WORKFLOW_COLUMN
+                ].fillna("").astype(str).str.casefold().str.contains("zero")
+                declared_zero_rows = resolved_with_provenance.loc[
+                    declared_zero_mask,
+                    [*LOGICAL_KEY_COLUMNS, SOURCE_WORKFLOW_COLUMN],
+                ].copy()
+                declared_zero_rows["authorized"] = True
+                declared_zero_rows["exception_id"] = ""
+                artifact_zero_scope_manifests[econ_token] = declared_zero_rows.reindex(
+                    columns=zero_scope_columns
+                )
+            else:
+                artifact_zero_scope_manifests[econ_token] = pd.DataFrame(
+                    columns=zero_scope_columns
+                )
             combined = validation.resolved_rows.drop(
                 columns=[SOURCE_WORKFLOW_COLUMN, SOURCE_FILE_COLUMN, "source_excel_row"],
                 errors="ignore",
@@ -2239,6 +2273,12 @@ def write_per_economy_combined_workbooks(
                 return build_data_expression_from_row(row, _year_cols)
             combined["Expression"] = combined.apply(_resolve_expression, axis=1)
 
+        # BSA-009 compares this post-assembly frame with both physical sheets
+        # after the workbook is written. Keep it in memory only for the
+        # audit/shadow gate; it does not alter either exported sheet.
+        if enforce_validation:
+            artifact_expected_rows[econ_token] = combined.copy()
+
         _leap_meta_cols = [c for c in _leap_meta if c in combined.columns]
         _level_cols = [c for c in combined.columns if str(c).startswith("Level")]
         _other = [c for c in combined.columns
@@ -2347,6 +2387,7 @@ def write_per_economy_combined_workbooks(
                 out_path,
                 unverified=str(econ_token) in blocked_econ_tokens,
             )
+            artifact_candidate_paths[econ_token] = out_path
             written.append(out_path)
 
         if not blocking.empty:
@@ -2379,6 +2420,73 @@ def write_per_economy_combined_workbooks(
             _run_combined_readiness(economy=econ_token, output_path=out_path, region=get_region_for_economy(econ_token))
             print(f"[INFO] Wrote combined workbook for economy={econ_token} -> {out_path.name} (stamp={run_stamp})")
             written.append(out_path)
+
+    if enforce_validation:
+        # This is deliberately post-write and audit-only. It reopens the actual
+        # saved files and records what a future promotion authority would block,
+        # but current promotion and run-completion behavior remain unchanged.
+        artifact_audit_dir = (
+            out_dir / "supporting_files" / "baseline_seed_artifact_validation"
+        )
+        expected_scenarios = list(workflow_cfg.GLOBAL_SCENARIOS)
+        artifact_years_by_scenario = workflow_cfg.get_baseline_seed_validation_years(
+            expected_scenarios,
+            base_year=coverage_start,
+            final_year=coverage_end,
+        )
+        if required_years_by_scenario is not None:
+            artifact_years_by_scenario.update({
+                str(scenario): sorted({int(year) for year in years})
+                for scenario, years in required_years_by_scenario.items()
+            })
+        artifact_required_diagnostics = [
+            out_dir
+            / "supporting_files"
+            / "baseline_seed_validation"
+            / f"baseline_seed_{run_stamp}_consolidated_rule_findings.csv",
+            *[
+                out_dir
+                / "supporting_files"
+                / "export_readiness"
+                / economy
+                / "leap_export_readiness_findings.csv"
+                for economy in economy_list
+            ],
+        ]
+        producer_artifacts = {
+            str(producer): [Path(path) for path in paths]
+            for producer, paths in (source_workbooks_by_workflow or {}).items()
+        }
+        try:
+            artifact_audit = run_baseline_seed_artifact_validation(
+                run_id=f"baseline_seed_{run_stamp}",
+                candidate_workbooks=artifact_candidate_paths,
+                expected_economies=economy_list,
+                template_paths_by_economy=artifact_template_paths,
+                expected_scenarios=expected_scenarios,
+                expected_years_by_scenario=artifact_years_by_scenario,
+                expected_producers=sorted(producer_artifacts),
+                producer_artifacts_by_producer=producer_artifacts,
+                source_rows_by_economy=artifact_expected_rows,
+                zero_scope_manifests_by_economy=artifact_zero_scope_manifests,
+                required_diagnostics=artifact_required_diagnostics,
+                output_dir=artifact_audit_dir,
+                enforcement_by_check=BASELINE_SEED_ARTIFACT_AUDIT_ENFORCEMENT,
+                validation_exceptions=configured_exceptions,
+            )
+            print(
+                f"[INFO] Baseline-seed final-artifact audit: "
+                f"{artifact_audit.shadow_status}; manifest={artifact_audit.manifest_path}. "
+                "Audit findings did not change promotion or run completion."
+            )
+        except Exception as exc:
+            # The gate's individual checks normally turn failures into
+            # CHECK_ERROR findings. This outer guard is the last audit-only
+            # safety boundary for an unexpected packaging/configuration defect.
+            print(
+                "[WARN] Baseline-seed final-artifact audit could not complete; "
+                f"current run/promotion behavior is unchanged: {exc!r}"
+            )
 
     return written
 

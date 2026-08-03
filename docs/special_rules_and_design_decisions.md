@@ -324,23 +324,29 @@ diagnostics, and no invalid final workbook is written or substituted.
   2026-07-08 and 2026-07-09 full 21-economy runs first: their consolidated
   rule-findings CSVs contained zero warning-severity rows, so the downgrade
   path had never actually fired on real data -- the revert changed no past
-  output. All 3 previously-failing writer tests passed with the flag `False`.
+  output. All 3 then-failing writer tests passed with the flag `False`.
   Set back to `True` the same day at the user's explicit instruction:
   current blocking findings are judged not significant enough to hold up a
   run. This again knowingly re-introduces the deviation this rule prohibits
-  and re-fails the same 3 tests; still pending a substantive review of what
+  and re-failed the same 3 tests at that time; still pending a substantive review of what
   the current blocking findings actually are before deciding whether to
   leave `True` long-term.
 - 2026-07-17: **Substantive review done — the evidence the 2026-07-10 decision
   was waiting for.** Measured by validating the fresh, correctly-routed `12_NZ`
   seed (`SEED_12_NZ_TGT_REF_CA`, 0 ID disagreements vs its template) with the
-  flag **off**. 388 rows would block, and they are **two unrelated things**:
+  flag **off**. The CSV contains 546 rows total. Of those, 388 row-level
+  findings would block under the intended rule; the remaining rows are 156
+  SEED-005 companion warnings and 2 SEED-008 group-level summary warnings. The
+  would-block findings are **two unrelated things**:
 
   | Rule | Rows | What it is | Significant? |
   | --- | --- | --- | --- |
   | SEED-003 | 156 | missing IDs | **No** |
   | SEED-011 | 156 | branch absent from template | **No** |
   | SEED-008 | 76 | share group sums to 0, not 100 | **Yes** |
+
+  Raw evidence:
+  `outputs/leap_exports/supply_reconciliation/baseline_seed/runs/SEED_12_NZ_TGT_REF_CA/supporting_files/baseline_seed_validation/baseline_seed_20260717_consolidated_rule_findings.csv`.
 
   SEED-003 and SEED-011 are the **same 32 paths** counted twice (verified
   identical): the zero-valued in-flight area-migration rows already signed off in
@@ -350,9 +356,20 @@ diagnostics, and no invalid final workbook is written or substituted.
   SEED-008 is **not** that. All 76 rows are one branch,
   `Transformation\Hydrogen transformation\Processes\Electrolysers\Feedstock Fuels`
   (Reference and Target), with `evidence: sum=0` — the electrolyser feedstock
-  share group sums to zero while capacity is explicitly nonzero. A plant with
-  capacity and no feedstock: the same family as SEED-013, and a genuine modelling
-  gap. **For this the judgement was wrong** — the flag is masking it.
+  share group sums to zero while capacity is explicitly nonzero. Subsequent
+  row-level inspection on 2026-08-03 narrowed the cause: the transformation
+  source workbooks contain Electricity=0 and Green electricity=100 for every
+  year, but the assembled/final workbook retains only Electricity=0. The
+  validator is therefore correctly reporting a broken final artifact; the
+  upstream mix exists, but its 100% Green electricity member is lost during
+  template alignment/final assembly. **For this the judgement was wrong** — the
+  global warning downgrade masks a real final-artifact defect.
+
+  A later `12_NZ` artifact (`BASELINE_12NZ_20260803_1904`) does not reproduce
+  SEED-008: its final workbook has the retained Electricity feedstock share at
+  100% for Current Accounts, Reference, and Target. The July finding is therefore
+  confirmed as a real defect in that artifact, but it is not present in the
+  latest inspected NZ artifact.
 
   So the deviation is ~80% justified and ~20% harmful, and the harmful 20% is
   narrow and nameable. **A global flag is the wrong instrument for that split.**
@@ -362,11 +379,13 @@ diagnostics, and no invalid final workbook is written or substituted.
      mechanism already exists (`validation_exceptions` →
      `prepare_seed_rows_for_write`; matched on explicit fields with a required
      `reason`) and is exactly what it is for.
-  2. Fix or explicitly except the electrolyser share group — decide whether NZ
-     should have electrolyser capacity at all, or whether the feedstock mix is
-     missing.
-  3. Revert the flag to `False`. The 3 `test_baseline_seed_writer_validation.py`
-     tests go green and their `xfail` markers are deleted (not the tests).
+  2. Fix the electrolyser template-alignment loss so the intended 100% Green
+     electricity source share is represented by a valid retained LEAP branch.
+  3. Revert the production flag to `False` after the real findings are cleared.
+     The strict writer-contract tests already set the flag to `False` locally and
+     pass independently of production policy. The former cross-economy
+     all-or-none release test was removed by user decision on 2026-08-03 because
+     one economy's finding should not suppress a valid artifact for another.
 
   **Observability defect found while doing this, worth fixing regardless:** the
   consolidated `*_rule_findings.csv` **cannot** answer this question, because the
@@ -897,3 +916,35 @@ missing-sector family; the broader project is tracked in `work_queue.md` [20].
 - 2026-07-27: Defined no-active-child pairs as a diagnosable skip, after the
   full projection table exposed the valid 13_PNG LPG case outside a five-economy
   seed run.
+
+## INIT-013: Final baseline-seed artifact gate qualifies in audit mode first
+
+**Status:** Implemented for audit qualification
+**Owner:** leap_initialisation
+**Type:** Final artifact / promotion boundary
+**Affected areas:** `codebase/functions/baseline_seed_artifact_validation.py`;
+`codebase/functions/supply_leap_io.py`; baseline-seed acceptance diagnostics
+
+### Current rule
+
+The actual saved workbook and complete expected economy set must be validated at
+one run-level boundary after serialization. Output-contract severity and current
+enforcement are separate: BSA-001–BSA-010 are hard requirements, while their
+production enforcement mode is initially `audit`. A hard failure therefore
+records `would_block=true` and `run_was_blocked=false`; missing or failed checks
+produce `SHADOW_INCOMPLETE`, never a pass.
+
+The gate reuses the existing SEED duplicate/share/template validation functions.
+Producer calculation, preflight, zero-fill construction, and energy-conservation
+checks remain local where they require in-flight source state. Their explicit
+manifests, expected post-assembly rows, or diagnostics are evidence at the final
+gate rather than triggers for a duplicate implementation.
+
+Current promotion and run completion do not read the artifact manifest. A later
+decision may make promotion depend on a complete passing manifest after real-run
+qualification, but that behaviour change requires its own reviewed change.
+
+### History
+
+- 2026-08-03: Added the BSA-001–BSA-010 contract, central post-write audit,
+  deterministic findings/summary/manifest package, and focused acceptance tests.

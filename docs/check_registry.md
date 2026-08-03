@@ -185,6 +185,33 @@ paths cross the boundary**:
 | `validate_exception_records` | `baseline_seed_validation.py:1473` | SEED-C007/C022 | ″ |
 | `validate_seed_files` | `patch_baseline_seeds.py:453` | post-write file check | patcher |
 
+### Central final-artifact gate (audit qualification)
+
+`codebase/functions/baseline_seed_artifact_validation.py` now owns the run-level
+post-write contract BSA-001–BSA-010. `write_per_economy_combined_workbooks`
+reopens the physical `LEAP` and `FOR_VIEWING` sheets after every economy workbook
+has been written, passes explicit expected economy/template/producer/value
+evidence, and writes the findings, summary, and manifest under
+`supporting_files/baseline_seed_artifact_validation/`.
+
+| Check / function | Rule(s) | Shared implementation / evidence | Current enforcement | Tests |
+|---|---|---|---|---|
+| `run_baseline_seed_artifact_validation` | orchestrates BSA-001–BSA-010 | explicit run inventory; catches check exceptions as `CHECK_ERROR` | audit only; no promotion dependency | `test_baseline_seed_artifact_validation.py`; writer integration test |
+| `check_workbook_structure` | BSA-002 | `read_leap_sheet`; physical sheet/preamble/header/column evidence | audit | missing/unreadable/damaged workbook tests |
+| `check_shared_seed_rules` | BSA-003/005/006/007 | `validate_seed_rows` (the same duplicate/share/coverage implementation as the local boundary) | audit | duplicate, unresolved, share, coverage, and parity tests |
+| `check_template_identity` | BSA-004 | `build_template_id_lookup` + `apply_template_ids` | audit | valid-but-wrong ID test |
+| `check_authorized_zero_scope` | BSA-008 | explicit producer zero-scope manifest; never infers authorization from a zero value | audit | unauthorized/missing-evidence tests |
+| `check_serialized_value_conservation` | BSA-009 | explicit post-assembly rows compared with reopened `LEAP` expressions and `FOR_VIEWING` years | audit | serialization-loss/post-write-corruption tests |
+| `check_diagnostics_and_manifests` | BSA-010 | explicit producer artifacts and required diagnostic paths | audit | missing diagnostic/check-error/manifest tests |
+
+Contract severity is independent of enforcement: every BSA rule is currently
+hard and audit mode records `would_block=true`, `run_was_blocked=false`. Missing
+evidence is `INCOMPLETE`, never pass. The detailed disposition and retained dual
+execution are in
+[baseline_seed_gate_consolidation_review.md](baseline_seed_gate_consolidation_review.md);
+the normative requirements are in
+[baseline_seed_final_artifact_contract.md](baseline_seed_final_artifact_contract.md).
+
 **Duplicated / divergent implementations of F2 (drift risk):**
 
 - `_assert_atomic_canonical_share_groups` (`patch_baseline_seeds.py:112`) —
@@ -213,6 +240,11 @@ shared implementation.
 | manual-import workbook shape | `validate_workbook_for_manual_import` (`analysis_input_write_dispatcher.py:464`), `_validate_workbook_structure_against_canonical` (`:298`) | |
 | power-interim fuel/sector coverage | `validate_power_interim_fuel_coverage` (`electricity_heat_interim_workflow.py:582`), `validate_power_interim_sub1sectors` (`:133`) | |
 | shared export readiness runner | `utilities/leap_export_readiness.py` (`run_export_readiness`) | logical keys, LEAP IDs, Region consistency, shared fuel-catalog coverage, and legacy transfer paths; writes consolidated findings and summary outputs |
+
+The readiness runner remains a per-workbook repair report. It is not the BSA
+run-level authority: its simple duplicate/ID checks are deliberately retained
+for compatibility while the central gate routes those invariants through the
+shared baseline-seed validator.
 
 ---
 
