@@ -173,7 +173,13 @@ def test_output_is_written_only_under_the_temporary_run_directory(golden_result)
     result, _ = golden_result
     workbook = Path(result.outputs["workbook"])
     assert workbook.is_file()
-    assert workbook.parent == result.run_directory
+    # Deliverables land in the per-economy folder; the manifest and validation
+    # report live in a run_records sub-folder beneath it.
+    assert workbook.parent == result.output_directory
+    assert result.run_directory.parent.parent == result.output_directory
+    assert workbook.parent.name == "balance_review"
+    assert workbook.parent.parent.name == "20_USA"
+    # Whatever the layout, nothing may be written over the historical reference.
     assert GOLDEN_REFERENCE_WORKBOOK.resolve() != workbook.resolve()
 
 
