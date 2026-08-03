@@ -802,7 +802,19 @@ def check_serialized_value_conservation(
             actual_value = actual_values.get(int(year))
             viewing_value = None
             if viewing_row is not None:
-                raw_viewing = viewing_row.get(str(year), viewing_row.get(year))
+                viewing_column = next(
+                    (
+                        candidate
+                        for candidate in (year, str(year), float(year))
+                        if candidate in viewing_row.index
+                    ),
+                    None,
+                )
+                raw_viewing = (
+                    viewing_row.get(viewing_column)
+                    if viewing_column is not None
+                    else None
+                )
                 numeric_viewing = pd.to_numeric(pd.Series([raw_viewing]), errors="coerce").iloc[0]
                 viewing_value = None if pd.isna(numeric_viewing) else float(numeric_viewing)
             values_match = (

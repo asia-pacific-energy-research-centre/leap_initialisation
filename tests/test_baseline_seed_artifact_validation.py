@@ -339,6 +339,24 @@ def test_source_to_serialized_value_conservation_loss_is_reported(tmp_path: Path
     assert failure["actual"].str.contains("LEAP=10.0").any()
 
 
+def test_serialized_value_conservation_accepts_numeric_viewing_year_header(
+    tmp_path: Path,
+) -> None:
+    rows = pd.DataFrame([_row(expression="Data(2023,10)")])
+    candidate = _write_candidate(tmp_path / "numeric_viewing_year.xlsx", rows)
+    workbook = openpyxl.load_workbook(candidate)
+    viewing = workbook["FOR_VIEWING"]
+    for cell in viewing[3]:
+        if str(cell.value) == "2023":
+            cell.value = 2023.0
+            break
+    workbook.save(candidate)
+
+    result = _run(tmp_path, rows=rows, candidate=candidate)
+
+    assert _failures(result, "BSA-009").empty
+
+
 def test_missing_required_diagnostic_is_incomplete(tmp_path: Path) -> None:
     result = _run(tmp_path, required_diagnostics=[tmp_path / "missing.csv"])
 

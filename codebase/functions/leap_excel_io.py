@@ -682,6 +682,14 @@ def prepare_for_viewing_sheet_df(
                 break
         if source_col is not None:
             year_values[str(year)] = out[source_col]
+            if "Expression" in out.columns:
+                missing_values = year_values[str(year)].isna()
+                if missing_values.any():
+                    year_values.loc[missing_values, str(year)] = out.loc[
+                        missing_values, "Expression"
+                    ].map(
+                        lambda value, _year=year: _expression_value_for_year(value, _year)
+                    )
         elif "Expression" in out.columns:
             year_values[str(year)] = out["Expression"].map(
                 lambda value, _year=year: _expression_value_for_year(value, _year)
