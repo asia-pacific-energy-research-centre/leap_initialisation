@@ -17,8 +17,10 @@ from typing import Callable, Iterable, Mapping, Sequence
 import pandas as pd
 
 from codebase.functions.baseline_seed_validation import (
+    AGGREGATED_DEMAND_BRANCH_PREFIX,
     ID_COLUMNS,
     LOGICAL_KEY_COLUMNS,
+    SOURCE_WORKFLOW_COLUMN,
     apply_template_ids,
     build_template_id_lookup,
     row_has_only_zero_payload,
@@ -455,8 +457,21 @@ def check_shared_seed_rules(
     validation_exceptions: Iterable[dict[str, object]] | None = None,
 ) -> list[dict[str, object]]:
     """Reuse the pre-write SEED validator against reopened final rows."""
+    validation_rows = rows.copy()
+    if SOURCE_WORKFLOW_COLUMN not in validation_rows.columns:
+        validation_rows[SOURCE_WORKFLOW_COLUMN] = ""
+    aggregate_namespace = (
+        validation_rows.get("Branch Path", pd.Series("", index=validation_rows.index))
+        .map(_normalized)
+        .str.startswith(AGGREGATED_DEMAND_BRANCH_PREFIX)
+    )
+    missing_provenance = validation_rows[SOURCE_WORKFLOW_COLUMN].map(_normalized).eq("")
+    validation_rows.loc[
+        aggregate_namespace & missing_provenance,
+        SOURCE_WORKFLOW_COLUMN,
+    ] = "aggregated_demand_workflow"
     result = validate_seed_rows(
-        rows,
+        validation_rows,
         template_path=template_path,
         required_years_by_scenario=expected_years_by_scenario,
         required_scenarios=expected_scenarios,
@@ -473,13 +488,20 @@ def check_shared_seed_rules(
         seed_status = _normalized(seed_finding.get("status"))
         if seed_status not in {"fail", "warn", "excepted"}:
             continue
-        failed_check_ids.add(check_id)
         exception_id = _text(seed_finding.get("exception_id"))
+        final_status = (
+            "EXCEPTED"
+            if exception_id or seed_status == "excepted"
+            else "WARN"
+            if seed_status == "warn"
+            else "FAIL"
+        )
+        failed_check_ids.add(check_id)
         findings.append(_finding(
             run_id=run_id,
             check_id=check_id,
             enforcement_mode=enforcement_by_check[check_id],
-            status="FAIL" if not exception_id else "EXCEPTED",
+            status=final_status,
             economy=economy,
             workbook=workbook,
             branch_path=seed_finding.get("Branch Path"),
@@ -906,6 +928,8 @@ def _shadow_status(findings: pd.DataFrame) -> str:
     if (failed & findings["contract_severity"].eq("hard")).any():
         return "SHADOW_WOULD_FAIL"
     if failed.any():
+        return "SHADOW_WARN"
+    if findings["status"].eq("WARN").any():
         return "SHADOW_WARN"
     return "SHADOW_PASS"
 

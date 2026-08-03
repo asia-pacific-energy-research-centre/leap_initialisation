@@ -241,6 +241,33 @@ def test_nonzero_unresolved_payload_is_reported(tmp_path: Path) -> None:
     assert _failures(result, "BSA-005")["evidence"].str.contains("SEED-004").any()
 
 
+def test_aggregate_demand_placeholder_warning_never_blocks(tmp_path: Path) -> None:
+    """A retained missing LEAP branch stays visible without becoming a BSA failure."""
+    placeholder = _row(
+        branch_path=r"Demand\All demand aggregated\Industry\Geothermal",
+        variable="Activity Level",
+        expression="Data(2023,4.2703)",
+        branch_id=-1,
+    )
+    rows = pd.DataFrame([placeholder])
+    result = _run(
+        tmp_path,
+        rows=rows,
+        template_rows=pd.DataFrame([_row()]),
+        enforcement={"BSA-005": "block"},
+    )
+
+    warning = result.findings[
+        result.findings["check_id"].eq("BSA-005")
+        & result.findings["status"].eq("WARN")
+    ]
+    assert warning["evidence"].str.contains("SEED-004").any()
+    assert not warning["would_block"].any()
+    assert not warning["run_was_blocked"].any()
+    assert result.accepted is True
+    assert result.shadow_status == "SHADOW_WARN"
+
+
 def _share_rows(values: tuple[float, ...], *, include_second: bool = True) -> pd.DataFrame:
     paths = [
         r"Transformation\Plant\Output Fuels\Coal",
