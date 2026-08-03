@@ -326,6 +326,7 @@ def run_dashboard(
             common_rows_path=rows_path,
             template_path=template_path,
             series_config_path=series_config_path,
+            code_colors_path=context.config_asset("dashboard_code_colors"),
             output_root=run_dir,
             comparison_scope=comparison_scope,
             wide_file_scope=wide_file_scope,

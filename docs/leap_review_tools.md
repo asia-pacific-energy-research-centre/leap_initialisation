@@ -126,6 +126,15 @@ leap-review-tools.exe info
 ```
 
 ```bash
+leap-review-tools.exe selfcheck
+```
+
+`selfcheck` imports everything a run needs, confirms each standard-library
+module it relies on is the real one, and checks that every configuration file
+and package folder is present. Run it first if anything looks wrong — it is also
+what the builder runs against a freshly frozen executable before accepting it.
+
+```bash
 leap-review-tools.exe balance-review --economy 20_USA --scenario Target --year 2022 --balance-export-workbook "input\TGT 0308.xlsx" --diagnostics-directory "input\usa_tgt_diagnostics"
 ```
 
@@ -282,8 +291,10 @@ the runtime packages.
    runs PyInstaller in a **subprocess from a directory containing none of the
    repositories** — running it in-process from a checkout silently baked the
    live `codebase` package into the executable.
-   After freezing, the builder starts the executable and requires it to report
-   on itself; a package that cannot start is not a package.
+   After freezing, the builder runs the executable's `info` **and** `selfcheck`
+   commands and refuses the package if either fails. Both are needed: a package
+   can start and print its own version while a missing hidden import or a
+   shadowed standard-library module waits to break the first real run.
 5. **Read the release report** in `release_build/reports/`. It lists every
    staged file with its SHA-256, every configuration asset with its source
    commit, and the full package file list.
@@ -337,8 +348,8 @@ patch version instead, so a run manifest always identifies exactly one build.
   render_previews=True)` prints a warning and does nothing: the Python builder
   writes XLSX and verifies it structurally, but does not render sheet images.
   This is the one capability the pre-Python builder had that is not replaced.
-- **A full dashboard render is slow** — roughly 8–9 minutes for one economy on
-  the tracked USA fixture, dominated by writing Plotly chart bundles.
+- **A full dashboard render is slow** — a few minutes per economy, dominated by
+  writing Plotly chart bundles. Budget accordingly when rendering several.
 
 ### Codex-only functionality
 
