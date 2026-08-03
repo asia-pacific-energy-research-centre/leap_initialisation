@@ -104,13 +104,11 @@ suite-level dispositions above.
 
 ### Verification recorded 2026-08-03
 
-- New gate + writer + registry: **108 passed, 3 xfailed**. The xfails are the
+- Final new gate + writer + registry run: **109 passed, 3 xfailed**. The xfails are the
   existing conditional INIT-005 warning-downgrade cases.
 - Canonical shares, output shares, scenario borrowing, readiness, zero-fill,
   workbook headers, all requested conservation suites, promotion, and parallel
   merge: **130 passed**.
-- A second new-gate/registry rerun after final documentation and input-normalizing
-  changes: **81 passed**.
 - Additional comparison/postprocess/current-accounts/export-I/O/baseline-balance
   diagnostics: **95 passed, 3 failed**. The three failures are all parametrizations
   of the pre-existing

@@ -145,6 +145,34 @@ reach a final LEAP import workbook. Diagnostics must identify the source
 workflow, logical key, scenario and year where applicable, rule ID, severity,
 blocking status, and reason.
 
+## Post-write final-artifact contract (BSA audit gate)
+
+The SEED rules above remain the pre-write assembly and validation contract. They
+are now traced into a second, run-level final-artifact contract, BSA-001–BSA-010,
+defined in [baseline_seed_final_artifact_contract.md](baseline_seed_final_artifact_contract.md).
+The final gate is invoked by `write_per_economy_combined_workbooks` only after
+the actual `LEAP` and `FOR_VIEWING` sheets are saved.
+
+The following final rules deliberately reuse SEED implementations:
+
+| Final rule | Existing SEED implementation reused after reopen |
+|---|---|
+| BSA-003 | `resolve_logical_duplicates` / SEED-001–002 |
+| BSA-004/005 | `build_template_id_lookup`, `apply_template_ids`, and `validate_seed_rows` / SEED-003–005, 011, 013 |
+| BSA-006 | `validate_seed_rows` share and canonical-sibling checks / SEED-006–008 |
+| BSA-007 | `validate_seed_rows` scenario/year checks / SEED-009–010 |
+
+BSA-001/002/008/009/010 add information that the pre-write row validator does
+not own: complete artifact inventory, physical workbook structure, explicit
+zero/reset authorization, post-assembly-to-serialized value conservation, and
+diagnostic/manifest completeness. Missing evidence produces `INCOMPLETE`.
+
+All BSA rules have hard contract severity but run in audit mode during the
+qualification phase. They report what would block without changing current
+writer, completion, or promotion behaviour. See
+[baseline_seed_gate_consolidation_review.md](baseline_seed_gate_consolidation_review.md)
+for every retained local check and automated-test disposition.
+
 ## Resolved modelling decisions
 
 1. Missing-ID zero resets block by default, with a narrow exact-match exception

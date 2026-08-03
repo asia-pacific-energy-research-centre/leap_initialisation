@@ -897,3 +897,35 @@ missing-sector family; the broader project is tracked in `work_queue.md` [20].
 - 2026-07-27: Defined no-active-child pairs as a diagnosable skip, after the
   full projection table exposed the valid 13_PNG LPG case outside a five-economy
   seed run.
+
+## INIT-013: Final baseline-seed artifact gate qualifies in audit mode first
+
+**Status:** Implemented for audit qualification
+**Owner:** leap_initialisation
+**Type:** Final artifact / promotion boundary
+**Affected areas:** `codebase/functions/baseline_seed_artifact_validation.py`;
+`codebase/functions/supply_leap_io.py`; baseline-seed acceptance diagnostics
+
+### Current rule
+
+The actual saved workbook and complete expected economy set must be validated at
+one run-level boundary after serialization. Output-contract severity and current
+enforcement are separate: BSA-001–BSA-010 are hard requirements, while their
+production enforcement mode is initially `audit`. A hard failure therefore
+records `would_block=true` and `run_was_blocked=false`; missing or failed checks
+produce `SHADOW_INCOMPLETE`, never a pass.
+
+The gate reuses the existing SEED duplicate/share/template validation functions.
+Producer calculation, preflight, zero-fill construction, and energy-conservation
+checks remain local where they require in-flight source state. Their explicit
+manifests, expected post-assembly rows, or diagnostics are evidence at the final
+gate rather than triggers for a duplicate implementation.
+
+Current promotion and run completion do not read the artifact manifest. A later
+decision may make promotion depend on a complete passing manifest after real-run
+qualification, but that behaviour change requires its own reviewed change.
+
+### History
+
+- 2026-08-03: Added the BSA-001–BSA-010 contract, central post-write audit,
+  deterministic findings/summary/manifest package, and focused acceptance tests.

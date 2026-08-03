@@ -308,6 +308,53 @@ def test_final_writer_runs_combined_export_readiness(
     assert seen[0]["expected_region"] == "United States"
 
 
+def test_final_writer_runs_central_artifact_gate_after_physical_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
+    _write_leap_workbook(source, [_row("Data(2023,1)")])
+    template = tmp_path / "full model export.xlsx"
+    _write_template(template)
+    seen: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io._load_reference_export_data",
+        lambda *_args, **_kwargs: pd.DataFrame(),
+    )
+
+    def fake_artifact_gate(**kwargs):
+        candidate = Path(kwargs["candidate_workbooks"]["20_USA"])
+        assert candidate.exists()
+        seen.append(kwargs)
+        return type(
+            "ArtifactAudit",
+            (),
+            {
+                "shadow_status": "SHADOW_PASS",
+                "manifest_path": tmp_path / "artifact_manifest.json",
+            },
+        )()
+
+    monkeypatch.setattr(
+        "codebase.functions.supply_leap_io.run_baseline_seed_artifact_validation",
+        fake_artifact_gate,
+    )
+
+    written = write_per_economy_combined_workbooks(
+        economies=["20_USA"],
+        output_dir=tmp_path / "output",
+        id_lookup_path=template,
+        source_workbooks_by_workflow={"supply_workflow": [source]},
+        required_years_by_scenario={"Reference": [2023]},
+    )
+
+    assert len(written) == 1
+    assert len(seen) == 1
+    assert seen[0]["expected_economies"] == ["20_USA"]
+    assert set(seen[0]["enforcement_by_check"].values()) == {"audit"}
+    assert "20_USA" in seen[0]["source_rows_by_economy"]
+
+
 def test_final_writer_retains_workbook_on_combined_readiness_errors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

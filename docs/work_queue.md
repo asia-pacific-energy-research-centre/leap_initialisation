@@ -1,5 +1,27 @@
 # Remaining work queue
 
+## [27] Qualify the central baseline-seed final-artifact gate on real runs
+
+**Status: audit implementation complete 2026-08-03; real-run qualification and
+promotion coupling remain pending.**
+
+The final writer now runs BSA-001–BSA-010 after saving the physical economy
+workbooks and writes a deterministic shadow acceptance package. Every new check
+is configured `audit`; hard findings expose `would_block` without changing run
+completion or promotion. Before enabling `block` or making promotion read the
+manifest:
+
+1. review one fresh real-template `20_USA` package and resolve every
+   `SHADOW_INCOMPLETE` evidence gap;
+2. run the intended all-economy set and confirm hashes, template routing,
+   producer evidence, and diagnostic requirements;
+3. integrate the same run-level gate after the active parallel parent merge;
+4. make promotion consume the manifest in a separate, explicitly reviewed
+   behaviour-change commit.
+
+See `baseline_seed_final_artifact_contract.md` and
+`baseline_seed_gate_consolidation_review.md`.
+
 ## [26] Decide whether consolidated baseline-seed results workbooks are required
 
 **Status: investigation requested 2026-08-03.**

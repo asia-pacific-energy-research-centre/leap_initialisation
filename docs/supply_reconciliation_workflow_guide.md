@@ -124,6 +124,23 @@ economy. The writer validates all economies before replacing any final seed.
 Default scenario coverage is Current Accounts 2022 and Reference/Target
 2023–2060; both endpoints are configurable in `workflow_config.py`.
 
+After the economy workbooks are physically saved, the final writer runs the
+central BSA-001–BSA-010 artifact gate. It reopens both `LEAP` and `FOR_VIEWING`,
+checks the explicit economy/template/artifact set, reruns shared duplicate,
+ID/share/coverage validation, compares post-assembly values with serialized
+values, and checks required evidence. Outputs are:
+
+- `supporting_files/baseline_seed_artifact_validation/baseline_seed_artifact_findings.csv`;
+- `supporting_files/baseline_seed_artifact_validation/baseline_seed_artifact_summary.csv`;
+- `supporting_files/baseline_seed_artifact_validation/baseline_seed_artifact_manifest.json`.
+
+This is currently a shadow audit. Hard failures stay labelled hard and record
+`would_block`, but the audit does not stop the run or change promotion. Missing
+evidence gives `SHADOW_INCOMPLETE`, not a pass. See
+`docs/baseline_seed_final_artifact_contract.md` for the normative contract and
+`docs/baseline_seed_gate_consolidation_review.md` for why each earlier check was
+kept, reused, or left local.
+
 Mapping inputs for supporting producers and reconciliation now come from
 `leap_mappings/config/outlook_mappings_master.xlsx`. Operational configuration
 that is not a semantic mapping is stored in `config/runtime_tables/`. Treat a clean
