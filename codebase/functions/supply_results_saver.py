@@ -1068,19 +1068,47 @@ def _catalog_for_economy(
         template_rows = _read_branch_variable_rows(template_path, sheet_name="Export")
         if template_rows.empty or "Branch Path" not in template_rows.columns:
             return catalog_df.iloc[0:0].copy()
-        allowed_paths = {
-            str(value).strip().casefold()
+        canonical_paths = {
+            str(value).strip().casefold(): str(value).strip()
             for value in template_rows["Branch Path"].dropna()
             if str(value).strip()
         }
         filtered = catalog_df[
-            catalog_df["branch_path"].astype(str).str.strip().str.casefold().isin(allowed_paths)
+            catalog_df["branch_path"]
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+            .isin(canonical_paths)
         ].copy()
+        # The shared catalog is a union of every economy template, so a
+        # case-insensitive match may carry another economy's spelling (for
+        # example, ``Natural Gas`` into NZ where the branch is ``Natural gas``).
+        # Adopt the target template's exact path before zero-fill and collapse
+        # scenario/source repetitions to one structural fuel branch. The zero
+        # builder supplies scenarios itself; retaining catalog repetitions here
+        # creates duplicate share contributions.
+        filtered["branch_path"] = (
+            filtered["branch_path"]
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+            .map(canonical_paths)
+        )
+        if "fuel_name" in filtered.columns:
+            filtered["fuel_name"] = filtered["branch_path"].str.rsplit("\\", n=1).str[-1]
+        structural_key = [
+            column
+            for column in ("catalog_type", "fuel_group", "branch_path")
+            if column in filtered.columns
+        ]
+        if structural_key:
+            filtered = filtered.drop_duplicates(subset=structural_key, keep="first")
         removed = len(catalog_df) - len(filtered)
         if removed:
             print(
                 f"[INFO] Restricted producer branch catalog for {economy} to "
-                f"{len(filtered)} template rows (removed {removed} cross-economy rows)."
+                f"{len(filtered)} structural template rows "
+                f"(removed or collapsed {removed} union rows)."
             )
         return filtered
     except (FileNotFoundError, ValueError) as exc:
