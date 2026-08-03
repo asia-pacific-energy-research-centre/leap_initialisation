@@ -222,36 +222,62 @@ the old one; rebuild before distributing.
 
 ---
 
-## 4a. START HERE — token budget and how to resume
+## 4a. START HERE — unattended build plan
 
-### The rule
+The maintainer is asleep. Work through §3 autonomously across four scheduled
+sessions, using whatever budget each usage window allows.
 
-**Do not start the §3 build before ~23:30 local on 2026-08-03.**
+Local time is **UTC+0900**. This plan was written at 2026-08-03 23:35 local.
 
-The session that produced this document ran long and used a large share of the
-usage window. The window rolls over about 4h10m after the 19:10 handover, i.e.
-around **23:20 local**; the instruction below adds a ten-minute safety margin
-because a run that fires just *before* the reset fails outright.
+| Session | Fires (local) | Budget |
+|---|---|---|
+| 0 | 23:35, 3 Aug (already run) | remainder of the current window (~50%) |
+| 1 | 03:40, 4 Aug | full window |
+| 2 | 08:40, 4 Aug | full window |
+| 3 | 13:40, 4 Aug | full window |
+| 4 | 18:40, 4 Aug | full window |
 
-### Instructions for the agent reading this
+### The rule that matters most
 
-**If the current time is before ~23:30 local on 2026-08-03:**
+**Never stop at a blocker. Record it and move to the next item.**
 
-1. Do not begin §3. It is a multi-hour job with heavy build and test cycles;
-   started inside the throttle window it will consume the remaining budget on a
-   partial attempt and then stall mid-build, which is worse than not starting.
-2. Set a timer for the remaining time plus a ten-minute margin — a scheduled
-   task, or a wake-up if the session is looping. Target **23:30 local or later**.
-3. Then stop and stay idle. Do not "just read a few files while waiting": in a
-   long session that is exactly the cost being avoided.
-4. When the timer fires, go to §3.1 and work straight through §3.5.
+If a step cannot be completed — a build fails, a dependency will not resolve, a
+test cannot be made to pass, a decision needs the maintainer — then:
 
-**If the current time is after ~23:30 local on 2026-08-03:** ignore the throttle
-entirely and start at §3.1. Confirm remaining usage first if the account has
-been busy since.
+1. append an entry to §6 (Blockers for review) saying what was attempted, the
+   exact error, and what you think it needs;
+2. commit that;
+3. **go to the next item in §3** and keep working.
 
-**Either way, work in a fresh session seeded with this document.** Do not
-continue the session that wrote it.
+A session that halts on the first obstacle wastes an entire window. Partial
+progress plus a clear note is far more useful than a clean stop. Only stop early
+if continuing would damage the repositories (see §5 traps) or if every remaining
+item is blocked.
+
+### Each session
+
+1. Read this document, then §3 for the ordered work list, then §6 for what
+   previous sessions already found blocked — do not re-attempt a known blocker
+   unless a later change plausibly unblocks it.
+2. Work down §3 from the first incomplete item.
+3. Commit in small, verified steps. Stage **only** files you authored; other
+   agents work in these checkouts (§5).
+4. Keep §4 (state of the tree) and §6 current as you go, so the next session
+   starts accurate. Do this *as you finish each item*, not at the end — a
+   session that runs out of budget mid-item must still leave a truthful record.
+5. When the budget runs low, stop cleanly: commit, update §4 and §6, and let the
+   next scheduled session continue.
+
+### Keeping each session cheap
+
+Every turn re-sends the whole conversation, so a long session costs far more per
+turn than a short one. That is why this is four separate sessions rather than
+one: each starts from this document at a fraction of the per-turn cost.
+
+Within a session: targeted `Grep` and ranged `Read` rather than whole modules;
+pipe long command output through `tail`; run one test module at a time rather
+than re-running suites to double-check; batch independent tool calls into one
+turn; do not spawn subagents for work you already have context for.
 
 ### Why a fresh session is the main lever
 
@@ -312,3 +338,23 @@ Ranked levers, most effective first:
   step reads a LEAP export directly. Documented wrongly once already.
 - **Concurrent Codex activity in these checkouts.** A cherry-pick was mid-conflict
   during this session. Stage only your own files; check `git status` first.
+
+---
+
+## 6. Blockers for review
+
+Append here whenever something cannot be completed. Do not stop working — record
+and move on (§4a). Newest last.
+
+Format:
+
+```text
+### <date time local> — <short title>
+- Item: <which §3 step>
+- Attempted: <what was tried>
+- Error: <exact message, trimmed>
+- Needs: <what would unblock it — a decision, a dependency, a rebuild>
+- Moved on to: <next item>
+```
+
+_(no blockers recorded yet)_
