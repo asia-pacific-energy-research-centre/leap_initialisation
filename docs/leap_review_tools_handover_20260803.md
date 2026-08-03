@@ -207,13 +207,19 @@ Committed and verified in `leap_initialisation` (all on `master`):
 | Release manifest + validator, builder, developer launcher, runtime, validation, provenance, support bundle | done |
 | `balance-review` (diagnostics folder → workbook) | done, frozen, golden-tested |
 | `balance-review-from-export` (LEAP export → workbook) | code done; needs manifest entries, wiring, and a frozen test |
-| `data_assets` in the manifest | done |
+| `data_assets` in the manifest | mechanism done; entries now exist for the mapping-chain artifacts (below) — `esto_base_table`/`ninth_projection_table` roles balance-review-from-export needs are still undeclared |
 | ESTO vocabulary check | done |
 | One input folder + per-economy outputs (`workspace.py`) | done, 11 tests |
-| Dashboard from balance exports | **not built** — this document |
+| §3.1 mapping-chain worker (`leap_mappings`) | **done** — `codebase/portable_mapping_chain.py`, verified end-to-end against the real 12_NZ export (385,035 / 48,068 / 194,694 rows, matching §2 exactly). Committed `f2b1a92`. |
+| §3.2 mapping-chain client (`leap_initialisation`) | **done** — `codebase/portable_release/mapping_chain_client.py`, locates/invokes the worker, real subprocess round-trip tested. Committed `d3ca156`. |
+| §3.2 `dashboard-from-export` command | **done** — `commands.run_dashboard_from_export`, with the `--comparison-data-path` escape hatch. Verified with a mocked-chain unit test plus a real dashboard render off the real 12_NZ comparison data. Committed `9748dde`. |
+| §3.4 manifest entries for the mapping chain | **partially done** (folded into the `9748dde` commit): `outlook_mappings_master` and `source_branch_fallback_rules` config assets, the four `mapping_chain_*` data assets, and the `dashboard-from-export` command block are all in `config/portable_release_manifest.toml` and pass `validate_release_manifest`. **Still missing**: the `target`/`executable` field per source entry the two-PyInstaller-target design needs (§3.3/§3.4), and the leap_mappings worker's own 20-module import closure (only `source_branch_preflight.py` is allowlisted today — that is for the *main* exe's `_missing_leap_demand_branches` lookup, not the worker's own bundle). |
+| §3.3 two-PyInstaller-target builder | **not started** |
+| §3.5 `portable_main.py` / `developer_launcher.py` wiring for `dashboard-from-export` | **not started** — the command function works (tests build a `RuntimeContext` by hand), but neither CLI entry point calls it yet, and `developer_launcher.build_context` still does not populate `data_assets` at all (a pre-existing gap noted in the original §3.5 bullet, now also blocking `dashboard-from-export` in developer mode) |
+| Dashboard from balance exports | mapping chain + command now exist (§3.1, §3.2); rebuild/re-verify/re-zip (§3.5) still pending |
 
 `leap_dashboard`: `common_esto_dashboard_portable.py` + tests — done.
-`leap_mappings`: nothing changed yet; §3.1 is the first change it needs.
+`leap_mappings`: `codebase/portable_mapping_chain.py` added and tested (§3.1, see above).
 
 The shipped ZIP at
 `leap_initialisation/release_build/distribution/leap-review-tools-0.1.0.zip`
@@ -428,4 +434,24 @@ Format:
 - Moved on to: <next item>
 ```
 
-_(no blockers recorded yet)_
+### 2026-08-04 00:15 local (session 1) — §3.1 and §3.2 completed, no blockers hit
+
+- Items: §3.1 (mapping-chain worker), §3.2 (client + `dashboard-from-export`
+  command), part of §3.4 (manifest entries for the roles §3.2 needed).
+- Everything attempted this session succeeded; nothing is blocked. Full detail
+  is in §4 above rather than repeated here.
+- One judgement call worth recording: `run_dashboard_from_export`'s
+  `_input_records` describes the whole export directory
+  (`describe_directory_files(..., patterns=("*.xlsx",))`), matching how
+  `run_balance_review_from_export` records its inputs — not a single file,
+  since the mapping chain reads every `.xlsx` in the folder (REF and TGT).
+- Another: the manifest's `DENIED_PATH_SEGMENTS` blocks any `dest` path
+  containing `data/` or `results/` as a path *segment* (not just at the
+  root) — the new data-asset `dest` values had to move from
+  `data/mapping_chain/...` to `mapping_chain/...`. If a future session adds
+  more data assets, check `path_safety_problems` in `manifest.py` before
+  picking a `dest` prefix rather than re-discovering this by test failure.
+- Moved on to: updating §4, then scheduling session 2 for §3.3 (the
+  two-PyInstaller-target builder) and the rest of §3.4/§3.5.
+- Scheduled `leap-review-tools-build-2`, firing 2026-08-04 05:15 local
+  (2026-08-03T20:15:00Z), 5 hours from this session's finish.
