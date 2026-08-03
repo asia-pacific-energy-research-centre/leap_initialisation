@@ -119,6 +119,14 @@ def discover_economies(
     ``read_years`` opens each workbook to read the scenario/year sheets it
     declares. That is the slow part (a second or so per workbook), so callers
     that only need the economy list can switch it off.
+
+    Folders that hold no usable workbook are still listed, with the reason
+    attached. ``leap_mappings.discover_available_economies`` drops them
+    silently, which is right for a batch run and wrong for a person looking at a
+    folder wondering why their file is being ignored. Cross-checking against
+    that function has to happen in the mapping-chain subprocess, which is the
+    only place ``leap_mappings`` is importable - see
+    docs/leap_review_tools_handover_20260803.md.
     """
     root = Path(exports_root)
     if not root.is_dir():
