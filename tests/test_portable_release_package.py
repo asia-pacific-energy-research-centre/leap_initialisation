@@ -139,9 +139,11 @@ def test_package_has_no_private_or_generated_content(staged_package: Path) -> No
         parts = path.split("/")
         assert not any(part in forbidden for part in parts), path
         assert not path.endswith((".pyc", ".log", ".pkl")), path
-    # A staged package is source plus reviewed configuration, nothing more.
+    # A staged package is source, reviewed configuration, and the pinned
+    # mapping-chain data assets (§2 of the handover: ~90 MB of pre-built
+    # artifacts) - nothing more.
     total = sum(int(item["size_bytes"]) for item in inspection["files"])
-    assert total < 8 * 1024 * 1024, f"staged package is unexpectedly large: {total:,} bytes"
+    assert total < 110 * 1024 * 1024, f"staged package is unexpectedly large: {total:,} bytes"
 
 
 def test_builder_rejects_a_package_containing_a_junction(

@@ -136,6 +136,63 @@ description = """\
 Which demand sectors have no separately modelled LEAP detail per economy. \
 Owned by leap_mappings; decides which sector pages are hidden."""
 
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/outlook_mappings_master.xlsx"
+dest = "mappings/outlook_mappings_master.xlsx"
+role = "outlook_mappings_master"
+description = "The canonical LEAP-to-ESTO mapping workbook the mapping chain applies."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/source_branch_fallback_rules.csv"
+dest = "mappings/source_branch_fallback_rules.csv"
+role = "source_branch_fallback_rules"
+description = "Interim-branch fallback zeroing rules applied before mapping-chain conversion."
+
+# ---------------------------------------------------------------------------
+# Large read-only source data tables
+# ---------------------------------------------------------------------------
+#
+# These are regenerated outputs of the mapping workbook and source tables, not
+# of any model run (handover section 2), so they are pinned as data_assets
+# rather than recomputed per run. `allow_untracked = true` because they are
+# gitignored in leap_mappings; the release still records their SHA-256, so a
+# rebuild is required whenever the mapping workbook changes (see release
+# notes).
+
+[[data_assets]]
+repository = "leap_mappings"
+path = "results/mapping_relationships/energy_balance_relationships.csv"
+dest = "mapping_chain/energy_balance_relationships.csv"
+role = "mapping_chain_relationships"
+description = "LEAP-to-ESTO conversion relationships, a function of the mapping workbook."
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_mappings"
+path = "results/mapping_relationships/esto_results_exact_rows.csv.gz"
+dest = "mapping_chain/esto_results_exact_rows.csv.gz"
+role = "mapping_chain_esto_exact_rows"
+description = "ESTO exact-row extract the mapping chain converts LEAP output against."
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_mappings"
+path = "results/mapping_relationships/ninth_results_converted_to_esto.csv.gz"
+dest = "mapping_chain/ninth_results_converted_to_esto.csv.gz"
+role = "mapping_chain_ninth_converted"
+description = "9th-edition results converted to ESTO structure, a mapping-chain source table."
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_mappings"
+path = "results/common_esto/common_esto_rows.csv"
+dest = "mapping_chain/common_esto_rows.csv"
+role = "mapping_chain_common_esto_rows"
+description = "Common ESTO row definitions the mapping-chain fast path applies."
+allow_untracked = true
+
 # ---------------------------------------------------------------------------
 # Supported commands
 # ---------------------------------------------------------------------------
@@ -206,3 +263,41 @@ part of the package."""
   key = "common_rows_path"
   kind = "file"
   description = "common_esto_rows.csv from the same leap_mappings run."
+
+[[commands]]
+name = "dashboard-from-export"
+summary = "Render the Common ESTO comparison dashboard for one economy from a LEAP balance export."
+input_mode = "leap_balance_export"
+outputs = """\
+A dashboard folder with index.html, per-sector pages, Plotly chart bundles, \
+chart_manifest.csv, and a run manifest, in a dated folder under output/."""
+
+  [[commands.inputs]]
+  key = "economy"
+  kind = "file"
+  description = "Economy code, for example 20_USA."
+
+  [[commands.inputs]]
+  key = "export_dir"
+  kind = "directory"
+  description = """\
+Folder of LEAP Energy Balance export workbooks (.xlsx) for this economy. \
+Defaults to input/leap balances exports/<ECONOMY>/ when not given. Runs the \
+leap_mappings mapping chain (a separate bundled executable, see the handover's \
+architecture decision) to produce Common ESTO comparison data before \
+rendering."""
+
+  [[commands.inputs]]
+  key = "comparison_data_path"
+  kind = "file"
+  required = false
+  description = """\
+Escape hatch: supply an existing common_esto_comparison_data.csv (with \
+common_rows_path) to skip the mapping chain entirely and behave like the \
+`dashboard` command."""
+
+  [[commands.inputs]]
+  key = "common_rows_path"
+  kind = "file"
+  required = false
+  description = "Paired with comparison_data_path for the escape hatch."

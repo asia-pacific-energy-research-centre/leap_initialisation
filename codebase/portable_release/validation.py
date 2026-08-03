@@ -850,6 +850,79 @@ def validate_dashboard_inputs(
     return report
 
 
+def validate_dashboard_from_export_inputs(
+    *,
+    economy: str,
+    export_dir: Path | str | None,
+    template_path: Path | str | None,
+    series_config_path: Path | str | None,
+    mapping_workbook_path: Path | str | None,
+    source_branch_fallback_rules_path: Path | str | None,
+    all_demand_components_path: Path | str | None,
+    mapping_chain_data_assets: dict[str, Path | str | None],
+) -> ValidationReport:
+    """Validate the inputs for a LEAP-export-to-dashboard run.
+
+    This is the mapping-chain input mode: the caller supplies a folder of LEAP
+    balance-export workbooks for one economy, and the pre-built mapping
+    artifacts (§2 of the handover) drive the chain that turns them into Common
+    ESTO comparison data before the dashboard render, itself validated by
+    :func:`validate_dashboard_inputs`.
+    """
+    report = ValidationReport(command="dashboard-from-export")
+
+    try:
+        economy_code = normalize_economy(economy)
+        report.facts["economy"] = economy_code
+    except ValueError as exc:
+        report.add("economy", False, str(exc))
+
+    export_path = Path(str(export_dir)) if export_dir else None
+    if export_path is None or not export_path.is_dir():
+        report.add(
+            "export_dir",
+            False,
+            f"The LEAP balance export folder does not exist at:\n      {export_path}",
+        )
+    elif not any(export_path.glob("*.xlsx")):
+        report.add(
+            "export_dir",
+            False,
+            f"No .xlsx LEAP balance export files were found in: {export_path}",
+        )
+    else:
+        report.add("export_dir", True, f"Found the LEAP balance export folder: {export_path}")
+
+    for label, path, key in [
+        ("dashboard template", template_path, "template"),
+        ("dashboard series configuration", series_config_path, "series_config"),
+        ("mapping workbook", mapping_workbook_path, "mapping_workbook"),
+        (
+            "source-branch fallback rules",
+            source_branch_fallback_rules_path,
+            "source_branch_fallback_rules",
+        ),
+        (
+            "all-demand aggregated components",
+            all_demand_components_path,
+            "all_demand_aggregated_components",
+        ),
+    ]:
+        candidate = Path(str(path)) if path else None
+        _check_readable_file(report, candidate, name=key, description=label)
+
+    for role, path in sorted(mapping_chain_data_assets.items()):
+        candidate = Path(str(path)) if path else None
+        _check_readable_file(
+            report,
+            candidate,
+            name=f"data:{role}",
+            description=f"mapping-chain artifact {role}",
+        )
+
+    return report
+
+
 def _scan_dashboard_scope(
     comparison_path: Path,
     *,

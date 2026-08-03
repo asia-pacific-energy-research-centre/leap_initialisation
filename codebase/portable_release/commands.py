@@ -34,7 +34,12 @@ from codebase.portable_release.runtime import RuntimeContext
 
 #: Commands this module implements. The release manifest may declare a subset;
 #: anything declared but not listed here is rejected by manifest validation.
-IMPLEMENTED_COMMANDS = ("balance-review", "balance-review-from-export", "dashboard")
+IMPLEMENTED_COMMANDS = (
+    "balance-review",
+    "balance-review-from-export",
+    "dashboard",
+    "dashboard-from-export",
+)
 
 
 @dataclass
@@ -669,6 +674,187 @@ def run_dashboard(
             "max_year": max_year,
             "include_ninth_pre_base_year_data": include_ninth_pre_base_year_data,
             "input_mode": "existing_common_esto_comparison_data",
+        },
+        work=work,
+        output_describer=describe_outputs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# dashboard-from-export
+# ---------------------------------------------------------------------------
+
+#: Pre-built mapping artifacts the chain needs (§2 of the handover): outputs of
+#: the mapping workbook and source tables, not of any model run, so they ship
+#: as regenerated data assets rather than being recomputed per dashboard run.
+MAPPING_CHAIN_DATA_ROLES = (
+    "mapping_chain_relationships",
+    "mapping_chain_esto_exact_rows",
+    "mapping_chain_ninth_converted",
+    "mapping_chain_common_esto_rows",
+)
+MAPPING_CHAIN_CONFIG_ROLES = (
+    "outlook_mappings_master",
+    "source_branch_fallback_rules",
+    "all_demand_aggregated_components",
+)
+
+
+def run_dashboard_from_export(
+    context: RuntimeContext,
+    *,
+    economy: str,
+    comparison_data_path: Path | str | None = None,
+    common_rows_path: Path | str | None = None,
+    export_dir: Path | str | None = None,
+    comparison_scope: str = "esto_leap_ninth",
+    wide_file_scope: str = "esto_leap_ninth",
+    min_year: int | None = 2010,
+    max_year: int | None = 2060,
+    include_ninth_pre_base_year_data: bool = False,
+    run_label: str | None = None,
+) -> CommandResult:
+    """Go from a LEAP balance export to a rendered dashboard in one run.
+
+    Input mode: **a LEAP balance export directory**. Runs the leap_mappings
+    mapping chain (parse -> convert -> Common ESTO fast path) as a subprocess
+    via :mod:`codebase.portable_release.mapping_chain_client`, then the same
+    ``render_common_esto_dashboard`` call :func:`run_dashboard` uses.
+
+    ``comparison_data_path`` (with ``common_rows_path``) is an escape hatch: if
+    supplied, the mapping chain is skipped entirely and this behaves like
+    :func:`run_dashboard` against the supplied files.
+    """
+    from codebase.portable_release import mapping_chain_client
+
+    if comparison_data_path is not None:
+        return run_dashboard(
+            context,
+            economy=economy,
+            comparison_data_path=comparison_data_path,
+            common_rows_path=common_rows_path,
+            comparison_scope=comparison_scope,
+            wide_file_scope=wide_file_scope,
+            min_year=min_year,
+            max_year=max_year,
+            include_ninth_pre_base_year_data=include_ninth_pre_base_year_data,
+            run_label=run_label,
+        )
+
+    resolved_export_dir = (
+        _resolve_user_path(context, export_dir)
+        if export_dir is not None
+        else workspace.balance_exports_root(context.input_root)
+        / workspace.normalize_economy_folder(economy)
+    )
+    template_path = context.config_asset("dashboard_template")
+    series_config_path = context.config_asset("dashboard_series_config")
+
+    def validate() -> validation.ValidationReport:
+        return validation.validate_dashboard_from_export_inputs(
+            economy=economy,
+            export_dir=resolved_export_dir,
+            template_path=template_path,
+            series_config_path=series_config_path,
+            mapping_workbook_path=context.config_asset("outlook_mappings_master"),
+            source_branch_fallback_rules_path=context.config_asset(
+                "source_branch_fallback_rules"
+            ),
+            all_demand_components_path=context.config_asset(
+                "all_demand_aggregated_components"
+            ),
+            mapping_chain_data_assets={
+                role: context.data_asset(role) for role in MAPPING_CHAIN_DATA_ROLES
+            },
+        )
+
+    def work(run_dir: Path) -> dict[str, Any]:
+        from common_esto_dashboard_portable import render_common_esto_dashboard
+
+        economy_code = validation.normalize_economy(economy)
+        chain_job = {
+            "economy": economy_code,
+            "export_dir": str(resolved_export_dir),
+            "work_dir": str(run_dir / "mapping_chain"),
+            "artifacts": {
+                "relationships_path": str(context.require_data_asset("mapping_chain_relationships")),
+                "esto_exact_rows_path": str(context.require_data_asset("mapping_chain_esto_exact_rows")),
+                "ninth_converted_path": str(context.require_data_asset("mapping_chain_ninth_converted")),
+                "common_esto_rows_path": str(context.require_data_asset("mapping_chain_common_esto_rows")),
+            },
+            "config": {
+                "mapping_workbook_path": str(context.require_config_asset("outlook_mappings_master")),
+                "source_branch_fallback_rules_path": str(
+                    context.require_config_asset("source_branch_fallback_rules")
+                ),
+                "all_demand_components_path": str(
+                    context.require_config_asset("all_demand_aggregated_components")
+                ),
+            },
+        }
+        chain_result = mapping_chain_client.run_mapping_chain(context, chain_job)
+
+        missing_branches = _missing_leap_demand_branches(context, economy)
+        result = render_common_esto_dashboard(
+            economy=economy_code,
+            comparison_data_path=Path(chain_result["comparison_data_path"]),
+            common_rows_path=Path(chain_result["common_rows_path"]),
+            template_path=template_path,
+            series_config_path=series_config_path,
+            code_colors_path=context.config_asset("dashboard_code_colors"),
+            output_root=run_dir,
+            comparison_scope=comparison_scope,
+            wide_file_scope=wide_file_scope,
+            min_year=min_year,
+            max_year=max_year,
+            include_ninth_pre_base_year_data=include_ninth_pre_base_year_data,
+            missing_leap_demand_branches=missing_branches,
+            dashboard_updated_label=datetime.now().astimezone().strftime(
+                "%Y-%m-%d %H:%M %Z"
+            ),
+            clear_existing=True,
+        )
+        return {
+            "_input_records": describe_directory_files(
+                resolved_export_dir, role_prefix="input:balance_export", patterns=("*.xlsx",)
+            ),
+            "mapping_chain": chain_result,
+            **result,
+        }
+
+    def describe_outputs(outputs: dict[str, Any]) -> list:
+        return [
+            describe_file(outputs["dashboard_index"], role="output:dashboard_index"),
+            describe_file(outputs["chart_manifest"], role="output:chart_manifest"),
+            describe_file(
+                outputs["sign_semantics_summary"],
+                role="output:sign_semantics_summary",
+            ),
+        ]
+
+    return _execute(
+        context,
+        command="dashboard-from-export",
+        tool=workspace.DASHBOARD_DIRNAME,
+        economy=economy,
+        run_label=run_label,
+        validate=validate,
+        config_roles=(
+            "dashboard_template",
+            "dashboard_series_config",
+            "dashboard_code_colors",
+        )
+        + MAPPING_CHAIN_CONFIG_ROLES,
+        data_roles=MAPPING_CHAIN_DATA_ROLES,
+        settings={
+            "economy": economy,
+            "export_dir": str(resolved_export_dir),
+            "comparison_scope": comparison_scope,
+            "wide_file_scope": wide_file_scope,
+            "min_year": min_year,
+            "max_year": max_year,
+            "include_ninth_pre_base_year_data": include_ninth_pre_base_year_data,
+            "input_mode": "leap_balance_export",
         },
         work=work,
         output_describer=describe_outputs,
