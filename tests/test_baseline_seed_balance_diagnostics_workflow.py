@@ -292,6 +292,51 @@ def test_international_demand_compares_positive_bunker_magnitude() -> None:
     assert row["status"] == "match"
 
 
+def test_aggregated_international_demand_compares_positive_bunker_magnitude() -> None:
+    comparison = _comparison_rows(
+        scenario="Target",
+        year=2022,
+        leap_value=74.1253,
+        source="base",
+        source_value=-74.125251,
+    )
+    comparison["sheet"] = "esto__04__-05_International_transport__bunkers"
+    comparison["fuel_label"] = "Kerosene type jet fuel"
+    comparison["comparison_branch_path"] = (
+        "All demand aggregated/International transport"
+    )
+    mapping_status = pd.DataFrame(
+        [
+            {
+                "sheet": "esto__04__-05_International_transport__bunkers",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "Kerosene type jet fuel",
+                "comparison_branch_path": (
+                    "All demand aggregated/International transport"
+                ),
+                "esto_flow": "04-05 International transport (bunkers)",
+                "esto_product": "07.05 Kerosene type jet fuel",
+                "sector_code_9th": "",
+                "ninth_fuel_code": "",
+            }
+        ]
+    )
+
+    table = diagnostics.build_leap_source_difference_table(
+        comparison_long=comparison,
+        mapping_status=mapping_status,
+        economy="01_AUS",
+        years=[2022],
+        scenarios=["Target"],
+        tolerance_pj=0.001,
+    )
+
+    row = table.iloc[0]
+    assert row["source_value_pj"] == pytest.approx(74.125251)
+    assert row["difference_pj"] == pytest.approx(0.000049)
+    assert row["status"] == "match"
+
+
 def test_transfer_preserves_signed_leap_balance_mismatch() -> None:
     comparison = _comparison_rows(
         scenario="Reference",
@@ -330,6 +375,47 @@ def test_transfer_preserves_signed_leap_balance_mismatch() -> None:
     assert row["difference_pj"] == pytest.approx(-3.934002)
     assert row["status"] == "value_mismatch"
     assert bool(row["is_mismatch"]) is True
+
+
+def test_statistical_differences_compares_opposite_source_sign() -> None:
+    comparison = _comparison_rows(
+        scenario="Target",
+        year=2022,
+        leap_value=-93.528088,
+        source="base",
+        source_value=93.528088,
+    )
+    comparison["sheet"] = "esto__11__Statistical_discrepancy"
+    comparison["fuel_label"] = "Crude oil"
+    mapping_status = pd.DataFrame(
+        [
+            {
+                "sheet": "esto__11__Statistical_discrepancy",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "Crude oil",
+                "esto_flow": "11 Statistical discrepancy",
+                "esto_product": "06.01 Crude oil",
+                "sector_code_9th": "",
+                "ninth_fuel_code": "",
+                "leap_sector_name_full_path": "Statistical Differences",
+                "mapped_leap_sector_name": "Statistical Differences",
+                "raw_leap_fuel_name": "Crude oil",
+            }
+        ]
+    )
+
+    table = diagnostics.build_leap_source_difference_table(
+        comparison_long=comparison,
+        mapping_status=mapping_status,
+        economy="01_AUS",
+        years=[2022],
+        scenarios=["Target"],
+    )
+
+    row = table.iloc[0]
+    assert row["source_value_pj"] == pytest.approx(-93.528088)
+    assert row["difference_pj"] == pytest.approx(0.0)
+    assert row["status"] == "match"
 
 
 def test_base_year_backfills_mapped_pair_when_comparison_row_is_empty() -> None:

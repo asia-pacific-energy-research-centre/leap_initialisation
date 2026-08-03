@@ -8998,6 +8998,7 @@ def build_balance_comparison_esto_axis(
                 "esto_flow_group_label",
                 "measure",
                 "fuel_label",
+                "comparison_branch_path",
                 "source",
                 "year",
                 "value",

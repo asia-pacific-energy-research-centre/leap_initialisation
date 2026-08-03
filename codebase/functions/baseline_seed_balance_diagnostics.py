@@ -2344,6 +2344,9 @@ def build_leap_source_difference_table(
     # 9th balance tables retain international bunkers as negative withdrawals.
     # Compare magnitudes at this demand boundary so an exact match is not
     # reported as an artificial two-times-value error.
+    comparison_branch_path = (
+        wide["comparison_branch_path"].fillna("").astype(str).str.strip().str.casefold()
+    )
     international_demand = (
         (
             wide["sheet"]
@@ -2358,6 +2361,7 @@ def build_leap_source_difference_table(
             .str.strip()
             .str.casefold()
             .eq("international transport")
+            | comparison_branch_path.str.endswith("international transport")
         )
         & wide["esto_flow"]
         .fillna("")
