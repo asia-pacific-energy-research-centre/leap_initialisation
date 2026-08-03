@@ -2,21 +2,36 @@
 
 ## [27] Qualify the central baseline-seed final-artifact gate on real runs
 
-**Status: audit implementation complete 2026-08-03; real-run qualification and
-promotion coupling remain pending.**
+**Status: audit implementation and existing-NZ-artifact requalification
+complete 2026-08-03; a fresh producer run and promotion coupling remain
+pending.**
 
 The final writer now runs BSA-001–BSA-010 after saving the physical economy
 workbooks and writes a deterministic shadow acceptance package. Every new check
 is configured `audit`; hard findings expose `would_block` without changing run
-completion or promotion. Before enabling `block` or making promotion read the
-manifest:
+completion or promotion. A repaired copy of the existing `12_NZ` final artifact
+qualified as `SHADOW_WARN`: BSA-001 through BSA-004 and BSA-006 through BSA-010
+passed, the twelve known aggregate-demand placeholder rows remained BSA-005
+warnings, and no finding would block. That requalification proved the final
+writer/readback fix,
+but it reused already-produced LEAP rows and therefore does not qualify the
+upstream producer fixes.
 
-1. review one fresh real-template `20_USA` package and resolve every
+Before enabling `block` or making promotion read the manifest:
+
+1. **Deferred until the current higher-priority work is complete:** run a fresh
+   full `12_NZ` baseline-seed producer workflow with a unique run label. This
+   must natively exercise the per-economy fuel-catalog fix (`21d6489`), the
+   final `FOR_VIEWING` serialization fix (`3c33fbc`), and the central artifact
+   gate. Accept only if BSA-003 reports no LNG duplicate conflict, BSA-009
+   passes, the twelve aggregate-demand placeholders remain non-blocking
+   BSA-005 warnings, and the package has zero `would_block` findings;
+2. review one fresh real-template `20_USA` package and resolve every
    `SHADOW_INCOMPLETE` evidence gap;
-2. run the intended all-economy set and confirm hashes, template routing,
+3. run the intended all-economy set and confirm hashes, template routing,
    producer evidence, and diagnostic requirements;
-3. integrate the same run-level gate after the active parallel parent merge;
-4. make promotion consume the manifest in a separate, explicitly reviewed
+4. integrate the same run-level gate after the active parallel parent merge;
+5. make promotion consume the manifest in a separate, explicitly reviewed
    behaviour-change commit.
 
 See `baseline_seed_final_artifact_contract.md` and
