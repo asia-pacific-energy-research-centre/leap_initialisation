@@ -1,5 +1,19 @@
 # Remaining work queue
 
+## [26] Decide whether consolidated baseline-seed results workbooks are required
+
+**Status: investigation requested 2026-08-03.**
+
+The `supply_recon_run_*.xlsx` files are currently produced as consolidated
+intermediate results alongside the economy-specific
+`leap_import_baseline_seed_<economy>_*.xlsx` deliverables. Confirm whether
+downstream workflows, diagnostics, dashboards, or human review consume the
+consolidated workbooks after the final seed is written. If they are not
+required, reduce them to an explicitly marked intermediate artifact or make
+their creation opt-in, while preserving the final seed, diagnostics, and
+provenance needed for reproducibility. Do not remove them until consumers and
+the validation/monitoring chain have been audited.
+
 ## [25] Add a Non energy branch to All demand aggregated
 
 **Status: cancelled 2026-08-01. Non-energy use remains in Other sector.**
