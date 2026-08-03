@@ -2,7 +2,23 @@ from pathlib import Path
 
 import pandas as pd
 
-from codebase.functions.leap_excel_io import save_export_files
+from codebase.functions.leap_excel_io import (
+    prepare_for_viewing_sheet_df,
+    save_export_files,
+)
+
+
+def test_for_viewing_falls_back_to_expression_for_blank_mixed_format_cells() -> None:
+    rows = pd.DataFrame(
+        [
+            {"Branch Path": r"Demand\A", "Expression": "Data(2023, 10)", 2023: 10.0},
+            {"Branch Path": r"Demand\B", "Expression": "Data(2023, 20)", 2023: pd.NA},
+        ]
+    )
+
+    viewing = prepare_for_viewing_sheet_df(rows)
+
+    assert viewing["2023"].tolist() == [10.0, 20.0]
 
 
 def test_for_viewing_sheet_uses_method_years_and_blank_spacer(tmp_path: Path) -> None:
