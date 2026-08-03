@@ -295,6 +295,36 @@ depends on a previous session having had the budget to write it, whereas the log
 records what actually landed even if a session died mid-item. Where the two
 disagree, believe the log and correct §6.
 
+#### Third channel: the previous session's transcript
+
+Claude Code writes every session to JSONL continuously, so a previous session's
+full transcript survives even if it crashed before writing anything down:
+
+```text
+C:\Users\Work\.claude\projects\<project-slug>\<session-uuid>.jsonl
+```
+
+The session that produced this handover is
+`C--Users-Work-github-leap-mappings--claude-worktrees-zen-pike-39adbf\4484ea95-b3c4-4956-9f36-9fdd7c8b3a99.jsonl`.
+Find later ones by modification time:
+
+```bash
+ls -t "C:/Users/Work/.claude/projects"/*/*.jsonl | head -5
+```
+
+**Never read one of these whole.** They run to several megabytes and reading one
+would consume more budget than the work it was meant to inform. Treat it as a
+last resort, and only ever `grep` it for something specific:
+
+```bash
+grep -o '"text":"[^"]\{0,400\}error[^"]\{0,400\}"' <transcript>.jsonl | tail -20
+```
+
+Use it to answer a precise question — "what exactly did the PyInstaller run
+print?", "why was that approach abandoned?" — that §6 and the Git log cannot.
+For ordinary state reconstruction, §6 and the log are sufficient and far
+cheaper.
+
 ### Each session
 
 1. Read this document, then §3 for the ordered work list, then §6 for what
