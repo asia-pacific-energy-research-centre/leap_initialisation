@@ -33,7 +33,7 @@ from codebase.configuration.workflow_config import get_baseline_seed_validation_
 # maintains itself: flip the flag back to False and these run normally and must
 # pass. strict=True means a stale xfail is reported rather than lingering.
 #
-# The point is that three unexplained red tests are indistinguishable from "a
+# The point is that two unexplained red tests are indistinguishable from "a
 # guard silently stopped blocking" -- the exact failure this repo keeps hitting.
 # This keeps the suite green *and* the deviation legible. Delete the marker, do
 # not delete the tests: they are the specification.
@@ -413,45 +413,6 @@ def test_final_writer_writes_diagnostics_before_conflict_blocks(
     diagnostics = output_dir / "supporting_files" / "baseline_seed_validation"
     assert list(diagnostics.glob("*_rule_findings.csv"))
     assert list(diagnostics.glob("*_duplicate_groups.csv"))
-
-
-@_XFAIL_WHILE_BLOCKING_DOWNGRADED
-def test_writer_accumulates_economy_failures_and_writes_no_final_workbook(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    usa = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
-    prc = tmp_path / "supply_leap_imports_05_PRC_reference.xlsx"
-    _write_leap_workbook(usa, [_row("Data(2023,1)")])
-    _write_leap_workbook(prc, [_row("Data(2023,1)"), _row("Data(2023,2)")])
-    template = tmp_path / "full model export.xlsx"
-    _write_template(template)
-    output_dir = tmp_path / "output"
-    monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._load_reference_export_data",
-        lambda *_args, **_kwargs: pd.DataFrame(),
-    )
-
-    # The consolidated summary reports aggregated rule counts (e.g. "SEED-001=1"),
-    # not per-economy prefixes -- economy attribution is verified below via the
-    # consolidated findings CSV instead.
-    with pytest.raises(BaselineSeedValidationError, match="SEED-001"):
-        write_per_economy_combined_workbooks(
-            economies=["20_USA", "05_PRC"],
-            output_dir=output_dir,
-            id_lookup_path=template,
-            source_workbooks_by_workflow={"supply_workflow": [usa, prc]},
-            required_years_by_scenario={"Reference": [2023]},
-        )
-
-    assert not list(output_dir.glob("leap_import_baseline_seed_*.xlsx"))
-    diagnostics = output_dir / "supporting_files" / "baseline_seed_validation"
-    assert list(diagnostics.glob("baseline_seed_20_USA_*_rule_findings.csv"))
-    consolidated = list(diagnostics.glob("*_consolidated_rule_findings.csv"))
-    assert len(consolidated) == 1
-    findings = pd.read_csv(consolidated[0])
-    seed_001 = findings[findings["rule_id"] == "SEED-001"]
-    assert set(seed_001["economy"]) == {"05_PRC"}
 
 
 def test_final_writer_writes_grouped_missing_branch_issue_summary(

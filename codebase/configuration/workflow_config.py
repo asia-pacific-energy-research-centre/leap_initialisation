@@ -71,11 +71,10 @@ BASELINE_SEED_VALIDATION_FINAL_YEAR = 2060
 # This contradicts the confirmed INIT-005 design decision (deferring failure
 # must not turn a blocking finding into a warning) -- see
 # docs/special_rules_and_design_decisions.md (INIT-005 History) for the prior
-# 2026-07-07/2026-07-10 back-and-forth on this flag. It also re-fails 3 tests
+# 2026-07-07/2026-07-10 back-and-forth on this flag. It also re-fails 2 tests
 # in tests/test_baseline_seed_writer_validation.py that assert blocking
 # findings raise BaselineSeedValidationError
 # (test_final_writer_writes_diagnostics_before_conflict_blocks,
-# test_writer_accumulates_economy_failures_and_writes_no_final_workbook,
 # test_default_reference_validation_window_requires_2023_through_2060).
 # Revert to False to restore the INIT-005 guarantee once reviewed.
 BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True

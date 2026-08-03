@@ -104,7 +104,8 @@ suite-level dispositions above.
 
 ### Verification recorded 2026-08-03
 
-- Final new gate + writer + registry run: **109 passed, 3 xfailed**. The xfails are the
+- Final new gate + writer + registry run: **109 passed, 2 xfailed** after removal
+  of the obsolete cross-economy all-or-none release test. The xfails are the
   existing conditional INIT-005 warning-downgrade cases.
 - Canonical shares, output shares, scenario borrowing, readiness, zero-fill,
   workbook headers, all requested conservation suites, promotion, and parallel
@@ -285,7 +286,6 @@ suite-level dispositions above.
 - `tests/test_baseline_seed_writer_validation.py::test_final_writer_runs_central_artifact_gate_after_physical_write`
 - `tests/test_baseline_seed_writer_validation.py::test_final_writer_retains_workbook_on_combined_readiness_errors`
 - `tests/test_baseline_seed_writer_validation.py::test_final_writer_writes_diagnostics_before_conflict_blocks`
-- `tests/test_baseline_seed_writer_validation.py::test_writer_accumulates_economy_failures_and_writes_no_final_workbook`
 - `tests/test_baseline_seed_writer_validation.py::test_final_writer_writes_grouped_missing_branch_issue_summary`
 - `tests/test_baseline_seed_writer_validation.py::test_missing_branch_issue_group_collapses_variables_and_scenarios`
 - `tests/test_baseline_seed_writer_validation.py::test_grouped_share_issues_collapse_to_one_issue_per_share_group`

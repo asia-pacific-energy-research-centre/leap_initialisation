@@ -120,7 +120,8 @@ The final baseline seed combines the current run's supply, transformation
 (including oil refining), transfers, interim electricity/CHP/heat,
 loss/own-use proxy, aggregated-demand, and demand-zeroing workbooks. Every
 configured producer must supply a readable workbook for each requested
-economy. The writer validates all economies before replacing any final seed.
+economy. Each final seed is validated and reported for its own economy; a
+finding in one economy does not suppress an otherwise valid economy artifact.
 Default scenario coverage is Current Accounts 2022 and Reference/Target
 2023–2060; both endpoints are configurable in `workflow_config.py`.
 
