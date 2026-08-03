@@ -357,9 +357,15 @@ There is none left in the supported commands, and this was checked rather than
 assumed. The balance-review workbook builder was migrated off
 `@oai/artifact-tool` and Node.js to pure Python and `openpyxl`
 (`codebase/functions/balance_review_workbook_builder.py`); `leap_mappings`
-migrated its own workbook builders the same way. Both supported commands were
-run end-to-end from a frozen package with no Node.js and no Codex runtime
-present. The only casualty of that migration is preview rendering, above.
+migrated its own workbook builders the same way. The only casualty of that
+migration is preview rendering, above.
+
+What was verified: the release's declared dependency closure contains no Node.js
+package and no Codex-managed component; the built package contains a Python
+runtime and nothing else executable; and both supported commands run from the
+frozen executable, whose bundle has no Node.js in it. That is a property of the
+package, not of the build machine — this machine does have Node.js installed,
+and the package neither needs nor invokes it.
 
 No command in the release depends on a Codex-managed runtime, and none was
 substituted with a different spreadsheet engine.
