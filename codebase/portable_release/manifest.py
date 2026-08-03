@@ -79,6 +79,15 @@ ALLOWED_CONFIG_SUFFIXES = frozenset(
 #: rather than reviewed configuration, so the manifest refuses it.
 MAX_CONFIG_ASSET_BYTES = 8 * 1024 * 1024
 
+#: Source data tables a command needs but a user should not edit — the ESTO base
+#: table and the 9th-edition projection table. They are declared separately from
+#: configuration assets because they are large, are not reviewed settings, and
+#: live in a read-only ``data/`` folder in the package rather than ``config/``.
+#: They are still hashed into every run manifest.
+MAX_DATA_ASSET_BYTES = 512 * 1024 * 1024
+
+ALLOWED_DATA_SUFFIXES = frozenset({".csv", ".gz", ".xlsx"})
+
 VALID_INPUT_KINDS = frozenset({"file", "directory"})
 
 
@@ -126,6 +135,26 @@ class ConfigAssetSpec:
 
 
 @dataclass(frozen=True)
+class DataAssetSpec:
+    """One large read-only source table distributed with the package.
+
+    Unlike a configuration asset these are not settings a user should edit, and
+    they are far too big for the configuration size cap. They are staged into a
+    ``data/`` folder and hashed into every run manifest so the exact table a run
+    used can always be identified.
+    """
+
+    repository: str
+    path: str
+    dest: str
+    role: str
+    description: str = ""
+    #: Data tables are routinely gitignored, so a manifest may deliberately take
+    #: them from the working tree. Set False to require a tracked blob.
+    allow_untracked: bool = True
+
+
+@dataclass(frozen=True)
 class CommandInputSpec:
     """One input a supported command requires from the user."""
 
@@ -159,6 +188,7 @@ class ReleaseManifest:
     repositories: Mapping[str, RepositorySpec]
     config_assets: tuple[ConfigAssetSpec, ...]
     commands: tuple[CommandSpec, ...]
+    data_assets: tuple[DataAssetSpec, ...] = ()
     source_path: Path | None = None
 
     @property
@@ -210,6 +240,16 @@ class ReleaseManifest:
                     "description": asset.description,
                 }
                 for asset in self.config_assets
+            ],
+            "data_assets": [
+                {
+                    "repository": asset.repository,
+                    "path": asset.path,
+                    "dest": asset.dest,
+                    "role": asset.role,
+                    "description": asset.description,
+                }
+                for asset in self.data_assets
             ],
             "commands": [
                 {
@@ -293,6 +333,20 @@ def parse_release_manifest(text: str, *, source_path: Path | None = None) -> Rel
             )
         )
 
+    data_assets: list[DataAssetSpec] = []
+    for index, block in enumerate(raw.get("data_assets") or []):
+        context = f"data_assets[{index}]"
+        data_assets.append(
+            DataAssetSpec(
+                repository=str(_require(block, "repository", context)),
+                path=str(_require(block, "path", context)),
+                dest=str(_require(block, "dest", context)),
+                role=str(_require(block, "role", context)),
+                description=str(block.get("description", "")),
+                allow_untracked=bool(block.get("allow_untracked", True)),
+            )
+        )
+
     commands: list[CommandSpec] = []
     for index, block in enumerate(raw.get("commands") or []):
         context = f"commands[{index}]"
@@ -327,6 +381,7 @@ def parse_release_manifest(text: str, *, source_path: Path | None = None) -> Rel
         repositories=repositories,
         config_assets=tuple(config_assets),
         commands=tuple(commands),
+        data_assets=tuple(data_assets),
         source_path=source_path,
     )
 
@@ -417,6 +472,8 @@ class ManifestValidationReport:
     warnings: list[str] = field(default_factory=list)
     checked_source_files: int = 0
     checked_config_assets: int = 0
+    checked_data_assets: int = 0
+    data_asset_bytes: int = 0
 
     @property
     def ok(self) -> bool:
@@ -427,6 +484,8 @@ class ManifestValidationReport:
             f"Release manifest validation: {self.manifest_name} {self.manifest_version}",
             f"  source files checked : {self.checked_source_files}",
             f"  config assets checked: {self.checked_config_assets}",
+            f"  data assets checked  : {self.checked_data_assets} "
+            f"({self.data_asset_bytes / 1e6:,.0f} MB)",
             f"  result               : {'OK' if self.ok else 'FAILED'}",
         ]
         for warning in self.warnings:
@@ -544,6 +603,32 @@ def validate_release_manifest(
         else:
             seen_dests[asset.dest] = context
 
+    for index, asset in enumerate(manifest.data_assets):
+        context = f"data_assets[{index}]"
+        if asset.repository not in manifest.repositories:
+            errors.append(
+                f"{context}.repository {asset.repository!r} is not a declared repository."
+            )
+        # Source data legitimately lives under data/, which the source-path
+        # denylist rejects, so only the escape and shape rules apply here.
+        pure = PurePosixPath(asset.path)
+        if "\\" in asset.path:
+            errors.append(f"{context}.path {asset.path!r} must use forward slashes.")
+        elif pure.is_absolute() or ".." in pure.parts:
+            errors.append(f"{context}.path {asset.path!r} escapes the repository root.")
+        elif pure.suffix.lower() not in ALLOWED_DATA_SUFFIXES:
+            errors.append(
+                f"{context}.path {asset.path!r} has unsupported type "
+                f"{pure.suffix!r} for a source data table."
+            )
+        errors.extend(path_safety_problems(asset.dest, context=f"{context}.dest"))
+        if asset.dest in seen_dests:
+            errors.append(
+                f"{context}.dest {asset.dest!r} collides with {seen_dests[asset.dest]}."
+            )
+        else:
+            seen_dests[asset.dest] = context
+
     known = set(known_command_names)
     seen_command_names: set[str] = set()
     for index, spec in enumerate(manifest.commands):
@@ -642,9 +727,55 @@ def validate_release_manifest(
             errors.append(
                 f"{context}: {asset.path!r} is {size:,} bytes, above the "
                 f"{MAX_CONFIG_ASSET_BYTES:,}-byte configuration-asset limit. "
-                "Large generated data belongs in the run input, not the package."
+                "A large read-only source table belongs in data_assets."
             )
         else:
             report.checked_config_assets += 1
+
+    for index, asset in enumerate(manifest.data_assets):
+        context = f"data_assets[{index}]"
+        spec = manifest.repositories.get(asset.repository)
+        if spec is None:
+            continue
+        root = Path(repository_roots[asset.repository])
+        entry = _tree_entry(root, spec.commit, asset.path)
+        if entry is None:
+            # Source data tables are gitignored in these repositories by design;
+            # they are restored from shared archives rather than committed.
+            working_copy = root / asset.path
+            if not working_copy.is_file():
+                errors.append(
+                    f"{context}: {asset.path!r} exists neither at commit "
+                    f"{spec.commit[:12]} nor in the working tree of {root}. "
+                    "Restore it from the shared data archive before building."
+                )
+                continue
+            if not asset.allow_untracked:
+                errors.append(
+                    f"{context}: {asset.path!r} is not tracked at commit "
+                    f"{spec.commit[:12]} and allow_untracked is false."
+                )
+                continue
+            report.warnings.append(
+                f"{context}: {asset.path!r} is not tracked at commit "
+                f"{spec.commit[:12]}; it is taken from the working tree and "
+                "pinned by SHA-256 in the release report and every run manifest."
+            )
+            size = working_copy.stat().st_size
+        else:
+            mode, object_type = entry
+            if object_type != "blob" or mode == "120000":
+                errors.append(f"{context}: {asset.path!r} is not a regular file.")
+                continue
+            size_result = _git(root, "cat-file", "-s", f"{spec.commit}:{asset.path}")
+            size = int(size_result.stdout.strip() or 0)
+        if size > MAX_DATA_ASSET_BYTES:
+            errors.append(
+                f"{context}: {asset.path!r} is {size:,} bytes, above the "
+                f"{MAX_DATA_ASSET_BYTES:,}-byte data-asset limit."
+            )
+        else:
+            report.checked_data_assets += 1
+            report.data_asset_bytes += size
 
     return report

@@ -48,6 +48,8 @@ class RuntimeContext:
     sys_path_roots: tuple[Path, ...] = ()
     #: Role -> resolved path for each external configuration asset.
     config_assets: Mapping[str, Path] = field(default_factory=dict)
+    #: Role -> resolved path for each large read-only source data table.
+    data_assets: Mapping[str, Path] = field(default_factory=dict)
     #: Live repository roots, developer mode only.
     repository_roots: Mapping[str, Path] = field(default_factory=dict)
     #: Commit each source repository was released from, portable mode only.
@@ -61,6 +63,21 @@ class RuntimeContext:
         """Return the configuration asset registered under *role*, if present."""
         path = self.config_assets.get(role)
         return Path(path) if path is not None else None
+
+    def data_asset(self, role: str) -> Path | None:
+        """Return the source data table registered under *role*, if present."""
+        path = self.data_assets.get(role)
+        return Path(path) if path is not None else None
+
+    def require_data_asset(self, role: str) -> Path:
+        path = self.data_asset(role)
+        if path is None or not path.is_file():
+            available = ", ".join(sorted(self.data_assets)) or "none"
+            raise FileNotFoundError(
+                f"Required source data table {role!r} was not found. "
+                f"Available tables: {available}."
+            )
+        return path
 
     def require_config_asset(self, role: str) -> Path:
         path = self.config_asset(role)
@@ -101,6 +118,11 @@ class RuntimeContext:
         for root in self.sys_path_roots:
             if not root.is_dir():
                 problems.append(f"A code directory declared for this run is missing: {root}")
+        for role, path in sorted(self.data_assets.items()):
+            if not Path(path).is_file():
+                problems.append(
+                    f"Source data table {role!r} is missing: {path}."
+                )
         for role, path in sorted(self.config_assets.items()):
             if not Path(path).is_file():
                 problems.append(
@@ -144,6 +166,11 @@ class RuntimeContext:
             lines.append("  config assets:")
             for role, path in sorted(self.config_assets.items()):
                 lines.append(f"    - {role}: {path}")
+        if self.data_assets:
+            lines.append("  source tables:")
+            for role, path in sorted(self.data_assets.items()):
+                size = f"{Path(path).stat().st_size:,} bytes" if Path(path).is_file() else "MISSING"
+                lines.append(f"    - {role}: {path}  ({size})")
         if self.repository_roots:
             lines.append("  repositories :")
             for key, root in sorted(self.repository_roots.items()):
@@ -211,6 +238,7 @@ def developer_context(
     output_root: Path,
     input_root: Path,
     log_root: Path,
+    data_assets: Mapping[str, Path] | None = None,
 ) -> RuntimeContext:
     """Build a context that runs against the maintainer's live working copies."""
     return RuntimeContext(
@@ -224,6 +252,7 @@ def developer_context(
         input_root=Path(input_root),
         sys_path_roots=tuple(Path(root) for root in sys_path_roots),
         config_assets=dict(config_assets),
+        data_assets=dict(data_assets or {}),
         repository_roots={key: Path(root) for key, root in repository_roots.items()},
     )
 
@@ -237,6 +266,7 @@ def portable_context(
     sys_path_stage_dirs: Sequence[str],
     config_assets: Mapping[str, Path],
     release_commits: Mapping[str, str],
+    data_assets: Mapping[str, Path] | None = None,
 ) -> RuntimeContext:
     """Build a context that runs entirely inside a built package."""
     root = Path(package_root)
@@ -251,6 +281,7 @@ def portable_context(
         input_root=root / "input",
         sys_path_roots=tuple(Path(code_root) / name for name in sys_path_stage_dirs),
         config_assets=dict(config_assets),
+        data_assets=dict(data_assets or {}),
         repository_roots={},
         release_commits=dict(release_commits),
     )

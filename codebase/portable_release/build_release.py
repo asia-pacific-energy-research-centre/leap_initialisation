@@ -58,7 +58,7 @@ DEFAULT_MANIFEST_PATH = REPO_ROOT / "config" / "portable_release_manifest.toml"
 #: hand: the builder never creates a symlink or junction inside it.
 DEFAULT_BUILD_ROOT = REPO_ROOT / "release_build"
 
-PACKAGE_DIRECTORIES = ("code", "config", "input", "output", "logs", "licenses")
+PACKAGE_DIRECTORIES = ("code", "config", "data", "input", "output", "logs", "licenses")
 
 
 class ReleaseBuildError(RuntimeError):
@@ -78,6 +78,7 @@ class BuildReport:
     validation: ManifestValidationReport
     source_files: list[dict[str, Any]] = field(default_factory=list)
     config_files: list[dict[str, Any]] = field(default_factory=list)
+    data_files: list[dict[str, Any]] = field(default_factory=list)
     package_files: list[dict[str, Any]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
@@ -94,9 +95,12 @@ class BuildReport:
                 "warnings": self.validation.warnings,
                 "source_files_checked": self.validation.checked_source_files,
                 "config_assets_checked": self.validation.checked_config_assets,
+                "data_assets_checked": self.validation.checked_data_assets,
+                "data_asset_bytes": self.validation.data_asset_bytes,
             },
             "source_files": self.source_files,
             "config_files": self.config_files,
+            "data_files": self.data_files,
             "package_files": self.package_files,
             "notes": self.notes,
         }
@@ -123,6 +127,21 @@ class BuildReport:
                 f"    from {item['repository']}:{item['path']}  "
                 f"({item['source']})  sha256={item['sha256']}"
             )
+        if self.data_files:
+            total_data = sum(int(item["size_bytes"]) for item in self.data_files)
+            lines += [
+                "",
+                f"Source data tables: {len(self.data_files)} ({total_data:,} bytes)",
+                "-" * 72,
+            ]
+            for item in self.data_files:
+                lines.append(
+                    f"  {item['role']:<34} {item['dest']}  ({item['size_bytes']:,} bytes)"
+                )
+                lines.append(
+                    f"    from {item['repository']}:{item['path']}  "
+                    f"({item['source']})  sha256={item['sha256']}"
+                )
         if self.package_files:
             total = sum(int(item["size_bytes"]) for item in self.package_files)
             lines += [
@@ -259,6 +278,52 @@ def _stage_config_assets(
                 "dest": asset.dest,
                 "source": source,
                 "size_bytes": len(payload),
+                "sha256": sha256_file(target),
+            }
+        )
+    return staged
+
+
+def _stage_data_assets(
+    manifest: ReleaseManifest,
+    roots: Mapping[str, Path],
+    data_root: Path,
+) -> list[dict[str, Any]]:
+    """Copy the large read-only source tables into the package's data folder.
+
+    These are streamed from the working tree when they are not tracked, which is
+    the normal case: the ESTO and 9th-edition tables are restored from shared
+    archives rather than committed. Either way the copy is hashed, so the exact
+    table a release carries is always identifiable.
+    """
+    staged: list[dict[str, Any]] = []
+    for asset in manifest.data_assets:
+        spec = manifest.repositories[asset.repository]
+        root = Path(roots[asset.repository])
+        target = data_root / asset.dest
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            payload = _git_bytes(root, "cat-file", "blob", f"{spec.commit}:{asset.path}")
+            target.write_bytes(payload)
+            source = f"commit {spec.commit[:12]}"
+        except ReleaseBuildError:
+            working_copy = root / asset.path
+            if not working_copy.is_file():
+                raise ReleaseBuildError(
+                    f"Source data table {asset.path!r} is neither tracked at "
+                    f"{spec.commit[:12]} nor present in {root}."
+                ) from None
+            # Copied rather than read into memory: these run to hundreds of MB.
+            shutil.copyfile(working_copy, target)
+            source = "working tree (not tracked at the pinned commit)"
+        staged.append(
+            {
+                "role": asset.role,
+                "repository": asset.repository,
+                "path": asset.path,
+                "dest": asset.dest,
+                "source": source,
+                "size_bytes": target.stat().st_size,
                 "sha256": sha256_file(target),
             }
         )
@@ -723,6 +788,7 @@ def build(
 
     source_files = _stage_sources(manifest, roots, code_root)
     config_files = _stage_config_assets(manifest, roots, config_root)
+    data_files = _stage_data_assets(manifest, roots, staging_dir / "data")
     (code_root / "entry_point.py").write_text(
         _entry_point_source(manifest.sys_path_stage_dirs()),
         encoding="utf-8",
@@ -746,6 +812,7 @@ def build(
         validation=validation,
         source_files=source_files,
         config_files=config_files,
+        data_files=data_files,
     )
 
     package_dir = staging_dir
@@ -759,7 +826,7 @@ def build(
         shutil.copytree(built, package_dir)
         # The frozen executable carries the code; config, input, output, logs,
         # licenses, the README, and the release manifest stay external.
-        for name in ("config", "input", "output", "logs", "licenses"):
+        for name in ("config", "data", "input", "output", "logs", "licenses"):
             shutil.copytree(staging_dir / name, package_dir / name, dirs_exist_ok=True)
         for name in ("README.md", "release_manifest.json"):
             shutil.copy2(staging_dir / name, package_dir / name)

@@ -491,6 +491,252 @@ def _check_balance_export_sheet(
 
 
 # ---------------------------------------------------------------------------
+# Balance review from a LEAP export
+# ---------------------------------------------------------------------------
+
+#: Columns an ESTO base table must carry to be usable as a source.
+ESTO_TABLE_COLUMNS = ("economy", "flows", "products", "is_subtotal")
+
+
+def validate_balance_review_from_export_inputs(
+    *,
+    economy: str,
+    scenario: str,
+    year: int,
+    balance_export_workbook: Path | str | None,
+    esto_table_path: Path | str | None,
+    mapping_workbook_path: Path | str | None,
+    bundled_esto_table: Path | str | None,
+    projection_table: Path | str | None,
+) -> ValidationReport:
+    """Validate the inputs for a LEAP-export-to-workbook run.
+
+    The extra work over :func:`validate_balance_review_inputs` is the source
+    tables: the run needs an ESTO base table and the 9th-edition projection
+    table, and when a user substitutes their own ESTO table it is checked
+    against the flow/product vocabulary the canonical mapping expects.
+    """
+    report = ValidationReport(command="balance-review-from-export")
+
+    try:
+        economy_code = normalize_economy(economy)
+        report.facts["economy"] = economy_code
+    except ValueError as exc:
+        report.add("economy", False, str(exc))
+    try:
+        scenario_name = normalize_scenario(scenario)
+        report.facts["scenario"] = scenario_name
+    except ValueError as exc:
+        report.add("scenario", False, str(exc))
+        scenario_name = ""
+
+    try:
+        year_value = int(year)
+    except (TypeError, ValueError):
+        report.add("year", False, f"The year must be a four-digit number, got {year!r}.")
+        year_value = 0
+    else:
+        if not 1990 <= year_value <= 2100:
+            report.add(
+                "year", False, f"The year {year_value} is outside the supported range 1990-2100."
+            )
+        else:
+            report.add("year", True, f"Review year {year_value}.")
+        report.facts["year"] = year_value
+
+    workbook_path = Path(str(balance_export_workbook)) if balance_export_workbook else None
+    workbook_ok = _check_readable_file(
+        report,
+        workbook_path,
+        name="balance_export_workbook",
+        description="LEAP balance-export workbook",
+        suffixes=(".xlsx",),
+    )
+    if workbook_ok and workbook_path is not None and scenario_name and year_value:
+        _check_balance_export_sheet(
+            report, workbook_path, scenario=scenario_name, year=year_value
+        )
+        _check_balance_export_level2(report, workbook_path)
+
+    _check_readable_file(
+        report,
+        Path(str(projection_table)) if projection_table else None,
+        name="ninth_projection_table",
+        description="9th-edition projection table shipped with this release",
+        suffixes=(".csv",),
+    )
+
+    active_esto = esto_table_path or bundled_esto_table
+    esto_ok = _check_readable_file(
+        report,
+        Path(str(active_esto)) if active_esto else None,
+        name="esto_base_table",
+        description=(
+            "ESTO base table you supplied"
+            if esto_table_path
+            else "ESTO base table shipped with this release"
+        ),
+        suffixes=(".csv",),
+    )
+    report.facts["esto_table_is_user_supplied"] = bool(esto_table_path)
+
+    if esto_ok and active_esto is not None:
+        esto_path = Path(str(active_esto))
+        if _check_columns(
+            report,
+            esto_path,
+            ESTO_TABLE_COLUMNS,
+            name="columns:esto_base_table",
+            description="ESTO base table",
+        ):
+            _check_esto_vocabulary(
+                report,
+                esto_path,
+                mapping_workbook_path=mapping_workbook_path,
+            )
+
+    return report
+
+
+def _check_balance_export_level2(report: ValidationReport, workbook_path: Path) -> None:
+    """Confirm the export carries Level 2+ detail, which diagnostics require.
+
+    LEAP writes Level 2 child rows with leading spaces in column A. A Level 1
+    export imports and looks fine, then produces a comparison with no sector
+    detail at all, so this is checked up front rather than deep in the run.
+    """
+    try:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(workbook_path, read_only=True, data_only=True)
+    except Exception as exc:  # noqa: BLE001
+        report.add("balance_export_detail", False, f"Could not inspect the export: {exc}")
+        return
+    try:
+        for sheet in workbook.worksheets:
+            for row in range(3, min(sheet.max_row or 3, 200) + 1):
+                value = sheet.cell(row=row, column=1).value
+                if isinstance(value, str) and value.startswith(" ") and value.strip():
+                    report.add(
+                        "balance_export_detail",
+                        True,
+                        "The export has Level 2+ detail (indented branch rows found).",
+                    )
+                    return
+    finally:
+        workbook.close()
+    report.add(
+        "balance_export_detail",
+        False,
+        "This export looks like a LEAP Level 1 Energy Balance (no indented "
+        "branch rows). Re-export it with at least Level 2 detail, or the "
+        "comparison will have no sector detail to work with.",
+    )
+
+
+def _check_esto_vocabulary(
+    report: ValidationReport,
+    esto_path: Path,
+    *,
+    mapping_workbook_path: Path | str | None,
+) -> None:
+    """Compare a supplied ESTO table against the mapping's expected vocabulary.
+
+    The authoritative reference is the ``leap_combined_esto`` sheet of the
+    canonical mapping workbook — the flows and products the mapping actually
+    reads from the source table. (The workbook's ``ESTO unique flows and
+    products`` sheet is a reference listing and is not kept in step with it.)
+
+    A missing flow or product is reported, not fatal: the diagnostics step
+    applies ``synthetic_reference_rows.csv``, which is what adds the zero-valued
+    rows a newer ESTO vintage introduced. This check exists so that what was
+    filled in, and what could not be, is visible before the run rather than
+    inferred from the numbers afterwards.
+    """
+    if not mapping_workbook_path or not Path(str(mapping_workbook_path)).is_file():
+        report.add(
+            "esto_vocabulary",
+            True,
+            "Skipped the ESTO vocabulary check: the mapping workbook is not "
+            "available to compare against.",
+        )
+        return
+    try:
+        import pandas as pd
+
+        sheet = pd.read_excel(Path(str(mapping_workbook_path)), sheet_name="leap_combined_esto")
+    except Exception as exc:  # noqa: BLE001
+        report.add(
+            "esto_vocabulary",
+            True,
+            f"Skipped the ESTO vocabulary check: could not read the mapping workbook ({exc}).",
+        )
+        return
+
+    def tokens(value: object) -> list[str]:
+        return [part.strip() for part in str(value or "").split("|") if part.strip()]
+
+    expected_flows: set[str] = set()
+    expected_products: set[str] = set()
+    for _, row in sheet.iterrows():
+        expected_flows.update(tokens(row.get("esto_flow")))
+        expected_products.update(tokens(row.get("esto_product")))
+
+    present_flows: set[str] = set()
+    present_products: set[str] = set()
+    with esto_path.open("r", encoding="utf-8-sig", newline="") as handle:
+        for record in csv.DictReader(handle):
+            present_flows.add(str(record.get("flows") or "").strip())
+            present_products.add(str(record.get("products") or "").strip())
+
+    # Combined categories are built by the mapping layer and never appear as raw
+    # source rows, so they must not be reported as missing. Three shapes exist:
+    # hyphen ranges ("04-05 International transport (bunkers)"), comma lists
+    # ("09.01.01,09.02.01 Electricity plants"), and own-use rollups
+    # ("09.08.01 Coke ovens (including own use)").
+    def is_raw(entry: str) -> bool:
+        code = entry.split(" ", 1)[0]
+        if "-" in code or "," in code:
+            return False
+        return "(including own use)" not in entry.lower()
+
+    missing_flows = sorted(f for f in expected_flows - present_flows if is_raw(f))
+    missing_products = sorted(p for p in expected_products - present_products if is_raw(p))
+    report.facts["esto_expected_flows"] = len(expected_flows)
+    report.facts["esto_missing_flows"] = missing_flows
+    report.facts["esto_missing_products"] = missing_products
+
+    if not missing_flows and not missing_products:
+        report.add(
+            "esto_vocabulary",
+            True,
+            f"The ESTO table carries every flow and product the mapping reads "
+            f"({len(present_flows)} flows, {len(present_products)} products).",
+        )
+        return
+
+    def preview(values: list[str]) -> str:
+        head = ", ".join(values[:8])
+        return head + (f" (and {len(values) - 8} more)" if len(values) > 8 else "")
+
+    parts = []
+    if missing_flows:
+        parts.append(f"{len(missing_flows)} flow(s): {preview(missing_flows)}")
+    if missing_products:
+        parts.append(f"{len(missing_products)} product(s): {preview(missing_products)}")
+    report.add(
+        "esto_vocabulary",
+        True,
+        "The ESTO table is missing some entries the mapping reads — "
+        + "; ".join(parts)
+        + ". The diagnostics step will fill any of these that its "
+        "synthetic-reference-row rules cover (this is how Datacentres and the "
+        "hydrogen rows are handled); anything left over simply has no source "
+        "comparator and is reported as unavailable rather than as zero.",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
 

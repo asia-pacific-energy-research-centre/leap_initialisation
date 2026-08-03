@@ -588,7 +588,10 @@ def test_balance_review_validation_explains_a_missing_diagnostics_folder(
     assert not report.ok
     message = report.failure_message()
     assert "diagnostics folder does not exist" in message
-    assert "cannot be produced from a LEAP export alone" in message
+    # The message must say what this command does and does not do, without
+    # claiming a reconciliation run is required - it is not.
+    assert "builds the workbook from an existing diagnostics folder" in message
+    assert "reconciliation" not in message.lower()
 
 
 def test_balance_review_validation_rejects_a_non_xlsx_export(tmp_path: Path) -> None:

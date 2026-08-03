@@ -34,7 +34,7 @@ from codebase.portable_release.runtime import RuntimeContext
 
 #: Commands this module implements. The release manifest may declare a subset;
 #: anything declared but not listed here is rejected by manifest validation.
-IMPLEMENTED_COMMANDS = ("balance-review", "dashboard")
+IMPLEMENTED_COMMANDS = ("balance-review", "balance-review-from-export", "dashboard")
 
 
 @dataclass
@@ -99,13 +99,27 @@ def _run_directory(context: RuntimeContext, command: str, label: str | None) -> 
     return directory
 
 
-def _configuration_records(context: RuntimeContext, roles: Sequence[str]):
-    """Describe the configuration assets a command actually used."""
+def _configuration_records(
+    context: RuntimeContext,
+    roles: Sequence[str],
+    data_roles: Sequence[str] = (),
+):
+    """Describe the configuration and source tables a command actually used.
+
+    Source tables are hashed like everything else. They are large, so this is
+    the slowest part of starting a run that uses them - and it is worth it: it
+    is the only way a run manifest can say which ESTO vintage produced its
+    numbers.
+    """
     records = []
     for role in roles:
         path = context.config_asset(role)
         if path is not None:
             records.append(describe_file(path, role=f"config:{role}"))
+    for role in data_roles:
+        path = context.data_asset(role)
+        if path is not None:
+            records.append(describe_file(path, role=f"data:{role}"))
     return records
 
 
@@ -117,6 +131,7 @@ def _execute(
     validate: Callable[[], validation.ValidationReport],
     config_roles: Sequence[str],
     settings: dict[str, Any],
+    data_roles: Sequence[str] = (),
     work: Callable[[Path], dict[str, Any]],
     output_describer: Callable[[dict[str, Any]], list],
 ) -> CommandResult:
@@ -131,7 +146,7 @@ def _execute(
     )
     manifest.release_commits = dict(context.release_commits)
     manifest.repositories = context.repository_states()
-    manifest.configuration = _configuration_records(context, config_roles)
+    manifest.configuration = _configuration_records(context, config_roles, data_roles)
 
     report = validate()
     manifest.validation = report.as_dict()
@@ -284,6 +299,165 @@ def run_balance_review(
             "balance_export_workbook": str(workbook_path),
             "diagnostics_directory": str(diagnostics_dir),
             "input_mode": "existing_diagnostic_artifacts",
+        },
+        work=work,
+        output_describer=describe_outputs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# balance-review-from-export
+# ---------------------------------------------------------------------------
+
+#: Data tables and configuration the balance-diagnostics step reads. Roles are
+#: resolved from the package (or the live checkouts in developer mode) and are
+#: hashed into the run manifest, so a run always records which source vintage
+#: and which synthetic-row rules produced its numbers.
+DIAGNOSTICS_DATA_ROLES = ("esto_base_table", "ninth_projection_table")
+DIAGNOSTICS_CONFIG_ROLES = (
+    "outlook_mappings_master",
+    "synthetic_reference_rows",
+    "leap_results_sheet_map",
+    "leap_explicit_reassignments",
+    "balance_error_signal_rules",
+)
+
+
+def run_balance_review_from_export(
+    context: RuntimeContext,
+    *,
+    economy: str,
+    scenario: str,
+    year: int,
+    balance_export_workbook: Path | str,
+    esto_table_path: Path | str | None = None,
+    run_label: str | None = None,
+) -> CommandResult:
+    """Go from a LEAP balance export to a finished review workbook in one run.
+
+    This runs both steps: the balance-diagnostics step
+    (``run_baseline_seed_balance_diagnostics``), which compares the export
+    against the ESTO and 9th-edition source tables using the canonical mapping,
+    and then the workbook build.
+
+    ``esto_table_path`` lets a user substitute their own ESTO base table for the
+    one shipped with the release. Whichever table is used, the diagnostics step
+    applies the same ``synthetic_reference_rows.csv`` rules the maintainer's
+    pipeline applies — the mechanism that adds the zero-valued rows a newer ESTO
+    vintage introduced (Datacentres, hydrogen transformation, and so on) when a
+    supplied table does not carry them. That behaviour is not reimplemented
+    here; it is the same code path and the same rules file.
+    """
+    workbook_path = _resolve_user_path(context, balance_export_workbook)
+    supplied_esto = (
+        _resolve_user_path(context, esto_table_path) if esto_table_path else None
+    )
+
+    def validate() -> validation.ValidationReport:
+        return validation.validate_balance_review_from_export_inputs(
+            economy=economy,
+            scenario=scenario,
+            year=year,
+            balance_export_workbook=workbook_path,
+            esto_table_path=supplied_esto,
+            mapping_workbook_path=context.config_asset("outlook_mappings_master"),
+            bundled_esto_table=context.data_asset("esto_base_table"),
+            projection_table=context.data_asset("ninth_projection_table"),
+        )
+
+    def work(run_dir: Path) -> dict[str, Any]:
+        from functools import partial
+
+        from codebase.balance_update_workflow import (
+            _PRESET_REVIEW_ONLY,
+            run_balance_update_workflow,
+        )
+        from codebase.functions.baseline_seed_balance_diagnostics import (
+            run_baseline_seed_balance_diagnostics,
+        )
+
+        economy_code = validation.normalize_economy(economy)
+        scenario_name = validation.normalize_scenario(scenario)
+        esto_table = supplied_esto or context.require_data_asset("esto_base_table")
+
+        diagnostic_paths: dict[str, Any] = {
+            "esto_table_path": esto_table,
+            "projection_table_path": context.require_data_asset("ninth_projection_table"),
+        }
+        for role, keyword in [
+            ("outlook_mappings_master", "codebook_path"),
+            ("synthetic_reference_rows", "synthetic_reference_rows_path"),
+            ("leap_results_sheet_map", "sheet_map_path"),
+            ("leap_explicit_reassignments", "explicit_reassignments_path"),
+            ("balance_error_signal_rules", "balance_variable_rules_path"),
+        ]:
+            path = context.config_asset(role)
+            if path is not None and path.is_file():
+                diagnostic_paths[keyword] = path
+
+        # run_balance_update_workflow owns the review orchestration and takes no
+        # path overrides, but it does expose the diagnostic runner as a seam.
+        # Binding the paths there keeps the real workflow in charge - including
+        # its synthetic-reference-row handling - rather than reimplementing it.
+        outcome = run_balance_update_workflow(
+            preset=_PRESET_REVIEW_ONLY,
+            economies=[economy_code],
+            review_years=[int(year)],
+            review_scenarios=[scenario_name],
+            update_scenarios=[],
+            output_root=run_dir,
+            review_output_label="diagnostics",
+            workbook_paths_by_economy={economy_code: workbook_path},
+            diagnostic_runner=partial(
+                run_baseline_seed_balance_diagnostics,
+                **diagnostic_paths,
+            ),
+        )
+
+        diagnostics_dir = run_dir / "diagnostics"
+        built = outcome["review_workbooks"][0]
+        built.pop("reconciliationSamples", None)
+
+        input_records = [describe_file(workbook_path, role="input:balance_export_workbook")]
+        if supplied_esto is not None:
+            input_records.append(
+                describe_file(supplied_esto, role="input:esto_base_table_override")
+            )
+        return {
+            "_input_records": input_records,
+            "workbook": built["outputWorkbook"],
+            "diagnostics_directory": str(diagnostics_dir),
+            "economy": economy_code,
+            "scenario": scenario_name,
+            "year": int(year),
+            "esto_table_used": str(esto_table),
+            "esto_table_is_user_supplied": supplied_esto is not None,
+            "build_result": built,
+        }
+
+    def describe_outputs(outputs: dict[str, Any]) -> list:
+        records = [describe_file(outputs["workbook"], role="output:balance_review_workbook")]
+        records += describe_directory_files(
+            outputs["diagnostics_directory"],
+            role_prefix="output:diagnostic_artifact",
+            patterns=("leap_balance_*.csv",),
+        )
+        return records
+
+    return _execute(
+        context,
+        command="balance-review-from-export",
+        run_label=run_label,
+        validate=validate,
+        config_roles=DIAGNOSTICS_CONFIG_ROLES,
+        data_roles=DIAGNOSTICS_DATA_ROLES,
+        settings={
+            "economy": economy,
+            "scenario": scenario,
+            "year": year,
+            "balance_export_workbook": str(workbook_path),
+            "esto_table_override": str(supplied_esto) if supplied_esto else "",
+            "input_mode": "leap_balance_export",
         },
         work=work,
         output_describer=describe_outputs,
