@@ -685,6 +685,11 @@ def prepare_for_viewing_sheet_df(
             if "Expression" in out.columns:
                 missing_values = year_values[str(year)].isna()
                 if missing_values.any():
+                    # A source year column is normally numeric.  The
+                    # expression fallback can legitimately be ``pd.NA`` for
+                    # an expression that does not supply this year, so use an
+                    # object column before assigning the mixed values.
+                    year_values[str(year)] = year_values[str(year)].astype("object")
                     year_values.loc[missing_values, str(year)] = out.loc[
                         missing_values, "Expression"
                     ].map(
