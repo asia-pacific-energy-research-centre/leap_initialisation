@@ -1,5 +1,24 @@
 # Remaining work queue
 
+## [27] Restore electricity T&D losses to Other loss and own use
+
+**Status: completed 2026-08-03.**
+
+The July 30 exclusion of electricity from the other-loss/own-use T&D proxy was
+based on the assumption that the active baseline-seed transformation producer
+initialised the same loss elsewhere. It does not: the transformation-side T&D
+loss code found in this repository is legacy/result-reporting code, while the
+maintained seed branch is
+`Demand\Other loss and own use\Transmission and distribution loss\Electricity`.
+The exclusion therefore replaced real ESTO/Ninth source values with zero-fill.
+
+Electricity is again included in both the proxy activity and target-energy
+scopes. For `20_USA`, the maintained inputs produce Current Accounts 2022
+activity of `97071.286303` PJ and final-energy intensity of
+`0.007602252180902575`, with projected Reference/Target values sourced from the
+Ninth dataset. Refresh affected seeds with the focused `losses_own_use` patch;
+a full initialisation run is not required.
+
 ## [26] Decide whether consolidated baseline-seed results workbooks are required
 
 **Status: investigation requested 2026-08-03.**
