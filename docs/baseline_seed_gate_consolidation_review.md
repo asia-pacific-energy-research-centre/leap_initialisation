@@ -58,8 +58,8 @@ run-level gate.
 No relevant test is deleted, moved, weakened, or made irrelevant. The minimum
 regression command retains these suites:
 
-- `tests/test_baseline_seed_writer_validation.py` (including its documented
-  warning-downgrade xfails), `test_baseline_seed_comparison_workflow.py`,
+- `tests/test_baseline_seed_writer_validation.py` (including strict and
+  warning-policy coverage), `test_baseline_seed_comparison_workflow.py`,
   `test_baseline_seed_canonical_groups.py`, `test_baseline_seed_output_shares.py`,
   `test_zero_skeleton_scenario_borrowing.py`;
 - `tests/test_leap_export_readiness.py`, `test_leap_sheet_header_detection.py`,
@@ -104,9 +104,9 @@ suite-level dispositions above.
 
 ### Verification recorded 2026-08-03
 
-- Final new gate + writer + registry run: **109 passed, 2 xfailed** after removal
-  of the obsolete cross-economy all-or-none release test. The xfails are the
-  existing conditional INIT-005 warning-downgrade cases.
+- Final new gate + writer + registry run: **111 passed** after removal of the
+  obsolete cross-economy all-or-none release test. The two strict-contract tests
+  set warning downgrade to `False` locally and no longer inherit production policy.
 - Canonical shares, output shares, scenario borrowing, readiness, zero-fill,
   workbook headers, all requested conservation suites, promotion, and parallel
   merge: **130 passed**.

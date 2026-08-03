@@ -1898,41 +1898,14 @@ carry the same distortion.
 
 ## Known pre-existing failures — not regressions, do not chase
 
-- `tests/test_baseline_seed_writer_validation.py` — **2 conditional xfails**, and they are
-  **an intentional open deviation, not stale tests and not a regressed guard**
-  (diagnosed 2026-07-17; an earlier revision of this entry guessed "stale or
-  regressed" and was wrong on both):
+- `tests/test_baseline_seed_writer_validation.py` — **resolved 2026-08-03**.
   `test_final_writer_writes_diagnostics_before_conflict_blocks` and
-  `test_default_reference_validation_window_requires_2023_through_2060`.
-
-  **Sole cause:** `workflow_config.py:91`
-  `BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True`, set at the
-  user's instruction on 2026-07-10. The comment at `workflow_config.py:79-91`
-  names these two tests. Monkeypatching the flag to `False` makes both pass.
-  Mechanism: `prepare_seed_rows_for_write` (`baseline_seed_validation.py:1835`)
-  clears the `blocking` column, and the raise at `supply_leap_io.py:1977-1984` is
-  gated on `blocking` being non-empty. (SEED-012 tests still pass because their
-  findings are appended at `supply_leap_io.py:1960-1961`, after that path.)
-  The coverage test is the same cause, not a config move: `BASE_YEAR=2022`/`FINAL_YEAR=2060`
-  are intact and the sibling window test passes; SEED-009 simply no longer blocks.
-
-  These two tests assert the confirmed INIT-005 behaviour and
-  go green the moment the guard is restored. The recorded sequence is: complete
-  the findings-clearing run, then revert the flag to `False`. See INIT-005
-  History in `docs/special_rules_and_design_decisions.md:265-292`. The flag has
-  only ever been *committed* as `True`; the 2026-07-10 `False` period was
-  working-tree only.
-
-  **The real open question is a judgement call, pending since 2026-07-10:**
-  whether the current blocking findings are genuinely insignificant enough to
-  leave the flag `True`. Read the latest `*_consolidated_rule_findings.csv` to
-  settle it.
-
-  **Gap worth closing meanwhile:** nothing pins this deviation as intentional —
-  two unexplained reds are the same shape as "a guard stopped blocking and
-  nobody noticed", which is why it was misdiagnosed above. If the flag stays
-  `True` for any length of time, mark them `xfail(reason=...)` naming the flag,
-  so the suite is green *and* the deviation stays visible.
+  `test_default_reference_validation_window_requires_2023_through_2060` now set
+  `BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS=False` locally. They
+  test the strict blocking contract and pass without changing the production
+  warning policy. A separate test continues to verify the configured warning
+  behavior. The production flag decision remains open and must be settled from
+  real consolidated findings, not by coupling contract tests to that setting.
 
   The former cross-economy all-or-none test
   `test_writer_accumulates_economy_failures_and_writes_no_final_workbook` was

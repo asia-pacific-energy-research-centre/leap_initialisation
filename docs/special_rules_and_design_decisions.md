@@ -381,11 +381,11 @@ diagnostics, and no invalid final workbook is written or substituted.
      `reason`) and is exactly what it is for.
   2. Fix the electrolyser template-alignment loss so the intended 100% Green
      electricity source share is represented by a valid retained LEAP branch.
-  3. Revert the flag to `False`. The 2 remaining
-     `test_baseline_seed_writer_validation.py` tests go green and their `xfail`
-     markers are deleted. The former cross-economy all-or-none release test was
-     removed by user decision on 2026-08-03 because one economy's finding should
-     not suppress a valid artifact for another economy.
+  3. Revert the production flag to `False` after the real findings are cleared.
+     The strict writer-contract tests already set the flag to `False` locally and
+     pass independently of production policy. The former cross-economy
+     all-or-none release test was removed by user decision on 2026-08-03 because
+     one economy's finding should not suppress a valid artifact for another.
 
   **Observability defect found while doing this, worth fixing regardless:** the
   consolidated `*_rule_findings.csv` **cannot** answer this question, because the
