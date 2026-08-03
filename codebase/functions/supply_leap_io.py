@@ -509,13 +509,14 @@ def apply_transformation_target_overrides_for_scenario(
             instance = int(instance_counter[counter_key])
             output_total_by_year: dict[int, float] = {int(year): 0.0 for year in all_years}
             output_values = record.get("output_values") or {}
-            # Exogenous Capacity and Historical Production use the
-            # LEAP-facing deliverable output boundary.  For oil refining,
-            # ``output_values`` has already removed same-module own-use from
-            # gross ESTO output.  Using ``gross_output_values`` here would
-            # pair net output shares with gross capacity and overstate both
-            # refinery throughput and feedstock demand.
-            capacity_output_values = output_values
+            # Capacity is the gross process-output basis.  The process
+            # efficiency is also gross output / feedstock, while LEAP applies
+            # Auxiliary Fuel Use after the process runs.  For oil refining,
+            # using deliverable output here caused LEAP to scale every
+            # feedstock input down by the refinery's same-module own use.
+            # Output shares remain on the deliverable boundary, so the final
+            # product balance still reflects that own use.
+            capacity_output_values = record.get("gross_output_values") or output_values
             # Only add observed output labels to the trade-target reset when the
             # process actually produces them.  Projection disaggregation keeps
             # zero-valued child fuels in ``output_values``; adding every such

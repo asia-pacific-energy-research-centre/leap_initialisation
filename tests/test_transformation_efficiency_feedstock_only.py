@@ -147,7 +147,7 @@ def test_non_overlapping_auxiliary_fuels_leave_process_record_unchanged() -> Non
     assert record["process_boundary_status"] == "no_output_auxiliary_overlap"
 
 
-def test_refinery_capacity_uses_net_deliverable_output_and_preserves_runtime_additions(
+def test_refinery_capacity_uses_gross_output_and_preserves_runtime_additions(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -195,10 +195,11 @@ def test_refinery_capacity_uses_net_deliverable_output_and_preserves_runtime_add
         "Current Accounts",
     )[0]
 
-    # Capacity and historical production use deliverable output after the
-    # same-module refinery-gas own use is removed, then add runtime capacity.
-    assert updated["exogenous_capacity_by_year"][2022] == pytest.approx(85.0)
-    assert updated["historical_production_by_year"][2022] == pytest.approx(85.0)
+    # Capacity and historical production use gross output before same-module
+    # own use, then add runtime capacity. LEAP applies the auxiliary use after
+    # processing, while its feedstock requirement is efficiency * gross output.
+    assert updated["exogenous_capacity_by_year"][2022] == pytest.approx(105.0)
+    assert updated["historical_production_by_year"][2022] == pytest.approx(105.0)
 
 
 def test_auxiliary_above_matching_output_preserves_excess_as_external() -> None:
