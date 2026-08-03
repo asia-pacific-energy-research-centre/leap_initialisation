@@ -1158,9 +1158,9 @@ def run_patch(
     ValueError
         If `module` is not in MODULE_REGISTRY.
     NotImplementedError
-        If the module is a transformation auto-regen sector (any module with
-        `auto_sector_keys`, e.g. "oil_refineries", "transformation"). These are
-        not safely patchable and must be refreshed via the full workflow.
+        If a legacy inline auto-regeneration module with `auto_sector_keys` is
+        registered. Current transformation modules use their workbook producer
+        and are patchable through this entry point.
     RuntimeError
         If no source rows were collected, or if patching failed for one or
         more economies (raised after all economies were attempted, with a

@@ -20,9 +20,9 @@ configuration pattern.
 - `_PRESET_RESULTS_UPDATE`: results-linked pass, no import/export reset,
   interim power disabled, aggregate demand/zeroing retained while demand models
   are absent, and second-stage own-use activity.
-- `_PRESET_PATCH_BASELINE_SEEDS`: selective regeneration of verified modules in
-  existing seeds. Transformation auto-regeneration is deliberately gated until
-  it can reproduce a full run exactly.
+- `_PRESET_PATCH_BASELINE_SEEDS`: selective regeneration of modules in existing
+  seeds. Transformation modules regenerate their source workbooks through the
+  owning producer before their configured branch prefixes are patched.
 - `ECONOMIES`, `SCENARIOS`, output label, preflight toggles, cache toggle, and
   deferred-error policy are run controls around the preset, but some interact
   with it and need explicit ownership.
