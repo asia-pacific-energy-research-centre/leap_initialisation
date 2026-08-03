@@ -96,6 +96,7 @@ DIFFERENCE_OUTPUT_COLUMNS = [
     "esto_product",
     "leap_sector_names",
     "leap_fuel_names",
+    "comparison_branch_path",
     "ninth_sector_codes",
     "ninth_fuel_codes",
     "reference_source",
@@ -1161,9 +1162,13 @@ def _write_esto_axis_extraction_mapping_workbook(
 def _build_mapping_metadata(
     mapping_status: pd.DataFrame,
     leap_long: pd.DataFrame | None,
+    *,
+    include_comparison_branch_path: bool,
 ) -> pd.DataFrame:
     """Return one mapping/cardinality record per displayed comparison row."""
     key_columns = ["sheet", "measure", "fuel_label"]
+    if include_comparison_branch_path:
+        key_columns.append("comparison_branch_path")
     metadata_columns = [
         *key_columns,
         "esto_flow",
@@ -1180,6 +1185,11 @@ def _build_mapping_metadata(
         return pd.DataFrame(columns=metadata_columns)
 
     status = mapping_status.copy()
+    if include_comparison_branch_path and "comparison_branch_path" not in status.columns:
+        status["comparison_branch_path"] = status.get(
+            "leap_sector_name_full_path",
+            pd.Series("", index=status.index),
+        )
     for column in [
         *key_columns,
         "esto_flow",
@@ -1213,6 +1223,11 @@ def _build_mapping_metadata(
                 "sheet": key[0],
                 "measure": key[1],
                 "fuel_label": key[2],
+                **(
+                    {"comparison_branch_path": key[3]}
+                    if include_comparison_branch_path
+                    else {}
+                ),
                 "esto_flow": _unique_pipe(group["esto_flow"]),
                 "esto_product": _unique_pipe(group["esto_product"]),
                 "ninth_sector_codes": _unique_pipe(group["sector_code_9th"]),
@@ -1242,6 +1257,11 @@ def _build_mapping_metadata(
     leap = leap_long.copy()
     if "sheet" not in leap.columns and "sheet_name" in leap.columns:
         leap["sheet"] = leap["sheet_name"]
+    if include_comparison_branch_path and "comparison_branch_path" not in leap.columns:
+        leap["comparison_branch_path"] = leap.get(
+            "leap_sector_name_full_path",
+            pd.Series("", index=leap.index),
+        )
     for column in [*key_columns, "leap_sector_name", "leap_fuel_name", "leap_sector", "leap_fuel"]:
         if column not in leap.columns:
             leap[column] = ""
@@ -1256,6 +1276,11 @@ def _build_mapping_metadata(
                 "sheet": key[0],
                 "measure": key[1],
                 "fuel_label": key[2],
+                **(
+                    {"comparison_branch_path": key[3]}
+                    if include_comparison_branch_path
+                    else {}
+                ),
                 "leap_sector_names": _unique_pipe(group[sector_column]),
                 "leap_fuel_names": _unique_pipe(group[fuel_column]),
                 "leap_component_count": _count_mapping_pairs(
@@ -2136,7 +2161,20 @@ def build_leap_source_difference_table(
     if working.empty:
         return pd.DataFrame(columns=DIFFERENCE_OUTPUT_COLUMNS)
 
-    key_columns = ["scenario", "sheet", "measure", "fuel_label", "year"]
+    include_comparison_branch_path = "comparison_branch_path" in working.columns
+    if not include_comparison_branch_path:
+        working["comparison_branch_path"] = ""
+    working["comparison_branch_path"] = (
+        working["comparison_branch_path"].fillna("").astype(str).str.strip()
+    )
+    key_columns = [
+        "scenario",
+        "sheet",
+        "measure",
+        "fuel_label",
+        "comparison_branch_path",
+        "year",
+    ]
     grouped = (
         working.groupby([*key_columns, "source"], dropna=False, as_index=False)["value"]
         .sum(min_count=1)
@@ -2153,8 +2191,19 @@ def build_leap_source_difference_table(
             wide[column] = pd.NA
         wide[column] = pd.to_numeric(wide[column], errors="coerce")
 
-    metadata = _build_mapping_metadata(mapping_status, leap_long)
-    wide = wide.merge(metadata, on=["sheet", "measure", "fuel_label"], how="left")
+    metadata = _build_mapping_metadata(
+        mapping_status,
+        leap_long,
+        include_comparison_branch_path=include_comparison_branch_path,
+    )
+    metadata_join_columns = ["sheet", "measure", "fuel_label"]
+    if include_comparison_branch_path:
+        metadata_join_columns.append("comparison_branch_path")
+    wide = wide.merge(
+        metadata,
+        on=metadata_join_columns,
+        how="left",
+    )
     def _distinct_esto_pair_count(group: pd.DataFrame) -> int:
         return len(
             {
@@ -2319,6 +2368,21 @@ def build_leap_source_difference_table(
     wide.loc[international_demand, "source_value_pj"] = wide.loc[
         international_demand, "source_value_pj"
     ].abs()
+
+    # LEAP's Statistical Differences control uses the opposite sign from the
+    # ESTO/9th statistical-discrepancy balance row. Match the supply-export
+    # convention here so a correct LEAP balance is not reported as a
+    # two-times-value preview mismatch.
+    statistical_differences = (
+        wide["esto_flow"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.startswith("11 Statistical discrepancy")
+    )
+    wide.loc[statistical_differences, "source_value_pj"] = -wide.loc[
+        statistical_differences, "source_value_pj"
+    ]
 
     both_present = wide["leap_value_pj"].notna() & wide["source_value_pj"].notna()
     wide["difference_pj"] = wide["leap_value_pj"] - wide["source_value_pj"]

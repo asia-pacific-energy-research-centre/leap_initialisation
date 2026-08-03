@@ -157,6 +157,96 @@ def test_base_year_uses_esto_and_matches_across_economy_code_formats() -> None:
     assert bool(row["update_allocation_required"]) is False
 
 
+def test_full_leap_path_keeps_aggregated_buildings_source_separate() -> None:
+    """A detailed Buildings comparator must not inflate the aggregate branch."""
+    comparison = pd.DataFrame(
+        [
+            {
+                "economy": "01_AUS",
+                "scenario": "Target",
+                "sheet": "Buildings",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "Electricity",
+                "comparison_branch_path": "All demand aggregated/Buildings",
+                "source": "leap",
+                "year": 2022,
+                "value": 481.326603,
+            },
+            {
+                "economy": "01_AUS",
+                "scenario": "Target",
+                "sheet": "Buildings",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "Electricity",
+                "comparison_branch_path": "All demand aggregated/Buildings",
+                "source": "base",
+                "year": 2022,
+                "value": 481.326603,
+            },
+            {
+                "economy": "01_AUS",
+                "scenario": "Target",
+                "sheet": "Buildings",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "Electricity",
+                "comparison_branch_path": "Buildings/Services",
+                "source": "leap",
+                "year": 2022,
+                "value": 0.0,
+            },
+            {
+                "economy": "01_AUS",
+                "scenario": "Target",
+                "sheet": "Buildings",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "Electricity",
+                "comparison_branch_path": "Buildings/Services",
+                "source": "base",
+                "year": 2022,
+                "value": 231.877955,
+            },
+        ]
+    )
+    mapping_status = pd.DataFrame(
+        [
+            {
+                "sheet": "Buildings",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "Electricity",
+                "comparison_branch_path": "All demand aggregated/Buildings",
+                "esto_flow": "16.01-16.02 Buildings",
+                "esto_product": "17 Electricity",
+                "sector_code_9th": "",
+                "ninth_fuel_code": "",
+            },
+            {
+                "sheet": "Buildings",
+                "measure": "Energy balance (PJ)",
+                "fuel_label": "Electricity",
+                "comparison_branch_path": "Buildings/Services",
+                "esto_flow": "16.01 Commercial and public services",
+                "esto_product": "17 Electricity",
+                "sector_code_9th": "",
+                "ninth_fuel_code": "",
+            },
+        ]
+    )
+
+    table = diagnostics.build_leap_source_difference_table(
+        comparison_long=comparison,
+        mapping_status=mapping_status,
+        economy="01_AUS",
+        years=[2022],
+        scenarios=["Target"],
+    )
+
+    aggregate = table.loc[
+        table["comparison_branch_path"].eq("All demand aggregated/Buildings")
+    ].iloc[0]
+    assert aggregate["source_value_pj"] == pytest.approx(481.326603)
+    assert aggregate["status"] == "match"
+
+
 def test_international_demand_compares_positive_bunker_magnitude() -> None:
     comparison = _comparison_rows(
         scenario="Reference",
