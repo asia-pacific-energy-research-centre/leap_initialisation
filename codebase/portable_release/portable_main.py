@@ -59,16 +59,24 @@ def build_portable_context(root: Path | None = None):
         asset["role"]: config_root / asset["dest"]
         for asset in frozen.get("config_assets", [])
     }
+    # In a frozen build the program modules live inside the executable's own
+    # bundle, so there is no code/ directory to put on sys.path. The staged
+    # (unfrozen) package keeps one, and the build's smoke test runs that way.
+    stage_dirs = (
+        []
+        if getattr(sys, "frozen", False)
+        else [
+            spec["stage_dir"]
+            for spec in frozen.get("repositories", {}).values()
+            if spec.get("on_sys_path", True)
+        ]
+    )
     context = portable_context(
         release_name=frozen["release"]["name"],
         release_version=frozen["release"]["version"],
         package_root=resolved_root,
         code_root=resolved_root / "code",
-        sys_path_stage_dirs=[
-            spec["stage_dir"]
-            for spec in frozen.get("repositories", {}).values()
-            if spec.get("on_sys_path", True)
-        ],
+        sys_path_stage_dirs=stage_dirs,
         config_assets=config_assets,
         release_commits={
             key: spec["commit"] for key, spec in frozen.get("repositories", {}).items()

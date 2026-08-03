@@ -138,6 +138,8 @@ class RuntimeContext:
             lines.append("  code roots   :")
             for root in self.sys_path_roots:
                 lines.append(f"    - {root}")
+        elif self.mode == MODE_PORTABLE:
+            lines.append("  code         : bundled inside the executable")
         if self.config_assets:
             lines.append("  config assets:")
             for role, path in sorted(self.config_assets.items()):
