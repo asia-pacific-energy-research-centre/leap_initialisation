@@ -1209,6 +1209,15 @@ class TestContributionsSheet:
         aggregated_demand_workflow._warn_contributions_do_not_reconcile(demand, contributions)
         assert "WARN" in capsys.readouterr().out
 
+    def test_raw_contribution_sign_is_preserved_separately(self):
+        provenance = pd.DataFrame({"allocated_value": [-4.5, 2.0]})
+        provenance = aggregated_demand_workflow._format_contribution_demand_magnitudes(
+            provenance
+        )
+
+        assert provenance["allocated_value"].tolist() == [4.5, 2.0]
+        assert provenance["raw_allocated_value"].tolist() == [-4.5, 2.0]
+
     def test_save_workbook_writes_contributions_sheet_when_opted_in(self, tmp_path, monkeypatch):
         demand, contributions = self._demand_and_contributions()
 

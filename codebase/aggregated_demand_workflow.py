@@ -1171,8 +1171,22 @@ def build_aggregated_demand(
         enabled=apply_first_projection_year_bridge,
     )
     if return_provenance:
-        return result, pd.concat(provenance_parts, ignore_index=True)
+        return result, _format_contribution_demand_magnitudes(
+            pd.concat(provenance_parts, ignore_index=True)
+        )
     return result
+
+
+def _format_contribution_demand_magnitudes(provenance: pd.DataFrame) -> pd.DataFrame:
+    """Align Contributions values with LEAP's positive-demand convention."""
+    formatted = provenance.copy()
+    # Keep the original balance-table sign for audit, but use the same positive
+    # demand convention as the exported aggregate for reconciliation.
+    formatted["raw_allocated_value"] = pd.to_numeric(
+        formatted["allocated_value"], errors="coerce"
+    ).fillna(0.0)
+    formatted["allocated_value"] = formatted["raw_allocated_value"].abs()
+    return formatted
 
 
 def build_aggregated_demand_all_scenarios(
