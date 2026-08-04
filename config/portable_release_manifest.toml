@@ -357,17 +357,17 @@ manifest and an input validation report, in a dated folder under output/."""
 
   [[commands.inputs]]
   key = "economy"
-  kind = "file"
+  kind = "value"
   description = "Economy code, for example 20_USA."
 
   [[commands.inputs]]
   key = "scenario"
-  kind = "file"
+  kind = "value"
   description = "Scenario name or code, for example Target or TGT."
 
   [[commands.inputs]]
   key = "year"
-  kind = "file"
+  kind = "value"
   description = "Four-digit review year, for example 2022."
 
   [[commands.inputs]]
@@ -399,17 +399,17 @@ output/<ECONOMY>/balance_review/."""
 
   [[commands.inputs]]
   key = "economy"
-  kind = "file"
+  kind = "value"
   description = "Economy code, for example 20_USA."
 
   [[commands.inputs]]
   key = "scenario"
-  kind = "file"
+  kind = "value"
   description = "Scenario name or code, for example Target or TGT."
 
   [[commands.inputs]]
   key = "year"
-  kind = "file"
+  kind = "value"
   description = "Four-digit review year, for example 2022."
 
   [[commands.inputs]]
@@ -437,7 +437,7 @@ chart_manifest.csv, and a run manifest, in a dated folder under output/."""
 
   [[commands.inputs]]
   key = "economy"
-  kind = "file"
+  kind = "value"
   description = "Economy code, for example 20_USA."
 
   [[commands.inputs]]
@@ -463,7 +463,7 @@ chart_manifest.csv, and a run manifest, in a dated folder under output/."""
 
   [[commands.inputs]]
   key = "economy"
-  kind = "file"
+  kind = "value"
   description = "Economy code, for example 20_USA."
 
   [[commands.inputs]]

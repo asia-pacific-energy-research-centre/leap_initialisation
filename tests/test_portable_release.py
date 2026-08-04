@@ -897,3 +897,25 @@ def test_guided_flow_offers_list_and_check_and_defaults_to_an_export_command() -
     # A value is not a path; the prompt used to say "path or value" for every
     # field, including economy.
     assert '"path" if item["kind"] in {"file", "directory"} else "value"' in source
+
+
+def test_value_inputs_are_declared_as_values_not_files() -> None:
+    """economy, scenario and year are not paths.
+
+    ``VALID_INPUT_KINDS`` allowed only "file" and "directory", so every command
+    declared them as files — the only option available — and the guided flow
+    duly asked for a "file path" when the answer is 20_USA. The kind now
+    describes the input honestly, and the prompt follows from it.
+    """
+    manifest = load_release_manifest(SHIPPED_MANIFEST)
+    by_key = {
+        item.key: item.kind
+        for command in manifest.commands
+        for item in command.inputs
+    }
+    for key in ("economy", "scenario", "year"):
+        assert by_key.get(key) == "value", f"{key} should be a value, not {by_key.get(key)}"
+    # Genuine paths must stay paths, or the prompt becomes wrong the other way.
+    for key in ("balance_export_workbook", "comparison_data_path"):
+        if key in by_key:
+            assert by_key[key] == "file"

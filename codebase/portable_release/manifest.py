@@ -88,7 +88,10 @@ MAX_DATA_ASSET_BYTES = 512 * 1024 * 1024
 
 ALLOWED_DATA_SUFFIXES = frozenset({".csv", ".gz", ".xlsx"})
 
-VALID_INPUT_KINDS = frozenset({"file", "directory"})
+#: What a command input actually is. "value" exists because economy, scenario
+#: and year are not paths — declaring them as files was the only option and
+#: made the guided flow ask for a "file path" when the answer is 20_USA.
+VALID_INPUT_KINDS = frozenset({"file", "directory", "value"})
 
 #: The two PyInstaller executables a release builds (handover §1/§3.3): the
 #: main review-tools executable, and the isolated mapping-chain worker.
