@@ -319,6 +319,7 @@ _REQUIRED_MODULES = [
     "codebase.portable_release.provenance",
     "codebase.portable_release.runtime",
     "codebase.portable_release.mapping_chain_client",
+    "codebase.portable_release.workspace",
     "codebase.functions.balance_review_workbook_builder",
     "codebase.utilities.leap_balance_export_resolver",
     "common_esto_dashboard_portable",

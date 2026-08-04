@@ -48,7 +48,7 @@ packages = [
 # behaviour.
 
 [repositories.leap_initialisation]
-commit = "4ea6ffedc246306c3964bb430dfc77ff70da9e0b"
+commit = "baaf1821989196d4e62f4970da0e8430ed94ad87"
 stage_dir = "leap_initialisation"
 on_sys_path = true
 paths = [
@@ -62,10 +62,12 @@ paths = [
     "codebase/utilities/output_paths.py",
     "codebase/portable_release/__init__.py",
     "codebase/portable_release/commands.py",
+    "codebase/portable_release/mapping_chain_client.py",
     "codebase/portable_release/portable_main.py",
     "codebase/portable_release/provenance.py",
     "codebase/portable_release/runtime.py",
     "codebase/portable_release/validation.py",
+    "codebase/portable_release/workspace.py",
 ]
 # manifest.py, settings.py, build_release.py, and developer_launcher.py are
 # maintainer-side only: nothing on a portable run's import path reaches them,
