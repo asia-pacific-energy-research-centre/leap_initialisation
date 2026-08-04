@@ -9,12 +9,17 @@ The base year is not a separate fact to be configured — it is a property of th
 table, namely its last year column. Reading it from the file removes the
 opportunity for the three values to disagree.
 
-The second job here is the more important one. A release carries both the raw
-ESTO table (used by the balance-review path) and four artifacts *derived* from a
-particular ESTO issue (used by the dashboard path). Replacing the raw table
-alone leaves the derived artifacts on the old issue, and nothing about the
-result would look wrong — the dashboard would render happily against stale
-values. :func:`check_vintage_consistency` makes that mismatch loud instead.
+The second job here is telling a user what changes when they supply their own
+table. That check began life as a refusal: a release carried ESTO comparison
+rows extracted in advance from one issue, so a newer raw table updated the
+balance review while the dashboard carried on against the old data, and nothing
+about the result looked wrong.
+
+The mapping-chain worker now re-derives those rows from whichever table a run is
+given, so both tools follow the supplied issue and that mismatch cannot arise.
+:func:`describe_vintage_change` therefore reports the consequences — a slower
+first run, and 9th-edition projections on their own release cycle — rather than
+blocking a run that is now perfectly valid.
 """
 
 from __future__ import annotations

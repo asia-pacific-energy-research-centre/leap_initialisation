@@ -342,12 +342,24 @@ The ESTO data is reissued once a year, and each new issue moves the base year
 along. The version in your copy is the 2024 issue, with a base year of 2022. When
 the 2026 issue arrives the base year becomes 2024, and so on.
 
-**When a new issue comes out, you will be sent a new version of the tools.**
-Please do not try to update the reference data yourself. The comparison depends on
-several files that are prepared together and have to match each other; replacing
-one of them on its own leaves the rest out of step, and the tools would carry on
-running and quietly give you answers based on a mixture of old and new. Your
-modelling team rebuilds and reissues the whole set so that cannot happen.
+**You can use a newer ESTO file without waiting for a new version of the tools.**
+Point either command at it:
+
+```text
+.\leap-review-tools.exe dashboard-from-export --economy 20_USA --esto-table-path "input\00APEC_2026_low_with_subtotals.csv"
+```
+
+Both tools then use your file, and the base year moves with it automatically —
+the tools read it from the file rather than being told. The comparison rows are
+rebuilt from your data the first time you use a given file, which adds a couple
+of minutes; after that it is remembered.
+
+Two things worth knowing. The 9th Outlook projections are on their own release
+cycle, so an ESTO update does not change them. And each run records which file it
+used, so a result can always be traced back to the data behind it.
+
+If you would rather not manage this yourself, that is fine too: your modelling
+team will send a new version of the tools with the newer data already in it.
 
 ## Please never edit the reference data
 
