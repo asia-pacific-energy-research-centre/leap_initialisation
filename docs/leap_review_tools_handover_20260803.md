@@ -213,10 +213,10 @@ Committed and verified in `leap_initialisation` (all on `master`):
 | §3.1 mapping-chain worker (`leap_mappings`) | **done** — `codebase/portable_mapping_chain.py`, verified end-to-end against the real 12_NZ export (385,035 / 48,068 / 194,694 rows, matching §2 exactly). Committed `f2b1a92`. |
 | §3.2 mapping-chain client (`leap_initialisation`) | **done** — `codebase/portable_release/mapping_chain_client.py`, locates/invokes the worker, real subprocess round-trip tested. Committed `d3ca156`. |
 | §3.2 `dashboard-from-export` command | **done** — `commands.run_dashboard_from_export`, with the `--comparison-data-path` escape hatch. Verified with a mocked-chain unit test plus a real dashboard render off the real 12_NZ comparison data. Committed `9748dde`. |
-| §3.4 manifest entries for the mapping chain | **partially done** (folded into the `9748dde` commit): `outlook_mappings_master` and `source_branch_fallback_rules` config assets, the four `mapping_chain_*` data assets, and the `dashboard-from-export` command block are all in `config/portable_release_manifest.toml` and pass `validate_release_manifest`. **Still missing**: the `target`/`executable` field per source entry the two-PyInstaller-target design needs (§3.3/§3.4), and the leap_mappings worker's own 20-module import closure (only `source_branch_preflight.py` is allowlisted today — that is for the *main* exe's `_missing_leap_demand_branches` lookup, not the worker's own bundle). |
-| §3.3 two-PyInstaller-target builder | **not started** |
-| §3.5 `portable_main.py` / `developer_launcher.py` wiring for `dashboard-from-export` | **not started** — the command function works (tests build a `RuntimeContext` by hand), but neither CLI entry point calls it yet, and `developer_launcher.build_context` still does not populate `data_assets` at all (a pre-existing gap noted in the original §3.5 bullet, now also blocking `dashboard-from-export` in developer mode) |
-| Dashboard from balance exports | mapping chain + command now exist (§3.1, §3.2); rebuild/re-verify/re-zip (§3.5) still pending |
+| §3.4 manifest entries for the mapping chain | **done** (session 3, 2026-08-04). `RepositorySpec` gained `target` ("main"/"worker") and `source_key` fields (manifest.py); `repositories.leap_mappings_worker` is a second entry for the leap_mappings checkout (`source_key = "leap_mappings"`), staged as the real `codebase` package with its ~20-module closure (computed by an ast-based walk of absolute `codebase.*` imports from parse_leap_balance_export / convert_leap_results_to_esto / apply_common_esto_structure / portable_mapping_chain). Manifest validates clean: 42 source files (up from 15). |
+| §3.3 two-PyInstaller-target builder | **done and verified end-to-end** (session 3). `build_release.py` freezes both targets from isolated cwd/spec/dist/work dirs (`_freeze_target`, generalised from the old single-target `_freeze`), copies the worker build to `package/mapping-chain/`, and runs the worker's `--self-test` alongside the main exe's `info`/`selfcheck`. A real `build(freeze=True)` now succeeds: main exe passes info/selfcheck, worker passes `--self-test` (`{"ok": true, "worker": "leap_mapping_chain"}`). Package: 3141 files, ~617 MB. |
+| §3.5 `portable_main.py` / `developer_launcher.py` wiring for `dashboard-from-export` | **done** (session 3). `portable_main.py` has the `dashboard-from-export` subcommand, its guided-flow dispatch, and a `list` command (reuses the already-existing `workspace.describe_workspace`, which nothing called before). `developer_launcher.py` has `run_dashboard_from_export` and `build_context()` now populates `data_assets` (was a pre-existing gap — also needed by `balance-review-from-export`, see below). |
+| Dashboard from balance exports, end to end | **done and verified** (session 3, 2026-08-04). `leap-review-tools.exe dashboard-from-export --economy 20_USA` succeeds against a real, freshly staged 20_USA REF+TGT export: 286,368 raw LEAP rows -> 77,724 converted -> 351,464 comparison rows -> 648 charts, `dashboards/index.html` written. This is the whole point of §3's remaining work, now actually proven rather than unit-tested with mocks. See §6 for the four real bugs this surfaced and fixed along the way. |
 
 `leap_dashboard`: `common_esto_dashboard_portable.py` + tests — done.
 `leap_mappings`: `codebase/portable_mapping_chain.py` added and tested (§3.1, see above).
@@ -415,6 +415,53 @@ Ranked levers, most effective first:
   step reads a LEAP export directly. Documented wrongly once already.
 - **Concurrent Codex activity in these checkouts.** A cherry-pick was mid-conflict
   during this session. Stage only your own files; check `git status` first.
+- **The staged/frozen package builds from the manifest's *pinned commit*, not
+  your working tree.** Editing `leap_initialisation` or `leap_mappings`
+  source and re-running `build()` silently builds the OLD code until you bump
+  `repositories.<key>.commit` in `config/portable_release_manifest.toml` to
+  your new HEAD. Session 3 lost real time to this twice: fixed a crash,
+  rebuilt, got the *same* crash, because the pin was still on the pre-fix
+  commit. **Bump the pin and rebuild after every source commit that touches a
+  staged file, every time, immediately** — don't batch several fixes before
+  re-pinning, or you can't tell which fix actually worked.
+- **`validate_release_manifest` does not check that a staged file's imports
+  are all themselves staged.** It checks declared command names against
+  `IMPLEMENTED_COMMANDS` (the *live* checkout's `commands.py`, not the pinned
+  blob) and that allowlisted paths exist at the pinned commit — it does not
+  parse imports. `commands.py`'s `from codebase.portable_release import
+  workspace` and `dashboard-from-export`'s need for `mapping_chain_client`
+  both went unstaged for two sessions without a single validation error;
+  only an actual `build(freeze=True)` + `selfcheck` (or, worse, an actual run)
+  surfaces this. **Validation passing is not proof a command works** — only a
+  real frozen run is.
+- **A Python function's default-argument value is bound once, at import
+  time — not read live from the module global it references.** Reassigning
+  `some_module.SOME_CONSTANT` after import does **not** change
+  `some_function()`'s behaviour if `SOME_CONSTANT` was captured as a default
+  parameter value (`def f(x=SOME_CONSTANT):`), because the default is
+  evaluated once and stored in `f.__defaults__`. Tried monkeypatching
+  `apply_common_esto_structure.OUTLOOK_MAPPINGS_PATH` from
+  `portable_mapping_chain.py` before calling
+  `run_common_esto_comparison_fast_path` — silently did nothing, because the
+  constant is only read live *inside a function body* (global lookup at call
+  time), never as another function's *default parameter value* three call
+  frames down (`build_wide_year_output`'s own default, bound at its own
+  def-time). The actual fix had to be a real parameter threaded through
+  (commit `a7a21ba` in `leap_mappings`).
+- **A frozen PyInstaller module's `Path(__file__).resolve()` does not sit
+  inside a real checkout.** Several `leap_mappings` `mapping_tools` modules
+  compute `REPO_ROOT` by walking up from `__file__` looking for
+  `config/outlook_mappings_master.xlsx`, or by a fixed `.parents[N]` — both
+  assume a real checkout on disk and either raise or silently resolve
+  somewhere wrong when frozen. The working fix in every case was a
+  `sys._MEIPASS` fallback (PyInstaller sets this to the frozen bundle's own
+  root at runtime) plus, for modules that read an actual file at import time
+  (the `config/datasets/*.csv` registries), bundling those files into the
+  frozen build via PyInstaller `datas=`. If a future module in the worker's
+  closure adds its own `REPO_ROOT`/`_find_repo_root`, it needs the same
+  treatment — grep for `_find_repo_root\|REPO_ROOT = Path(__file__)` in
+  `leap_mappings/codebase/mapping_tools/` before assuming a frozen run is
+  safe.
 
 ---
 
@@ -459,3 +506,82 @@ Format:
   instructions this session did not create another; those three will fire on
   their existing schedule. Whoever pre-created the full chain, note for
   session 4: do not schedule a session 5 unless §3 is still incomplete.
+
+### 2026-08-04 08:45 local (session 3) — session 2 appears not to have run
+
+- Before starting, `git log` in all three repos showed nothing past session
+  1's commits (`1e49e8b` in `leap_initialisation`, `f2b1a92` in
+  `leap_mappings`) despite `leap-review-tools-build-2` having been scheduled
+  for 03:41 and this session (build-3) firing at its scheduled 08:41. No
+  concurrency conflict (the concurrency-guard check found the last commit
+  ~8.5 hours old, well past the 45-minute threshold) — session 2 simply left
+  no trace in git, and no §6 entry either. Possible causes not investigated
+  (out of scope for this session): the task didn't fire, or it fired and
+  produced no committable output before running out of budget. Worth a
+  maintainer look if this recurs.
+- Proceeded as if session 2 never ran: started §3.3 (first incomplete §3
+  item) directly.
+
+### 2026-08-04 ~11:00 local (session 3) — §3.3, §3.4, §3.5 completed and verified end to end; no blockers left standing
+
+- Items: §3.3 (two-PyInstaller-target builder), the rest of §3.4 (manifest
+  `target`/`source_key` fields, `leap_mappings_worker` closure), §3.5
+  (`portable_main.py`/`developer_launcher.py` wiring for `dashboard-from-export`
+  and `list`, `data_assets` population in both). Then went further than the
+  plan asked and actually ran `dashboard-from-export` against a real frozen
+  build with a real 20_USA export, because a manifest that merely validates
+  is not evidence a command works (see §5's new trap on this) — and that
+  real run surfaced four bugs no test or validation pass had caught:
+  1. **Missing worker closure imports crashed the frozen worker at import
+     time.** `leap_mappings`' `_find_repo_root()` (four modules) walks up
+     from `__file__` for a marker file that doesn't exist inside a
+     PyInstaller bundle. Fixed with a `sys._MEIPASS` fallback in those four
+     plus five more modules whose `REPO_ROOT` silently resolved wrong
+     without raising (`dataset_registry.py` and its four dependents) —
+     `leap_mappings` commit `8bd0fb6`.
+  2. **Two staged-source omissions.** `commands.py` imports `workspace`;
+     `dashboard-from-export` needs `mapping_chain_client` — neither was in
+     `repositories.leap_initialisation.paths`, so the frozen build never had
+     them despite `validate_release_manifest` passing (it doesn't parse a
+     staged file's own imports). Only `selfcheck` on the real frozen build
+     caught this — `leap_initialisation` commit `bc3975d`.
+  3. **`data_assets` was never populated in the frozen entry point.**
+     `build_portable_context()` (portable_main.py) built `config_assets` but
+     not `data_assets`, so `context.require_data_asset(...)` always failed
+     in a portable run. No existing test caught it because every existing
+     frozen-package test exercises `balance-review` or plain `dashboard`,
+     neither of which touches a data asset — `leap_initialisation` commit
+     `2429da8`. (The equivalent gap in `developer_launcher.build_context()`,
+     noted as a pre-existing issue in §4 since session 1, was fixed in the
+     same pass, commit `bd575bc`.)
+  4. **The mapping-chain fast path silently needed a file that isn't there
+     when frozen.** `run_common_esto_comparison_fast_path` calls
+     `build_wide_year_output()` without overriding `outlook_mappings_path`,
+     so it defaulted to `OUTLOOK_MAPPINGS_PATH` — a module constant computed
+     from the now-`_MEIPASS`-based `REPO_ROOT`, so a plausible-looking but
+     wrong path. First tried monkeypatching the module constant from
+     `portable_mapping_chain.py`, which silently did nothing (see §5's new
+     trap on default-argument binding) — the real fix threads an explicit
+     `outlook_mappings_path` parameter through, `leap_mappings` commit
+     `a7a21ba`.
+  - Every fix required committing, re-pinning the manifest to the new
+    commit, and a full two-target rebuild (~4–6 minutes each) before it
+    could be re-tested — staging reads the pinned Git blob, not the working
+    tree (see §5). Seven rebuild cycles total this session.
+  - `dashboard-from-export --economy 20_USA` now succeeds end to end against
+    the frozen package: 286,368 raw LEAP rows -> 77,724 converted ->
+    351,464 comparison rows -> 648 charts -> `dashboards/index.html`.
+  - Not attempted this session (deliberately, to leave a clean stopping
+    point rather than start a fifth unrelated sub-investigation):
+    `balance-review-from-export`'s manifest entries and frozen test (§3.5's
+    remaining scope) — it needs `esto_base_table`/`ninth_projection_table`
+    data-asset roles declared, which needs a decision about which source
+    files to pin (not obviously the same shape as the mapping-chain data
+    assets); and `docs/docx/` regeneration
+    (`python scripts/convert_docs.py --docs-dir docs`) and the architecture
+    diagram update, both still open per the original §3.5 bullet.
+  - Moved on to: updating §4 and this entry, then handing off to session 4
+    for `balance-review-from-export` manifest work and the docs pass. §3's
+    dashboard-from-export path (the actual point of this whole handover) is
+    now done, tested, and proven against a real export — session 4 should
+    treat the remaining items as cleanup, not as unblocking anything load-bearing.
