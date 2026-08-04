@@ -217,6 +217,20 @@ def test_package_ships_the_user_guide(staged_package: Path) -> None:
     assert guide.read_bytes()[:2] == b"PK"
 
 
+def test_every_staged_top_level_file_reaches_a_frozen_package() -> None:
+    """The staging -> package copy must not name files individually.
+
+    It used to copy only README.md and release_manifest.json, so the user guide
+    was written into staging and silently left behind. Anything added to the
+    package root in future would be dropped the same way.
+    """
+    source = (REPO_ROOT / "codebase" / "portable_release" / "build_release.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'for name in ("README.md", "release_manifest.json")' not in source
+    assert "for staged_file in sorted(staging_dir.iterdir())" in source
+
+
 def test_package_config_is_external_and_editable(staged_package: Path) -> None:
     config_root = staged_package / "config"
     assert (config_root / "dashboard" / "common_esto_dashboard_template.json").is_file()

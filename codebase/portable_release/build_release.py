@@ -1035,8 +1035,12 @@ def build(
         # licenses, the README, and the release manifest stay external.
         for name in ("config", "data", "input", "output", "logs", "licenses"):
             shutil.copytree(staging_dir / name, package_dir / name, dirs_exist_ok=True)
-        for name in ("README.md", "release_manifest.json"):
-            shutil.copy2(staging_dir / name, package_dir / name)
+        # Every top-level file staged, not a hardcoded list: the user guide was
+        # written into staging and then silently left behind here, because this
+        # loop named only the two files that existed when it was written.
+        for staged_file in sorted(staging_dir.iterdir()):
+            if staged_file.is_file():
+                shutil.copy2(staged_file, package_dir / staged_file.name)
         report.frozen = True
         verification = verify_frozen_package(package_dir, manifest.name)
         report.notes.append(
