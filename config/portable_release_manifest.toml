@@ -93,8 +93,49 @@ commit = "3787addfe38b4cce5b4961c8a29e4b8be580d56b"
 stage_dir = "leap_mappings"
 strip_prefix = "codebase"
 on_sys_path = true
+target = "main"
 paths = [
     "codebase/mapping_tools/source_branch_preflight.py",
+]
+
+# The mapping-chain worker's own bundle (handover §1/§3.3): a second entry for
+# the SAME checkout (source_key), staged as the real `codebase` package (no
+# strip_prefix) under its own directory so `codebase.mapping_tools.x` absolute
+# imports resolve inside the isolated worker executable. This is the 20ish
+# module closure of parse_leap_balance_export / convert_leap_results_to_esto /
+# apply_common_esto_structure / portable_mapping_chain, computed by walking
+# their absolute `codebase.*` imports (ast-based, not hand-maintained by
+# inspection - re-run that walk if the mapping chain's imports change).
+[repositories.leap_mappings_worker]
+commit = "f2b1a92f290c160fd0b4a1c101e2081ded856834"
+stage_dir = "leap_mappings_worker"
+source_key = "leap_mappings"
+on_sys_path = true
+target = "worker"
+paths = [
+    "codebase/__init__.py",
+    "codebase/mapping_issue_exceptions.py",
+    "codebase/portable_mapping_chain.py",
+    "codebase/mapping_tools/apply_common_esto_structure.py",
+    "codebase/mapping_tools/build_dataset_tree_structure.py",
+    "codebase/mapping_tools/common_esto_output_contract.py",
+    "codebase/mapping_tools/convert_leap_results_to_esto.py",
+    "codebase/mapping_tools/dataset_registry.py",
+    "codebase/mapping_tools/diagnostic_adapter_registry.py",
+    "codebase/mapping_tools/hierarchy_subtotal_adapters.py",
+    "codebase/mapping_tools/hierarchy_subtotal_contract.py",
+    "codebase/mapping_tools/mapping_candidate_generation.py",
+    "codebase/mapping_tools/mapping_sheet_registry.py",
+    "codebase/mapping_tools/non_expanding_rollups.py",
+    "codebase/mapping_tools/parse_leap_balance_export.py",
+    "codebase/mapping_tools/result_storage.py",
+    "codebase/mapping_tools/rollup_sheet_registry.py",
+    "codebase/mapping_tools/source_branch_preflight.py",
+    "codebase/mapping_tools/source_rollups.py",
+    "codebase/mapping_tools/target_share_allocation.py",
+    "codebase/mapping_tools/value_adapter_registry.py",
+    "codebase/utilities/__init__.py",
+    "codebase/utilities/leap_balance_export_resolver.py",
 ]
 
 # ---------------------------------------------------------------------------

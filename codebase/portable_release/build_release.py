@@ -60,6 +60,11 @@ DEFAULT_BUILD_ROOT = REPO_ROOT / "release_build"
 
 PACKAGE_DIRECTORIES = ("code", "config", "data", "input", "output", "logs", "licenses")
 
+#: Name of the isolated mapping-chain worker executable. Must match what
+#: codebase/portable_release/mapping_chain_client.py looks for at
+#: ``package_root / "mapping-chain" / f"{WORKER_EXECUTABLE_NAME}.exe"``.
+WORKER_EXECUTABLE_NAME = "leap-mapping-chain"
+
 
 class ReleaseBuildError(RuntimeError):
     """Raised when a release cannot be built."""
@@ -177,17 +182,25 @@ def resolve_repository_roots(
         settings_roots = dict(load_developer_settings().repositories)
     except DeveloperSettingsError:
         settings_roots = {}
-    for key in manifest.repositories:
+    for key, spec in manifest.repositories.items():
+        # A second repository entry may point at a checkout already named by
+        # another entry (leap_mappings' single flat file for the main exe vs.
+        # its full closure for the worker exe) — `source_key` says which
+        # checkout to resolve, while `key` still identifies this entry.
+        lookup_key = spec.source_key or key
         if overrides and key in overrides:
             roots[key] = Path(overrides[key])
-        elif key in settings_roots:
-            roots[key] = Path(settings_roots[key])
-        elif key in detected:
-            roots[key] = detected[key]
+        elif overrides and lookup_key in overrides:
+            roots[key] = Path(overrides[lookup_key])
+        elif lookup_key in settings_roots:
+            roots[key] = Path(settings_roots[lookup_key])
+        elif lookup_key in detected:
+            roots[key] = detected[lookup_key]
         else:
             raise ReleaseBuildError(
-                f"Could not locate a checkout of {key!r}. Add it to your developer "
-                "settings file, or pass repository_roots={...} to build()."
+                f"Could not locate a checkout of {lookup_key!r} (for repositories.{key}). "
+                "Add it to your developer settings file, or pass repository_roots={...} "
+                "to build()."
             )
     return roots
 
@@ -440,51 +453,75 @@ def _write_package_scaffold(
 # ---------------------------------------------------------------------------
 
 
+#: Hidden imports for the main review-tools executable. pandas reaches
+#: zoneinfo through a Cython module, so the dependency is invisible to static
+#: analysis and the pure-Python half of the stdlib package is otherwise left
+#: behind next to _zoneinfo.pyd — both targets need this entry.
+_ZONEINFO_HIDDEN_IMPORTS = ["'zoneinfo'", "'tzdata'"]
+
+MAIN_HIDDEN_IMPORTS = [
+    "'codebase.portable_release.commands'",
+    "'codebase.portable_release.portable_main'",
+    "'codebase.portable_release.runtime'",
+    "'codebase.portable_release.validation'",
+    "'codebase.portable_release.provenance'",
+    "'codebase.portable_release.mapping_chain_client'",
+    "'codebase.functions.balance_review_workbook_builder'",
+    "'codebase.functions.balance_review_workbooks'",
+    "'codebase.utilities.leap_balance_export_resolver'",
+    "'codebase.utilities.output_paths'",
+    "'codebase.configuration.workflow_config'",
+    "'common_esto_dashboard_portable'",
+    "'common_esto_dashboard_data'",
+    "'common_esto_dashboard_renderer'",
+    "'common_esto_dashboard_output_layout'",
+    "'mapping_tools.source_branch_preflight'",
+    *_ZONEINFO_HIDDEN_IMPORTS,
+]
+
+#: The worker's own imports are all static top-level `from codebase.x import y`
+#: statements (no importlib/dynamic loading in its closure — checked by
+#: grepping codebase/mapping_tools and codebase/utilities in leap_mappings), so
+#: PyInstaller's Analysis discovers the whole closure by following
+#: entry_point_worker.py -> codebase.portable_mapping_chain. Only the
+#: Cython-hidden stdlib dependency needs to be listed explicitly.
+WORKER_HIDDEN_IMPORTS = [
+    "'codebase.portable_mapping_chain'",
+    *_ZONEINFO_HIDDEN_IMPORTS,
+]
+
+
 def _pyinstaller_spec(
-    manifest: ReleaseManifest,
     *,
-    staging_dir: Path,
-    dist_dir: Path,
-    work_dir: Path,
+    name: str,
+    entry_point: Path,
+    stage_dirs: Sequence[Path],
+    code_root: Path,
+    hidden: Sequence[str],
 ) -> str:
     """Return a PyInstaller spec for a one-folder Windows build.
 
     A one-folder build is used rather than ``--onefile`` so the package stays
     inspectable, starts without unpacking to a temporary directory, and keeps
     ``config/`` genuinely external and editable.
+
+    Generic over which executable it builds: the caller supplies the entry
+    point, the ``sys.path`` stage directories, and the hidden-import list, so
+    the same function produces both the main review-tools executable and the
+    isolated mapping-chain worker (handover §1/§3.3) — each Analysis only ever
+    sees the stage dirs for its own target, which is what keeps the two
+    ``codebase`` packages from colliding: isolation by construction, not by
+    discipline.
     """
-    code_root = (staging_dir / "code").as_posix()
-    stage_dirs = [f"r'{(staging_dir / 'code' / name).as_posix()}'" for name in manifest.sys_path_stage_dirs()]
-    hidden = [
-        "'codebase.portable_release.commands'",
-        "'codebase.portable_release.portable_main'",
-        "'codebase.portable_release.runtime'",
-        "'codebase.portable_release.validation'",
-        "'codebase.portable_release.provenance'",
-        "'codebase.functions.balance_review_workbook_builder'",
-        "'codebase.functions.balance_review_workbooks'",
-        "'codebase.utilities.leap_balance_export_resolver'",
-        "'codebase.utilities.output_paths'",
-        "'codebase.configuration.workflow_config'",
-        "'common_esto_dashboard_portable'",
-        "'common_esto_dashboard_data'",
-        "'common_esto_dashboard_renderer'",
-        "'common_esto_dashboard_output_layout'",
-        "'mapping_tools.source_branch_preflight'",
-        # pandas reaches zoneinfo through a Cython module, so the dependency is
-        # invisible to static analysis and the pure-Python half of the stdlib
-        # package is otherwise left behind next to _zoneinfo.pyd.
-        "'zoneinfo'",
-        "'tzdata'",
-    ]
+    pathex = [f"r'{path.as_posix()}'" for path in stage_dirs] + [f"r'{code_root.as_posix()}'"]
     return f"""# Generated by codebase/portable_release/build_release.py - do not edit by hand.
 # -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
 
 a = Analysis(
-    [r'{(staging_dir / "code" / "entry_point.py").as_posix()}'],
-    pathex=[{', '.join(stage_dirs)}, r'{code_root}'],
+    [r'{entry_point.as_posix()}'],
+    pathex=[{', '.join(pathex)}],
     binaries=[],
     datas=[],
     hiddenimports=[{', '.join(hidden)}],
@@ -502,7 +539,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='{manifest.name}',
+    name='{name}',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -516,13 +553,13 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name='{manifest.name}',
+    name='{name}',
 )
 """
 
 
-def _entry_point_source(stage_dirs: Sequence[str]) -> str:
-    """Return the generated entry point for a package with these stage dirs.
+def _entry_point_source(stage_dirs: Sequence[str], *, import_line: str, call: str) -> str:
+    """Return a generated entry point for a package with these stage dirs.
 
     The stage directory names are baked in rather than discovered by scanning,
     because when this script is the frozen application's entry point its
@@ -531,7 +568,9 @@ def _entry_point_source(stage_dirs: Sequence[str]) -> str:
     third-party package internals.
 
     When frozen, the program modules are inside the bundle and ``sys.path``
-    needs no help at all.
+    needs no help at all. ``import_line``/``call`` let the same generator
+    produce both the main executable's entry point and the mapping-chain
+    worker's — each with only its own target's stage dirs on ``sys.path``.
     """
     listed = ", ".join(repr(name) for name in stage_dirs)
     return f'''"""Portable release entry point. Generated by the release builder."""
@@ -550,19 +589,40 @@ if not getattr(sys, "frozen", False):
         if _candidate not in sys.path:
             sys.path.insert(0, _candidate)
 
-from codebase.portable_release.portable_main import main
+{import_line}
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit({call})
 '''
 
 
-def _freeze(
-    manifest: ReleaseManifest,
-    staging_dir: Path,
+def _main_entry_point_source(stage_dirs: Sequence[str]) -> str:
+    return _entry_point_source(
+        stage_dirs,
+        import_line="from codebase.portable_release.portable_main import main",
+        call="main()",
+    )
+
+
+def _worker_entry_point_source(stage_dirs: Sequence[str]) -> str:
+    return _entry_point_source(
+        stage_dirs,
+        import_line="from codebase.portable_mapping_chain import main",
+        call="main()",
+    )
+
+
+def _freeze_target(
+    *,
+    name: str,
+    entry_point: Path,
+    stage_dirs: Sequence[Path],
+    code_root: Path,
+    hidden: Sequence[str],
     build_root: Path,
+    label: str,
 ) -> tuple[Path, list[str]]:
-    """Run PyInstaller and return the built package folder.
+    """Run PyInstaller for one executable target and return its built folder.
 
     PyInstaller resolves imports through the *build process's* own import
     environment as well as the spec's ``pathex``. Running it in-process from a
@@ -572,7 +632,11 @@ def _freeze(
     it fails at start-up on a machine with no LEAP COM API.
 
     So it runs as a subprocess, from a directory that contains none of the
-    repositories, with ``PYTHONPATH``/``PYTHONHOME`` stripped.
+    repositories, with ``PYTHONPATH``/``PYTHONHOME`` stripped. Each target
+    (``label``) gets its own isolated cwd, spec, dist, and work directory so a
+    concurrent or sequential second build cannot see the first target's
+    intermediate state — this is also what stops the worker's Analysis from
+    ever seeing the main target's stage dirs, and vice versa.
     """
     notes: list[str] = []
     try:
@@ -585,17 +649,19 @@ def _freeze(
             "or call build(freeze=False) to produce the staged folder only."
         ) from exc
 
-    dist_dir = build_root / "dist"
-    work_dir = build_root / "pyinstaller_work"
-    isolation_dir = build_root / "pyinstaller_cwd"
+    target_root = build_root / label
+    dist_dir = target_root / "dist"
+    work_dir = target_root / "pyinstaller_work"
+    isolation_dir = target_root / "pyinstaller_cwd"
     isolation_dir.mkdir(parents=True, exist_ok=True)
-    spec_path = build_root / f"{manifest.name}.spec"
+    spec_path = target_root / f"{name}.spec"
     spec_path.write_text(
         _pyinstaller_spec(
-            manifest,
-            staging_dir=staging_dir,
-            dist_dir=dist_dir,
-            work_dir=work_dir,
+            name=name,
+            entry_point=entry_point,
+            stage_dirs=stage_dirs,
+            code_root=code_root,
+            hidden=hidden,
         ),
         encoding="utf-8",
     )
@@ -624,7 +690,7 @@ def _freeze(
         text=True,
         check=False,
     )
-    log_path = build_root / "pyinstaller.log"
+    log_path = target_root / "pyinstaller.log"
     log_path.write_text(
         f"$ {' '.join([sys.executable, '-m', 'PyInstaller', str(spec_path)])}\n"
         f"cwd={isolation_dir}\nexit={result.returncode}\n\n"
@@ -633,14 +699,14 @@ def _freeze(
     )
     if result.returncode != 0:
         raise ReleaseBuildError(
-            f"PyInstaller failed (exit {result.returncode}). Full log: {log_path}\n"
-            + "\n".join(result.stderr.splitlines()[-20:])
+            f"PyInstaller failed for {label!r} target (exit {result.returncode}). "
+            f"Full log: {log_path}\n" + "\n".join(result.stderr.splitlines()[-20:])
         )
-    built = dist_dir / manifest.name
+    built = dist_dir / name
     if not built.is_dir():
         raise ReleaseBuildError(f"PyInstaller did not produce {built}.")
-    notes.append(f"PyInstaller spec: {spec_path}")
-    notes.append(f"PyInstaller log: {log_path}")
+    notes.append(f"PyInstaller spec ({label}): {spec_path}")
+    notes.append(f"PyInstaller log ({label}): {log_path}")
     return built, notes
 
 
@@ -688,6 +754,49 @@ def verify_frozen_package(package_root: Path, executable_name: str) -> dict[str,
         "executable": str(executable),
         "selfcheck": outputs["selfcheck"].strip().splitlines()[-1].strip(),
     }
+
+
+def verify_frozen_worker(worker_root: Path, executable_name: str) -> dict[str, Any]:
+    """Run the built mapping-chain worker's ``--self-test`` and check its JSON.
+
+    Mirrors :func:`verify_frozen_package`: run from a directory unrelated to any
+    repository, with ``PYTHONPATH`` stripped, so a worker whose Analysis leaked
+    into the main target's ``codebase`` package (or failed to bundle its own)
+    fails here instead of on a colleague's machine.
+    """
+    executable = worker_root / f"{executable_name}.exe"
+    if not executable.is_file():
+        executable = worker_root / executable_name
+    if not executable.is_file():
+        raise ReleaseBuildError(f"No worker executable found in {worker_root}.")
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key.upper() not in {"PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP"}
+    }
+    result = subprocess.run(
+        [str(executable), "--self-test"],
+        cwd=str(worker_root.parent),
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise ReleaseBuildError(
+            f"The mapping-chain worker failed `--self-test`:\n"
+            + (result.stdout + "\n" + result.stderr).strip()[-4000:]
+        )
+    try:
+        payload = json.loads(result.stdout.strip().splitlines()[-1])
+    except (json.JSONDecodeError, IndexError) as exc:
+        raise ReleaseBuildError(
+            f"The mapping-chain worker's --self-test output was not valid JSON: {exc}\n"
+            f"Raw output: {result.stdout[:2000]}"
+        ) from exc
+    if not payload.get("ok"):
+        raise ReleaseBuildError(f"The mapping-chain worker reported not ok: {payload}")
+    return {"executable": str(executable), "self_test": payload}
 
 
 # ---------------------------------------------------------------------------
@@ -790,9 +899,15 @@ def build(
     config_files = _stage_config_assets(manifest, roots, config_root)
     data_files = _stage_data_assets(manifest, roots, staging_dir / "data")
     (code_root / "entry_point.py").write_text(
-        _entry_point_source(manifest.sys_path_stage_dirs()),
+        _main_entry_point_source(manifest.sys_path_stage_dirs("main")),
         encoding="utf-8",
     )
+    has_worker_target = bool(manifest.repositories_for_target("worker"))
+    if has_worker_target:
+        (code_root / "entry_point_worker.py").write_text(
+            _worker_entry_point_source(manifest.sys_path_stage_dirs("worker")),
+            encoding="utf-8",
+        )
 
     frozen_manifest = manifest.to_frozen_dict()
     frozen_manifest["built_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -817,7 +932,16 @@ def build(
 
     package_dir = staging_dir
     if freeze:
-        built, notes = _freeze(manifest, staging_dir, build_dir)
+        main_stage_dirs = [code_root / d for d in manifest.sys_path_stage_dirs("main")]
+        built, notes = _freeze_target(
+            name=manifest.name,
+            entry_point=code_root / "entry_point.py",
+            stage_dirs=main_stage_dirs,
+            code_root=code_root,
+            hidden=MAIN_HIDDEN_IMPORTS,
+            build_root=build_dir,
+            label="main",
+        )
         report.notes.extend(notes)
         package_dir = build_dir / "package" / manifest.package_stem
         if package_dir.exists():
@@ -836,6 +960,33 @@ def build(
             f"Executable info + selfcheck passed: {verification['executable']} "
             f"({verification['selfcheck']})"
         )
+
+        if has_worker_target:
+            worker_stage_dirs = [code_root / d for d in manifest.sys_path_stage_dirs("worker")]
+            worker_built, worker_notes = _freeze_target(
+                name=WORKER_EXECUTABLE_NAME,
+                entry_point=code_root / "entry_point_worker.py",
+                stage_dirs=worker_stage_dirs,
+                code_root=code_root,
+                hidden=WORKER_HIDDEN_IMPORTS,
+                build_root=build_dir,
+                label="worker",
+            )
+            report.notes.extend(worker_notes)
+            worker_package_dir = package_dir / "mapping-chain"
+            if worker_package_dir.exists():
+                shutil.rmtree(worker_package_dir)
+            shutil.copytree(worker_built, worker_package_dir)
+            worker_verification = verify_frozen_worker(worker_package_dir, WORKER_EXECUTABLE_NAME)
+            report.notes.append(
+                f"Mapping-chain worker --self-test passed: "
+                f"{worker_verification['executable']} ({worker_verification['self_test']})"
+            )
+        else:
+            report.notes.append(
+                "No repositories declared target = \"worker\" in the manifest; "
+                "the mapping-chain worker executable was not built (handover §3.4)."
+            )
 
     report.package_dir = package_dir
     inspection = inspect_package(package_dir)

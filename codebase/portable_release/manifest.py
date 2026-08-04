@@ -90,6 +90,10 @@ ALLOWED_DATA_SUFFIXES = frozenset({".csv", ".gz", ".xlsx"})
 
 VALID_INPUT_KINDS = frozenset({"file", "directory"})
 
+#: The two PyInstaller executables a release builds (handover §1/§3.3): the
+#: main review-tools executable, and the isolated mapping-chain worker.
+RELEASE_TARGETS = frozenset({"main", "worker"})
+
 
 class ReleaseManifestError(ValueError):
     """Raised when a release manifest is malformed or fails validation."""
@@ -113,6 +117,17 @@ class RepositorySpec:
     strip_prefix: str = ""
     #: Whether the staged directory is added to the packaged app's ``sys.path``.
     on_sys_path: bool = True
+    #: Which PyInstaller executable this repository's files are bundled into.
+    #: ``"main"`` is the review-tools executable; ``"worker"`` is the isolated
+    #: mapping-chain worker (see the handover's two-executable decision, §1).
+    #: Two repository entries may point at the same checkout with different
+    #: targets — that's how leap_mappings' single flat file for the main exe
+    #: and its full closure for the worker exe coexist.
+    target: str = "main"
+    #: Repository key to resolve the checkout path from, when it differs from
+    #: ``key`` (e.g. a second entry for the same checkout aimed at the worker
+    #: target). Empty means "same as key".
+    source_key: str = ""
 
     def staged_relative_path(self, path: str) -> PurePosixPath:
         """Return the path of *path* inside the package, relative to the stage root."""
@@ -203,10 +218,15 @@ class ReleaseManifest:
         available = ", ".join(sorted(spec.name for spec in self.commands))
         raise KeyError(f"Unknown command {name!r}. Available commands: {available}")
 
-    def sys_path_stage_dirs(self) -> tuple[str, ...]:
+    def sys_path_stage_dirs(self, target: str = "main") -> tuple[str, ...]:
         return tuple(
-            spec.stage_dir for spec in self.repositories.values() if spec.on_sys_path
+            spec.stage_dir
+            for spec in self.repositories.values()
+            if spec.on_sys_path and spec.target == target
         )
+
+    def repositories_for_target(self, target: str) -> dict[str, "RepositorySpec"]:
+        return {key: spec for key, spec in self.repositories.items() if spec.target == target}
 
     def to_frozen_dict(self) -> dict[str, Any]:
         """Return the JSON-serialisable form written into a built package."""
@@ -227,6 +247,7 @@ class ReleaseManifest:
                     "stage_dir": spec.stage_dir,
                     "strip_prefix": spec.strip_prefix,
                     "on_sys_path": spec.on_sys_path,
+                    "target": spec.target,
                     "paths": list(spec.paths),
                 }
                 for key, spec in self.repositories.items()
@@ -318,6 +339,8 @@ def parse_release_manifest(text: str, *, source_path: Path | None = None) -> Rel
             paths=_as_str_tuple(_require(block, "paths", context), f"{context}.paths"),
             strip_prefix=str(block.get("strip_prefix", "")),
             on_sys_path=bool(block.get("on_sys_path", True)),
+            target=str(block.get("target", "main")),
+            source_key=str(block.get("source_key", "")),
         )
 
     config_assets: list[ConfigAssetSpec] = []
@@ -545,6 +568,11 @@ def validate_release_manifest(
             )
         else:
             stage_dirs[spec.stage_dir] = key
+
+        if spec.target not in RELEASE_TARGETS:
+            errors.append(
+                f"{context}.target {spec.target!r} must be one of {sorted(RELEASE_TARGETS)}."
+            )
 
         if not spec.paths:
             errors.append(f"{context}.paths must not be empty.")

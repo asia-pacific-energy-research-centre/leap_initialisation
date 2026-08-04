@@ -200,12 +200,22 @@ def test_entry_point_imports_nothing_from_the_live_repositories(
     staged_package: Path,
     tmp_path: Path,
 ) -> None:
+    # Only the main target's own STAGE_DIRS go on sys.path here, exactly as
+    # entry_point.py does at run time. Scanning every directory under code/
+    # would also pick up the mapping-chain worker's own `codebase` package
+    # (leap_mappings_worker/codebase/...), which must never share a process
+    # with the main target's `codebase` package (handover §1) - that they
+    # cannot coexist on one sys.path is the isolation this test is meant to
+    # prove, not something to route around.
     probe = tmp_path / "probe.py"
     probe.write_text(
-        "import json, sys\n"
+        "import json, re, sys\n"
         "from pathlib import Path\n"
         "here = Path(sys.argv[1]) / 'code'\n"
-        "for name in sorted(p.name for p in here.iterdir() if p.is_dir()):\n"
+        "entry_source = (here / 'entry_point.py').read_text(encoding='utf-8')\n"
+        "match = re.search(r'STAGE_DIRS = \\[(.*?)\\]', entry_source)\n"
+        "stage_dirs = eval('[' + match.group(1) + ']')\n"
+        "for name in reversed(stage_dirs):\n"
         "    sys.path.insert(0, str(here / name))\n"
         "from codebase.portable_release import commands, portable_main, runtime, validation\n"
         "import common_esto_dashboard_portable\n"
@@ -323,7 +333,12 @@ def test_run_manifest_records_release_commits_and_input_hashes(portable_run) -> 
     )
     assert manifest["mode"] == "portable"
     assert manifest["status"] == "succeeded"
-    assert set(manifest["release_commits"]) == set(LIVE_REPOSITORY_ROOTS)
+    # release_commits has one entry per manifest repository entry, which may
+    # outnumber the checkouts in LIVE_REPOSITORY_ROOTS - e.g. the mapping-chain
+    # worker's leap_mappings_worker entry (handover §1/§3.3) is a second entry
+    # for the same leap_mappings checkout, pinned separately for its own
+    # bundle.
+    assert set(LIVE_REPOSITORY_ROOTS) <= set(manifest["release_commits"])
     assert all(len(commit) == 40 for commit in manifest["release_commits"].values())
     # Developer-mode-only fields stay empty in a portable run.
     assert manifest["repositories"] == []
