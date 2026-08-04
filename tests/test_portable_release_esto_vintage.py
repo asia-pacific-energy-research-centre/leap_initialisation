@@ -123,3 +123,45 @@ def test_the_2025_table_reports_base_year_2023() -> None:
     # Proves the derivation actually tracks the issue rather than returning a
     # constant that happens to match the table in use today.
     assert infer_esto_vintage(ESTO_2025).base_year == 2023
+
+
+# ---------------------------------------------------------------------------
+# Review year against the supplied vintage
+# ---------------------------------------------------------------------------
+
+
+def _year_check(year: int, table: Path, packaged: Path):
+    from codebase.portable_release import validation
+
+    report = validation.ValidationReport(command="probe")
+    report.facts["year"] = year
+    validation._check_esto_vintage(
+        report, table, packaged_esto_table=packaged, is_user_supplied=True
+    )
+    return report
+
+
+@pytest.mark.skipif(
+    not (ESTO_2024.is_file() and ESTO_2025.is_file()), reason="ESTO tables not present"
+)
+def test_a_year_before_the_supplied_base_year_is_caught_with_the_answer() -> None:
+    """Moving to a newer ESTO issue moves the year you can review.
+
+    Left to the diagnostics step, this surfaces as "pre-base historical years
+    are not yet supported", which does not say that the base year moved or what
+    to ask for instead - exactly the position a user is in the first time they
+    supply a newer table.
+    """
+    report = _year_check(2022, ESTO_2025, ESTO_2024)
+    assert not report.ok
+    detail = next(c.detail for c in report.checks if not c.ok)
+    assert "starts its comparison at 2023" in detail
+    assert "--year 2023" in detail
+
+
+@pytest.mark.skipif(
+    not (ESTO_2024.is_file() and ESTO_2025.is_file()), reason="ESTO tables not present"
+)
+def test_the_base_year_of_the_supplied_table_is_accepted() -> None:
+    assert _year_check(2023, ESTO_2025, ESTO_2024).ok
+    assert _year_check(2022, ESTO_2024, ESTO_2024).ok

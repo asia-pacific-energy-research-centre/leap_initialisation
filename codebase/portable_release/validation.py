@@ -669,6 +669,24 @@ def _check_esto_vintage(
     report.facts["esto_vintage_years"] = vintage.label
     report.add("esto_vintage", True, vintage.describe())
 
+    # A new ESTO issue moves the base year, and the diagnostics step cannot
+    # review a year before it. Left to the step itself, the refusal says
+    # "pre-base historical years are not yet supported" without mentioning that
+    # the base year moved or what to ask for instead - which is exactly the
+    # situation a user is in the first time they supply a newer table.
+    requested_year = report.facts.get("year")
+    if isinstance(requested_year, int) and requested_year < vintage.base_year:
+        report.add(
+            "year_within_esto_vintage",
+            False,
+            f"You asked to review {requested_year}, but this ESTO data starts its "
+            f"comparison at {vintage.base_year}.\n"
+            f"    {vintage.path.name} covers {vintage.label}, so {vintage.base_year} "
+            "is its base year and the earliest year that can be reviewed.\n"
+            f"    Re-run with --year {vintage.base_year}, or use an ESTO file whose "
+            f"base year is {requested_year}.",
+        )
+
     if not is_user_supplied or not packaged_esto_table:
         return
     try:
