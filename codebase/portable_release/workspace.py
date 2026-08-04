@@ -234,13 +234,21 @@ def describe_workspace(
         # Suggest the base year rather than the horizon end: a balance review is
         # normally run against the year the model was calibrated on.
         example_year = _suggested_review_year(example.years)
+        # Suggest the export-first commands: someone reading this has exports in
+        # the folder, and those are the commands that need nothing else. The
+        # plain `balance-review` and `dashboard` commands take a diagnostics
+        # folder or a prepared comparison file, which such a user does not have.
+        example_scenario = (
+            example.workbooks[0].scenario if example.workbooks else "Target"
+        )
         lines += [
-            "Run a balance review:",
-            f"  leap-review-tools.exe balance-review --economy {example.economy} "
+            "Build a balance-review workbook:",
+            f"  leap-review-tools.exe balance-review-from-export "
+            f"--economy {example.economy} --scenario {example_scenario} "
             f"--year {example_year}",
             "",
             "Render a dashboard from every export for one economy:",
-            f"  leap-review-tools.exe dashboard --economy {example.economy}",
+            f"  leap-review-tools.exe dashboard-from-export --economy {example.economy}",
         ]
     return "\n".join(lines)
 

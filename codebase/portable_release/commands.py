@@ -515,6 +515,20 @@ def run_balance_review_from_export(
         built = outcome["review_workbooks"][0]
         built.pop("reconciliationSamples", None)
 
+        # The diagnostics workflow writes the workbook under its own
+        # diagnostics/comparison_workbooks/ tree. That is the right shape for a
+        # maintainer's run and the wrong one here: the workbook is the whole
+        # point of the command, and burying it two folders below the supporting
+        # CSVs makes a user hunt for it. Lift it to the deliverable folder and
+        # leave the diagnostics beside it.
+        produced = Path(str(built["outputWorkbook"]))
+        if produced.is_file() and produced.parent != run_dir:
+            final = run_dir / produced.name
+            if final.exists():
+                final.unlink()
+            produced.replace(final)
+            built["outputWorkbook"] = str(final)
+
         input_records = [describe_file(workbook_path, role="input:balance_export_workbook")]
         if supplied_esto is not None:
             input_records.append(

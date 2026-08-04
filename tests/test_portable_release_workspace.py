@@ -113,8 +113,12 @@ def test_describe_workspace_lists_runnable_commands(tmp_path: Path) -> None:
 
     text = workspace.describe_workspace(root)
     assert "20_USA" in text
-    assert "balance-review --economy 20_USA --year 2022" in text
-    assert "dashboard --economy 20_USA" in text
+    # The export-first commands, not the ones needing a diagnostics folder or a
+    # prepared comparison file: a reader of this listing has neither.
+    assert "balance-review-from-export --economy 20_USA" in text
+    assert "--scenario Target" in text
+    assert "--year 2022" in text
+    assert "dashboard-from-export --economy 20_USA" in text
 
 
 def test_output_paths_are_per_economy(tmp_path: Path) -> None:
