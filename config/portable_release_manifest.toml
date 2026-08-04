@@ -166,7 +166,7 @@ paths = [
 # packages into the worker to reach one module. Omitted, each becomes an implicit
 # namespace package (PEP 420) and the submodule imports on its own - verified.
 [repositories.leap_mappings_worker]
-commit = "2e9b75726541f21051ba367f2f0efacba98aa8eb"
+commit = "7d1936ce0db4c94e0c65b9c8585fda9154a67456"
 stage_dir = "leap_mappings_worker"
 source_key = "leap_mappings"
 on_sys_path = true
