@@ -409,20 +409,25 @@ base-year snapshot and must cover 2022. Reference and Target are projection
 scenarios and must cover 2023 through 2060. Configuration is centralized in
 `workflow_config.py`.
 
-Process Efficiency uses gross output divided by feedstock. When a process
-consumes a fuel that is also one of its outputs, deliverable output subtracts
-that same-module auxiliary use, capped at the matching fuel's gross output.
-Any auxiliary energy above that gross output remains an external auxiliary
-input. Exogenous Capacity and Output Share use deliverable output, while
-Auxiliary Fuel Use is rebased to deliverable output. A fully self-consuming
-zero-net process temporarily preserves its gross representation because an
-auxiliary-per-zero-output expression is undefined.
+Process Efficiency uses gross output divided by feedstock. Oil Refining also
+uses that same gross `09.07` output basis for Exogenous Capacity, Historical
+Production, Output Share, and the denominator of Auxiliary Fuel Use. LEAP
+records `10.01.11` auxiliary consumption separately, so pre-netting refinery
+outputs and then applying their shares to gross capacity would count the
+boundary adjustment twice. Other transformation records retain the existing
+net-deliverable overlap handling until separately reviewed. A fully
+self-consuming zero-net non-refinery process temporarily preserves its gross
+representation because an auxiliary-per-zero-output expression is undefined.
 
 ### History
 
 - 2026-06-28: Confirmed 2022 base year, 2060 final year, and retention of the refining Historical Production capacity heuristic.
 - 2026-07-28: Retired the refining-only capacity heuristic and applied the
   shared process boundary to Oil Refining and other transformation records.
+- 2026-08-04: Restored one consistent gross basis for Oil Refining after a USA
+  2022 LEAP cycle showed that gross capacity combined with net output shares
+  and net-denominator auxiliary ratios inflated ordinary outputs and auxiliary
+  use by exactly `gross output / net deliverable output`.
 
 ## INIT-007: Fixed-technology transformation modules are locked at base-year output
 

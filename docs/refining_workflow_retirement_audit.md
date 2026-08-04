@@ -4,6 +4,12 @@ Date: 2026-07-28
 
 Implementation status: completed 2026-07-28.
 
+2026-08-04 correction: the later USA 2022 LEAP round trip disproved the
+net-capacity portion of this audit. Oil Refining now keeps capacity, output
+shares, auxiliary ratios, and efficiency on one gross `09.07` output basis;
+LEAP applies the separate `10.01.11` auxiliary consumption. The historical
+sequence below is retained to explain the superseded design.
+
 ## Decision
 
 Retire `codebase/refining_workflow.py` from the active workflow surface and

@@ -1,5 +1,23 @@
 # Remaining work queue
 
+## [30] Verify the corrected Oil Refining gross process boundary
+
+**Status: code and focused regression coverage completed 2026-08-04; USA
+refining-only patch and fresh LEAP round trip pending.**
+
+The USA Target 2022 balance export proved that the refinery seed mixed gross
+Exogenous Capacity (`34,101.290 PJ`) with Output Shares and Auxiliary Fuel Use
+ratios based on net deliverable output (`33,055.857 PJ`). LEAP consequently
+inflated ordinary refinery products and most auxiliary inputs by the exact
+factor `34,101.290 / 33,055.857 = 1.031626`.
+
+Oil Refining now keeps `09.07` output, capacity, output shares, auxiliary-ratio
+denominators, and gross-output/feedstock efficiency on one gross basis. The
+combined regression reconstructs `09.07 + 10.01.11` fuel by fuel, rather than
+testing each seed variable independently. Patch the latest `20_USA` seed with
+the supported workbook-based `oil_refineries` patch route, import/recalculate
+in LEAP, export a fresh 2022 balance, and rerun the balance-review diagnostic.
+
 ## [29] Qualify the central baseline-seed final-artifact gate on real runs
 
 **Status: audit implementation and existing-NZ-artifact requalification

@@ -913,13 +913,16 @@ def _normalize_process_boundary_for_leap(
     output_values,
     auxiliary_ratios,
     value_tolerance=1e-9,
+    preserve_gross_output_basis=False,
 ):
     """Return LEAP-facing net outputs and rebased auxiliary ratios.
 
-    ESTO transformation output is gross. When a module also consumes one of
-    its output fuels as auxiliary energy, LEAP-facing capacity and output
-    shares must use the remaining deliverable output. Efficiency continues to
-    use the untouched gross output and feedstock values.
+    ESTO transformation output is gross. Most legacy transformation records
+    use a net-deliverable boundary when a module also consumes one of its
+    output fuels as auxiliary energy. Oil refining instead preserves one
+    consistent gross basis for capacity, output shares, auxiliary ratios, and
+    efficiency; LEAP then records the auxiliary consumption separately in the
+    module balance.
 
     A fully self-consuming process has no valid auxiliary-per-net-output
     denominator. Preserve its gross representation until that edge case has a
@@ -1082,6 +1085,16 @@ def _normalize_process_boundary_for_leap(
             }
             for label in normalized_auxiliary_ratios
         }
+        if preserve_gross_output_basis:
+            return {
+                "output_values": gross_output_values,
+                "auxiliary_ratios": raw_auxiliary_ratios,
+                "gross_output_values": gross_output_values,
+                "auxiliary_energy_values": auxiliary_energy_values,
+                "same_module_auxiliary_values": same_module_auxiliary_values,
+                "external_auxiliary_energy_values": external_auxiliary_energy_values,
+                "status": "gross_output_with_separate_auxiliary_use",
+            }
         return {
             "output_values": net_output_values,
             "auxiliary_ratios": rebased_auxiliary_ratios,
@@ -1137,6 +1150,9 @@ def build_process_record(
         leap_boundary = _normalize_process_boundary_for_leap(
             output_values,
             auxiliary_ratios,
+            preserve_gross_output_basis=(
+                str(sector_title or "").strip().casefold() == "oil refining"
+            ),
         )
         return {
             "economy": economy,
