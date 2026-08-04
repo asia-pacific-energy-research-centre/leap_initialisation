@@ -199,21 +199,23 @@ POWER_INTERIM_ALLOWED_WORKBOOK_ONLY_LABELS: frozenset[str] = frozenset({
 _ESTO_PRODUCT_TO_NINTH_FUEL: dict[str, str] | None = None
 _POWER_INTERIM_DISPLAY_NAME_MAP: dict[str, str] | None = None
 
-# The 9th-data fuel code "01_x_thermal_coal" is a genuine aggregate: it has no
-# sub-fuel breakdown in the projection dataset, yet leap_display_names carries
-# three conflicting display names for it (Anthracite, Other bituminous coal,
-# Sub bituminous coal) and the LEAP export template expects all three as
-# separate branches. Rather than silently collapsing the whole projected
-# total onto whichever display name wins the canonical loader's first-match
-# rule (Anthracite), split it across the underlying ESTO products using each
-# economy's base-year ESTO share. Keyed by the raw 9th fuel code; values are
-# the exact ESTO product labels (as they appear in "ninth fuel to esto
-# product") that the code aggregates.
+# These 9th-data fuel codes are genuine aggregates: they have no sub-fuel
+# breakdown in the projection dataset, yet ESTO and the LEAP export template
+# distinguish their underlying products.  Rather than silently collapsing a
+# projected aggregate onto whichever display name wins the canonical loader's
+# first-match rule (for example, Bitumen for other petroleum products), split
+# it across the underlying ESTO products using each economy's base-year ESTO
+# share. Keyed by raw 9th fuel code; values are exact ESTO product labels.
 AMBIGUOUS_NINTH_FUEL_ESTO_SPLITS: dict[str, list[str]] = {
     "01_x_thermal_coal": [
         "01.02 Other bituminous coal",
         "01.03 Sub-bituminous coal",
         "01.04 Anthracite",
+    ],
+    "07_x_other_petroleum_products": [
+        "07.14 Bitumen",
+        "07.16 Petroleum coke",
+        "07.17 Other products",
     ],
 }
 
