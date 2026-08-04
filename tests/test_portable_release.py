@@ -788,8 +788,16 @@ def test_balance_review_from_export_passes_packaged_mapping_pairs(
     mapping = tmp_path / "mapping.xlsx"
     esto = tmp_path / "esto.csv"
     ninth = tmp_path / "ninth.csv"
-    for path in (export, mapping, esto, ninth):
+    for path in (export, mapping, ninth):
         path.write_text("fixture", encoding="utf-8")
+    # The ESTO stub needs real year columns: the command derives the base year
+    # from the table's last year column rather than using a hardcoded constant,
+    # so a contentless stub is no longer a usable ESTO table.
+    esto.write_text(
+        "economy,flows,products,is_subtotal,2020,2021,2022\n"
+        "01AUS,01 Production,17 Electricity,FALSE,0,0,0\n",
+        encoding="utf-8",
+    )
 
     context = RuntimeContext(
         mode="portable",

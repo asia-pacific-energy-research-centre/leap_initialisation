@@ -581,6 +581,14 @@ def validate_balance_review_from_export_inputs(
     report.facts["esto_table_is_user_supplied"] = bool(esto_table_path)
 
     if esto_ok and active_esto is not None:
+        _check_esto_vintage(
+            report,
+            Path(str(active_esto)),
+            packaged_esto_table=bundled_esto_table,
+            is_user_supplied=bool(esto_table_path),
+        )
+
+    if esto_ok and active_esto is not None:
         esto_path = Path(str(active_esto))
         if _check_columns(
             report,
@@ -632,6 +640,46 @@ def _check_balance_export_level2(report: ValidationReport, workbook_path: Path) 
         "branch rows). Re-export it with at least Level 2 detail, or the "
         "comparison will have no sector detail to work with.",
     )
+
+
+def _check_esto_vintage(
+    report: ValidationReport,
+    active_esto: Path,
+    *,
+    packaged_esto_table: Path | str | None,
+    is_user_supplied: bool,
+) -> None:
+    """Report the base year in use, and refuse a run that mixes ESTO issues.
+
+    The base year is derived from the table rather than configured, so a new
+    ESTO issue moves it automatically. The failure this guards against is
+    subtler: a supplied table from a newer issue works for the balance review
+    but not for the dashboard, whose comparison data was prepared from the
+    issue the release was built on. Without this the mismatch is invisible.
+    """
+    from codebase.portable_release import esto_vintage as vintage_module
+
+    try:
+        vintage = vintage_module.infer_esto_vintage(active_esto)
+    except vintage_module.EstoVintageError as exc:
+        report.add("esto_vintage", False, str(exc))
+        return
+
+    report.facts["esto_base_year"] = vintage.base_year
+    report.facts["esto_vintage_years"] = vintage.label
+    report.add("esto_vintage", True, vintage.describe())
+
+    if not is_user_supplied or not packaged_esto_table:
+        return
+    try:
+        packaged = vintage_module.infer_esto_vintage(Path(str(packaged_esto_table)))
+    except vintage_module.EstoVintageError:
+        return
+    for problem in vintage_module.check_vintage_consistency(
+        supplied=vintage,
+        packaged_base_year=packaged.base_year,
+    ):
+        report.add("esto_vintage_consistency", False, problem)
 
 
 def _check_esto_vocabulary(

@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from codebase.portable_release import validation, workspace
+from codebase.portable_release import esto_vintage, validation, workspace
 from codebase.portable_release.provenance import (
     RunManifest,
     describe_directory_files,
@@ -464,6 +464,12 @@ def run_balance_review_from_export(
         scenario_name = validation.normalize_scenario(scenario)
         esto_table = supplied_esto or context.require_data_asset("esto_base_table")
 
+        # The base year is a property of the ESTO table - its last year column -
+        # not a separate setting. Deriving it here means a new ESTO issue moves
+        # the base year on its own, instead of needing three hardcoded constants
+        # edited in two repositories.
+        vintage = esto_vintage.infer_esto_vintage(esto_table)
+
         diagnostic_paths: dict[str, Any] = {
             "esto_table_path": esto_table,
             "projection_table_path": context.require_data_asset("ninth_projection_table"),
@@ -500,6 +506,7 @@ def run_balance_review_from_export(
             workbook_paths_by_economy={economy_code: workbook_path},
             diagnostic_runner=partial(
                 run_baseline_seed_balance_diagnostics,
+                base_year=vintage.base_year,
                 **diagnostic_paths,
             ),
         )
@@ -522,6 +529,8 @@ def run_balance_review_from_export(
             "year": int(year),
             "esto_table_used": str(esto_table),
             "esto_table_is_user_supplied": supplied_esto is not None,
+            "esto_vintage_years": vintage.label,
+            "esto_base_year": vintage.base_year,
             "build_result": built,
         }
 
