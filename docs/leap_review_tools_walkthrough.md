@@ -1,7 +1,7 @@
 ---
 title: "LEAP Review Tools"
 subtitle: "How the process works, and how to use it"
-date: "3 August 2026"
+date: "4 August 2026"
 ---
 
 # What this is
@@ -26,7 +26,7 @@ program with two ways of finding its own parts.
 ```mermaid
 flowchart TB
     subgraph shared["One shared implementation"]
-        CMD["commands.py<br/>balance-review · dashboard"]
+        CMD["commands.py<br/>balance review · dashboard<br/>including export-first commands"]
         VAL["validation.py<br/>plain-language input checks"]
         PROV["provenance.py<br/>run manifest"]
         CMD --> VAL
@@ -40,7 +40,7 @@ flowchart TB
     POR -->|"RuntimeContext<br/>pointing inside the package"| CMD
 
     DEVSRC["leap_initialisation<br/>leap_mappings<br/>leap_dashboard<br/><i>working copies</i>"]
-    PORSRC["code bundled in the .exe<br/>config/ beside it<br/><i>pinned commits</i>"]
+    PORSRC["main code bundled in leap-review-tools.exe<br/>mapping code in mapping-chain/leap-mapping-chain.exe<br/>config/ + data/ beside them<br/><i>pinned commits and hashes</i>"]
 
     DEVSRC -.-> DEV
     PORSRC -.-> POR
@@ -66,13 +66,13 @@ computed by a separate **balance diagnostics** step, which reads the export
 alongside the mapping codebook and the ESTO and 9th-edition source tables.
 
 A fresh LEAP export is enough to produce a workbook. Getting there is two steps,
-not one, and only the second is in the portable release.
+and `balance-review-from-export` runs both in developer and portable modes.
 
 ```mermaid
 flowchart LR
     LEAP["LEAP model"] -->|"Energy Balance export<br/>(Level 2+)"| XLSX["balance export<br/>.xlsx"]
 
-    subgraph step1["Step 1 — balance diagnostics (developer mode)"]
+    subgraph step1["Step 1 — balance diagnostics (developer + portable)"]
         MAP["mapping codebook<br/>478 KB"]
         ESTO["ESTO base table<br/>26 MB"]
         NINTH["9th projection table<br/>288 MB"]
@@ -104,11 +104,10 @@ goes straight to a workbook.
 writes values back into LEAP and is a separate, optional activity; producing a
 review workbook does not involve it.
 
-The portable release ships step 2 only, and the reason is **data size**: step 1
-reads 314 MB of source tables, which would take the download from roughly
-110 MB to roughly 450 MB. Step 1 is otherwise read-only with no LEAP COM
-dependency at run time, so including it is a size decision rather than a
-technical blocker.
+The portable release ships both steps. It is consequently large: step 1 needs
+the ESTO base table and the all-economy 9th-edition projection table. Those
+read-only inputs are pinned by SHA-256 in the release manifest, and neither step
+needs LEAP COM or a results-update run.
 
 The workbook that comes out has five sheets:
 
@@ -124,8 +123,10 @@ The workbook that comes out has five sheets:
 
 ```mermaid
 flowchart LR
-    PIPE["leap_mappings pipeline"] --> CD["common_esto_comparison_data.csv<br/><i>~1 GB for all economies</i>"]
-    PIPE --> CR["common_esto_rows.csv"]
+    XLSX["LEAP Energy Balance exports"] --> WORKER["mapping-chain/<br/>leap-mapping-chain.exe"]
+    ART["pinned mapping artifacts<br/>+ canonical mapping config"] --> WORKER
+    WORKER --> CD["economy comparison data"]
+    WORKER --> CR["common_esto_rows.csv"]
 
     CD --> DASH["dashboard command"]
     CR --> DASH
@@ -138,10 +139,10 @@ flowchart LR
     DASH --> MAN["chart_manifest.csv"]
 ```
 
-The comparison file is close to a gigabyte for the full economy set, so it is a
-**run input**, not part of the package. Validation streams it row by row rather
-than loading it, so asking for an economy it does not contain is reported in
-seconds rather than after a long load.
+`dashboard-from-export` avoids transferring the full all-economy comparison
+file: the isolated mapping worker builds the requested economy's comparison
+data from the exports. The older `dashboard` command remains as an escape hatch
+for an existing comparison file.
 
 Three dashboard pages are deliberately **not** in the portable release — the
 mapping-diagnostics page, the full mapping tree explorer, and the capacity-unmet
@@ -281,7 +282,9 @@ Extract the folder anywhere and run the executable. There is no installer.
 leap-review-tools-0.1.0/
   leap-review-tools.exe      the program
   _internal/                 its bundled Python runtime — do not edit
+  mapping-chain/             isolated mapping worker executable + runtime
   config/                    approved mapping and template files — editable
+  data/                      pinned source tables and mapping artifacts
   input/                     put your input files here
   output/                    one dated folder per run
   logs/                      run logs
@@ -302,11 +305,26 @@ leap-review-tools.exe selfcheck
 ```
 
 ```bash
+leap-review-tools.exe list
+```
+
+```bash
 leap-review-tools.exe balance-review --economy 20_USA --scenario Target --year 2022 --balance-export-workbook "input\TGT 0308.xlsx" --diagnostics-directory "input\usa_tgt_diagnostics"
 ```
 
 ```bash
 leap-review-tools.exe dashboard --economy 20_USA --comparison-data-path "input\common_esto_comparison_data.csv" --common-rows-path "input\common_esto_rows.csv"
+```
+
+For the usual export-first workflow, place workbooks under
+`input\leap balances exports\<ECONOMY>\` and run:
+
+```bash
+leap-review-tools.exe balance-review-from-export --economy 20_USA --scenario Target --year 2022
+```
+
+```bash
+leap-review-tools.exe dashboard-from-export --economy 20_USA
 ```
 
 `selfcheck` imports everything a run needs, confirms each standard-library
@@ -342,13 +360,19 @@ SHA-256 is recorded in every run manifest.
 | `config/dashboard/series_config.json` | series labels, visible-series rules, economy list |
 | `config/dashboard/code_colors.json` | per-axis ESTO code colours |
 | `config/mappings/all_demand_aggregated_components.json` | which demand sectors have no separately modelled LEAP detail |
+| `config/mappings/outlook_mappings_master.xlsx` | canonical LEAP-to-ESTO mappings |
+| `config/mappings/source_branch_fallback_rules.csv` | interim-branch fallback rules |
+| `config/balance_review/synthetic_reference_rows.csv` | ESTO vintage-alignment rows |
+| `config/balance_review/leap_results_sheet_map.csv` | LEAP sheet/scenario resolution |
+| `config/balance_review/leap_explicit_reassignments.csv` | reviewed balance-row reassignments |
+| `config/balance_review/balance_error_signal_rules.csv` | variable roles and error-signal rules |
 
 Replacing one of these with an approved newer version changes the next run's
 behaviour immediately, with **no rebuild** — and the change is never invisible,
 because the new hash appears in that run's manifest.
 
 ```mermaid
-flowchart TD
+flowchart LR
     Q{"What changed?"}
     Q -->|"a template, series config,<br/>colour map, or components file"| CFG["Replace the file in config/<br/><b>no rebuild</b><br/>new hash appears in the next run manifest"]
     Q -->|"a bug in chart generation,<br/>the workbook builder,<br/>validation, or the manifest"| REL["New tested release"]
@@ -358,8 +382,10 @@ flowchart TD
     REL --> STEPS["bump version → re-pin commits →<br/>validate → build → verify → distribute"]
 ```
 
-The canonical mapping workbooks themselves are never embedded in the executable
-and are not edited by any of this. Update them in `leap_mappings` as normal.
+The canonical mapping workbook is packaged beside the executables as a
+configuration asset, and neither command edits it. Make maintained changes in
+`leap_mappings`, regenerate the pinned mapping artifacts, and build a new
+release so the workbook and data snapshots stay consistent.
 
 > One detail worth knowing: developer mode reads these files from the live
 > checkouts (CRLF line endings on Windows) while a release reads them from Git
@@ -377,25 +403,19 @@ that may be copied, every external configuration asset, the supported commands
 and their input/output contracts, and the runtime packages.
 
 ```mermaid
-flowchart TD
+flowchart LR
     MAN["portable_release_manifest.toml<br/>version · commits · allowlists · commands"]
     MAN --> VAL{"validate"}
     VAL -->|"any problem"| STOP["fail loudly<br/>nothing is staged"]
-    VAL -->|"clean"| STAGE
-
-    subgraph STAGE["stage from Git, not from a working tree"]
-        GIT["git cat-file blob COMMIT:path"]
-        GIT --> CODE["code/ — whole modules only"]
-        GIT --> CONF["config/ — reviewed assets"]
-    end
-
-    STAGE --> SCAF["scaffold input/ output/ logs/<br/>licenses/ README.md<br/>+ frozen release_manifest.json"]
-    SCAF --> FREEZE["PyInstaller --onedir<br/><i>in a subprocess, from a directory<br/>containing none of the repositories</i>"]
-    FREEZE --> VERIFY{"exe info + selfcheck"}
+    VAL -->|"clean"| STAGE["stage Git blobs<br/>code + config + data<br/>and package scaffold"]
+    STAGE --> MAIN["freeze main executable<br/><i>leap_initialisation + dashboard</i>"]
+    STAGE --> WORKER["freeze mapping worker<br/><i>leap_mappings only</i>"]
+    MAIN --> VERIFY{"main info + selfcheck<br/>worker --self-test"}
+    WORKER --> VERIFY
     VERIFY -->|"fails"| REJECT["reject the package"]
     VERIFY -->|"passes"| SCAN{"hygiene scan"}
-    SCAN -->|".git / .codex / .claude /<br/>junction / cache found"| REJECT
-    SCAN -->|"clean"| REPORT["release report<br/>every file with its SHA-256"]
+    SCAN -->|"private, cache, or link found"| REJECT
+    SCAN -->|"clean"| REPORT["release report<br/>every file with SHA-256"]
 ```
 
 Two properties are worth calling out because they were learned the hard way.
@@ -405,12 +425,13 @@ out, resets, stashes, or otherwise touches a working tree, so uncommitted
 work-in-progress cannot reach a colleague's copy — and a release is reproducible
 from the manifest alone.
 
-**PyInstaller runs in a subprocess, from a directory containing none of the
-repositories.** PyInstaller resolves imports through the build process's own
-import environment as well as the spec. Running it in-process from a checkout
-silently baked the maintainer's live `codebase` package into the executable,
-which then failed at start-up on a machine with no LEAP COM API. Isolation fixes
-this; the `selfcheck` step catches it if it ever recurs.
+**PyInstaller builds two isolated targets from a directory containing none of
+the repositories.** Both source repositories use the top-level package name
+`codebase`, so they cannot safely share one Python process or executable. The
+main executable bundles `leap_initialisation` and dashboard code; the mapping
+worker bundles `leap_mappings` and exchanges one JSON job/result with the main
+process. Build isolation also prevents a maintainer's live checkout from being
+silently included.
 
 ## Validation is strict on purpose
 
@@ -456,15 +477,14 @@ patch version instead, so a run manifest always identifies exactly one build.
 
 # Known limitations
 
-- **The balance-diagnostics step is developer-mode only, for size reasons.** A
-  release builds a workbook from an existing diagnostics folder; it does not
-  generate one from a LEAP export, because that needs 314 MB of source tables.
-  A reconciliation run is *not* required for either.
+- **The package is large.** The export-first commands require the ESTO and
+  9th-edition source tables plus four mapping artifacts. These are snapshots;
+  refreshing their vintages or mappings requires a newly built release.
 - **Three dashboard pages are not in the release** — mapping diagnostics, the
   full mapping tree explorer, and capacity-unmet convergence. They read
   `leap_mappings` and `leap_initialisation` artifacts a package does not carry.
-- **No upstream data refresh.** The release renders from the comparison data it
-  is given; it never recomputes it.
+- **No upstream data refresh.** The release computes model-run-specific results
+  from exports but does not download or regenerate its pinned reference data.
 - **Sheet-image previews are unavailable.** The Python workbook builder writes
   XLSX and verifies it structurally, but does not render sheet images. This is
   the one capability the earlier Node-based builder had that is not replaced.
@@ -482,8 +502,8 @@ migration is preview rendering, above.
 
 What was verified: the release's declared dependency closure contains no Node.js
 package and no Codex-managed component; the built package contains a Python
-runtime and nothing else executable; and both supported commands run from the
-frozen executable, whose bundle has no Node.js in it.
+runtime and nothing else executable; and all four declared command variants run
+from the frozen package, whose bundles contain no Node.js.
 
 \newpage
 
@@ -496,7 +516,8 @@ frozen executable, whose bundle has no Node.js in it.
 | Developer settings example | `leap_initialisation/config/leap_review_tools_settings.example.toml` |
 | Full reference documentation | `leap_initialisation/docs/leap_review_tools.md` |
 | Packageable dashboard render entry point | `leap_dashboard/codebase/common_esto_dashboard_portable.py` |
-| Module and config a release consumes from mappings | `leap_mappings/codebase/mapping_tools/source_branch_preflight.py`, `leap_mappings/config/all_demand_aggregated_components.json` |
+| Isolated mapping worker | `leap_mappings/codebase/portable_mapping_chain.py` and its allowlisted mapping-tool closure |
+| Mapping configuration and generated artifacts | `leap_mappings/config/` and the manifest-declared files under `leap_mappings/results/` |
 | Generated staging, build, and package trees (git-ignored) | `leap_initialisation/release_build/` |
 
 ## Tests

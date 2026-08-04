@@ -69,6 +69,18 @@ result = dev.run_dashboard(
     comparison_data_path=r"C:\Users\Work\github\leap_mappings\results\common_esto\common_esto_comparison_data.csv",
     common_rows_path=r"C:\Users\Work\github\leap_mappings\results\common_esto\common_esto_rows.csv",
 )
+
+result = dev.run_balance_review_from_export(
+    economy="20_USA",
+    scenario="Target",
+    year=2022,
+    balance_export_workbook=r"C:\Users\Work\github\leap_initialisation\data\leap balances exports\20_USA\TGT 0408.xlsx",
+)
+
+result = dev.run_dashboard_from_export(
+    economy="20_USA",
+    export_dir=r"C:\Users\Work\github\leap_initialisation\data\leap balances exports\20_USA",
+)
 ```
 
 `codebase/portable_release/developer_launcher.py` also has a `#%%` notebook
@@ -109,7 +121,9 @@ executable — there is no installer, no Python, and no repository.
 leap-review-tools-0.1.0/
   leap-review-tools.exe      the program
   _internal/                 its bundled runtime (do not edit)
+  mapping-chain/             isolated leap_mappings worker executable + runtime
   config/                    approved mapping and template files (editable)
+  data/                      pinned mapping artifacts and source tables
   input/                     put your input files here
   output/                    one dated folder per run
   logs/                      run logs
@@ -129,6 +143,10 @@ leap-review-tools.exe info
 leap-review-tools.exe selfcheck
 ```
 
+```bash
+leap-review-tools.exe list
+```
+
 `selfcheck` imports everything a run needs, confirms each standard-library
 module it relies on is the real one, and checks that every configuration file
 and package folder is present. Run it first if anything looks wrong — it is also
@@ -140,6 +158,18 @@ leap-review-tools.exe balance-review --economy 20_USA --scenario Target --year 2
 
 ```bash
 leap-review-tools.exe dashboard --economy 20_USA --comparison-data-path "input\common_esto_comparison_data.csv" --common-rows-path "input\common_esto_rows.csv"
+```
+
+The export-first commands are the normal colleague workflow. With balance
+exports under `input\leap balances exports\<ECONOMY>\`, no long input paths are
+needed:
+
+```bash
+leap-review-tools.exe balance-review-from-export --economy 20_USA --scenario Target --year 2022
+```
+
+```bash
+leap-review-tools.exe dashboard-from-export --economy 20_USA
 ```
 
 Add `--support-bundle` to any run to get a ZIP of the run manifest, validation
@@ -168,7 +198,22 @@ diagnosis needs.
 
 ## 3. What input data each command needs
 
-### `balance-review`
+### `balance-review-from-export` (recommended)
+
+Input mode: **LEAP Energy Balance export**.
+
+| Input | What it is |
+|---|---|
+| `economy`, `scenario`, `year` | The review slice, for example `20_USA`, `Target`, `2022`. |
+| `balance_export_workbook` | Optional explicit Level 2+ export workbook. If omitted, the newest matching workbook is resolved from `input/leap balances exports/<ECONOMY>/`. |
+| `esto_table_path` | Optional ESTO base-table override; normally omit it to use the pinned table in `data/`. |
+
+The command runs balance diagnostics and then builds the workbook. The release
+contains the read-only ESTO and 9th-edition source tables required by the first
+step, so a results update, LEAP COM connection, Python, or a pre-existing
+diagnostics folder is not required.
+
+### `balance-review` (existing diagnostics)
 
 Input mode: **existing comparison/diagnostic artifacts**.
 
@@ -183,28 +228,38 @@ Input mode: **existing comparison/diagnostic artifacts**.
 > separate from the workbook build. There are two ways to obtain the diagnostics
 > directory:
 >
-> 1. **Generate it from a LEAP balance export** — run
+> 1. **Generate it from a LEAP balance export** — use
+>    `balance-review-from-export` in either mode, or run
 >    `codebase/balance_update_workflow.py` with `_PRESET_REVIEW_ONLY`, which
 >    calls `run_baseline_seed_balance_diagnostics` and then builds the workbook
 >    in one go. A fresh Level 2+ export is all you need; the diagnostics step
->    computes the comparison itself. This is **developer mode only** — see
->    below for why.
-> 2. **Use a diagnostics folder that already exists** — the output of a previous
->    such run. This is what the portable release supports.
+>    computes the comparison itself.
+> 2. **Use a diagnostics folder that already exists** — this is the legacy
+>    `balance-review` command and remains useful when reviewing a preserved run.
 >
 > **A results update / supply reconciliation run is *not* required.** That
 > workflow writes values back into LEAP and is a separate, optional activity.
 > Producing a review workbook does not involve it. (An earlier version of this
 > document said otherwise; it was wrong.)
 >
-> The diagnostics step is developer-mode-only for one reason: **data size**. It
-> reads the canonical mapping codebook (478 KB), the ESTO base table (26 MB),
-> and the 9th-edition projection table (288 MB). Bundling those would take the
-> download from roughly 110 MB to roughly 450 MB. It is otherwise a read-only
-> step with no LEAP COM dependency at run time, so adding it to a release is a
-> size decision rather than a technical blocker.
+> The release deliberately accepts the larger package size so those read-only
+> source tables can be bundled and identified by SHA-256.
 
-### `dashboard`
+### `dashboard-from-export` (recommended)
+
+Input mode: **a folder of LEAP Energy Balance exports**.
+
+| Input | What it is |
+|---|---|
+| `economy` | Economy to render, for example `20_USA`. |
+| `export_dir` | Optional export folder; defaults to `input/leap balances exports/<ECONOMY>/`. |
+| `comparison_data_path`, `common_rows_path` | Optional paired escape hatch that skips conversion and uses existing Common ESTO inputs. |
+
+The main executable invokes the isolated `mapping-chain` worker to parse the
+exports, convert LEAP results to ESTO structure, and build comparison data. It
+then renders the dashboard in `output/<ECONOMY>/dashboard/`.
+
+### `dashboard` (existing comparison data)
 
 Input mode: **existing Common ESTO comparison data**.
 
@@ -214,9 +269,10 @@ Input mode: **existing Common ESTO comparison data**.
 | `common_rows_path` | `common_esto_rows.csv` from the same run. |
 | `economy` | Which economy to render, e.g. `20_USA`. |
 
-The comparison file is close to a gigabyte for the full economy set, so it is a
-run input rather than part of the package. Validation streams it row by row
-rather than loading it, so a wrong economy is reported in seconds.
+The comparison file can be close to a gigabyte for the full economy set. The
+export-first command avoids transferring it; the older `dashboard` command
+continues to accept it directly. Validation streams it row by row rather than
+loading it, so a wrong economy is reported in seconds.
 
 ---
 
@@ -231,15 +287,22 @@ SHA-256 is recorded in every run manifest:
 | `config/dashboard/series_config.json` | series labels, visible-series rules, economy list |
 | `config/dashboard/code_colors.json` | per-axis ESTO code colours |
 | `config/mappings/all_demand_aggregated_components.json` | which demand sectors have no separately modelled LEAP detail |
+| `config/mappings/outlook_mappings_master.xlsx` | canonical LEAP-to-ESTO mapping workbook used by the mapping worker and balance diagnostics |
+| `config/mappings/source_branch_fallback_rules.csv` | interim-branch fallback rules |
+| `config/balance_review/synthetic_reference_rows.csv` | synthetic reference rows for ESTO vintage alignment |
+| `config/balance_review/leap_results_sheet_map.csv` | LEAP sheet/scenario resolution |
+| `config/balance_review/leap_explicit_reassignments.csv` | reviewed explicit balance-row reassignments |
+| `config/balance_review/balance_error_signal_rules.csv` | balance-variable roles and error-signal rules |
 
 Replacing one of these with an approved newer version changes the next run's
 behaviour immediately, with **no rebuild**, and the change is never invisible:
 the new hash appears in that run's `run_manifest.json`. This is verified by
 `tests/test_portable_release_package.py::test_editing_a_config_file_changes_the_next_run_manifest_hash`.
 
-The canonical mapping workbooks themselves are **not** embedded in the
-executable, and are not edited by any of this. Update them in `leap_mappings` as
-normal.
+The canonical mapping workbook is packaged as an external configuration asset,
+not embedded in either executable. The release never edits it. Make maintained
+mapping changes in `leap_mappings`, regenerate the mapping-chain artifacts, and
+build a new tested release so the workbook and pinned data stay consistent.
 
 Note that developer mode reads these files from the live checkouts (CRLF line
 endings on Windows) while a release reads them from Git blobs (LF), so the same
@@ -300,10 +363,11 @@ the runtime packages.
    runs PyInstaller in a **subprocess from a directory containing none of the
    repositories** — running it in-process from a checkout silently baked the
    live `codebase` package into the executable.
-   After freezing, the builder runs the executable's `info` **and** `selfcheck`
-   commands and refuses the package if either fails. Both are needed: a package
-   can start and print its own version while a missing hidden import or a
-   shadowed standard-library module waits to break the first real run.
+   After freezing, the builder runs the main executable's `info` and
+   `selfcheck`, plus the mapping worker's `--self-test`, and refuses the package
+   if any fail. A package can start and print its version while a missing hidden
+   import or a shadowed standard-library module waits to break the first real
+   run, so all three checks matter.
 5. **Read the release report** in `release_build/reports/`. It lists every
    staged file with its SHA-256, every configuration asset with its source
    commit, and the full package file list.
@@ -336,19 +400,18 @@ patch version instead, so a run manifest always identifies exactly one build.
 
 ## 6. Known limitations
 
-- **The balance-diagnostics step is developer-mode only, for size reasons.**
-  The portable release builds a balance-review workbook from an existing
-  diagnostics folder; it does not generate one from a LEAP export, because that
-  needs the 288 MB 9th-edition projection table and the 26 MB ESTO base table.
-  This is *not* because a reconciliation run is required — it is not. See
-  section 3.
+- **The package is large.** It carries the ESTO base table, the all-economy
+  9th-edition projection table, and four pre-built mapping-chain artifacts so
+  both tools can start from LEAP exports. Extract it somewhere short and allow
+  adequate disk space.
 - **The dashboard's mapping-diagnostics page, full mapping tree explorer, and
   capacity-unmet convergence page are not in the portable release.** They read
   `leap_mappings` QA artifacts and a `leap_initialisation` run CSV — in one case
   a 22 MB structural artifact — that a package does not carry. Use
   `leap_dashboard/codebase/common_esto_dashboard_workflow.py` for those.
-- **No upstream data refresh.** The portable release renders from the comparison
-  data it is given; it never recomputes it.
+- **No upstream data refresh.** Source tables and mapping-chain artifacts are
+  snapshots pinned into the release. Refreshing mappings or source vintages
+  requires regenerating the artifacts and building a new release.
 - **`leap_initialisation/codebase/__init__.py` is deliberately excluded** from
   the package. It is a re-export hub that pulls in the LEAP COM API, Excel I/O,
   and the comparison stack, none of which the supported commands need and much
@@ -374,8 +437,8 @@ migration is preview rendering, above.
 
 What was verified: the release's declared dependency closure contains no Node.js
 package and no Codex-managed component; the built package contains a Python
-runtime and nothing else executable; and both supported commands run from the
-frozen executable, whose bundle has no Node.js in it. That is a property of the
+runtime and nothing else executable; and all four declared command variants run
+from the frozen package, whose bundles contain no Node.js. That is a property of the
 package, not of the build machine — this machine does have Node.js installed,
 and the package neither needs nor invokes it.
 

@@ -1,8 +1,9 @@
 # Handover: portable LEAP review tools — remaining work
 
 **Date:** 2026-08-03
-**Status:** balance-review path complete and shipping; dashboard-from-exports
-path designed, proven, and not yet built.
+**Status:** implementation, frozen verification, documentation, and release
+packaging completed 2026-08-04. Both export-first paths are shipping in the
+same portable folder through two isolated executables.
 
 Read `docs/leap_review_tools.md` for the reference and
 `docs/leap_review_tools_walkthrough.md` for the narrative. This file only covers
@@ -184,6 +185,9 @@ the new commands, and the `list` command.
 
 ### 3.5 Wiring, tests, rebuild, docs
 
+**Completed 2026-08-04.** The bullets below are retained as the execution
+record for the work now reflected in section 4 and the final section 6 entry.
+
 - `portable_main.py`: `list`, `dashboard`, `balance-review-from-export`, and the
   guided flow for each.
 - `developer_launcher.py`: same commands, plus `data_assets` wiring (it does not
@@ -206,8 +210,8 @@ Committed and verified in `leap_initialisation` (all on `master`):
 |---|---|
 | Release manifest + validator, builder, developer launcher, runtime, validation, provenance, support bundle | done |
 | `balance-review` (diagnostics folder → workbook) | done, frozen, golden-tested |
-| `balance-review-from-export` (LEAP export → workbook) | code done; needs manifest entries, wiring, and a frozen test |
-| `data_assets` in the manifest | mechanism done; entries now exist for the mapping-chain artifacts (below) — `esto_base_table`/`ninth_projection_table` roles balance-review-from-export needs are still undeclared |
+| `balance-review-from-export` (LEAP export → workbook) | **done and frozen-tested** — 20_USA Target 2022 produced 358 comparison rows and a structurally valid five-sheet workbook from `TGT 0408.xlsx` |
+| `data_assets` in the manifest | **done** — four mapping-chain artifacts plus the ESTO base table and 9th-edition projection table are staged with recorded sizes and SHA-256 values |
 | ESTO vocabulary check | done |
 | One input folder + per-economy outputs (`workspace.py`) | done, 11 tests |
 | §3.1 mapping-chain worker (`leap_mappings`) | **done** — `codebase/portable_mapping_chain.py`, verified end-to-end against the real 12_NZ export (385,035 / 48,068 / 194,694 rows, matching §2 exactly). Committed `f2b1a92`. |
@@ -217,14 +221,16 @@ Committed and verified in `leap_initialisation` (all on `master`):
 | §3.3 two-PyInstaller-target builder | **done and verified end-to-end** (session 3). `build_release.py` freezes both targets from isolated cwd/spec/dist/work dirs (`_freeze_target`, generalised from the old single-target `_freeze`), copies the worker build to `package/mapping-chain/`, and runs the worker's `--self-test` alongside the main exe's `info`/`selfcheck`. A real `build(freeze=True)` now succeeds: main exe passes info/selfcheck, worker passes `--self-test` (`{"ok": true, "worker": "leap_mapping_chain"}`). Package: 3141 files, ~617 MB. |
 | §3.5 `portable_main.py` / `developer_launcher.py` wiring for `dashboard-from-export` | **done** (session 3). `portable_main.py` has the `dashboard-from-export` subcommand, its guided-flow dispatch, and a `list` command (reuses the already-existing `workspace.describe_workspace`, which nothing called before). `developer_launcher.py` has `run_dashboard_from_export` and `build_context()` now populates `data_assets` (was a pre-existing gap — also needed by `balance-review-from-export`, see below). |
 | Dashboard from balance exports, end to end | **done and verified** (session 3, 2026-08-04). `leap-review-tools.exe dashboard-from-export --economy 20_USA` succeeds against a real, freshly staged 20_USA REF+TGT export: 286,368 raw LEAP rows -> 77,724 converted -> 351,464 comparison rows -> 648 charts, `dashboards/index.html` written. This is the whole point of §3's remaining work, now actually proven rather than unit-tested with mocks. See §6 for the four real bugs this surfaced and fixed along the way. |
+| Balance review from a balance export, end to end | **done and verified** (session 4, 2026-08-04). The frozen executable generated diagnostics and `balance_review_20_USA_tgt_2022.xlsx` directly from `TGT 0408.xlsx`: 358 rows, 179 mismatches, 14 reference-unavailable rows, 165 matches, zero allocation-required rows, and no formula-error cells. |
+| Documentation and distribution | **done** (session 4). Reference and walkthrough Markdown were updated, Word versions regenerated and visually checked, and the distribution ZIP rebuilt from the verified package. |
 
 `leap_dashboard`: `common_esto_dashboard_portable.py` + tests — done.
 `leap_mappings`: `codebase/portable_mapping_chain.py` added and tested (§3.1, see above).
 
 The shipped ZIP at
 `leap_initialisation/release_build/distribution/leap-review-tools-0.1.0.zip`
-predates the input-folder redesign. It still works, but its `input/` layout is
-the old one; rebuild before distributing.
+was rebuilt after both export-first commands passed their frozen end-to-end
+checks. Its identity is recorded in the final section 6 entry.
 
 ---
 
@@ -597,3 +603,36 @@ Format:
     green: `test_portable_release.py`, `test_portable_release_package.py`,
     `test_mapping_chain_client.py`, `test_portable_release_workspace.py`,
     `test_dashboard_from_export.py` all pass.
+
+### 2026-08-04 (session 4) — balance export path frozen-tested; handover completed
+
+- Declared and packaged the two source tables required by balance diagnostics:
+  `00APEC_2024_low_with_subtotals.csv` as `esto_base_table` and
+  `merged_file_energy_ALL_20251106.csv` as `ninth_projection_table`. The frozen
+  release manifest records each source, byte size, and SHA-256.
+- Added the remaining configuration/runtime closure and wired
+  `balance-review-from-export` through both `portable_main.py` and
+  `developer_launcher.py`. Two frozen-only routing defects found by the real
+  run were fixed: the packaged mapping workbook is now passed into the pair
+  loader, and the canonical loader temporarily uses that same packaged path.
+- Verified the real developer path against 20_USA `TGT 0408.xlsx` (358 rows,
+  182 mismatches) and then the rebuilt frozen executable (358 rows, 179
+  mismatches, 14 reference-unavailable, 165 matches, zero allocation-required,
+  no formula-error cells). The different warning totals reflect the frozen
+  release's pinned canonical workbook versus the dirty live mappings checkout;
+  they are QA findings, not workflow blockers.
+- Verification suite: 130 passed, 5 skipped. The skips are the historical
+  `TGT 0308.xlsx` golden fixture, which has moved to the archive; the current
+  real checks use `TGT 0408.xlsx`.
+- Relevant `leap_initialisation` commits:
+  `73b9c70`, `f362da6`, `8212746`, `61af405`, `8fca627`, `293b6ff`,
+  `4e49ec7`, `19a57bc`, and `1abe345`.
+- Updated the reference and walkthrough, including the two-executable
+  architecture and both export-first commands; regenerated and visually
+  checked the Word walkthrough; rebuilt and inspected the distribution ZIP.
+  The clean archive contains 3,146 files, is 309,749,572 bytes, has no CRC
+  failures or private/cache/generated-run content, and has SHA-256
+  `4ef2919cc798a657732ee8519c2a04d726e33a9319ff8bfbcd0a0d54b3aa262f`.
+- **No implementation work remains from section 3.** Any later mapping, source
+  table, command-contract, or code change requires a newly versioned and
+  reverified release rather than silently replacing this `0.1.0` artifact.
