@@ -108,11 +108,21 @@ paths = [
     "codebase/portable_release/runtime.py",
     "codebase/portable_release/validation.py",
     "codebase/portable_release/workspace.py",
-    "config/LEAP_API_helpers.py",
 ]
 # manifest.py, settings.py, build_release.py, and developer_launcher.py are
 # maintainer-side only: nothing on a portable run's import path reaches them,
 # and a colleague's copy has no repositories to configure or release to build.
+
+# Some legacy diagnostics modules import this helper flat as
+# ``import LEAP_API_helpers``. Stage only that reviewed metadata module from
+# config/ on its own sys.path root; do not expose the rest of config/ as code.
+[repositories.leap_initialisation_config]
+commit = "82127466e012e82bff5a7cab070255aef14164a8"
+source_key = "leap_initialisation"
+stage_dir = "leap_initialisation_config"
+strip_prefix = "config"
+on_sys_path = true
+paths = ["config/LEAP_API_helpers.py"]
 
 # The dashboard modules are imported flat (``import common_esto_dashboard_data``),
 # so `codebase/` is stripped when staging. That also keeps this repository's
