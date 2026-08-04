@@ -1,5 +1,43 @@
 # Remaining work queue
 
+## [31] Build and adopt a dataset-agnostic rollup-aware series resolver
+
+**Status: planned; do not broaden rollout without a reviewed mapping contract.**
+
+Create one shared resolver for LEAP, ESTO, 9th Outlook, and future datasets.
+It must preserve exact raw identities, and only derive a rolled identity when
+an active, context-appropriate rule explicitly declares its components. It
+must never infer component membership from a category label or code prefix.
+
+Required contract:
+
+1. accept a dataset identity schema (sector/flow column, fuel/product column,
+   aggregation dimensions, value/year columns) and the applicable rollup-rule
+   sheet;
+2. return raw rows plus rolled rows, with rule ID, context, component count,
+   source identity, and exact-versus-rolled provenance;
+3. support the reviewed `ROLLUP_MODE` semantics, including non-expanding and
+   detached rules; and
+4. emit an explicit unresolved-rollup finding rather than silently falling
+   back to a guessed lookup.
+
+Initial rollout sites: `ninth_projection_mapping.py`, the ESTO base-year
+comparator path, `supply_demand_mapping.py`, `aggregated_demand_workflow.py`,
+`electricity_heat_interim_workflow.py`, and direct projection lookups in the
+balance/dashboard utilities. Migrate each site behind focused equivalence and
+provenance tests; do not make a repository-wide behavioural change in one
+step.
+
+The immediate Mexico base-year issue is separate and already has a narrow
+rule: Target 2022 uses the normal ESTO component-selector comparator (including
+`15.03 Rail / 17 Electricity = 5.883007 PJ`) and must not be replaced by a
+9th projection value. This is a concrete regression example for this item:
+the existing ESTO selector is economy-generic, but only applies at the ESTO
+base year and only when a mapped ESTO flow label encodes explicit component
+codes (for example `15.01,15.03-15.06`). It is not a general 9th rollup
+resolver and does not establish target-year comparator behaviour. Reconfirm
+this with a fresh review-only diagnostic once the raw LEAP export is available.
+
 ## [30] Verify the corrected Oil Refining gross process boundary
 
 **Status: code, focused regression coverage, and the USA refining-only patch
