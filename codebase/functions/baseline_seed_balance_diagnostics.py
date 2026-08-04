@@ -2572,9 +2572,21 @@ def _override_direct_demand_sources(
     )
     sector_masks = {
         "industry": scoped["ninth_sector"].eq("14_industry_sector"),
-        "transport_non_road": scoped["ninth_sector"].isin(
+        # The component rules are at the 9th ``sub1sectors`` level.  The
+        # derived ``ninth_sector`` is deliberately more specific (for example
+        # 15_01_01_passenger), so it cannot be compared to these parents.
+        "transport_non_road": scoped["sub1sectors"].isin(
             non_road_component_sectors
-        ) & ~scoped["subtotal_results"].fillna(False).astype(bool),
+        )
+        # CSV-backed 9th inputs commonly carry this as the string "False".
+        # ``astype(bool)`` treats every non-empty string as true and would
+        # therefore discard all non-road component rows.
+        & ~scoped["subtotal_results"]
+        .fillna(False)
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .isin({"1", "true", "yes", "y", "t"}),
     }
     direct_source = pd.concat(
         [

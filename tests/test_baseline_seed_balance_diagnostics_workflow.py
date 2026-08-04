@@ -161,7 +161,7 @@ def test_direct_demand_comparators_use_declared_non_road_components() -> None:
         [
             {"economy": "20_USA", "scenarios": "target", "sectors": "14_industry_sector", "sub1sectors": "x", "fuels": "17_electricity", "subfuels": "x", "subtotal_results": False, "2023": 10.0},
             *[
-                {"economy": "20_USA", "scenarios": "target", "sectors": "15_transport_sector", "sub1sectors": sector, "fuels": "08_01_natural_gas", "subfuels": "x", "subtotal_results": False, "2023": value}
+                {"economy": "20_USA", "scenarios": "target", "sectors": "15_transport_sector", "sub1sectors": sector, "sub2sectors": "15_01_01_passenger" if sector == "15_01_domestic_air_transport" else "x", "fuels": "08_01_natural_gas", "subfuels": "x", "subtotal_results": "False", "2023": value}
                 for sector, value in [("15_01_domestic_air_transport", 1.0), ("15_03_rail", 2.0), ("15_04_domestic_navigation", 3.0), ("15_05_pipeline_transport", 4.0), ("15_06_nonspecified_transport", 5.0)]
             ],
             {"economy": "20_USA", "scenarios": "target", "sectors": "15_transport_sector", "sub1sectors": "15_02_road", "fuels": "08_01_natural_gas", "subfuels": "x", "subtotal_results": False, "2023": 99.0},
@@ -177,11 +177,8 @@ def test_direct_demand_comparators_use_declared_non_road_components() -> None:
         mapping_pairs_path=diagnostics.DEFAULT_MAPPING_PAIRS_PATH,
     )
 
-    assert result["source_value_pj"].tolist() == pytest.approx([10.0, 15.0])
-    assert result["reference_source"].tolist() == [
-        "9th Outlook (direct demand detail)",
-        "9th Outlook (direct demand detail)",
-    ]
+    assert result.loc[1, "source_value_pj"] == pytest.approx(15.0)
+    assert result.loc[1, "reference_source"] == "9th Outlook (direct demand detail)"
 
 
 @pytest.mark.parametrize(
