@@ -124,13 +124,44 @@ leap-review-tools-0.1.0/
   mapping-chain/             isolated leap_mappings worker executable + runtime
   config/                    approved mapping and template files (editable)
   data/                      pinned mapping artifacts and source tables
-  input/                     put your input files here
-  output/                    one dated folder per run
+  input/
+    leap balances exports/   one folder per economy; README.md holds the rules
+  output/                    results grouped by economy (see below)
   logs/                      run logs
   licenses/                  third-party licence texts
   README.md
   release_manifest.json      exactly which commits this was built from
+  LEAP Review Tools - user guide.docx
 ```
+
+The user guide is staged from the pinned `leap_initialisation` commit like every
+other packaged file, so it cannot drift from the release it documents. Regenerate
+it with `python scripts/convert_docs.py --docs-dir docs` and commit it before
+re-pinning; if it is missing at the pinned commit the build says so in its notes
+rather than shipping without it.
+
+### Where a run writes
+
+Results are grouped by economy, so runs accumulate rather than overwrite:
+
+```
+output/
+  20_USA/
+    balance_review/
+      balance_review_20_USA_tgt_2022.xlsx
+      run_records/<label>/    run_manifest.json + .txt, validation_report.txt
+    dashboard/
+      dashboards/index.html
+      run_records/<label>/
+  01_AUS/
+    ...
+```
+
+A balance-review workbook carries its scenario and year in its filename, so
+several coexist in one folder. A dashboard is replaced in place for its economy.
+The per-run `run_records/` sub-folder means re-running never destroys the record
+of an earlier run — which is what makes "which export produced this?" answerable
+months later.
 
 Double-click the executable for a guided flow that lists the commands, explains
 each input, and asks for them one at a time. Or drive it from a terminal:
