@@ -946,6 +946,16 @@ def build(
         )
 
     frozen_manifest = manifest.to_frozen_dict()
+    staged_data_by_role = {item["role"]: item for item in data_files}
+    for asset in frozen_manifest["data_assets"]:
+        staged = staged_data_by_role[asset["role"]]
+        asset.update(
+            {
+                "source": staged["source"],
+                "size_bytes": staged["size_bytes"],
+                "sha256": staged["sha256"],
+            }
+        )
     frozen_manifest["built_utc"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     (staging_dir / "release_manifest.json").write_text(
         json.dumps(frozen_manifest, indent=2),

@@ -259,6 +259,16 @@ def test_shipped_manifest_is_valid_against_its_pinned_commits() -> None:
     assert report.checked_source_files >= len(manifest.repositories)
 
 
+def test_shipped_manifest_declares_balance_review_from_export_assets() -> None:
+    manifest = load_release_manifest(SHIPPED_MANIFEST)
+    roles = {asset.role for asset in manifest.data_assets}
+
+    assert manifest.command("balance-review-from-export").input_mode == (
+        "leap_balance_export"
+    )
+    assert {"esto_base_table", "ninth_projection_table"} <= roles
+
+
 # ---------------------------------------------------------------------------
 # Developer settings
 # ---------------------------------------------------------------------------

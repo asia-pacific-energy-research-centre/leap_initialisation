@@ -236,6 +236,22 @@ role = "mapping_chain_common_esto_rows"
 description = "Common ESTO row definitions the mapping-chain fast path applies."
 allow_untracked = true
 
+[[data_assets]]
+repository = "leap_initialisation"
+path = "data/00APEC_2024_low_with_subtotals.csv"
+dest = "balance_review/00APEC_2024_low_with_subtotals.csv"
+role = "esto_base_table"
+description = "Configured 2024 ESTO base table used by balance diagnostics."
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_initialisation"
+path = "data/merged_file_energy_ALL_20251106.csv"
+dest = "balance_review/merged_file_energy_ALL_20251106.csv"
+role = "ninth_projection_table"
+description = "All-economy 9th-edition projection table used by balance diagnostics."
+allow_untracked = true
+
 # ---------------------------------------------------------------------------
 # Supported commands
 # ---------------------------------------------------------------------------
@@ -280,6 +296,45 @@ leap_balance_mapping_issues.csv (optional), produced by the balance-diagnostics 
 step. That step reads a LEAP balance export against the ESTO and 9th-edition \
 source tables (314 MB), so it runs in developer mode rather than in a release. \
 A results update / supply reconciliation run is not involved."""
+
+[[commands]]
+name = "balance-review-from-export"
+summary = "Build a balance-review workbook directly from a LEAP Energy Balance export."
+input_mode = "leap_balance_export"
+outputs = """\
+One balance_review_<economy>_<scenario>_<year>.xlsx workbook, the generated \
+diagnostic CSVs, a run manifest, and an input validation report under \
+output/<ECONOMY>/balance_review/."""
+
+  [[commands.inputs]]
+  key = "economy"
+  kind = "file"
+  description = "Economy code, for example 20_USA."
+
+  [[commands.inputs]]
+  key = "scenario"
+  kind = "file"
+  description = "Scenario name or code, for example Target or TGT."
+
+  [[commands.inputs]]
+  key = "year"
+  kind = "file"
+  description = "Four-digit review year, for example 2022."
+
+  [[commands.inputs]]
+  key = "balance_export_workbook"
+  kind = "file"
+  required = false
+  description = """\
+Optional explicit LEAP Energy Balance export workbook. When omitted, the \
+newest matching workbook is resolved from input/leap balances \
+exports/<ECONOMY>/."""
+
+  [[commands.inputs]]
+  key = "esto_table_path"
+  kind = "file"
+  required = false
+  description = "Optional ESTO base-table override; the bundled table is used by default."
 
 [[commands]]
 name = "dashboard"

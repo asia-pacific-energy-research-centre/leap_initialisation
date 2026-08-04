@@ -139,11 +139,11 @@ def test_package_has_no_private_or_generated_content(staged_package: Path) -> No
         parts = path.split("/")
         assert not any(part in forbidden for part in parts), path
         assert not path.endswith((".pyc", ".log", ".pkl")), path
-    # A staged package is source, reviewed configuration, and the pinned
-    # mapping-chain data assets (§2 of the handover: ~90 MB of pre-built
-    # artifacts) - nothing more.
+    # A staged package is source, reviewed configuration, the mapping-chain
+    # artifacts (~90 MB), and the ESTO/9th source tables used by
+    # balance-review-from-export (~314 MB) - nothing more.
     total = sum(int(item["size_bytes"]) for item in inspection["files"])
-    assert total < 110 * 1024 * 1024, f"staged package is unexpectedly large: {total:,} bytes"
+    assert total < 450 * 1024 * 1024, f"staged package is unexpectedly large: {total:,} bytes"
 
 
 def test_builder_rejects_a_package_containing_a_junction(
@@ -189,6 +189,21 @@ def test_package_config_is_external_and_editable(staged_package: Path) -> None:
     assert (config_root / "dashboard" / "series_config.json").is_file()
     assert (config_root / "dashboard" / "code_colors.json").is_file()
     assert (config_root / "mappings" / "all_demand_aggregated_components.json").is_file()
+
+
+def test_balance_review_from_export_source_tables_are_packaged(
+    staged_package: Path,
+) -> None:
+    data_root = staged_package / "data" / "balance_review"
+    assert (data_root / "00APEC_2024_low_with_subtotals.csv").is_file()
+    assert (data_root / "merged_file_energy_ALL_20251106.csv").is_file()
+
+    frozen = json.loads(
+        (staged_package / "release_manifest.json").read_text(encoding="utf-8")
+    )
+    assets = {asset["role"]: asset for asset in frozen["data_assets"]}
+    assert assets["esto_base_table"]["sha256"]
+    assert assets["ninth_projection_table"]["sha256"]
 
 
 # ---------------------------------------------------------------------------
