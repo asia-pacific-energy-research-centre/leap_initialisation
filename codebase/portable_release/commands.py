@@ -478,6 +478,12 @@ def run_balance_review_from_export(
             path = context.config_asset(role)
             if path is not None and path.is_file():
                 diagnostic_paths[keyword] = path
+        mapping_workbook = context.config_asset("outlook_mappings_master")
+        if mapping_workbook is not None and mapping_workbook.is_file():
+            diagnostic_paths["mapping_pairs_path"] = (
+                mapping_workbook,
+                "ninth_pairs_to_esto_pairs",
+            )
 
         # run_balance_update_workflow owns the review orchestration and takes no
         # path overrides, but it does expose the diagnostic runner as a seam.

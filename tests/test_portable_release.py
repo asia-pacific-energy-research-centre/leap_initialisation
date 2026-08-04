@@ -6,6 +6,7 @@ import json
 import shutil
 import sys
 import textwrap
+import types
 from pathlib import Path
 
 import pytest
@@ -774,3 +775,88 @@ def test_dashboard_validation_reports_broken_json(tmp_path: Path) -> None:
         series_config_path=None,
     )
     assert any("not valid JSON" in check.detail for check in report.failures)
+
+
+def test_balance_review_from_export_passes_packaged_mapping_pairs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from codebase.portable_release import commands
+    from codebase.portable_release.runtime import RuntimeContext
+
+    export = tmp_path / "export.xlsx"
+    mapping = tmp_path / "mapping.xlsx"
+    esto = tmp_path / "esto.csv"
+    ninth = tmp_path / "ninth.csv"
+    for path in (export, mapping, esto, ninth):
+        path.write_text("fixture", encoding="utf-8")
+
+    context = RuntimeContext(
+        mode="portable",
+        release_name="leap-review-tools",
+        release_version="test",
+        package_root=tmp_path,
+        config_root=tmp_path / "config",
+        output_root=tmp_path / "output",
+        log_root=tmp_path / "logs",
+        input_root=tmp_path / "input",
+        config_assets={"outlook_mappings_master": mapping},
+        data_assets={
+            "esto_base_table": esto,
+            "ninth_projection_table": ninth,
+        },
+    )
+
+    report = validation.ValidationReport(command="balance-review-from-export")
+    report.add("fixture", True, "valid")
+    monkeypatch.setattr(
+        validation,
+        "validate_balance_review_from_export_inputs",
+        lambda **parameters: report,
+    )
+
+    diagnostic_module = types.ModuleType(
+        "codebase.functions.baseline_seed_balance_diagnostics"
+    )
+    diagnostic_module.run_baseline_seed_balance_diagnostics = lambda **parameters: {}
+    workflow_module = types.ModuleType("codebase.balance_update_workflow")
+    workflow_module._PRESET_REVIEW_ONLY = {"RUN_BALANCE_REVIEW": True}
+
+    def _fake_workflow(**parameters):
+        runner = parameters["diagnostic_runner"]
+        assert runner.keywords["mapping_pairs_path"] == (
+            mapping,
+            "ninth_pairs_to_esto_pairs",
+        )
+        output = (
+            Path(parameters["output_root"])
+            / "diagnostics"
+            / "comparison_workbooks"
+            / "review.xlsx"
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text("workbook", encoding="utf-8")
+        return {"review_workbooks": [{"outputWorkbook": str(output)}]}
+
+    workflow_module.run_balance_update_workflow = _fake_workflow
+    monkeypatch.setitem(
+        sys.modules,
+        "codebase.functions.baseline_seed_balance_diagnostics",
+        diagnostic_module,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "codebase.balance_update_workflow",
+        workflow_module,
+    )
+
+    result = commands.run_balance_review_from_export(
+        context,
+        economy="20_USA",
+        scenario="Target",
+        year=2022,
+        balance_export_workbook=export,
+        run_label="mapping_path",
+    )
+
+    assert result.ok, result.error
