@@ -135,6 +135,8 @@ def _guided_flow(context, frozen: dict[str, Any]) -> int:
 
     if spec["name"] == "balance-review":
         return _dispatch_balance_review(context, values)
+    if spec["name"] == "balance-review-from-export":
+        return _dispatch_balance_review_from_export(context, values)
     if spec["name"] == "dashboard":
         return _dispatch_dashboard(context, values)
     if spec["name"] == "dashboard-from-export":
@@ -169,6 +171,27 @@ def _dispatch_balance_review(context, values: dict[str, str]) -> int:
             year=int(values.get("year") or 0),
             balance_export_workbook=values.get("balance_export_workbook", ""),
             diagnostics_directory=values.get("diagnostics_directory", ""),
+        )
+    return _report(result)
+
+
+def _dispatch_balance_review_from_export(
+    context,
+    values: dict[str, str],
+) -> int:
+    from codebase.portable_release.commands import run_balance_review_from_export
+    from codebase.portable_release.runtime import run_logging
+
+    with run_logging(context, "balance-review-from-export"):
+        result = run_balance_review_from_export(
+            context,
+            economy=values.get("economy", ""),
+            scenario=values.get("scenario", ""),
+            year=int(values.get("year") or 0),
+            balance_export_workbook=(
+                values.get("balance_export_workbook") or None
+            ),
+            esto_table_path=values.get("esto_table_path") or None,
         )
     return _report(result)
 
@@ -237,6 +260,23 @@ def build_parser(frozen: dict[str, Any]) -> argparse.ArgumentParser:
         review.add_argument("--diagnostics-directory", required=True)
         review.add_argument("--run-label", default=None)
         review.add_argument("--support-bundle", action="store_true")
+
+    if "balance-review-from-export" in declared:
+        review_from_export = sub.add_parser(
+            "balance-review-from-export",
+            help="Build a balance-review workbook directly from a LEAP balance export.",
+        )
+        review_from_export.add_argument("--economy", required=True)
+        review_from_export.add_argument("--scenario", required=True)
+        review_from_export.add_argument("--year", required=True, type=int)
+        review_from_export.add_argument(
+            "--balance-export-workbook",
+            default=None,
+            help="Defaults to input/leap balances exports/<ECONOMY>/.",
+        )
+        review_from_export.add_argument("--esto-table-path", default=None)
+        review_from_export.add_argument("--run-label", default=None)
+        review_from_export.add_argument("--support-bundle", action="store_true")
 
     if "dashboard" in declared:
         dashboard = sub.add_parser(
@@ -326,7 +366,9 @@ _REQUIRED_MODULES = [
     "codebase.portable_release.runtime",
     "codebase.portable_release.mapping_chain_client",
     "codebase.portable_release.workspace",
+    "codebase.balance_update_workflow",
     "codebase.functions.balance_review_workbook_builder",
+    "codebase.functions.baseline_seed_balance_diagnostics",
     "codebase.utilities.leap_balance_export_resolver",
     "common_esto_dashboard_portable",
     "mapping_tools.source_branch_preflight",
@@ -418,6 +460,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     from codebase.portable_release.commands import (
         run_balance_review,
+        run_balance_review_from_export,
         run_dashboard,
         run_dashboard_from_export,
         write_support_bundle,
@@ -433,6 +476,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 year=namespace.year,
                 balance_export_workbook=namespace.balance_export_workbook,
                 diagnostics_directory=namespace.diagnostics_directory,
+                run_label=namespace.run_label,
+            )
+        elif namespace.command == "balance-review-from-export":
+            result = run_balance_review_from_export(
+                context,
+                economy=namespace.economy,
+                scenario=namespace.scenario,
+                year=namespace.year,
+                balance_export_workbook=namespace.balance_export_workbook,
+                esto_table_path=namespace.esto_table_path,
                 run_label=namespace.run_label,
             )
         elif namespace.command == "dashboard-from-export":

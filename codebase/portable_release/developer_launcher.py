@@ -36,6 +36,7 @@ if str(REPO_ROOT) not in sys.path:
 from codebase.portable_release.commands import (  # noqa: E402
     CommandResult,
     run_balance_review as _run_balance_review,
+    run_balance_review_from_export as _run_balance_review_from_export,
     run_dashboard as _run_dashboard,
     run_dashboard_from_export as _run_dashboard_from_export,
     write_support_bundle as _write_support_bundle,
@@ -301,6 +302,32 @@ def run_balance_review(
     return result
 
 
+def run_balance_review_from_export(
+    *,
+    economy: str,
+    scenario: str,
+    year: int,
+    balance_export_workbook: Path | str | None = None,
+    esto_table_path: Path | str | None = None,
+    run_label: str | None = None,
+    context: RuntimeContext | None = None,
+) -> CommandResult:
+    """Build one balance-review workbook directly from a LEAP export."""
+    resolved = _ready_context(context)
+    with run_logging(resolved, "balance-review-from-export"):
+        result = _run_balance_review_from_export(
+            resolved,
+            economy=economy,
+            scenario=scenario,
+            year=year,
+            balance_export_workbook=balance_export_workbook,
+            esto_table_path=esto_table_path,
+            run_label=run_label,
+        )
+        print("\n".join(result.summary_lines()))
+    return result
+
+
 def run_dashboard(
     *,
     economy: str,
@@ -400,7 +427,8 @@ def default_developer_inputs(
 # ---------------------------------------------------------------------------
 RUN_DEVELOPER_LAUNCHER = False
 
-# "status" | "balance-review" | "dashboard" | "dashboard-from-export"
+# "status" | "balance-review" | "balance-review-from-export" | "dashboard" |
+# "dashboard-from-export"
 DEVELOPER_ACTION = "status"
 
 ECONOMY = "20_USA"
@@ -423,6 +451,14 @@ if RUN_DEVELOPER_LAUNCHER:
             year=YEAR,
             balance_export_workbook=BALANCE_EXPORT_WORKBOOK,
             diagnostics_directory=DIAGNOSTICS_DIRECTORY,
+            run_label=RUN_LABEL,
+        )
+    elif DEVELOPER_ACTION == "balance-review-from-export":
+        LAUNCHER_RESULT = run_balance_review_from_export(
+            economy=ECONOMY,
+            scenario=SCENARIO,
+            year=YEAR,
+            balance_export_workbook=BALANCE_EXPORT_WORKBOOK or None,
             run_label=RUN_LABEL,
         )
     elif DEVELOPER_ACTION == "dashboard":

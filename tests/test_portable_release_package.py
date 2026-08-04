@@ -189,6 +189,10 @@ def test_package_config_is_external_and_editable(staged_package: Path) -> None:
     assert (config_root / "dashboard" / "series_config.json").is_file()
     assert (config_root / "dashboard" / "code_colors.json").is_file()
     assert (config_root / "mappings" / "all_demand_aggregated_components.json").is_file()
+    assert (config_root / "balance_review" / "synthetic_reference_rows.csv").is_file()
+    assert (config_root / "balance_review" / "leap_results_sheet_map.csv").is_file()
+    assert (config_root / "balance_review" / "leap_explicit_reassignments.csv").is_file()
+    assert (config_root / "balance_review" / "balance_error_signal_rules.csv").is_file()
 
 
 def test_balance_review_from_export_source_tables_are_packaged(

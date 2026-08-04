@@ -2763,6 +2763,7 @@ def run_baseline_seed_balance_diagnostics(
     workbook_paths_by_economy: dict[str, Path | str] | None = None,
     base_year: int = DEFAULT_BASE_YEAR,
     tolerance_pj: float = DEFAULT_TOLERANCE_PJ,
+    balance_variable_rules_path: Path | str = DEFAULT_BALANCE_VARIABLE_RULES_PATH,
     **diagnostic_paths: Any,
 ) -> dict[str, Any]:
     """Run Step 1 for several economies and write one combined CSV table."""
@@ -2828,7 +2829,12 @@ def run_baseline_seed_balance_diagnostics(
         ignored_rows_path = resolved_output_dir / "leap_balance_ignored_rows.csv"
         ignored_rows.to_csv(ignored_rows_path, index=False)
 
-    review = build_balance_review_table(differences)
+    review = build_balance_review_table(
+        differences,
+        balance_variable_rules=load_balance_variable_rules(
+            balance_variable_rules_path
+        ),
+    )
     review_path = resolved_output_dir / "leap_balance_source_review.csv"
     review.to_csv(review_path, index=False)
     diagnostic_counts = build_balance_diagnostic_counts(differences, mapping_issues)

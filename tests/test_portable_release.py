@@ -262,11 +262,43 @@ def test_shipped_manifest_is_valid_against_its_pinned_commits() -> None:
 def test_shipped_manifest_declares_balance_review_from_export_assets() -> None:
     manifest = load_release_manifest(SHIPPED_MANIFEST)
     roles = {asset.role for asset in manifest.data_assets}
+    config_roles = {asset.role for asset in manifest.config_assets}
 
     assert manifest.command("balance-review-from-export").input_mode == (
         "leap_balance_export"
     )
     assert {"esto_base_table", "ninth_projection_table"} <= roles
+    assert {
+        "synthetic_reference_rows",
+        "leap_results_sheet_map",
+        "leap_explicit_reassignments",
+        "balance_error_signal_rules",
+    } <= config_roles
+
+
+def test_portable_parser_exposes_balance_review_from_export() -> None:
+    from codebase.portable_release.portable_main import build_parser
+
+    parser = build_parser(
+        {
+            "release": {"name": "leap-review-tools", "version": "test"},
+            "commands": [{"name": "balance-review-from-export"}],
+        }
+    )
+    parsed = parser.parse_args(
+        [
+            "balance-review-from-export",
+            "--economy",
+            "20_USA",
+            "--scenario",
+            "Target",
+            "--year",
+            "2022",
+        ]
+    )
+
+    assert parsed.command == "balance-review-from-export"
+    assert parsed.balance_export_workbook is None
 
 
 # ---------------------------------------------------------------------------

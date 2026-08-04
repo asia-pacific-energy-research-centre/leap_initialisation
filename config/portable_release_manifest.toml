@@ -52,14 +52,54 @@ commit = "73b9c70af0e0baa177e934201b42d97b9e717ee4"
 stage_dir = "leap_initialisation"
 on_sys_path = true
 paths = [
+    "codebase/balance_update_workflow.py",
     "codebase/configuration/__init__.py",
+    "codebase/configuration/all_products_and_flows.py",
+    "codebase/configuration/config.py",
+    "codebase/configuration/known_leap_label_exceptions.py",
     "codebase/configuration/workflow_config.py",
     "codebase/functions/__init__.py",
+    "codebase/functions/analysis_input_write_dispatcher.py",
     "codebase/functions/balance_review_workbook_builder.py",
     "codebase/functions/balance_review_workbooks.py",
+    "codebase/functions/baseline_seed_balance_diagnostics.py",
+    "codebase/functions/baseline_seed_validation.py",
+    "codebase/functions/conservation_policy.py",
+    "codebase/functions/esto_data_utils.py",
+    "codebase/functions/leap_api_guard.py",
+    "codebase/functions/leap_core.py",
+    "codebase/functions/leap_excel_io.py",
+    "codebase/functions/leap_expressions.py",
+    "codebase/functions/leap_session.py",
+    "codebase/functions/ninth_projection_mapping.py",
+    "codebase/functions/transformation_analysis_utils.py",
+    "codebase/functions/transformation_fuel_utils.py",
+    "codebase/functions/transformation_record_builder.py",
+    "codebase/functions/transformation_sector_analysis.py",
+    "codebase/functions/transformation_series_utils.py",
+    "codebase/mappings/__init__.py",
+    "codebase/mappings/canonical_loaders.py",
+    "codebase/mappings/canonical_mapping.py",
     "codebase/utilities/__init__.py",
+    "codebase/utilities/energy_balance_template_extractor.py",
+    "codebase/utilities/esto_reference_loader.py",
+    "codebase/utilities/fuel_catalog_preflight.py",
     "codebase/utilities/leap_balance_export_resolver.py",
+    "codebase/utilities/leap_results_dashboard_balance.py",
+    "codebase/utilities/leap_results_dashboard_utils.py",
+    "codebase/utilities/leap_results_dashboard_v2/__init__.py",
+    "codebase/utilities/leap_results_dashboard_v2/atomic_engine.py",
+    "codebase/utilities/leap_results_dashboard_v2/comparison_engine.py",
+    "codebase/utilities/leap_results_dashboard_v2/config_loader.py",
+    "codebase/utilities/leap_results_dashboard_v2/mapping_engine.py",
+    "codebase/utilities/leap_results_dashboard_v2/models.py",
+    "codebase/utilities/leap_results_dashboard_v2/pathing.py",
+    "codebase/utilities/leap_results_dashboard_v2/reference_loader.py",
+    "codebase/utilities/leap_results_dashboard_v2/shadow_compare.py",
+    "codebase/utilities/master_config.py",
     "codebase/utilities/output_paths.py",
+    "codebase/utilities/workflow_common.py",
+    "codebase/utilities/workflow_outputs.py",
     "codebase/portable_release/__init__.py",
     "codebase/portable_release/commands.py",
     "codebase/portable_release/mapping_chain_client.py",
@@ -68,6 +108,7 @@ paths = [
     "codebase/portable_release/runtime.py",
     "codebase/portable_release/validation.py",
     "codebase/portable_release/workspace.py",
+    "config/LEAP_API_helpers.py",
 ]
 # manifest.py, settings.py, build_release.py, and developer_launcher.py are
 # maintainer-side only: nothing on a portable run's import path reaches them,
@@ -192,6 +233,34 @@ path = "config/source_branch_fallback_rules.csv"
 dest = "mappings/source_branch_fallback_rules.csv"
 role = "source_branch_fallback_rules"
 description = "Interim-branch fallback zeroing rules applied before mapping-chain conversion."
+
+[[config_assets]]
+repository = "leap_initialisation"
+path = "config/runtime_tables/synthetic_reference_rows.csv"
+dest = "balance_review/synthetic_reference_rows.csv"
+role = "synthetic_reference_rows"
+description = "Synthetic zero-row rules used to align ESTO vintages for review."
+
+[[config_assets]]
+repository = "leap_initialisation"
+path = "config/runtime_tables/leap_results_sheet_map.csv"
+dest = "balance_review/leap_results_sheet_map.csv"
+role = "leap_results_sheet_map"
+description = "LEAP balance-export sheet and scenario resolution rules."
+
+[[config_assets]]
+repository = "leap_initialisation"
+path = "config/runtime_tables/leap_explicit_reassignments.csv"
+dest = "balance_review/leap_explicit_reassignments.csv"
+role = "leap_explicit_reassignments"
+description = "Reviewed explicit LEAP balance-row reassignment rules."
+
+[[config_assets]]
+repository = "leap_initialisation"
+path = "config/runtime_tables/balance_error_signal_rules.csv"
+dest = "balance_review/balance_error_signal_rules.csv"
+role = "balance_error_signal_rules"
+description = "Balance variable roles and error-signal eligibility rules."
 
 # ---------------------------------------------------------------------------
 # Large read-only source data tables
