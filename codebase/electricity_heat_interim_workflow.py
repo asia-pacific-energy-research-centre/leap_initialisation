@@ -422,6 +422,39 @@ def _select_module_rows(
     return _drop_ninth_projection_subtotals(data[mask]).copy()
 
 
+def _select_ninth_source_for_scenario(scenario: str | None) -> pd.DataFrame:
+    """Return cleaned 9th rows for one LEAP export scenario.
+
+    ``core.ninth_data`` deliberately contains only the Reference scenario for
+    the legacy transformation workflows.  Interim power is exported into both
+    Reference and Target, however, so reusing that table for Target silently
+    writes Reference projections into the Target branches.  Keep the legacy
+    default for callers that do not name a scenario, and select from the
+    unfiltered loaded table when an explicit projection scenario is requested.
+    """
+    scenario_key = _normalize_label_text(scenario or "Reference").casefold()
+    if scenario_key in {"", "reference", "current accounts", "current account"}:
+        return core.ninth_data
+
+    raw = core.ninth_data_raw
+    if raw is None:
+        raise RuntimeError(
+            "Scenario-specific interim power rows require prepared transformation "
+            "assets (core.ninth_data_raw is unavailable)."
+        )
+    if "scenarios" not in raw.columns:
+        raise KeyError("9th projection data is missing the scenarios column.")
+
+    selected = core.clean_esto_subtotals(raw, core.ninth_year_cols)
+    selected = selected[
+        selected["scenarios"].fillna("").astype(str).str.strip().str.casefold()
+        == scenario_key
+    ].copy()
+    if "subtotal_results" in selected.columns:
+        selected = selected[~selected["subtotal_results"].map(_truthy_flag)].copy()
+    return core.filter_total_energy_rows(selected)
+
+
 def _select_esto_module_rows(
     data: pd.DataFrame,
     economy: str,
@@ -578,10 +611,13 @@ def _combine_module_source_rows(
     economy: str,
     sub1sectors: list[str],
     esto_flows: list[str],
+    scenario: str | None = None,
 ) -> tuple[pd.DataFrame, list[int]]:
-    """Return ESTO historical/base rows plus 9th projection rows for a module."""
+    """Return ESTO historical/base rows plus scenario-specific 9th projections."""
     esto_rows = _select_esto_module_rows(core.esto_data, economy, esto_flows)
-    ninth_rows = _select_module_rows(core.ninth_data, economy, sub1sectors)
+    ninth_rows = _select_module_rows(
+        _select_ninth_source_for_scenario(scenario), economy, sub1sectors
+    )
     ninth_rows = _split_ambiguous_ninth_fuel_rows(ninth_rows, economy, esto_flows)
 
     all_year_cols = sorted(
@@ -866,6 +902,7 @@ def _build_interim_process_record(
     sub1sectors: list[str],
     esto_flows: list[str],
     output_labels: list[str] | None = None,
+    scenario: str | None = None,
 ) -> dict | None:
     """Return a process record for one interim module.
 
@@ -879,6 +916,7 @@ def _build_interim_process_record(
         economy=economy,
         sub1sectors=sub1sectors,
         esto_flows=esto_flows,
+        scenario=scenario,
     )
 
     if module_rows.empty:
@@ -1063,8 +1101,9 @@ def _build_interim_process_record(
 
 def build_electricity_heat_interim_rows(
     economies: Iterable[str] | None = None,
+    scenario: str | None = None,
 ) -> list[dict]:
-    """Build process records for all three interim modules across economies."""
+    """Build process records for all three interim modules for one scenario."""
     economy_list = list(economies or core.ECONOMIES_TO_ANALYZE)
     rows: list[dict] = []
     for economy in economy_list:
@@ -1077,6 +1116,7 @@ def build_electricity_heat_interim_rows(
                 sub1sectors=module_cfg["sub1sectors"],
                 esto_flows=module_cfg["esto_flows"],
                 output_labels=module_cfg.get("output_labels"),
+                scenario=scenario,
             )
             if record is not None:
                 rows.append(record)
@@ -1357,7 +1397,17 @@ def assemble_electricity_heat_interim_workbook(
                 for record in records
             ]
         else:
-            rows = build_electricity_heat_interim_rows(economies=[economy])
+            scenario_records = {
+                str(scenario): build_electricity_heat_interim_rows(
+                    economies=[economy], scenario=str(scenario)
+                )
+                for scenario in scenario_list
+            }
+            rows = [
+                record
+                for records in scenario_records.values()
+                for record in records
+            ]
         if not rows:
             print(f"No electricity/heat interim rows for {economy}; skipping.")
             continue

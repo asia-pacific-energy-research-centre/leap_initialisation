@@ -96,6 +96,80 @@ def test_signed_09_rows_supply_outputs_and_inputs_without_forbidden_influence(
     assert "16_others" not in totals
 
 
+def test_target_interim_records_use_target_9th_projection_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Target exports must not reuse the Reference power projection series."""
+    rows = []
+    for scenario, electricity, heat in [
+        ("reference", 100.0, 40.0),
+        ("target", 125.0, 50.0),
+    ]:
+        rows.extend(
+            [
+                {
+                    "scenarios": scenario,
+                    "economy": "20_USA",
+                    "sub1sectors": "09_02_chp_plants",
+                    "fuels": "08_gas",
+                    "subfuels": "08_01_natural_gas",
+                    "subtotal_results": False,
+                    2022: 0.0,
+                    2023: -200.0,
+                },
+                {
+                    "scenarios": scenario,
+                    "economy": "20_USA",
+                    "sub1sectors": "09_02_chp_plants",
+                    "fuels": "17_electricity",
+                    "subfuels": "x",
+                    "subtotal_results": False,
+                    2022: 0.0,
+                    2023: electricity,
+                },
+                {
+                    "scenarios": scenario,
+                    "economy": "20_USA",
+                    "sub1sectors": "09_02_chp_plants",
+                    "fuels": "18_heat",
+                    "subfuels": "x",
+                    "subtotal_results": False,
+                    2022: 0.0,
+                    2023: heat,
+                },
+            ]
+        )
+    raw_ninth = pd.DataFrame(rows)
+    monkeypatch.setattr(
+        workflow.core,
+        "ninth_data",
+        raw_ninth[raw_ninth["scenarios"].eq("reference")].copy(),
+    )
+    monkeypatch.setattr(workflow.core, "ninth_data_raw", raw_ninth)
+    monkeypatch.setattr(workflow.core, "esto_data", pd.DataFrame(columns=["economy", "flows"]))
+    monkeypatch.setattr(workflow.core, "esto_year_cols", [2022, 2023])
+    monkeypatch.setattr(workflow.core, "ninth_year_cols", [2022, 2023])
+    monkeypatch.setattr(workflow.core, "EXPORT_BASE_YEAR", 2022)
+    monkeypatch.setattr(workflow.core, "EXPORT_FINAL_YEAR", 2023)
+    monkeypatch.setattr(
+        workflow.core,
+        "code_to_name_mapping",
+        {
+            "08_01_natural_gas": "Natural gas",
+            "17_electricity": "Electricity",
+            "18_heat": "Heat",
+        },
+    )
+
+    records = workflow.build_electricity_heat_interim_rows(
+        economies=["20_USA"], scenario="Target"
+    )
+    chp = next(record for record in records if record["sector_title"] == "CHP interim")
+
+    assert chp["output_values"]["17_electricity"][2023] == pytest.approx(125.0)
+    assert chp["output_values"]["18_heat"][2023] == pytest.approx(50.0)
+
+
 def test_power_interim_display_names_and_never_output_use_canonical_builder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

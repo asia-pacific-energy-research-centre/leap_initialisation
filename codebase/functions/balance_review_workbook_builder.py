@@ -754,7 +754,10 @@ def build_balance_structure_review_workbook(
                 f"='{LEAP_SHEET_NAME}'!{address}-'{ERROR_SHEET_NAME}'!{address}"
             )
             correct_cell.value = formula
-            full_expected_cell.value = formula
+            # This sheet is a source-of-truth view, not a derived reconciliation
+            # view.  Store the resolved source value directly so it remains
+            # auditable even before Excel recalculates workbook formulas.
+            full_expected_cell.value = state["source_value"]
         else:
             _style_cell(
                 error_cell,

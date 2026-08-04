@@ -1326,12 +1326,13 @@ def build_electricity_heat_interim_workbooks_for_results_supply(
     output_path = Path(output_dir or EXPORT_OUTPUT_DIR)
     output_path.mkdir(parents=True, exist_ok=True)
     if reconciliation_table is not None:
-        base_records = electricity_heat_interim_workflow.build_electricity_heat_interim_rows(
-            economies=economy_list
-        )
         adjusted_by_scenario: dict[str, list[dict]] = {}
         empty_targets = pd.DataFrame()
         for scenario in scenario_list:
+            base_records = electricity_heat_interim_workflow.build_electricity_heat_interim_rows(
+                economies=economy_list,
+                scenario=str(scenario),
+            )
             adjusted = apply_transformation_target_overrides_for_scenario(
                 copy.deepcopy(base_records),
                 empty_targets,
