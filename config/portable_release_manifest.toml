@@ -48,7 +48,7 @@ packages = [
 # behaviour.
 
 [repositories.leap_initialisation]
-commit = "f9378a936750eee0f3adabcef0d85df082d6c6bf"
+commit = "e8fbddaf14f5b1692f0e08e655b55cc4b0250de6"
 stage_dir = "leap_initialisation"
 on_sys_path = true
 paths = [
@@ -161,7 +161,7 @@ paths = [
 # their absolute `codebase.*` imports (ast-based, not hand-maintained by
 # inspection - re-run that walk if the mapping chain's imports change).
 [repositories.leap_mappings_worker]
-commit = "a7a21ba5a3b7846cf9bdf626c5dcc027b13a0c87"
+commit = "8d6d1da5423fce331c8f570cadb5b822f8015df4"
 stage_dir = "leap_mappings_worker"
 source_key = "leap_mappings"
 on_sys_path = true
