@@ -626,6 +626,74 @@ def _allocate_gas_parent_residuals(
     return pd.concat([retained, pd.DataFrame(generated_rows)], ignore_index=True, sort=False), pd.DataFrame(diagnostics)
 
 
+def _build_parent_child_reconciliation_diagnostics(
+    source_by_pair: pd.DataFrame,
+    allocated_rows: pd.DataFrame,
+    year_cols: Sequence[int],
+    tolerance: float = 1e-6,
+) -> pd.DataFrame:
+    """Report protected parent/child projection mismatches.
+
+    Coal parent rows are disaggregated into child flows while retaining the
+    original 9th pair key.  Gas parent rows can be completed by direct 9th
+    child rows, so the reconciliation groups the parent and gas-child sector
+    family together.  Only mismatches are returned; successful checks are
+    intentionally silent so the diagnostics file remains actionable.
+    """
+    if source_by_pair.empty or allocated_rows.empty or not year_cols:
+        return pd.DataFrame()
+
+    rows: list[dict] = []
+    for _, source_row in source_by_pair.iterrows():
+        economy = str(source_row["economy_key"])
+        sector = str(source_row["ninth_sector"])
+        fuel = str(source_row["ninth_fuel"])
+        if sector == GAS_PARENT_NINTH_SECTOR:
+            candidates = allocated_rows[
+                allocated_rows["economy_key"].astype(str).eq(economy)
+                & allocated_rows["ninth_fuel"].astype(str).eq(fuel)
+                & allocated_rows["esto_flow"].astype(str).str.startswith("09.06")
+            ]
+            diagnostic_parent = GAS_PARENT_ESTO_FLOW
+        elif sector == "09_08_coal_transformation":
+            candidates = allocated_rows[
+                allocated_rows["economy_key"].astype(str).eq(economy)
+                & allocated_rows["ninth_sector"].astype(str).eq(sector)
+                & allocated_rows["ninth_fuel"].astype(str).eq(fuel)
+                & allocated_rows["esto_flow"].astype(str).str.startswith("09.08.")
+            ]
+            diagnostic_parent = COAL_PARENT_ESTO_FLOW
+        else:
+            continue
+
+        if candidates.empty:
+            continue
+        for year in year_cols:
+            expected = float(source_row.get(year, 0.0) or 0.0)
+            allocated = float(pd.to_numeric(candidates[year], errors="coerce").fillna(0.0).sum())
+            error = allocated - expected
+            if abs(error) > tolerance:
+                rows.append(
+                    {
+                        "economy_key": economy,
+                        "ninth_sector": sector,
+                        "ninth_fuel": fuel,
+                        "parent_flow": diagnostic_parent,
+                        "diagnostic_type": "parent_child_reconciliation_mismatch",
+                        "year": int(year),
+                        "parent_value": expected,
+                        "allocated_child_value": allocated,
+                        "reconciliation_error": error,
+                        "child_flow_count": int(candidates["esto_flow"].nunique()),
+                        "child_flows": "; ".join(sorted(candidates["esto_flow"].astype(str).unique())),
+                        "esto_products": "; ".join(sorted(candidates["esto_product"].astype(str).unique()))
+                        if "esto_product" in candidates.columns
+                        else "",
+                    }
+                )
+    return pd.DataFrame(rows)
+
+
 def allocate_ninth_projection_to_esto(
     mapping_df: pd.DataFrame,
     ninth_series: pd.DataFrame,
@@ -982,6 +1050,11 @@ def allocate_ninth_projection_to_esto(
         year_cols,
         fill_missing_ninth_sectors=fill_missing_ninth_sectors,
     )
+    parent_child_diagnostics = _build_parent_child_reconciliation_diagnostics(
+        source_by_pair,
+        merged,
+        year_cols,
+    )
 
     allocation_provenance = pd.DataFrame()
     if return_allocation_provenance:
@@ -1093,6 +1166,12 @@ def allocate_ninth_projection_to_esto(
     if not gas_profile_diagnostics.empty:
         diagnostics = pd.concat(
             [diagnostics, gas_profile_diagnostics],
+            ignore_index=True,
+            sort=False,
+        )
+    if not parent_child_diagnostics.empty:
+        diagnostics = pd.concat(
+            [diagnostics, parent_child_diagnostics],
             ignore_index=True,
             sort=False,
         )

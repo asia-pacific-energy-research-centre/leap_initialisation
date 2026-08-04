@@ -4,6 +4,17 @@ subtitle: "How the process works, and how to use it"
 date: "4 August 2026"
 ---
 
+> **Superseded 2026-08-04.** This document mixed two audiences: how a colleague
+> runs the tools, and how a maintainer builds and releases them. Both halves now
+> live where they belong —
+>
+> - **Using the tools** → `docs/leap_review_tools_user_guide.md`, which converts
+>   to the `.docx` shipped inside the release itself.
+> - **Building, releasing, and the architecture** → `docs/leap_review_tools.md`.
+>
+> Kept for its history only. Nothing here is maintained, and some of it is out of
+> date. Do not cite it.
+
 # What this is
 
 Two LEAP review tools — the **Common ESTO dashboard** and the **balance-review

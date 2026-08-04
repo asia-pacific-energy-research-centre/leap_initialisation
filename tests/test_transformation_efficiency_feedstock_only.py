@@ -118,6 +118,9 @@ def test_oil_refining_uses_one_gross_output_basis_for_leap_boundary() -> None:
     assert sum(values[2022] for values in record["output_values"].values()) == pytest.approx(
         gross_output
     )
+    assert sum(
+        values[2022] for values in record["deliverable_output_values"].values()
+    ) == pytest.approx(gross_output - sum(own_use.values()))
     assert record["output_values"]["Refinery gas"][2022] == pytest.approx(
         own_use["Refinery gas"]
     )
@@ -167,7 +170,7 @@ def test_non_overlapping_auxiliary_fuels_leave_process_record_unchanged() -> Non
     assert record["process_boundary_status"] == "no_output_auxiliary_overlap"
 
 
-def test_refinery_capacity_uses_gross_output_and_preserves_runtime_additions(
+def test_refinery_capacity_uses_deliverable_output_and_preserves_runtime_additions(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -215,11 +218,11 @@ def test_refinery_capacity_uses_gross_output_and_preserves_runtime_additions(
         "Current Accounts",
     )[0]
 
-    # Capacity and historical production use gross output before same-module
-    # own use, then add runtime capacity. LEAP applies the auxiliary use after
-    # processing, while its feedstock requirement is efficiency * gross output.
-    assert updated["exogenous_capacity_by_year"][2022] == pytest.approx(105.0)
-    assert updated["historical_production_by_year"][2022] == pytest.approx(105.0)
+    # LEAP meets refinery auxiliary fuel from module outputs, so it grosses
+    # deliverable production up itself. Capacity and historical production
+    # therefore exclude same-module own use, then add runtime capacity.
+    assert updated["exogenous_capacity_by_year"][2022] == pytest.approx(85.0)
+    assert updated["historical_production_by_year"][2022] == pytest.approx(85.0)
 
 
 def test_auxiliary_above_matching_output_preserves_excess_as_external() -> None:

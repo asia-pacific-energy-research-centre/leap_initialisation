@@ -192,6 +192,13 @@ TRANSFORMATION_AUXILIARY_CONFIG_KEYS = (
 SEED_OR_CARRY_FORWARD_TRANSFORMATION_FLOW_PREFIXES = (
     "09.08.01 Coke ovens",
     "09.08.02 Blast furnaces",
+    "09.08.03 Patent fuel plants",
+    "09.08.04 BKB/PB plants",
+    "09.08.05 Liquefaction (coal to oil)",
+    "09.06.01 Gas works plants",
+    "09.06.02 Liquefaction/regasification plants",
+    "09.06.03 Natural gas blending plants",
+    "09.06.04 Gas-to-liquids plants",
 )
 
 
@@ -1466,13 +1473,13 @@ def apply_canonical_projection_comparators(
         component_masks: list[pd.Series] = []
         for component_code in component_codes:
             exact_mask = product_mask & projection_flow_codes.eq(component_code)
+            descendant_mask = product_mask & projection_flow_codes.str.startswith(
+                component_code + "."
+            )
             component_masks.append(
                 exact_mask
                 if bool(exact_mask.any())
-                else (
-                    product_mask
-                    & projection_flow_codes.str.startswith(component_code + ".")
-                )
+                else descendant_mask
             )
         if not component_masks:
             continue
@@ -2963,6 +2970,7 @@ def run_baseline_seed_balance_diagnostics(
     difference_parts: list[pd.DataFrame] = []
     issue_parts: list[pd.DataFrame] = []
     ignored_parts: list[pd.DataFrame] = []
+    projection_diagnostic_parts: list[pd.DataFrame] = []
     for economy in economy_list:
         date_ids = (date_ids_by_economy or {}).get(economy, {})
         direct_workbook_path = (workbook_paths_by_economy or {}).get(economy)
@@ -2980,6 +2988,13 @@ def run_baseline_seed_balance_diagnostics(
         )
         results[economy] = result
         difference_parts.append(result["difference_table"])
+        projection_diagnostics = result.get(
+            "projection_allocation_diagnostics", pd.DataFrame()
+        ).copy()
+        if not projection_diagnostics.empty:
+            if "economy" not in projection_diagnostics.columns:
+                projection_diagnostics["economy"] = economy
+            projection_diagnostic_parts.append(projection_diagnostics)
         issues = result["mapping_issues"].copy()
         if not issues.empty:
             if "economy" not in issues.columns:
@@ -3014,6 +3029,16 @@ def run_baseline_seed_balance_diagnostics(
     if not ignored_rows.empty:
         ignored_rows_path = resolved_output_dir / "leap_balance_ignored_rows.csv"
         ignored_rows.to_csv(ignored_rows_path, index=False)
+
+    projection_diagnostics_path = resolved_output_dir / (
+        "ninth_projection_allocation_diagnostics.csv"
+    )
+    projection_diagnostics = (
+        pd.concat(projection_diagnostic_parts, ignore_index=True, sort=False)
+        if projection_diagnostic_parts
+        else pd.DataFrame()
+    )
+    projection_diagnostics.to_csv(projection_diagnostics_path, index=False)
 
     review = build_balance_review_table(
         differences,

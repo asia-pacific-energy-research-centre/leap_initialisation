@@ -5,9 +5,10 @@
 packaging completed 2026-08-04. Both export-first paths are shipping in the
 same portable folder through two isolated executables.
 
-Read `docs/leap_review_tools.md` for the reference and
-`docs/leap_review_tools_walkthrough.md` for the narrative. This file only covers
-what is *left*, and the one architectural decision that governs it.
+Read `docs/leap_review_tools.md` for the maintainer reference and
+`docs/leap_review_tools_user_guide.md` for the colleague-facing guide (the
+walkthrough was superseded on 2026-08-04 and moved to `docs/archive/`). This
+file only covers what is *left*, and the one architectural decision that governs it.
 
 ---
 

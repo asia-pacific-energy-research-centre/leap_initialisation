@@ -956,6 +956,7 @@ def _normalize_process_boundary_for_leap(
         }
         empty_result = {
             "output_values": gross_output_values,
+            "deliverable_output_values": gross_output_values,
             "auxiliary_ratios": raw_auxiliary_ratios,
             "gross_output_values": gross_output_values,
             "auxiliary_energy_values": {},
@@ -1088,6 +1089,7 @@ def _normalize_process_boundary_for_leap(
         if preserve_gross_output_basis:
             return {
                 "output_values": gross_output_values,
+                "deliverable_output_values": net_output_values,
                 "auxiliary_ratios": raw_auxiliary_ratios,
                 "gross_output_values": gross_output_values,
                 "auxiliary_energy_values": auxiliary_energy_values,
@@ -1097,6 +1099,7 @@ def _normalize_process_boundary_for_leap(
             }
         return {
             "output_values": net_output_values,
+            "deliverable_output_values": net_output_values,
             "auxiliary_ratios": rebased_auxiliary_ratios,
             "gross_output_values": gross_output_values,
             "auxiliary_energy_values": auxiliary_energy_values,
@@ -1159,6 +1162,9 @@ def build_process_record(
             "sector_title": sector_title,
             "process_name": process_name,
             "output_values": leap_boundary["output_values"],
+            "deliverable_output_values": leap_boundary[
+                "deliverable_output_values"
+            ],
             "gross_output_values": leap_boundary["gross_output_values"],
             "feedstock_values": feedstock_values,
             "feedstock_shares": dict(feedstock_shares or {}),

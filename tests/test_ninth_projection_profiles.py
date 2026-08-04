@@ -6,6 +6,7 @@ from codebase.functions.ninth_projection_mapping import (
     build_esto_projection_table,
     build_economy_specific_child_flow_profiles,
     build_ninth_projection_series,
+    _build_parent_child_reconciliation_diagnostics,
 )
 from codebase.functions.esto_data_utils import add_all_economy_total
 
@@ -351,6 +352,44 @@ def test_parent_projection_preserves_mixed_signed_child_profile(tmp_path) -> Non
     assert diagnostics.empty
 
 
+def test_parent_child_reconciliation_diagnostic_reports_mismatch() -> None:
+    source = pd.DataFrame(
+        [{
+            "economy_key": "01AUS",
+            "ninth_sector": "09_08_coal_transformation",
+            "ninth_fuel": "02_coal_products",
+            2023: 100.0,
+        }]
+    )
+    allocated = pd.DataFrame(
+        [
+            {
+                "economy_key": "01AUS",
+                "ninth_sector": "09_08_coal_transformation",
+                "ninth_fuel": "02_coal_products",
+                "esto_flow": "09.08.01 Coke ovens",
+                2023: 60.0,
+            },
+            {
+                "economy_key": "01AUS",
+                "ninth_sector": "09_08_coal_transformation",
+                "ninth_fuel": "02_coal_products",
+                "esto_flow": "09.08.02 Blast furnaces",
+                2023: 30.0,
+            },
+        ]
+    )
+    diagnostics = _build_parent_child_reconciliation_diagnostics(
+        source, allocated, [2023]
+    )
+    assert len(diagnostics) == 1
+    row = diagnostics.iloc[0]
+    assert row["diagnostic_type"] == "parent_child_reconciliation_mismatch"
+    assert row["parent_value"] == pytest.approx(100.0)
+    assert row["allocated_child_value"] == pytest.approx(90.0)
+    assert row["reconciliation_error"] == pytest.approx(-10.0)
+
+
 def test_net_zero_child_profile_is_explicitly_diagnosed(tmp_path) -> None:
     esto = pd.DataFrame(
         [
@@ -578,7 +617,9 @@ def test_zero_gas_parent_does_not_reverse_direct_child_projection_by_default(tmp
 
     values = projection.set_index("esto_flow")[2023].to_dict()
     assert values == {"09.06.02 Liquefaction/regasification plants": pytest.approx(60.0)}
-    assert diagnostics.empty
+    assert "parent_child_reconciliation_mismatch" in set(
+        diagnostics["diagnostic_type"]
+    )
 
     filled, diagnostics = build_esto_projection_table(
         ninth,

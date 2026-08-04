@@ -515,14 +515,17 @@ def apply_transformation_target_overrides_for_scenario(
             instance = int(instance_counter[counter_key])
             output_total_by_year: dict[int, float] = {int(year): 0.0 for year in all_years}
             output_values = record.get("output_values") or {}
-            # Capacity is the gross process-output basis.  The process
-            # efficiency is also gross output / feedstock, while LEAP applies
-            # Auxiliary Fuel Use after the process runs.  For oil refining,
-            # using deliverable output here caused LEAP to scale every
-            # feedstock input down by the refinery's same-module own use.
-            # Output shares remain on the deliverable boundary, so the final
-            # product balance still reflects that own use.
+            # Capacity is normally the gross process-output basis.  Oil
+            # Refining is the exception because its LEAP module meets
+            # auxiliary-fuel requirements from its own outputs: LEAP grosses
+            # the seeded deliverable production up to the gross process
+            # output.  Seeding gross production here makes that own-use
+            # adjustment happen twice and overstates every feedstock input.
             capacity_output_values = record.get("gross_output_values") or output_values
+            if str(module_name).strip().casefold() == "oil refining":
+                capacity_output_values = (
+                    record.get("deliverable_output_values") or output_values
+                )
             # Only add observed output labels to the trade-target reset when the
             # process actually produces them.  Projection disaggregation keeps
             # zero-valued child fuels in ``output_values``; adding every such

@@ -502,6 +502,10 @@ def build_balance_structure_review_workbook(
         diagnostics_dir / "leap_balance_mapping_issues.csv",
         optional=True,
     )
+    projection_diagnostics = _load_csv_rows(
+        diagnostics_dir / "ninth_projection_allocation_diagnostics.csv",
+        optional=True,
+    )
 
     def matches_source(row: dict[str, str]) -> bool:
         return (
@@ -621,6 +625,12 @@ def build_balance_structure_review_workbook(
     no_comparator_keys: set[str] = set()
     affected_supply_keys: set[str] = set()
     reconciliation_samples: list[dict[str, object]] = []
+    parent_child_mismatch_rows = [
+        row
+        for row in projection_diagnostics
+        if row.get("diagnostic_type") == "parent_child_reconciliation_mismatch"
+        and (not row.get("economy") or row.get("economy") == economy)
+    ]
 
     for review in reviews:
         row_label, fuel_label = _preferred_comparison_labels(review)
@@ -861,6 +871,47 @@ def build_balance_structure_review_workbook(
                 font_color=NO_COMPARATOR_FONT,
                 bold=True,
             )
+
+    # Projection parent/child mismatches are a separate contract from the
+    # ordinary LEAP-minus-source comparison.  When the projection diagnostic
+    # is available, mark the affected child cells red so a seed/carry-forward
+    # row is not mistaken for a benign purple comparator gap.
+    parent_child_red_keys: dict[str, float] = {}
+    for mismatch in parent_child_mismatch_rows:
+        child_flows = {
+            token.strip()
+            for token in str(mismatch.get("child_flows") or "").split(";")
+            if token.strip()
+        }
+        child_products = {
+            token.strip()
+            for token in str(mismatch.get("esto_products") or "").split(";")
+            if token.strip()
+        }
+        mismatch_value = _as_number(mismatch.get("reconciliation_error")) or 0.0
+        for review in reviews:
+            review_flow = str(review.get("esto_flow") or "").replace(
+                " (including own use)", ""
+            ).strip()
+            review_product = str(review.get("esto_product") or "").strip()
+            if child_flows and review_flow not in child_flows:
+                continue
+            if child_products and review_product not in child_products:
+                continue
+            resolution = resolve(*_preferred_comparison_labels(review))
+            if resolution["status"] == "unique":
+                address = str(resolution["address"])
+                parent_child_red_keys[address] = (
+                    parent_child_red_keys.get(address, 0.0) + mismatch_value
+                )
+    for address, mismatch_value in parent_child_red_keys.items():
+        _style_cell(
+            error_sheet[address],
+            fill_color=RED_FILL,
+            font_color=RED_FONT,
+            bold=True,
+        )
+        error_sheet[address].value = mismatch_value
 
     medium_green = Side(style="medium", color=AFFECTED_SUPPLY_BORDER)
     green_border = Border(
