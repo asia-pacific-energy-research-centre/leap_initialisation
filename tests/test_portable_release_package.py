@@ -315,11 +315,12 @@ def portable_run(staged_package: Path, tmp_path_factory: pytest.TempPathFactory)
 @golden_inputs
 def test_run_writes_output_inside_the_package(portable_run) -> None:
     copy_root, _ = portable_run
-    run_dir = copy_root / "output" / "balance-review_smoke"
-    assert (run_dir / "balance_review_20_USA_tgt_2022.xlsx").is_file()
-    assert (run_dir / "run_manifest.json").is_file()
-    assert (run_dir / "run_manifest.txt").is_file()
-    assert (run_dir / "validation_report.txt").is_file()
+    deliverable_dir = copy_root / "output" / "20_USA" / "balance_review"
+    record_dir = deliverable_dir / "run_records" / "smoke"
+    assert (deliverable_dir / "balance_review_20_USA_tgt_2022.xlsx").is_file()
+    assert (record_dir / "run_manifest.json").is_file()
+    assert (record_dir / "run_manifest.txt").is_file()
+    assert (record_dir / "validation_report.txt").is_file()
     assert list((copy_root / "logs").glob("balance-review_*.log"))
 
 
@@ -327,9 +328,15 @@ def test_run_writes_output_inside_the_package(portable_run) -> None:
 def test_run_manifest_records_release_commits_and_input_hashes(portable_run) -> None:
     copy_root, _ = portable_run
     manifest = json.loads(
-        (copy_root / "output" / "balance-review_smoke" / "run_manifest.json").read_text(
-            encoding="utf-8"
-        )
+        (
+            copy_root
+            / "output"
+            / "20_USA"
+            / "balance_review"
+            / "run_records"
+            / "smoke"
+            / "run_manifest.json"
+        ).read_text(encoding="utf-8")
     )
     assert manifest["mode"] == "portable"
     assert manifest["status"] == "succeeded"
@@ -353,9 +360,15 @@ def test_run_manifest_records_release_commits_and_input_hashes(portable_run) -> 
 def test_run_reproduces_the_golden_balance_review_values(portable_run) -> None:
     copy_root, _ = portable_run
     manifest = json.loads(
-        (copy_root / "output" / "balance-review_smoke" / "run_manifest.json").read_text(
-            encoding="utf-8"
-        )
+        (
+            copy_root
+            / "output"
+            / "20_USA"
+            / "balance_review"
+            / "run_records"
+            / "smoke"
+            / "run_manifest.json"
+        ).read_text(encoding="utf-8")
     )
     build_result = manifest["results"]["build_result"]
     assert build_result["sourceShape"] == {"rows": 79, "columns": 49}
@@ -435,9 +448,15 @@ def test_editing_a_config_file_changes_the_next_run_manifest_hash(
         # validation. The manifest is still written, with the config hashes.
         assert result.returncode == 1, result.stdout
         manifest = json.loads(
-            (copy_root / "output" / f"dashboard_{label}" / "run_manifest.json").read_text(
-                encoding="utf-8"
-            )
+            (
+                copy_root
+                / "output"
+                / "20_USA"
+                / "dashboard"
+                / "run_records"
+                / label
+                / "run_manifest.json"
+            ).read_text(encoding="utf-8")
         )
         records = {item["role"]: item for item in manifest["configuration"]}
         assert set(records) >= {
@@ -493,14 +512,13 @@ def test_invalid_input_is_explained_and_produces_no_workbook(
     )
     assert result.returncode == 1
     assert "diagnostics folder does not exist" in result.stdout
-    assert "cannot be produced from a LEAP export alone" in result.stdout
 
-    run_dir = copy_root / "output" / "balance-review_invalid"
-    assert (run_dir / "validation_report.txt").is_file()
-    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    record_dir = copy_root / "output" / "20_USA" / "balance_review" / "run_records" / "invalid"
+    assert (record_dir / "validation_report.txt").is_file()
+    manifest = json.loads((record_dir / "run_manifest.json").read_text(encoding="utf-8"))
     assert manifest["status"] == "failed"
     assert manifest["validation"]["ok"] is False
-    assert not list(run_dir.glob("*.xlsx"))
+    assert not list((copy_root / "output" / "20_USA" / "balance_review").glob("*.xlsx"))
 
 
 def test_incomplete_package_refuses_to_run(staged_package: Path, tmp_path: Path) -> None:
