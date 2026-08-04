@@ -161,7 +161,7 @@ paths = [
 # their absolute `codebase.*` imports (ast-based, not hand-maintained by
 # inspection - re-run that walk if the mapping chain's imports change).
 [repositories.leap_mappings_worker]
-commit = "8d6d1da5423fce331c8f570cadb5b822f8015df4"
+commit = "2e9b75726541f21051ba367f2f0efacba98aa8eb"
 stage_dir = "leap_mappings_worker"
 source_key = "leap_mappings"
 on_sys_path = true
@@ -174,7 +174,11 @@ paths = [
     "codebase/mapping_tools/build_dataset_tree_structure.py",
     "codebase/mapping_tools/common_esto_output_contract.py",
     "codebase/mapping_tools/convert_leap_results_to_esto.py",
+    "codebase/functions/ninth_projection_mapping.py",
+    "codebase/mappings/__init__.py",
+    "codebase/mappings/canonical_mapping.py",
     "codebase/mapping_tools/dataset_registry.py",
+    "codebase/mapping_tools/esto_exact_rows.py",
     "codebase/mapping_tools/diagnostic_adapter_registry.py",
     "codebase/mapping_tools/hierarchy_subtotal_adapters.py",
     "codebase/mapping_tools/hierarchy_subtotal_contract.py",
@@ -190,6 +194,10 @@ paths = [
     "codebase/mapping_tools/value_adapter_registry.py",
     "codebase/utilities/__init__.py",
     "codebase/utilities/leap_balance_export_resolver.py",
+    "codebase/utilities/leap_results_dashboard_utils.py",
+    "codebase/utilities/leap_results_dashboard_v2/__init__.py",
+    "codebase/utilities/leap_results_dashboard_v2/reference_loader.py",
+    "codebase/utilities/master_config.py",
 ]
 
 # ---------------------------------------------------------------------------
