@@ -1534,37 +1534,38 @@ def pull_base_year_value(
                     .str.extract(r"^(\d+(?:\.\d+)*)", expand=False)
                     .fillna("")
                 )
-            component_masks: list[pd.Series] = []
+            # Resolve each component independently. If the exact component
+            # row exists, prefer it over descendants. If an explicit source
+            # reassignment has moved that row to a child code, prefer the
+            # remaining subtotal child over a duplicate non-subtotal leaf.
+            # This prevents 16.01.02 + 16.01.99 from being counted twice after
+            # the CPS-to-unallocated reassignment.
+            selected_parts: list[pd.DataFrame] = []
             for component_code in component_codes:
                 exact_mask = flow_codes.eq(component_code)
-                component_masks.append(
-                    exact_mask
-                    if bool(exact_mask.any())
-                    else flow_codes.str.startswith(component_code + ".")
-                )
-            combined_mask = component_masks[0].copy()
-            for component_mask in component_masks[1:]:
-                combined_mask |= component_mask
-            fallback = fallback[combined_mask]
-            # Reference-table preparation can retain two equivalent exact
-            # subtotal rows for the same component code. A rollup such as
-            # 16.01-16.02 must count each exact component once, while still
-            # retaining every distinct descendant when no exact row exists.
-            selected_flow_codes = flow_codes.loc[fallback.index]
-            exact_component = selected_flow_codes.isin(component_codes)
-            exact_rows = fallback.loc[exact_component].copy()
-            if not exact_rows.empty:
-                exact_rows["__rollup_component_code"] = selected_flow_codes.loc[
-                    exact_rows.index
-                ]
-                exact_rows = exact_rows.drop_duplicates(
-                    subset=["__rollup_component_code"],
-                    keep="first",
-                ).drop(columns="__rollup_component_code")
-            fallback = pd.concat(
-                [exact_rows, fallback.loc[~exact_component]],
-                axis=0,
-            ).sort_index()
+                if bool(exact_mask.any()):
+                    selected = fallback.loc[exact_mask].copy()
+                    selected["__rollup_component_code"] = component_code
+                    selected = selected.drop_duplicates(
+                        subset=["__rollup_component_code"],
+                        keep="first",
+                    ).drop(columns="__rollup_component_code")
+                else:
+                    descendant_mask = flow_codes.str.startswith(component_code + ".")
+                    selected = fallback.loc[descendant_mask].copy()
+                    if "is_subtotal" in selected.columns and not selected.empty:
+                        subtotal_mask = selected["is_subtotal"].fillna(False).astype(str).str.strip().str.lower().isin(
+                            {"true", "1", "yes", "y", "t"}
+                        )
+                        if bool(subtotal_mask.any()):
+                            selected = selected.loc[subtotal_mask]
+                if not selected.empty:
+                    selected_parts.append(selected)
+            fallback = (
+                pd.concat(selected_parts, axis=0).sort_index()
+                if selected_parts
+                else fallback.iloc[0:0].copy()
+            )
         else:
             parent_code = component_codes[0] if component_codes else ""
             if parent_code:
