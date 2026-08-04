@@ -861,6 +861,11 @@ def run_dashboard_from_export(
             "_input_records": describe_directory_files(
                 resolved_export_dir, role_prefix="input:balance_export", patterns=("*.xlsx",)
             ),
+            # Promoted out of the chain result so they are readable rather than
+            # buried in it. These say whether the ESTO rows were re-derived and
+            # how many synthetic rows were injected — the two facts that explain
+            # why a number differs from the previous run.
+            "esto_source_notes": list(chain_result.get("notes", [])),
             "mapping_chain": chain_result,
             **result,
         }

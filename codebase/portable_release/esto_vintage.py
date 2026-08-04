@@ -1,4 +1,4 @@
-"""Work out which ESTO vintage a run is using, and refuse to mix vintages.
+"""Work out which ESTO vintage a run is using, and say when it changes.
 
 ESTO data is reissued yearly and each issue moves the base year: the 2024 issue
 carries years 1990-2022, the 2025 issue 1990-2023. The base year was previously
@@ -96,31 +96,33 @@ def infer_esto_vintage(path: Path | str) -> EstoVintage:
     return EstoVintage(path=table, first_year=years[0], base_year=years[-1])
 
 
-def check_vintage_consistency(
+def describe_vintage_change(
     *,
     supplied: EstoVintage,
     packaged_base_year: int | None,
 ) -> list[str]:
-    """Return a problem for each way a supplied table conflicts with the release.
+    """Describe what changes when a supplied table differs from the packaged one.
 
-    ``packaged_base_year`` is the base year of the ESTO table this release was
-    built against, recorded at build time. The four derived mapping artifacts
-    were produced from that same issue, and nothing in a release can regenerate
-    them — so a supplied table from a different issue can be used for the
-    balance review but would silently mismatch the dashboard.
+    This used to refuse the run. That was right while a release could only carry
+    ESTO rows extracted in advance from one issue: a newer table then updated
+    the balance review and left the dashboard silently comparing against the
+    older data.
+
+    The mapping-chain worker now re-derives those rows from whichever table a
+    run is given, so both tools follow the supplied issue and the mismatch it
+    guarded against cannot arise. What remains is worth *saying* rather than
+    blocking: re-derivation adds a couple of minutes to the first run against a
+    given table, and the 9th-edition projections keep their own release cycle,
+    so they are unchanged by an ESTO update.
     """
-    if packaged_base_year is None:
-        return []
-    if supplied.base_year == packaged_base_year:
+    if packaged_base_year is None or supplied.base_year == packaged_base_year:
         return []
     return [
-        f"The ESTO table you supplied has base year {supplied.base_year}, but "
-        f"this release was built against the {packaged_base_year} issue.\n"
-        "    The balance review can use your table. The dashboard cannot: its "
-        "comparison data is prepared in advance from a single ESTO issue, and "
-        "this release carries the "
-        f"{packaged_base_year} one.\n"
-        "    Mixing them would produce a dashboard that looks correct but "
-        "compares against the older data. Ask for a release built on the "
-        f"{supplied.base_year} issue instead."
+        f"Using your ESTO table (base year {supplied.base_year}) instead of the "
+        f"one shipped with this release (base year {packaged_base_year}).\n"
+        "    The comparison rows are re-derived from your table, so both the "
+        "balance review and the dashboard follow it. The first run against a "
+        "given table takes a couple of minutes longer while that happens.\n"
+        "    The 9th-edition projections are on their own release cycle and are "
+        "not affected by an ESTO update."
     ]

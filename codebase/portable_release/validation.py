@@ -675,11 +675,14 @@ def _check_esto_vintage(
         packaged = vintage_module.infer_esto_vintage(Path(str(packaged_esto_table)))
     except vintage_module.EstoVintageError:
         return
-    for problem in vintage_module.check_vintage_consistency(
+    # Reported, not refused: the worker re-derives the comparison rows from
+    # whichever table it is given, so a different issue is a supported choice
+    # rather than a mismatch to block.
+    for note in vintage_module.describe_vintage_change(
         supplied=vintage,
         packaged_base_year=packaged.base_year,
     ):
-        report.add("esto_vintage_consistency", False, problem)
+        report.add("esto_vintage_change", True, note)
 
 
 def _check_esto_vocabulary(

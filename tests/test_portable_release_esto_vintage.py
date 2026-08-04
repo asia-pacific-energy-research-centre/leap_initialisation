@@ -1,4 +1,4 @@
-"""Tests for deriving the ESTO base year and refusing to mix vintages."""
+"""Tests for deriving the ESTO base year and reporting a vintage change."""
 
 from pathlib import Path
 
@@ -7,7 +7,7 @@ import pytest
 from codebase.portable_release.esto_vintage import (
     EstoVintage,
     EstoVintageError,
-    check_vintage_consistency,
+    describe_vintage_change,
     infer_esto_vintage,
     read_year_columns,
 )
@@ -82,23 +82,30 @@ def _vintage(base_year: int) -> EstoVintage:
     return EstoVintage(path=Path("esto.csv"), first_year=1990, base_year=base_year)
 
 
-def test_matching_vintages_raise_no_problem() -> None:
-    assert check_vintage_consistency(supplied=_vintage(2022), packaged_base_year=2022) == []
+def test_matching_vintages_say_nothing() -> None:
+    assert describe_vintage_change(supplied=_vintage(2022), packaged_base_year=2022) == []
 
 
 def test_an_unknown_packaged_vintage_is_not_second_guessed() -> None:
-    assert check_vintage_consistency(supplied=_vintage(2023), packaged_base_year=None) == []
+    assert describe_vintage_change(supplied=_vintage(2023), packaged_base_year=None) == []
 
 
-def test_a_different_vintage_explains_which_tool_is_affected() -> None:
-    problems = check_vintage_consistency(supplied=_vintage(2023), packaged_base_year=2022)
-    assert len(problems) == 1
-    message = problems[0]
+def test_a_different_vintage_is_described_not_refused() -> None:
+    """A newer table is a supported choice now, not a mismatch to block.
+
+    While a release could only carry ESTO rows extracted in advance, a newer
+    table left the dashboard on the older data and this refused the run. The
+    worker now re-derives those rows, so the message explains the consequence -
+    a slower first run - instead of stopping it.
+    """
+    notes = describe_vintage_change(supplied=_vintage(2023), packaged_base_year=2022)
+    assert len(notes) == 1
+    message = notes[0]
     assert "2023" in message and "2022" in message
-    # The point of the message is that one tool is safe and the other is not.
-    assert "balance review can use your table" in message
-    assert "dashboard cannot" in message
-    assert "looks correct but" in message
+    assert "re-derived" in message
+    assert "both the balance review and the dashboard" in message
+    # The old wording promised the opposite; make sure it cannot come back.
+    assert "dashboard cannot" not in message
 
 
 # ---------------------------------------------------------------------------
