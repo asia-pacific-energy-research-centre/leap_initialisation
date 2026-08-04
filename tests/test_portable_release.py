@@ -875,28 +875,47 @@ def test_balance_review_from_export_passes_packaged_mapping_pairs(
 # ---------------------------------------------------------------------------
 
 
-def test_guided_flow_offers_list_and_check_and_defaults_to_an_export_command() -> None:
-    """The menu is for people who do not use a terminal.
+def test_guided_flow_asks_only_what_a_user_can_answer() -> None:
+    """The menu of four commands was the wrong question to ask.
 
-    `list` and `selfcheck` were reachable only from the command line, yet the
-    guide opens by telling users to run `list` first and the troubleshooting
-    section leads with `selfcheck` - so the audience that most needs them could
-    not reach them.
+    "1. balance-review / 2. balance-review-from-export" is a distinction about
+    which inputs the underlying tools take, and there is no way to choose
+    between them without knowing what a diagnostics folder is. It also asked for
+    file paths a user does not have.
 
-    The default mattered too: it was `balance-review` purely by being listed
-    first, and that is the one command needing a diagnostics folder a colleague
-    will not have. Pressing Enter now picks an export-first command.
+    It now asks for the economy, scenario and year - the three things only they
+    can answer - and runs both tools, because wanting one without the other is
+    the rare case, not the default.
     """
     source = (
         REPO_ROOT / "codebase" / "portable_release" / "portable_main.py"
     ).read_text(encoding="utf-8")
-    assert '"  l. list' in source
-    assert '"  c. check' in source
-    assert 'if spec["name"].endswith("-from-export"):' in source
-    assert 'default=default_choice' in source
-    # A value is not a path; the prompt used to say "path or value" for every
-    # field, including economy.
-    assert '"path" if item["kind"] in {"file", "directory"} else "value"' in source
+    assert '_prompt("Which economy"' in source
+    assert '_prompt("Which year"' in source
+    assert "_dispatch_balance_review_from_export(context, values)" in source
+    assert "_dispatch_dashboard_from_export(context," in source
+    # No path questions inside the guided flow: the exports are found from the
+    # input folder. `info` still lists each command's inputs, which is its job.
+    guided = source[source.index("def _guided_flow("):source.index("def _report(")]
+    assert 'for item in spec["inputs"]' not in guided
+    assert "path or value" not in guided
+
+
+def test_a_double_clicked_window_waits_before_closing() -> None:
+    """A console opened by double-clicking closes the moment main returns.
+
+    Everything the guided flow prints - a listing, a self-check result, an
+    error - was unreadable because of it. The pause has to cover the failure
+    paths too, since those are the ones worth reading.
+    """
+    source = (
+        REPO_ROOT / "codebase" / "portable_release" / "portable_main.py"
+    ).read_text(encoding="utf-8")
+    assert "def _pause_before_closing()" in source
+    guided = source[source.index("if not args:"):]
+    guided = guided[: guided.index("parser = build_parser")]
+    assert "finally:" in guided and "_pause_before_closing()" in guided
+    assert "except Exception" in guided, "an unexpected error must also pause"
 
 
 def test_value_inputs_are_declared_as_values_not_files() -> None:

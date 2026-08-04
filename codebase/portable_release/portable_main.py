@@ -98,80 +98,100 @@ def _prompt(question: str, *, default: str = "") -> str:
     return answer or default
 
 
+def _pause_before_closing() -> None:
+    """Keep a double-clicked console window open until the user is done reading."""
+    try:
+        print()
+        input("Press Enter to close this window. ")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
 def _guided_flow(context, frozen: dict[str, Any]) -> int:
-    """Ask for the inputs one command needs, then run it."""
-    commands = frozen.get("commands", [])
+    """Ask for an economy, scenario and year, then produce both outputs.
+
+    Deliberately not a menu of the four commands. Those exist because the
+    underlying tools take different inputs, which is a distinction about how the
+    code is organised and not one a user should have to make: told "1. balance-
+    review / 2. balance-review-from-export", there is no way to know which one
+    fits without knowing what a diagnostics folder is. Someone here has LEAP
+    exports and wants to see what is wrong with their model.
+
+    So this asks the three things only they can answer, and runs both tools.
+    Every path is still available on the command line for anyone who wants one
+    of them on its own.
+    """
+    from codebase.portable_release import workspace
+
+    exports_root = workspace.balance_exports_root(context.input_root)
     print()
     print(f"{context.release_name} {context.release_version}")
     print("=" * 72)
-    print(f"Package folder : {context.package_root}")
-    print(f"Put input files in: {context.input_root}")
-    print(f"Results appear in : {context.output_root}")
+    print(f"Put your LEAP exports in : {exports_root}")
+    print(f"Results appear in        : {context.output_root}")
     print()
-    print("Available commands:")
-    for index, spec in enumerate(commands, start=1):
-        print(f"  {index}. {spec['name']} - {spec['summary']}")
-    # Someone using this menu rather than a terminal is exactly who needs these
-    # two, and they were the only way to reach them. The guide opens by telling
-    # users to run `list` before anything else.
-    print("  l. list - Show which economies and exports this release can see.")
-    print("  c. check - Confirm the package is complete and working.")
+
+    found = [item for item in workspace.discover_economies(exports_root) if item.workbooks]
+    if not found:
+        print("No LEAP balance exports found yet.")
+        print()
+        print(workspace.describe_workspace(exports_root))
+        return 1
+
+    print("Economies with exports:")
+    for index, item in enumerate(found, start=1):
+        scenarios = ", ".join(w.scenario for w in item.workbooks)
+        years = f"{min(item.years)}-{max(item.years)}" if item.years else "years unknown"
+        print(f"  {index}. {item.economy}  ({scenarios};  {years})")
+    print()
+    print("  c. check that this copy is working")
     print("  q. quit")
     print()
 
-    # Default to an export-first command: a colleague has LEAP exports and not a
-    # diagnostics folder, so plain `balance-review` - which was the default
-    # purely by being first - sends them to the one command they cannot run.
-    default_choice = "1"
-    for index, spec in enumerate(commands, start=1):
-        if spec["name"].endswith("-from-export"):
-            default_choice = str(index)
-            break
-
-    choice = _prompt("Choose a command by number", default=default_choice).lower()
+    choice = _prompt("Which economy", default="1").strip().lower()
     if choice in {"q", "quit", "exit"}:
-        return 0
-    if choice in {"l", "list"}:
-        print()
-        from codebase.portable_release import workspace
-
-        print(
-            workspace.describe_workspace(
-                workspace.balance_exports_root(context.input_root)
-            )
-        )
         return 0
     if choice in {"c", "check", "selfcheck"}:
         print()
         return selfcheck(context, frozen)[0]
-    try:
-        spec = commands[int(choice) - 1]
-    except (ValueError, IndexError):
-        print(f"'{choice}' is not one of the listed choices.")
+    chosen = None
+    for index, item in enumerate(found, start=1):
+        if choice in {str(index), item.economy.lower()}:
+            chosen = item
+            break
+    if chosen is None:
+        print(f"'{choice}' is not one of the economies listed above.")
         return 2
 
+    scenarios = [w.scenario for w in chosen.workbooks]
+    if len(scenarios) == 1:
+        scenario = scenarios[0]
+        print(f"Scenario: {scenario} (the only one available for {chosen.economy})")
+    else:
+        scenario = _prompt(f"Which scenario ({' or '.join(scenarios)})", default=scenarios[-1])
+    year = _prompt("Which year", default=str(workspace._suggested_review_year(chosen.years)))
     print()
-    print(spec["summary"])
-    print(f"Input mode: {spec['input_mode']}")
-    print(f"Produces  : {spec['outputs']}")
-    print()
-    values: dict[str, str] = {}
-    for item in spec["inputs"]:
-        print(f"{item['key']} - {item['description']}")
-        label = "path" if item["kind"] in {"file", "directory"} else "value"
-        values[item["key"]] = _prompt(f"  {label}")
-        print()
 
-    if spec["name"] == "balance-review":
-        return _dispatch_balance_review(context, values)
-    if spec["name"] == "balance-review-from-export":
-        return _dispatch_balance_review_from_export(context, values)
-    if spec["name"] == "dashboard":
-        return _dispatch_dashboard(context, values)
-    if spec["name"] == "dashboard-from-export":
-        return _dispatch_dashboard_from_export(context, values)
-    print(f"Command {spec['name']!r} has no implementation in this release.")
-    return 2
+    print(f"Running both tools for {chosen.economy} {scenario} {year}.")
+    print("The dashboard takes a few minutes; progress is printed as it goes.")
+    print()
+
+    values = {"economy": chosen.economy, "scenario": scenario, "year": year}
+    review_status = _dispatch_balance_review_from_export(context, values)
+    print()
+    print("-" * 72)
+    print()
+    dashboard_status = _dispatch_dashboard_from_export(context, {"economy": chosen.economy})
+
+    print()
+    print("=" * 72)
+    economy_output = workspace.economy_output_root(context.output_root, chosen.economy)
+    print(f"Balance review : {'done' if review_status == 0 else 'FAILED'}")
+    print(f"Dashboard      : {'done' if dashboard_status == 0 else 'FAILED'}")
+    print(f"Both are under : {economy_output}")
+    # Neither failure should hide the other: the review can succeed while the
+    # dashboard fails, and a user needs to know they still have a workbook.
+    return 0 if review_status == 0 and dashboard_status == 0 else 1
 
 
 def _report(result) -> int:
@@ -478,11 +498,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if not args:
+        # Double-clicking opens a console that closes the moment this returns,
+        # taking the output with it. Anything printed here - a listing, a
+        # self-check, an error - is unreadable unless we wait first. This must
+        # cover the failure paths too, since those are the ones worth reading.
         try:
             return _guided_flow(context, frozen)
         except (EOFError, KeyboardInterrupt):
             print()
             return 130
+        except Exception as exc:  # noqa: BLE001 - shown, then paused on
+            print()
+            print(f"Something went wrong: {type(exc).__name__}: {exc}")
+            print("Send the logs folder to whoever gave you these tools.")
+            return 2
+        finally:
+            _pause_before_closing()
 
     parser = build_parser(frozen)
     namespace = parser.parse_args(args)
