@@ -130,6 +130,87 @@ def test_projection_difference_marks_cardinality_and_correction() -> None:
     )
 
 
+def test_direct_demand_comparators_use_declared_non_road_components() -> None:
+    difference_table = pd.DataFrame(
+        [
+            {
+                "scenario": "Target",
+                "comparison_branch_path": "All demand aggregated/Industry",
+                "esto_flow": "14 Industry sector",
+                "esto_product": "17 Electricity",
+                "year": 2023,
+                "leap_value_pj": 10.0,
+                "source_value_pj": 8.0,
+                "reference_source": "9th Outlook",
+                "status": "value_mismatch",
+            },
+            {
+                "scenario": "Target",
+                "comparison_branch_path": "All demand aggregated/Transport non road",
+                "esto_flow": "15.01,15.03-15.06 Transport non-road",
+                "esto_product": "08.01 Natural gas",
+                "year": 2023,
+                "leap_value_pj": 15.0,
+                "source_value_pj": 0.0,
+                "reference_source": "9th Outlook",
+                "status": "value_mismatch",
+            },
+        ]
+    )
+    ninth_df = pd.DataFrame(
+        [
+            {"economy": "20_USA", "scenarios": "target", "sectors": "14_industry_sector", "sub1sectors": "x", "fuels": "17_electricity", "subfuels": "x", "subtotal_results": False, "2023": 10.0},
+            *[
+                {"economy": "20_USA", "scenarios": "target", "sectors": "15_transport_sector", "sub1sectors": sector, "fuels": "08_01_natural_gas", "subfuels": "x", "subtotal_results": False, "2023": value}
+                for sector, value in [("15_01_domestic_air_transport", 1.0), ("15_03_rail", 2.0), ("15_04_domestic_navigation", 3.0), ("15_05_pipeline_transport", 4.0), ("15_06_nonspecified_transport", 5.0)]
+            ],
+            {"economy": "20_USA", "scenarios": "target", "sectors": "15_transport_sector", "sub1sectors": "15_02_road", "fuels": "08_01_natural_gas", "subfuels": "x", "subtotal_results": False, "2023": 99.0},
+        ]
+    )
+
+    result = diagnostics._override_direct_demand_sources(
+        difference_table=difference_table,
+        ninth_df=ninth_df,
+        economy="20_USA",
+        base_year=2022,
+        tolerance_pj=1e-6,
+        mapping_pairs_path=diagnostics.DEFAULT_MAPPING_PAIRS_PATH,
+    )
+
+    assert result["source_value_pj"].tolist() == pytest.approx([10.0, 15.0])
+    assert result["reference_source"].tolist() == [
+        "9th Outlook (direct demand detail)",
+        "9th Outlook (direct demand detail)",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("source_value", "expected_status"),
+    [(99.995, "match"), (99.0, "value_mismatch")],
+)
+def test_difference_table_uses_point_zero_one_percent_rounding_rule(
+    source_value: float,
+    expected_status: str,
+) -> None:
+    table = diagnostics.build_leap_source_difference_table(
+        comparison_long=_comparison_rows(
+            scenario="Target",
+            year=2023,
+            leap_value=100.0,
+            source="projection",
+            source_value=source_value,
+        ),
+        mapping_status=_mapping_status(
+            ninth_pairs=[("09_06_gas_processing_plants", "08_01_natural_gas")]
+        ),
+        economy="20_USA",
+        years=[2023],
+        scenarios=["Target"],
+    )
+
+    assert table.iloc[0]["status"] == expected_status
+
+
 def test_base_year_uses_esto_and_matches_across_economy_code_formats() -> None:
     comparison = _comparison_rows(
         scenario="Target",

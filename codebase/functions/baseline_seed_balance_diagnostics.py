@@ -65,6 +65,7 @@ DEFAULT_KNOWN_ISSUES_PATH = REPO_ROOT / "config" / "leap_results_balance_known_i
 DEFAULT_TEMPLATE_SHEET = "EBal|2060"
 DEFAULT_BASE_YEAR = 2022
 DEFAULT_TOLERANCE_PJ = 1e-6
+DEFAULT_ROUNDING_TOLERANCE_PERCENT = 0.01
 DEFAULT_MAPPING_PAIRS_PATH: ConfigTableRef = (
     OUTLOOK_MAPPINGS_MASTER_PATH,
     "ninth_pairs_to_esto_pairs",
@@ -2407,11 +2408,21 @@ def build_leap_source_difference_table(
     wide["status"] = "reference_unavailable"
     wide.loc[wide["leap_value_pj"].isna() & wide["source_value_pj"].notna(), "status"] = "missing_in_leap"
     wide.loc[
-        both_present & wide["absolute_difference_pj"].le(float(tolerance_pj)),
+        both_present
+        & (
+            wide["absolute_difference_pj"].le(float(tolerance_pj))
+            | wide["difference_percent"].abs().le(
+                DEFAULT_ROUNDING_TOLERANCE_PERCENT
+            )
+        ),
         "status",
     ] = "match"
     wide.loc[
-        both_present & wide["absolute_difference_pj"].gt(float(tolerance_pj)),
+        both_present
+        & wide["absolute_difference_pj"].gt(float(tolerance_pj))
+        & ~wide["difference_percent"].abs().le(
+            DEFAULT_ROUNDING_TOLERANCE_PERCENT
+        ),
         "status",
     ] = "value_mismatch"
     wide.loc[has_base & has_projection, "status"] = "ambiguous_reference"
@@ -2497,6 +2508,157 @@ def build_leap_source_difference_table(
         kind="mergesort",
     ).drop(columns=["_status_order", "leap", "base", "projection"])
     return wide[DIFFERENCE_OUTPUT_COLUMNS].reset_index(drop=True)
+
+
+def _override_direct_demand_sources(
+    difference_table: pd.DataFrame,
+    ninth_df: pd.DataFrame,
+    economy: str,
+    base_year: int,
+    tolerance_pj: float,
+    mapping_pairs_path: ConfigTableRef,
+) -> pd.DataFrame:
+    """Override two aggregate-demand comparators with direct mapped 9th detail."""
+    if difference_table.empty or ninth_df is None or ninth_df.empty:
+        return difference_table
+    out = difference_table.copy()
+    out["_direct_group"] = out["comparison_branch_path"].fillna("").astype(str).str.casefold().map(
+        {
+            "all demand aggregated/industry": "industry",
+            "all demand aggregated/transport non road": "transport_non_road",
+        }
+    )
+    targets = out.loc[
+        out["_direct_group"].notna()
+        & out["scenario"].astype(str).str.casefold().eq("target")
+        & pd.to_numeric(out["year"], errors="coerce").gt(int(base_year))
+    ].copy()
+    if targets.empty:
+        return difference_table
+    scoped = ninth_df.loc[
+        ninth_df["economy"].fillna("").astype(str).map(_compact_economy_code).eq(_compact_economy_code(economy))
+        & ninth_df["scenarios"].fillna("").astype(str).str.casefold().eq("target")
+    ].copy()
+    if scoped.empty:
+        return difference_table
+    from codebase.functions.ninth_projection_mapping import add_ninth_pair_columns
+
+    scoped = add_ninth_pair_columns(scoped)
+    year_columns = [column for column in scoped.columns if str(column).isdigit()]
+    if not year_columns:
+        return difference_table
+    from codebase.utilities.master_config import read_config_table
+
+    mapping_ref = _resolve_config_table_ref(mapping_pairs_path)
+    rollup_rules = read_config_table(
+        mapping_ref[0], sheet_name="ninth_rollup_rules", dtype=str
+    ).fillna("")
+    active_non_road_rules = rollup_rules.loc[
+        rollup_rules["rolled_ninth_sector"].eq(
+            "15_01,15_03-15_06 Transport non-road"
+        )
+        & rollup_rules["rollup_context"].eq(
+            "transport_non_road_comparison"
+        )
+        & rollup_rules["include"].astype(str).str.strip().str.lower().isin(
+            {"1", "true", "yes", "y", "t"}
+        ),
+        "input_ninth_sector",
+    ]
+    non_road_component_sectors = set(
+        active_non_road_rules.astype(str).str.strip().loc[
+            active_non_road_rules.astype(str).str.strip().ne("")
+        ]
+    )
+    sector_masks = {
+        "industry": scoped["ninth_sector"].eq("14_industry_sector"),
+        "transport_non_road": scoped["ninth_sector"].isin(
+            non_road_component_sectors
+        ) & ~scoped["subtotal_results"].fillna(False).astype(bool),
+    }
+    direct_source = pd.concat(
+        [
+            scoped.loc[mask, year_columns].assign(
+                _direct_group=group_name,
+                ninth_fuel_code=scoped.loc[mask, "ninth_fuel"],
+            )
+            for group_name, mask in sector_masks.items()
+            if bool(mask.any())
+        ],
+        ignore_index=True,
+    )
+    if direct_source.empty:
+        return difference_table
+    direct_values = direct_source.melt(
+        id_vars=["_direct_group", "ninth_fuel_code"],
+        value_vars=year_columns,
+        var_name="year",
+        value_name="source_value_pj",
+    )
+    direct_values["year"] = pd.to_numeric(direct_values["year"], errors="coerce").astype("Int64")
+    direct_values["source_value_pj"] = pd.to_numeric(direct_values["source_value_pj"], errors="coerce")
+    direct_values = direct_values.groupby(
+        ["_direct_group", "ninth_fuel_code", "year"], as_index=False, dropna=False
+    )["source_value_pj"].sum(min_count=1)
+
+    mapping = read_config_table(
+        mapping_ref[0], sheet_name=mapping_ref[1], dtype=str
+    ).fillna("")
+    mapping = mapping.loc[
+        mapping["ninth_sector"].eq("14_industry_sector")
+        | mapping["esto_flow"].eq("15.01,15.03-15.06 Transport non-road"),
+        ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"],
+    ].rename(columns={"ninth_fuel": "ninth_fuel_code"})
+    mapping["_direct_group"] = mapping["ninth_sector"].eq("14_industry_sector").map(
+        {True: "industry", False: "transport_non_road"}
+    )
+    candidates = targets.reset_index(names="_difference_row")[
+        [
+            "_difference_row",
+            "_direct_group",
+            "esto_flow",
+            "esto_product",
+            "year",
+            "source_value_pj",
+        ]
+    ].merge(
+        mapping, on=["_direct_group", "esto_flow", "esto_product"], how="left"
+    ).merge(direct_values, on=["_direct_group", "ninth_fuel_code", "year"], how="left")
+    candidates = candidates.rename(columns={"source_value_pj_x": "_share_weight", "source_value_pj_y": "_direct_total"})
+    allocation_keys = ["_direct_group", "ninth_fuel_code", "year"]
+    candidates["_weight_total"] = candidates.groupby(allocation_keys, dropna=False)["_share_weight"].transform("sum")
+    candidates["_target_count"] = candidates.groupby(allocation_keys, dropna=False)["_difference_row"].transform("count")
+    candidates["source_value_pj"] = candidates["_direct_total"] * (
+        candidates["_share_weight"] / candidates["_weight_total"]
+    )
+    fallback = candidates["_direct_total"].notna() & candidates["_weight_total"].le(float(tolerance_pj))
+    candidates.loc[fallback, "source_value_pj"] = (
+        candidates.loc[fallback, "_direct_total"]
+        / candidates.loc[fallback, "_target_count"]
+    )
+    replacements = candidates.groupby("_difference_row", as_index=False)["source_value_pj"].sum(min_count=1)
+    replacements = replacements.rename(columns={"source_value_pj": "_direct_source_value_pj"})
+    out = out.reset_index(names="_difference_row").merge(replacements, on="_difference_row", how="left")
+    replaced = out["_direct_source_value_pj"].notna() & out["_direct_group"].notna()
+    out.loc[replaced, "source_value_pj"] = out.loc[replaced, "_direct_source_value_pj"]
+    out.loc[replaced, "reference_source"] = "9th Outlook (direct demand detail)"
+    both = out["leap_value_pj"].notna() & out["source_value_pj"].notna()
+    out["difference_pj"] = out["leap_value_pj"] - out["source_value_pj"]
+    out["absolute_difference_pj"] = out["difference_pj"].abs()
+    out["correction_to_match_source_pj"] = -out["difference_pj"]
+    out["difference_percent"] = pd.NA
+    nonzero = both & out["source_value_pj"].abs().gt(float(tolerance_pj))
+    out.loc[nonzero, "difference_percent"] = (
+        out.loc[nonzero, "difference_pj"] / out.loc[nonzero, "source_value_pj"] * 100.0
+    )
+    match = both & (
+        out["absolute_difference_pj"].le(float(tolerance_pj))
+        | out["difference_percent"].abs().le(DEFAULT_ROUNDING_TOLERANCE_PERCENT)
+    )
+    out.loc[match, "status"] = "match"
+    out.loc[both & ~match, "status"] = "value_mismatch"
+    out["is_mismatch"] = out["status"].isin({"value_mismatch", "missing_in_leap"})
+    return out.drop(columns=["_difference_row", "_direct_group", "_direct_source_value_pj"])
 
 
 def run_economy_balance_diagnostic(
@@ -2708,6 +2870,14 @@ def run_economy_balance_diagnostic(
         scenarios=selected_scenarios,
         base_year=int(base_year),
         tolerance_pj=tolerance_pj,
+    )
+    difference_table = _override_direct_demand_sources(
+        difference_table=difference_table,
+        ninth_df=comparison.get("ninth_df", pd.DataFrame()),
+        economy=economy,
+        base_year=int(base_year),
+        tolerance_pj=tolerance_pj,
+        mapping_pairs_path=mapping_pairs_path,
     )
     difference_table, ignored_comparison_rows = _partition_comparison_rows(
         difference_table
