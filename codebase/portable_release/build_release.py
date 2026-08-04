@@ -375,6 +375,37 @@ def _stage_user_guide(
     return None
 
 
+def _packaged_economy_folders(
+    config_files: Sequence[Mapping[str, Any]],
+    package_root: Path,
+) -> list[str]:
+    """Return the economy folder names to pre-create under ``input``.
+
+    Read from the dashboard series configuration already being staged, which is
+    the canonical economy list for this workspace, rather than duplicated here
+    where it would fall out of step the first time an economy is added.
+    """
+    series = next(
+        (item for item in config_files if item.get("role") == "dashboard_series_config"),
+        None,
+    )
+    if series is None:
+        return []
+    path = package_root / "config" / str(series["dest"])
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        entries = data["dashboard_switcher"]["dashboards"]
+    except (OSError, ValueError, KeyError):
+        return []
+    return sorted(
+        workspace.normalize_economy_folder(entry["dashboard_key"])
+        for entry in entries
+        if entry.get("dashboard_key")
+    )
+
+
 def _write_package_scaffold(
     package_root: Path,
     manifest: ReleaseManifest,
@@ -391,6 +422,11 @@ def _write_package_scaffold(
     exports_root = package_root / "input" / workspace.BALANCE_EXPORTS_DIRNAME
     exports_root.mkdir(parents=True, exist_ok=True)
     (exports_root / "README.md").write_text(workspace.INPUT_README, encoding="utf-8")
+    # Create a folder per economy up front. Telling a user to make folders with
+    # exactly the right codes invites typos in the one thing that must match;
+    # dropping a file into a folder that already exists cannot go wrong.
+    for economy in _packaged_economy_folders(config_files, package_root):
+        (exports_root / economy).mkdir(exist_ok=True)
     (package_root / "output" / "RESULTS_APPEAR_HERE.txt").write_text(
         "Results appear here, grouped by economy, so nothing is overwritten:\n"
         "  output/<ECONOMY>/balance_review/   workbooks for that economy\n"

@@ -54,8 +54,8 @@ commands there. Each one in this guide can be copied exactly as written.
 
 There is one folder you need to care about: **`input\leap balances exports`**.
 
-Inside it, make one folder per economy, named with the economy code. Put that
-economy's LEAP Energy Balance exports inside its folder.
+A folder is already there for every economy. Put each economy's LEAP Energy
+Balance exports into its folder — you do not need to create anything.
 
 ```mermaid
 flowchart TD
@@ -74,21 +74,32 @@ straight across in either direction.
 
 ## Naming your files
 
-Name each file like this:
+Two things need to be in the filename:
+
+* a **four-digit date**, day then month — `0804` for the 8th of April;
+* a **scenario code** — `REF` or `TGT`. `Reference` and `Target` also work.
+
+Anything else in the name is up to you, and the order does not matter. All of
+these are fine:
 
 ```text
-full model output all years 03082026 TGT.xlsx
+0804 TGT.xlsx
+TGT 0804.xlsx
+USA balance 0804 Target.xlsx
+full model output all years 04082026 TGT.xlsx
 ```
 
-The number is the date you exported it, written as day, month, year — so
-`03082026` is the 3rd of August 2026. The last part is the scenario: `REF` for
-Reference, `TGT` for Target. `Reference` and `Target` spelled out work too, and
-so does putting the scenario first, as in `REF 03082026.xlsx`.
+A longer date works too, so `04082026` is read the same as `0804`.
 
-If you have several files for the same economy and scenario, **the newest date
-wins**. You do not need to delete the old ones — but if you would rather they
-were out of the way, put them in a folder called `archive` inside the economy
-folder. Anything in there is ignored completely.
+**If you have several files for one economy and scenario, the newest date wins.**
+That is what the date is for. You do not have to delete the older ones — leave
+them and the tools will use the most recent. If you would rather they were out of
+the way, make a folder called `archive` inside the economy folder and move them
+there; anything in `archive` is ignored completely.
+
+If a file cannot be matched to a scenario, the tools read the workbook itself to
+work it out, so a slightly different name usually still works. Run `list` to see
+what has actually been picked up.
 
 ## One thing that matters
 
@@ -166,8 +177,18 @@ which applies to you.
 
 # Reading the balance-review workbook
 
-The workbook has five sheets. They are meant to be read in order, and each
-answers a different question.
+## How the comparison is made
+
+You export the balance table from LEAP. The tools then compare those results
+against the original source data and identify every difference. The workbook is
+that comparison, laid out in the shape of the balance table you already know.
+
+So a difference is a disagreement between the model and the source — not a
+verdict about which one is wrong.
+
+## The five sheets
+
+They are meant to be read in order, and each answers a different question.
 
 ```mermaid
 flowchart TD
@@ -200,32 +221,27 @@ it just not applicable here?"
 case, with the reason and a suggested interpretation. Read this before concluding
 that a blank cell means zero — it usually does not.
 
-## What the colours mean
+## Where the differences come from
 
-The colours are consistent across the sheets.
+A difference on the error sheet is not automatically a mistake in LEAP. It is a
+disagreement between two things, and it can come from any of three places.
 
-**Red** is a real mismatch between LEAP and the source. These are the ones to
-investigate.
+**1. LEAP is not calculating what the comparison expects.** The fix is either to
+change the LEAP calculation method — the supply rules Luthfi teaches, for
+example — or to change the inputs generated for LEAP so it produces the intended
+result.
 
-**Blue** is a value that came from the source data.
+**2. The comparison itself is wrong.** The mapping between the source data and
+the LEAP balance categories may be incorrect, or there may be a problem in the
+code applying it. These are being worked through steadily, and fixing them
+improves several other parts of the process at the same time.
 
-**Purple** means there is no direct comparator for this cell. The process was
-generated from a seed or carried forward, so there is nothing to check it
-against. Leave these alone unless you have a specific reason.
+**3. The baseline seed values are wrong.** Then the seed generation needs fixing
+and the seed files rebuilding, as is being done for refining.
 
-**Yellow** means a comparator should exist but was not available. Worth asking
-about, but not the same as a mismatch.
+Worth holding all three in mind before changing anything: the most common
+instinct is to assume the first, and a good share of what turns up is the second.
 
-**Green outlines** mark production, import and export cells that are affected by
-the purple ones above. They are not wrong — they are flagged so you know their
-values depend on something that could not be checked.
-
-**Grey** means the cell is not part of your balance structure at all.
-
-The important habit: **a blank cell never means zero.** It means the comparison
-could not be made, and the Missing Combinations sheet will tell you why.
-
-\newpage
 
 # Building a dashboard
 
@@ -354,9 +370,12 @@ the tools read it from the file rather than being told. The comparison rows are
 rebuilt from your data the first time you use a given file, which adds a couple
 of minutes; after that it is remembered.
 
-Two things worth knowing. The 9th Outlook projections are on their own release
-cycle, so an ESTO update does not change them. And each run records which file it
-used, so a result can always be traced back to the data behind it.
+Two things worth knowing. An ESTO update does not change the projections — the
+9th Outlook is finished and will not be reissued. In future this comparison may
+be run against a different projection instead, with its own mappings to the LEAP
+and ESTO data; the tools are built to accommodate that when it happens. And each
+run records which file it used, so a result can always be traced back to the data
+behind it.
 
 If you would rather not manage this yourself, that is fine too: your modelling
 team will send a new version of the tools with the newer data already in it.
