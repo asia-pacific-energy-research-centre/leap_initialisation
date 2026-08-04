@@ -45,6 +45,7 @@ from codebase.portable_release.manifest import (  # noqa: E402
     load_release_manifest,
     validate_release_manifest,
 )
+from codebase.portable_release import workspace  # noqa: E402
 from codebase.portable_release.provenance import sha256_file  # noqa: E402
 from codebase.portable_release.settings import (  # noqa: E402
     DeveloperSettingsError,
@@ -343,6 +344,37 @@ def _stage_data_assets(
     return staged
 
 
+#: The user-facing guide shipped at the package's top level, read from the
+#: pinned leap_initialisation commit like everything else. A colleague who
+#: receives only a ZIP should not also need an accompanying email.
+USER_GUIDE_SOURCE_PATH = "docs/docx/leap_review_tools_user_guide.docx"
+USER_GUIDE_PACKAGE_NAME = "LEAP Review Tools - user guide.docx"
+
+
+def _stage_user_guide(
+    package_root: Path,
+    manifest: ReleaseManifest,
+    roots: Mapping[str, Path],
+) -> str | None:
+    """Copy the user guide into the package, or explain why it is absent."""
+    spec = manifest.repositories.get("leap_initialisation")
+    if spec is None:
+        return "No leap_initialisation entry; user guide not shipped."
+    root = Path(roots["leap_initialisation"])
+    try:
+        payload = _git_bytes(
+            root, "cat-file", "blob", f"{spec.commit}:{USER_GUIDE_SOURCE_PATH}"
+        )
+    except ReleaseBuildError:
+        return (
+            f"User guide not shipped: {USER_GUIDE_SOURCE_PATH} is not committed at "
+            f"{spec.commit[:12]}. Regenerate it with "
+            "`python scripts/convert_docs.py --docs-dir docs` and commit it."
+        )
+    (package_root / USER_GUIDE_PACKAGE_NAME).write_bytes(payload)
+    return None
+
+
 def _write_package_scaffold(
     package_root: Path,
     manifest: ReleaseManifest,
@@ -352,16 +384,19 @@ def _write_package_scaffold(
     """Create the package's folder layout and its README."""
     for name in PACKAGE_DIRECTORIES:
         (package_root / name).mkdir(parents=True, exist_ok=True)
-    (package_root / "input" / "PUT_INPUT_FILES_HERE.txt").write_text(
-        "Put the input files a command needs in this folder.\n"
-        "Run the executable with no arguments to be told which files each "
-        "command needs.\n",
-        encoding="utf-8",
-    )
+    # Scaffold the folder the documentation actually tells users to fill, and
+    # put the naming rules next to it. A bare "put files here" placeholder left
+    # the package contradicting its own guide: the guide says
+    # input\leap balances exports\<ECONOMY>\, and that folder did not exist.
+    exports_root = package_root / "input" / workspace.BALANCE_EXPORTS_DIRNAME
+    exports_root.mkdir(parents=True, exist_ok=True)
+    (exports_root / "README.md").write_text(workspace.INPUT_README, encoding="utf-8")
     (package_root / "output" / "RESULTS_APPEAR_HERE.txt").write_text(
-        "Each run creates a dated sub-folder here containing its results, its "
-        "run manifest (run_manifest.txt and run_manifest.json), and its input "
-        "validation report.\n",
+        "Results appear here, grouped by economy, so nothing is overwritten:\n"
+        "  output/<ECONOMY>/balance_review/   workbooks for that economy\n"
+        "  output/<ECONOMY>/dashboard/        that economy's dashboard\n"
+        "Each run also leaves a record under run_records/ beside its results,\n"
+        "holding the run manifest and the input validation report.\n",
         encoding="utf-8",
     )
     (package_root / "logs" / "LOGS_APPEAR_HERE.txt").write_text(
@@ -962,6 +997,7 @@ def build(
         encoding="utf-8",
     )
     _write_package_scaffold(staging_dir, manifest, config_files=config_files)
+    guide_note = _stage_user_guide(staging_dir, manifest, roots)
 
     report = BuildReport(
         manifest_name=manifest.name,
@@ -974,6 +1010,7 @@ def build(
         source_files=source_files,
         config_files=config_files,
         data_files=data_files,
+        notes=[guide_note] if guide_note else [],
     )
 
     package_dir = staging_dir

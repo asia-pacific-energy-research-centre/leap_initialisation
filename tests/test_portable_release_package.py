@@ -183,6 +183,40 @@ def test_staged_package_passes_its_own_selfcheck(
     assert "result                   : OK" in result.stdout
 
 
+def test_package_scaffolds_the_input_folder_the_guide_describes(
+    staged_package: Path,
+) -> None:
+    """The package must not contradict its own documentation.
+
+    The guide tells users to put exports in
+    ``input\\leap balances exports\\<ECONOMY>\\``. A bare "put files here"
+    placeholder left that folder absent, so a user following the guide found
+    nothing matching it.
+    """
+    exports_root = staged_package / "input" / "leap balances exports"
+    assert exports_root.is_dir()
+
+    readme = (exports_root / "README.md").read_text(encoding="utf-8")
+    for rule in ["archive", "Level 2", "newest date", "REF", "TGT"]:
+        assert rule in readme, f"input README should state the {rule!r} rule"
+
+    # The old placeholder must be gone, not sitting alongside the real thing.
+    assert not (staged_package / "input" / "PUT_INPUT_FILES_HERE.txt").exists()
+
+
+def test_package_ships_the_user_guide(staged_package: Path) -> None:
+    """A colleague receiving only the ZIP should also receive the guide."""
+    guide = staged_package / "LEAP Review Tools - user guide.docx"
+    assert guide.is_file(), (
+        "The user guide is missing from the package. It is read from the pinned "
+        "commit, so regenerate it with "
+        "`python scripts/convert_docs.py --docs-dir docs` and commit it."
+    )
+    # A .docx is a zip container; check it is a real one rather than a stub.
+    assert guide.stat().st_size > 20_000
+    assert guide.read_bytes()[:2] == b"PK"
+
+
 def test_package_config_is_external_and_editable(staged_package: Path) -> None:
     config_root = staged_package / "config"
     assert (config_root / "dashboard" / "common_esto_dashboard_template.json").is_file()
