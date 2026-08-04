@@ -117,7 +117,6 @@ from codebase.supply_reconciliation_utils import (
     _load_code_to_name_table,
     _normalize_label_for_lookup,
     _normalize_esto_product_for_match,
-    _build_label_to_esto_product_lookup,
     _iter_year_value_items,
     _sort_output_frame_for_csv,
     _normalize_template_header_value,
@@ -335,7 +334,6 @@ def apply_transformation_target_overrides_for_scenario(
     if not process_records:
         return []
     records = copy.deepcopy(process_records)
-    label_to_product = _build_label_to_esto_product_lookup()
     use_legacy_split = _use_legacy_trade_split_mode()
     scaled = pd.DataFrame(
         columns=[
@@ -428,9 +426,12 @@ def apply_transformation_target_overrides_for_scenario(
         if not isinstance(output_values, dict) or not output_values:
             continue
         for label, raw_value in output_values.items():
-            product = label_to_product.get(str(label)) or label_to_product.get(str(label).lower())
-            if not product:
-                continue
+            # Process Share is an intra-module allocation.  It must use the
+            # source process outputs even where the output has no ESTO product
+            # counterpart (for example Hydrogen and Ammonia).  Restricting
+            # this to mapped ESTO products leaves a genuine active process
+            # indistinguishable from a zero skeleton and invokes the invalid
+            # equal-share fallback below.
             year_map = coerce_value_by_year(raw_value, BASE_YEAR, FINAL_YEAR)
             for year, value in year_map.items():
                 year_int = int(year)
