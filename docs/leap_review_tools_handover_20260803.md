@@ -585,3 +585,15 @@ Format:
     dashboard-from-export path (the actual point of this whole handover) is
     now done, tested, and proven against a real export — session 4 should
     treat the remaining items as cleanup, not as unblocking anything load-bearing.
+  - One more thing the pin bump surfaced: five tests in
+    `tests/test_portable_release_package.py` still asserted the pre-`a4dd7e0`
+    flat `output/<tool>_<label>/` layout (that commit moved to
+    `output/<economy>/<tool>/` with manifests under a `run_records/<label>/`
+    subfolder, but only updated the golden test in the *other* file). They
+    passed only because the stale pin kept old code staged; fixed all five
+    plus a `balance-review`/`balance_review` (hyphen vs underscore
+    `workspace.BALANCE_REVIEW_DIRNAME`) mixup in the same assertions —
+    `leap_initialisation` commit `af3edd1`. Full suite for this area now
+    green: `test_portable_release.py`, `test_portable_release_package.py`,
+    `test_mapping_chain_client.py`, `test_portable_release_workspace.py`,
+    `test_dashboard_from_export.py` all pass.
