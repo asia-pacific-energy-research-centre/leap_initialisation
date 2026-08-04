@@ -605,15 +605,18 @@ def _temporary_balance_runtime_paths(
     exports_root: Path,
 ):
     """Route shared loader globals for a worktree run and restore them."""
+    from codebase.mappings import canonical_loaders
     from codebase.utilities import master_config
 
     master_snapshot = {
         "OUTLOOK_MAPPINGS_MASTER_PATH": master_config.OUTLOOK_MAPPINGS_MASTER_PATH,
         "RUNTIME_TABLE_DIR": master_config.RUNTIME_TABLE_DIR,
     }
+    canonical_workbook_snapshot = canonical_loaders.CANONICAL_WORKBOOK_PATH
     resolver_defaults = dict(resolve_balance_export_workbook.__kwdefaults__ or {})
     master_config.OUTLOOK_MAPPINGS_MASTER_PATH = codebook_path
     master_config.RUNTIME_TABLE_DIR = sheet_map_path.parent
+    canonical_loaders.CANONICAL_WORKBOOK_PATH = codebook_path
     if resolve_balance_export_workbook.__kwdefaults__ is not None:
         resolve_balance_export_workbook.__kwdefaults__["exports_root"] = exports_root
 
@@ -648,6 +651,7 @@ def _temporary_balance_runtime_paths(
             "OUTLOOK_MAPPINGS_MASTER_PATH"
         ]
         master_config.RUNTIME_TABLE_DIR = master_snapshot["RUNTIME_TABLE_DIR"]
+        canonical_loaders.CANONICAL_WORKBOOK_PATH = canonical_workbook_snapshot
         if resolve_balance_export_workbook.__kwdefaults__ is not None:
             resolve_balance_export_workbook.__kwdefaults__.clear()
             resolve_balance_export_workbook.__kwdefaults__.update(resolver_defaults)

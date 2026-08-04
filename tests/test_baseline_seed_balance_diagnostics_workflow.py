@@ -1459,6 +1459,26 @@ def test_multi_economy_runner_writes_one_combined_table(monkeypatch, tmp_path: P
     assert result["review_path"].exists()
 
 
+def test_temporary_runtime_paths_override_canonical_loader_workbook(
+    tmp_path: Path,
+) -> None:
+    from codebase.mappings import canonical_loaders
+
+    original = canonical_loaders.CANONICAL_WORKBOOK_PATH
+    workbook = tmp_path / "outlook_mappings_master.xlsx"
+    sheet_map = tmp_path / "runtime_tables" / "sheet_map.csv"
+    sheet_map.parent.mkdir()
+
+    with diagnostics._temporary_balance_runtime_paths(
+        codebook_path=workbook,
+        sheet_map_path=sheet_map,
+        exports_root=tmp_path / "exports",
+    ):
+        assert canonical_loaders.CANONICAL_WORKBOOK_PATH == workbook
+
+    assert canonical_loaders.CANONICAL_WORKBOOK_PATH == original
+
+
 def test_mapping_issue_partition_ignores_totals_and_selected_aggregate_rows() -> None:
     issues = pd.DataFrame(
         [
