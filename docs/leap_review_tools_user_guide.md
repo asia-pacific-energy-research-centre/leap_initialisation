@@ -332,6 +332,49 @@ first thing to check.
 
 \newpage
 
+# About the reference data
+
+Your LEAP model is compared against two reference datasets that come with the
+tools: the ESTO historical data, and the 9th Outlook projections. You do not need
+to supply either — they are already in the folder.
+
+The ESTO data is reissued once a year, and each new issue moves the base year
+along. The version in your copy is the 2024 issue, with a base year of 2022. When
+the 2026 issue arrives the base year becomes 2024, and so on.
+
+**When a new issue comes out, you will be sent a new version of the tools.**
+Please do not try to update the reference data yourself. The comparison depends on
+several files that are prepared together and have to match each other; replacing
+one of them on its own leaves the rest out of step, and the tools would carry on
+running and quietly give you answers based on a mixture of old and new. Your
+modelling team rebuilds and reissues the whole set so that cannot happen.
+
+## Please never edit the reference data
+
+It is a plain spreadsheet file, so it can be opened and changed — but please
+don't, even to correct something that looks wrong.
+
+The tools already add the rows a particular ESTO issue is missing. Newer
+categories such as datacentres and hydrogen transformation are filled in
+automatically from a reviewed list, with zero values, so the structure is
+complete. A row you add by hand skips that review and will not match what the
+comparison expects.
+
+The tools also adjust the data as they read it — own-use and loss rows are
+sign-corrected, and subtotal rows are set aside so nothing is counted twice. So a
+value in the file will not always look like the value in your results, and that
+is correct rather than a sign of a problem.
+
+Every run records exactly which reference files it used. A file that has been
+edited by hand is one nobody else has, which means a result built on it cannot be
+reproduced or checked by anyone else.
+
+If a value looks wrong, or a row you expect is missing, that is worth raising —
+it is usually a question about the mapping rather than something to patch in the
+data.
+
+\newpage
+
 # Quick reference
 
 See what the tools can find:
