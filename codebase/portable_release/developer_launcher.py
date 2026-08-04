@@ -37,6 +37,7 @@ from codebase.portable_release.commands import (  # noqa: E402
     CommandResult,
     run_balance_review as _run_balance_review,
     run_dashboard as _run_dashboard,
+    run_dashboard_from_export as _run_dashboard_from_export,
     write_support_bundle as _write_support_bundle,
 )
 from codebase.portable_release.manifest import (  # noqa: E402
@@ -94,12 +95,19 @@ def build_context(
         if root is not None:
             config_assets[asset.role] = root / asset.path
 
+    data_assets: dict[str, Path] = {}
+    for asset in resolved_manifest.data_assets:
+        root = resolved_settings.repositories.get(asset.repository)
+        if root is not None:
+            data_assets[asset.role] = root / asset.path
+
     return developer_context(
         release_name=resolved_manifest.name,
         release_version=f"{resolved_manifest.version}+dev",
         repository_roots=resolved_settings.repositories,
         config_root=resolved_settings.repositories["leap_initialisation"] / "config",
         config_assets=config_assets,
+        data_assets=data_assets,
         sys_path_roots=sys_path_roots,
         output_root=resolved_settings.output_root,
         input_root=resolved_settings.input_root,
@@ -321,6 +329,43 @@ def run_dashboard(
     return result
 
 
+def run_dashboard_from_export(
+    *,
+    economy: str,
+    export_dir: Path | str | None = None,
+    comparison_data_path: Path | str | None = None,
+    common_rows_path: Path | str | None = None,
+    comparison_scope: str = "esto_leap_ninth",
+    min_year: int | None = 2010,
+    max_year: int | None = 2060,
+    run_label: str | None = None,
+    context: RuntimeContext | None = None,
+) -> CommandResult:
+    """Go from a LEAP balance export to a rendered dashboard in one run.
+
+    Runs the leap_mappings mapping chain as a subprocess
+    (:mod:`codebase.portable_release.mapping_chain_client`), invoked with
+    ``cwd`` set to the maintainer's ``leap_mappings`` checkout - see the
+    two-executable decision in
+    ``docs/leap_review_tools_handover_20260803.md`` §1.
+    """
+    resolved = _ready_context(context)
+    with run_logging(resolved, "dashboard-from-export"):
+        result = _run_dashboard_from_export(
+            resolved,
+            economy=economy,
+            export_dir=export_dir,
+            comparison_data_path=comparison_data_path,
+            common_rows_path=common_rows_path,
+            comparison_scope=comparison_scope,
+            min_year=min_year,
+            max_year=max_year,
+            run_label=run_label,
+        )
+        print("\n".join(result.summary_lines()))
+    return result
+
+
 def write_support_bundle(
     result: CommandResult,
     *,
@@ -355,7 +400,7 @@ def default_developer_inputs(
 # ---------------------------------------------------------------------------
 RUN_DEVELOPER_LAUNCHER = False
 
-# "status" | "balance-review" | "dashboard"
+# "status" | "balance-review" | "dashboard" | "dashboard-from-export"
 DEVELOPER_ACTION = "status"
 
 ECONOMY = "20_USA"
@@ -363,6 +408,7 @@ SCENARIO = "Target"
 YEAR = 2022
 BALANCE_EXPORT_WORKBOOK = ""
 DIAGNOSTICS_DIRECTORY = ""
+EXPORT_DIR: str | None = None
 COMPARISON_DATA_PATH = ""
 COMMON_ROWS_PATH = ""
 RUN_LABEL: str | None = None
@@ -384,6 +430,14 @@ if RUN_DEVELOPER_LAUNCHER:
             economy=ECONOMY,
             comparison_data_path=COMPARISON_DATA_PATH,
             common_rows_path=COMMON_ROWS_PATH,
+            run_label=RUN_LABEL,
+        )
+    elif DEVELOPER_ACTION == "dashboard-from-export":
+        LAUNCHER_RESULT = run_dashboard_from_export(
+            economy=ECONOMY,
+            export_dir=EXPORT_DIR or None,
+            comparison_data_path=COMPARISON_DATA_PATH or None,
+            common_rows_path=COMMON_ROWS_PATH or None,
             run_label=RUN_LABEL,
         )
     else:

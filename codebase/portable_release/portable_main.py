@@ -131,6 +131,8 @@ def _guided_flow(context, frozen: dict[str, Any]) -> int:
         return _dispatch_balance_review(context, values)
     if spec["name"] == "dashboard":
         return _dispatch_dashboard(context, values)
+    if spec["name"] == "dashboard-from-export":
+        return _dispatch_dashboard_from_export(context, values)
     print(f"Command {spec['name']!r} has no implementation in this release.")
     return 2
 
@@ -179,6 +181,21 @@ def _dispatch_dashboard(context, values: dict[str, str]) -> int:
     return _report(result)
 
 
+def _dispatch_dashboard_from_export(context, values: dict[str, str]) -> int:
+    from codebase.portable_release.commands import run_dashboard_from_export
+    from codebase.portable_release.runtime import run_logging
+
+    with run_logging(context, "dashboard-from-export"):
+        result = run_dashboard_from_export(
+            context,
+            economy=values.get("economy", ""),
+            export_dir=values.get("export_dir") or None,
+            comparison_data_path=values.get("comparison_data_path") or None,
+            common_rows_path=values.get("common_rows_path") or None,
+        )
+    return _report(result)
+
+
 def build_parser(frozen: dict[str, Any]) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=frozen["release"]["name"],
@@ -192,6 +209,10 @@ def build_parser(frozen: dict[str, Any]) -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("info", help="Show this release's contents, commands, and folders.")
+    sub.add_parser(
+        "list",
+        help="List the economies this release has balance exports for.",
+    )
     sub.add_parser(
         "selfcheck",
         help="Import everything a run needs and confirm the package is intact.",
@@ -224,6 +245,29 @@ def build_parser(frozen: dict[str, Any]) -> argparse.ArgumentParser:
         dashboard.add_argument("--max-year", type=int, default=2060)
         dashboard.add_argument("--run-label", default=None)
         dashboard.add_argument("--support-bundle", action="store_true")
+
+    if "dashboard-from-export" in declared:
+        dashboard_from_export = sub.add_parser(
+            "dashboard-from-export",
+            help="Render the Common ESTO dashboard for one economy from a LEAP balance export.",
+        )
+        dashboard_from_export.add_argument("--economy", required=True)
+        dashboard_from_export.add_argument(
+            "--export-dir",
+            default=None,
+            help="Defaults to input/leap balances exports/<ECONOMY>/.",
+        )
+        dashboard_from_export.add_argument(
+            "--comparison-data-path",
+            default=None,
+            help="Escape hatch: skip the mapping chain and use this file directly.",
+        )
+        dashboard_from_export.add_argument("--common-rows-path", default=None)
+        dashboard_from_export.add_argument("--comparison-scope", default="esto_leap_ninth")
+        dashboard_from_export.add_argument("--min-year", type=int, default=2010)
+        dashboard_from_export.add_argument("--max-year", type=int, default=2060)
+        dashboard_from_export.add_argument("--run-label", default=None)
+        dashboard_from_export.add_argument("--support-bundle", action="store_true")
 
     return parser
 
@@ -274,6 +318,7 @@ _REQUIRED_MODULES = [
     "codebase.portable_release.validation",
     "codebase.portable_release.provenance",
     "codebase.portable_release.runtime",
+    "codebase.portable_release.mapping_chain_client",
     "codebase.functions.balance_review_workbook_builder",
     "codebase.utilities.leap_balance_export_resolver",
     "common_esto_dashboard_portable",
@@ -358,10 +403,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _print_info(context, frozen)
     if namespace.command == "selfcheck":
         return selfcheck(context, frozen)[0]
+    if namespace.command == "list":
+        from codebase.portable_release import workspace
+
+        print(workspace.describe_workspace(workspace.balance_exports_root(context.input_root)))
+        return 0
 
     from codebase.portable_release.commands import (
         run_balance_review,
         run_dashboard,
+        run_dashboard_from_export,
         write_support_bundle,
     )
     from codebase.portable_release.runtime import run_logging
@@ -375,6 +426,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 year=namespace.year,
                 balance_export_workbook=namespace.balance_export_workbook,
                 diagnostics_directory=namespace.diagnostics_directory,
+                run_label=namespace.run_label,
+            )
+        elif namespace.command == "dashboard-from-export":
+            result = run_dashboard_from_export(
+                context,
+                economy=namespace.economy,
+                export_dir=namespace.export_dir,
+                comparison_data_path=namespace.comparison_data_path,
+                common_rows_path=namespace.common_rows_path,
+                comparison_scope=namespace.comparison_scope,
+                min_year=namespace.min_year,
+                max_year=namespace.max_year,
                 run_label=namespace.run_label,
             )
         else:
