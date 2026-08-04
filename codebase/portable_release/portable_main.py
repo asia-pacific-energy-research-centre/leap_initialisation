@@ -111,11 +111,39 @@ def _guided_flow(context, frozen: dict[str, Any]) -> int:
     print("Available commands:")
     for index, spec in enumerate(commands, start=1):
         print(f"  {index}. {spec['name']} - {spec['summary']}")
+    # Someone using this menu rather than a terminal is exactly who needs these
+    # two, and they were the only way to reach them. The guide opens by telling
+    # users to run `list` before anything else.
+    print("  l. list - Show which economies and exports this release can see.")
+    print("  c. check - Confirm the package is complete and working.")
     print("  q. quit")
     print()
-    choice = _prompt("Choose a command by number", default="1").lower()
+
+    # Default to an export-first command: a colleague has LEAP exports and not a
+    # diagnostics folder, so plain `balance-review` - which was the default
+    # purely by being first - sends them to the one command they cannot run.
+    default_choice = "1"
+    for index, spec in enumerate(commands, start=1):
+        if spec["name"].endswith("-from-export"):
+            default_choice = str(index)
+            break
+
+    choice = _prompt("Choose a command by number", default=default_choice).lower()
     if choice in {"q", "quit", "exit"}:
         return 0
+    if choice in {"l", "list"}:
+        print()
+        from codebase.portable_release import workspace
+
+        print(
+            workspace.describe_workspace(
+                workspace.balance_exports_root(context.input_root)
+            )
+        )
+        return 0
+    if choice in {"c", "check", "selfcheck"}:
+        print()
+        return selfcheck(context, frozen)[0]
     try:
         spec = commands[int(choice) - 1]
     except (ValueError, IndexError):
@@ -130,7 +158,8 @@ def _guided_flow(context, frozen: dict[str, Any]) -> int:
     values: dict[str, str] = {}
     for item in spec["inputs"]:
         print(f"{item['key']} - {item['description']}")
-        values[item["key"]] = _prompt(f"  {item['kind']} path or value")
+        label = "path" if item["kind"] in {"file", "directory"} else "value"
+        values[item["key"]] = _prompt(f"  {label}")
         print()
 
     if spec["name"] == "balance-review":

@@ -868,3 +868,32 @@ def test_balance_review_from_export_passes_packaged_mapping_pairs(
     )
 
     assert result.ok, result.error
+
+
+# ---------------------------------------------------------------------------
+# Guided flow (the double-click path)
+# ---------------------------------------------------------------------------
+
+
+def test_guided_flow_offers_list_and_check_and_defaults_to_an_export_command() -> None:
+    """The menu is for people who do not use a terminal.
+
+    `list` and `selfcheck` were reachable only from the command line, yet the
+    guide opens by telling users to run `list` first and the troubleshooting
+    section leads with `selfcheck` - so the audience that most needs them could
+    not reach them.
+
+    The default mattered too: it was `balance-review` purely by being listed
+    first, and that is the one command needing a diagnostics folder a colleague
+    will not have. Pressing Enter now picks an export-first command.
+    """
+    source = (
+        REPO_ROOT / "codebase" / "portable_release" / "portable_main.py"
+    ).read_text(encoding="utf-8")
+    assert '"  l. list' in source
+    assert '"  c. check' in source
+    assert 'if spec["name"].endswith("-from-export"):' in source
+    assert 'default=default_choice' in source
+    # A value is not a path; the prompt used to say "path or value" for every
+    # field, including economy.
+    assert '"path" if item["kind"] in {"file", "directory"} else "value"' in source
