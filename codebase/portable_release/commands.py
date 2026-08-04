@@ -736,6 +736,7 @@ def run_dashboard_from_export(
     comparison_data_path: Path | str | None = None,
     common_rows_path: Path | str | None = None,
     export_dir: Path | str | None = None,
+    esto_table_path: Path | str | None = None,
     comparison_scope: str = "esto_leap_ninth",
     wide_file_scope: str = "esto_leap_ninth",
     min_year: int | None = 2010,
@@ -797,6 +798,10 @@ def run_dashboard_from_export(
             },
         )
 
+    supplied_esto = (
+        _resolve_user_path(context, esto_table_path) if esto_table_path else None
+    )
+
     def work(run_dir: Path) -> dict[str, Any]:
         from common_esto_dashboard_portable import render_common_esto_dashboard
 
@@ -821,6 +826,15 @@ def run_dashboard_from_export(
                 ),
             },
         }
+        # Only send the ESTO base table when the user supplied one. The worker
+        # re-extracts exact rows whenever it receives a table, which takes about
+        # two minutes; the shipped exact rows already match the shipped table, so
+        # an ordinary run must not pay that cost to arrive back where it started.
+        if supplied_esto is not None:
+            chain_job["config"]["esto_base_table_path"] = str(supplied_esto)
+            rules = context.config_asset("synthetic_reference_rows")
+            if rules is not None:
+                chain_job["config"]["synthetic_reference_rows_path"] = str(rules)
         chain_result = mapping_chain_client.run_mapping_chain(context, chain_job)
 
         missing_branches = _missing_leap_demand_branches(context, economy)

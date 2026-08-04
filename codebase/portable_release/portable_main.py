@@ -309,6 +309,15 @@ def build_parser(frozen: dict[str, Any]) -> argparse.ArgumentParser:
             help="Escape hatch: skip the mapping chain and use this file directly.",
         )
         dashboard_from_export.add_argument("--common-rows-path", default=None)
+        dashboard_from_export.add_argument(
+            "--esto-table-path",
+            default=None,
+            help=(
+                "Use your own ESTO base table instead of the one supplied with "
+                "this release. The comparison rows are re-derived from it, which "
+                "adds a few minutes to the first run against a given table."
+            ),
+        )
         dashboard_from_export.add_argument("--comparison-scope", default="esto_leap_ninth")
         dashboard_from_export.add_argument("--min-year", type=int, default=2010)
         dashboard_from_export.add_argument("--max-year", type=int, default=2060)
@@ -493,6 +502,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 context,
                 economy=namespace.economy,
                 export_dir=namespace.export_dir,
+                esto_table_path=namespace.esto_table_path,
                 comparison_data_path=namespace.comparison_data_path,
                 common_rows_path=namespace.common_rows_path,
                 comparison_scope=namespace.comparison_scope,
