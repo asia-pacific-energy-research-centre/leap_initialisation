@@ -212,7 +212,16 @@ def describe_workspace(
         lines.append(_getting_started_text(root))
         return "\n".join(lines)
 
-    for economy in found:
+    # Every economy folder now ships pre-created, so listing each empty one
+    # individually buries the economies that actually have data under dozens of
+    # "nothing here" lines. Empty folders are summarised at the end instead.
+    ready = [item for item in found if item.workbooks]
+    empty = [item for item in found if not item.workbooks and not item.problems]
+    unusable = [item for item in found if not item.workbooks and item.problems]
+
+    if not ready:
+        lines.append("  No exports found yet in any economy folder.")
+    for economy in ready + unusable:
         lines.append(f"  {economy.economy}")
         if not economy.workbooks:
             lines.append("      (no usable workbook found)")
@@ -227,6 +236,11 @@ def describe_workspace(
             )
         for problem in economy.problems:
             lines.append(f"      ! {problem}")
+
+    if empty:
+        lines.append("")
+        names = ", ".join(item.economy for item in empty)
+        lines.append(f"  Waiting for exports ({len(empty)}): {names}")
     lines.append("")
     runnable = [item for item in found if item.workbooks]
     if runnable:

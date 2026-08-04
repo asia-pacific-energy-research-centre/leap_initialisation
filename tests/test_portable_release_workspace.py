@@ -133,3 +133,36 @@ def test_input_readme_documents_the_rules_that_matter() -> None:
     text = workspace.INPUT_README
     for expected in ["archive", "Level 2", "newest date", "REF", "TGT", "output/"]:
         assert expected in text
+
+
+def test_empty_economy_folders_are_summarised_not_listed(tmp_path: Path) -> None:
+    """All 21 economy folders now ship pre-created.
+
+    Listing each empty one individually buried the economies that actually have
+    data under dozens of "no usable workbook found" lines, which is the opposite
+    of what this listing is for.
+    """
+    root = workspace.balance_exports_root(tmp_path)
+    for code in ["01_AUS", "02_BD", "03_CDA", "12_NZ", "21_VN"]:
+        (root / code).mkdir(parents=True)
+    _make_export(root / "20_USA", "full model output all years 03082026 TGT.xlsx")
+
+    text = workspace.describe_workspace(root)
+    assert text.count("no usable workbook found") == 0
+    assert "Waiting for exports (5):" in text
+    assert "01_AUS, 02_BD, 03_CDA, 12_NZ, 21_VN" in text
+    # The economy with data still leads.
+    assert text.index("20_USA") < text.index("Waiting for exports")
+
+
+def test_a_folder_holding_an_unmatched_file_is_still_reported_individually(
+    tmp_path: Path,
+) -> None:
+    """An empty folder is fine; a folder with a file nobody can read is not."""
+    root = workspace.balance_exports_root(tmp_path)
+    (root / "01_AUS").mkdir(parents=True)
+    _make_export(root / "02_BD", "unrecognisable.xlsx")
+
+    text = workspace.describe_workspace(root)
+    assert "02_BD" in text and "none could be matched" in text
+    assert "Waiting for exports (1): 01_AUS" in text
