@@ -26,6 +26,13 @@ only reserialized ten Reference/Target feedstock-share projection rows at the
 the patched seed in LEAP, export a fresh 2022 balance, and rerun the
 balance-review diagnostic to complete the end-to-end proof.
 
+The patcher's post-write validation is now scoped to the exact successfully
+patched workbook paths, and its economy-to-seed selection deterministically
+chooses the newest filename date. Missing economy templates are reported
+directly against the affected seed and are counted as skipped validation; they
+no longer fall through to the obsolete literal
+`leap_export_template 20_USA.xlsx` path or produce a false all-clear message.
+
 ## [29] Qualify the central baseline-seed final-artifact gate on real runs
 
 **Status: audit implementation and existing-NZ-artifact requalification

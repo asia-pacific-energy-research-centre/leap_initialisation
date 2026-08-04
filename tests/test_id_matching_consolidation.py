@@ -685,6 +685,125 @@ def test_validate_seed_files_allows_all_zero_optional_roots(tmp_path: Path) -> N
     assert total_bad == 0
 
 
+def test_validate_seed_files_checks_only_explicit_seed_paths(tmp_path: Path) -> None:
+    from codebase.functions import patch_baseline_seeds
+
+    template_path = tmp_path / "template.xlsx"
+    _write_template(template_path, [_template_row("Resources\\Primary\\Gas", "Imports")])
+
+    seed_dir = tmp_path / "seeds"
+    seed_dir.mkdir()
+    selected_seed = seed_dir / "leap_import_baseline_seed_01_AUS_20260804.xlsx"
+    stale_seed = seed_dir / "leap_import_baseline_seed_01_AUS_20260715.xlsx"
+    _write_seed_workbook(selected_seed, [_template_row("Resources\\Primary\\Gas", "Imports")])
+    _write_seed_workbook(
+        stale_seed,
+        [dict(_template_row("Resources\\Primary\\Gas", "Imports"), BranchID=999)],
+    )
+
+    total_bad = patch_baseline_seeds.validate_seed_files(
+        seed_dir=seed_dir,
+        seed_paths=[selected_seed],
+        template_path=template_path,
+        ignore_prefixes=frozenset(),
+        ignore_fuel_names=frozenset(),
+    )
+
+    assert total_bad == 0
+
+
+def test_validate_seed_files_reports_missing_template_for_seed_economy(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from codebase.functions import patch_baseline_seeds
+
+    seed_path = tmp_path / "leap_import_baseline_seed_03_CDA_20260804.xlsx"
+    _write_seed_workbook(
+        seed_path,
+        [_template_row("Resources\\Primary\\Gas", "Imports")],
+    )
+
+    def _missing_template(economy: object) -> Path:
+        raise FileNotFoundError(f"No LEAP export template for economy {economy!r}.")
+
+    monkeypatch.setattr(
+        patch_baseline_seeds.leap_export_template_resolver,
+        "resolve_leap_export_template",
+        _missing_template,
+    )
+
+    total_bad = patch_baseline_seeds.validate_seed_files(
+        seed_paths=[seed_path],
+        ignore_prefixes=frozenset(),
+        ignore_fuel_names=frozenset(),
+    )
+    output = capsys.readouterr().out
+
+    assert total_bad == 0
+    assert "no usable LEAP export template for economy 03_CDA" in output
+    assert seed_path.name in output
+    assert "leap_export_template 20_USA.xlsx" not in output
+    assert "No seed files were validated" in output
+    assert "[OK]" not in output
+
+
+def test_latest_seed_files_by_economy_selects_newest_stamp(tmp_path: Path) -> None:
+    from codebase.functions import patch_baseline_seeds
+
+    older = tmp_path / "leap_import_baseline_seed_20_USA_20260731.xlsx"
+    newest = tmp_path / "leap_import_baseline_seed_20_USA_20260804.xlsx"
+    other = tmp_path / "leap_import_baseline_seed_01_AUS_20260803.xlsx"
+    for path in (newest, other, older):
+        path.touch()
+
+    selected = patch_baseline_seeds._latest_seed_files_by_economy(tmp_path)
+
+    assert selected == {"20_USA": newest, "01_AUS": other}
+
+
+def test_run_patch_validates_only_successfully_patched_seed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from codebase.functions import patch_baseline_seeds
+
+    selected_seed = tmp_path / "leap_import_baseline_seed_20_USA_20260804.xlsx"
+    selected_seed.touch()
+    monkeypatch.setattr(patch_baseline_seeds, "BASELINE_SEED_DIR", tmp_path)
+    monkeypatch.setattr(
+        patch_baseline_seeds,
+        "_collect_from_workbooks",
+        lambda cfg, economies, files=None: {
+            "20_USA": pd.DataFrame([{"Branch Path": "Transformation\\Oil Refining"}])
+        },
+    )
+    patched_paths: list[Path] = []
+    monkeypatch.setattr(
+        patch_baseline_seeds,
+        "_patch_one",
+        lambda seed_path, new_df, prefixes, source_workflow, economy: patched_paths.append(seed_path),
+    )
+    validated_paths: list[Path] = []
+
+    def _record_validation(*, seed_paths, **kwargs) -> int:
+        validated_paths.extend(seed_paths)
+        return 0
+
+    monkeypatch.setattr(patch_baseline_seeds, "validate_seed_files", _record_validation)
+
+    patch_baseline_seeds._run_patch_locked(
+        "oil_refineries",
+        ["20_USA"],
+        False,
+        patch_baseline_seeds.MODULE_REGISTRY["oil_refineries"],
+    )
+
+    assert patched_paths == [selected_seed]
+    assert validated_paths == [selected_seed]
+
+
 def test_validate_seed_files_rejects_nonzero_optional_root(tmp_path: Path) -> None:
     from codebase.functions import patch_baseline_seeds
 

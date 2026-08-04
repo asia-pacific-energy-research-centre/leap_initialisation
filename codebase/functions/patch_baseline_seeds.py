@@ -52,7 +52,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
 import pandas as pd
 
@@ -397,11 +397,7 @@ def _template_for_economy(economy: object | None) -> Path:
     """Return the LEAP export template whose IDs apply to this economy."""
     if economy is None or leap_export_template_resolver.is_aggregate_economy(economy):
         return FULL_MODEL_EXPORT_PATH
-    try:
-        return leap_export_template_resolver.resolve_leap_export_template(economy)
-    except (FileNotFoundError, ValueError) as exc:
-        print(f"[WARN] {exc}")
-        return FULL_MODEL_EXPORT_PATH
+    return leap_export_template_resolver.resolve_leap_export_template(economy)
 
 
 def _build_id_lookup(
@@ -516,14 +512,30 @@ def _economy_from_seed_filename(seed_path: Path) -> str | None:
     return match.group("economy") if match else None
 
 
+def _latest_seed_files_by_economy(seed_dir: Path) -> dict[str, Path]:
+    """Return the newest dated baseline seed for each economy."""
+    selected: dict[str, tuple[str, Path]] = {}
+    for path in seed_dir.glob("leap_import_baseline_seed_*.xlsx"):
+        match = SEED_FILENAME_PATTERN.match(path.name)
+        if match is None:
+            continue
+        economy = match.group("economy").upper()
+        stamp = match.group("stamp")
+        current = selected.get(economy)
+        if current is None or (stamp, path.name) > (current[0], current[1].name):
+            selected[economy] = (stamp, path)
+    return {economy: item[1] for economy, item in selected.items()}
+
+
 def validate_seed_files(
     seed_dir: Path = BASELINE_SEED_DIR,
     template_path: Path | None = None,
     ignore_prefixes: frozenset[str] = VALIDATION_IGNORE_PREFIXES,
     ignore_fuel_names: frozenset[str] = VALIDATION_IGNORE_FUEL_NAMES,
     allow_unresolved_prefixes: tuple[str, ...] = (),
+    seed_paths: Iterable[Path] | None = None,
 ) -> int:
-    """Check all seed files against the template; return number of invalid rows found.
+    """Check selected seed files against their templates; return invalid-row count.
 
     Expected IDs come from the same canonical template lookup the baseline-seed
     validator uses (``build_template_id_lookup``), so this printed report and
@@ -532,20 +544,50 @@ def validate_seed_files(
 
     Each seed file belongs to one economy and is checked against that economy's
     LEAP export template, since branch paths and IDs differ between areas. Pass
-    ``template_path`` to check every seed against one template instead.
+    ``seed_paths`` to validate only exact files (the patcher uses this for the
+    files successfully changed in the current invocation). When omitted, every
+    seed in ``seed_dir`` is checked for backwards-compatible audit use. Pass
+    ``template_path`` to check every selected seed against one template instead.
     """
-    seed_files = sorted(seed_dir.glob("leap_import_baseline_seed_*.xlsx"))
+    seed_files = (
+        sorted(Path(path) for path in seed_paths)
+        if seed_paths is not None
+        else sorted(seed_dir.glob("leap_import_baseline_seed_*.xlsx"))
+    )
     if not seed_files:
         return 0
 
     total_bad = 0
+    validated_files = 0
+    skipped_files = 0
     for seed_path in seed_files:
         if template_path is not None:
             seed_template = template_path
         else:
-            seed_template = _template_for_economy(_economy_from_seed_filename(seed_path))
+            economy = _economy_from_seed_filename(seed_path)
+            if economy is None:
+                print(
+                    f"[SKIP] {seed_path.name}: cannot infer an economy from the "
+                    "seed filename; validation skipped."
+                )
+                skipped_files += 1
+                continue
+            try:
+                seed_template = _template_for_economy(economy)
+            except (FileNotFoundError, ValueError) as exc:
+                print(
+                    f"[SKIP] {seed_path.name}: no usable LEAP export template "
+                    f"for economy {economy}; validation skipped."
+                )
+                print(f"       {exc}")
+                skipped_files += 1
+                continue
         if not seed_template.exists():
-            print(f"[WARN] Template not found, skipping validation: {seed_template}")
+            print(
+                f"[SKIP] {seed_path.name}: resolved template does not exist: "
+                f"{seed_template}"
+            )
+            skipped_files += 1
             continue
 
         lookup = _canonical_template_lookup(seed_template)
@@ -555,6 +597,7 @@ def validate_seed_files(
             _, data = _find_header_row(raw)
         except Exception as exc:
             print(f"  [WARN] Could not read {seed_path.name}: {exc}")
+            skipped_files += 1
             continue
 
         bad_rows: list[str] = []
@@ -623,11 +666,16 @@ def validate_seed_files(
             if len(bad_rows) > 20:
                 print(f"  ... and {len(bad_rows) - 20} more")
             total_bad += len(bad_rows)
+        validated_files += 1
 
-    if total_bad == 0:
+    if total_bad == 0 and validated_files:
         print("[OK] All seed file rows match the template.")
-    else:
+    elif total_bad:
         print(f"\n[WARN] {total_bad} invalid row(s) found across seed files.")
+    else:
+        print("[WARN] No seed files were validated.")
+    if skipped_files:
+        print(f"[WARN] Skipped validation for {skipped_files} seed file(s).")
     return total_bad
 
 
@@ -1224,15 +1272,12 @@ def _run_patch_locked(
 
     strip_prefixes = cfg.resolve_strip_prefixes()
 
-    seed_files = {
-        _econ_token(p.stem): p
-        for p in BASELINE_SEED_DIR.glob("leap_import_baseline_seed_*.xlsx")
-        if _econ_token(p.stem)
-    }
+    seed_files = _latest_seed_files_by_economy(BASELINE_SEED_DIR)
 
     from codebase.functions.supply_data_pipeline import get_region_for_economy
 
     failures: dict[str, str] = {}
+    patched_seed_paths: list[Path] = []
     for tok, new_df in sorted(source_by_econ.items()):
         seed_path = seed_files.get(tok)
         if not seed_path:
@@ -1251,6 +1296,7 @@ def _run_patch_locked(
                 source_workflow=module,
                 economy=tok,
             )
+            patched_seed_paths.append(seed_path)
         except PermissionError:
             msg = "file is locked (close it in Excel and re-run for this economy)"
             print(f"  [{tok}] FAILED — {msg}")
@@ -1262,8 +1308,14 @@ def _run_patch_locked(
             failures[tok] = str(exc)
 
     print("Done.")
-    print("\nValidating seed files against template...")
-    validate_seed_files()
+    if patched_seed_paths:
+        print(
+            f"\nValidating {len(patched_seed_paths)} seed file(s) patched in "
+            "this invocation against their economy templates..."
+        )
+        validate_seed_files(seed_paths=patched_seed_paths)
+    else:
+        print("\nNo successfully patched seed files to validate.")
 
     if failures:
         summary = "; ".join(f"{tok}: {msg}" for tok, msg in sorted(failures.items()))
