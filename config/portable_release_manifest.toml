@@ -48,7 +48,7 @@ packages = [
 # behaviour.
 
 [repositories.leap_initialisation]
-commit = "baaf1821989196d4e62f4970da0e8430ed94ad87"
+commit = "bc3975d4dea5fe3218cf2c2e0cec2f43211b3ede"
 stage_dir = "leap_initialisation"
 on_sys_path = true
 paths = [
