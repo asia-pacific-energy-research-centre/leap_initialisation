@@ -199,3 +199,112 @@ Do this **after** the frozen `balance-review-from-export` test settles, not
 alongside it. That test can still change what §3.1(a) should say, and both touch
 `docs/`. One documentation pass against a known-final state beats two passes and a
 merge conflict.
+
+---
+
+## 7. Updating the ESTO vintage — a capability gap, not just a doc gap
+
+ESTO data is reissued yearly, and each vintage moves the base year: the 2024 data
+has base year 2022; the 2026 data will have base year 2024; then 2027. A user of
+either version should be able to move to a new vintage without help.
+
+**Today they cannot.** Verified 2026-08-04, before writing any of this into the
+user guide.
+
+### 7.1 The base year is hardcoded in three places
+
+| Where | Value |
+|---|---|
+| `baseline_seed_balance_diagnostics.DEFAULT_BASE_YEAR` | `2022` |
+| `workflow_config.GLOBAL_BASE_YEAR` | `2022` |
+| `leap_dashboard/config/common_esto_dashboard/common_esto_dashboard_template.json` → `chart_generation.base_year` | `2022` |
+
+Nothing derives it from the supplied ESTO file, and no command-line flag exposes
+it. (`--year` is the *review* year — which sheet to compare — not the base year.)
+
+Only the third is replaceable without a rebuild, because it lives in `config/`.
+The first two are compiled into the executables.
+
+### 7.2 Swapping the ESTO file fixes one path and silently breaks the other
+
+`--esto-table-path` exists **only** on `balance-review-from-export`. So a colleague
+can point the balance review at a newer ESTO table.
+
+The dashboard cannot be updated this way at all, and this is the dangerous part.
+`dashboard-from-export` does not read the raw ESTO CSV. It reads four pre-built
+artifacts that were *derived from* a particular ESTO vintage by the mapping
+pipeline:
+
+```text
+esto_results_exact_rows.csv.gz
+ninth_results_converted_to_esto.csv.gz
+common_esto_rows.csv
+energy_balance_relationships.csv
+```
+
+Replace the raw ESTO file and those four stay on the old vintage. Nothing
+currently detects the mismatch, so the dashboard would keep rendering — against
+stale ESTO values, silently. A user could easily believe they had updated when
+they had not.
+
+**Do not document a file-swap workflow until this is closed.** Documenting it
+would actively cause the failure.
+
+### 7.3 What the synthetic rows do and do not cover
+
+`config/mappings/synthetic_reference_rows.csv` (already a replaceable config
+asset) injects zero-valued ESTO rows that a vintage may not carry — Datacentres
+(`16.01.01`), hydrogen transformation (`09.13.*`, `10.01.19`), and the ammonia /
+e-fuel / hydrogen product rows. The ESTO vocabulary check reports anything
+expected-but-absent before a run starts.
+
+That machinery applies to the **balance-diagnostics path only**. It does not
+touch the dashboard's four pre-built artifacts. So "the system fills in missing
+rows like Datacentres and LNG" is true for the balance review and **not** true
+for the dashboard.
+
+For the record, the LNG rows specifically (`09.06.02.01 Liquefaction`,
+`09.06.02.02 Regasification`) are present in both the 2024 and 2025 tables and
+are mapped — they are not synthetic-row cases today.
+
+### 7.4 What needs building
+
+Roughly in order:
+
+1. **Derive the base year from the supplied ESTO table** rather than hardcoding
+   it — its last year column is the base year — with an explicit override for
+   the cases where that is wrong. One resolved value must then reach the
+   diagnostics, the dashboard template, and the fast path, so the three cannot
+   disagree.
+2. **Record the ESTO vintage in the derived artifacts**, and refuse to run when
+   the supplied ESTO table and the pre-built artifacts disagree. Failing loudly
+   is the minimum; regenerating is better.
+3. **Move the ESTO and 9th tables from `data/` into `input/`**, as suggested, so
+   the thing a user is expected to update sits where they already look. This is
+   only safe once (2) exists — otherwise it invites exactly the silent-mismatch
+   failure in §7.2.
+4. Then, and only then, document the update as a user-facing workflow.
+
+Until (1)–(3) land, an ESTO vintage change is a **maintainer task**: re-run the
+mapping pipeline against the new vintage, update the three base-year values,
+rebuild, and reissue. That is what the user guide should say.
+
+### 7.5 Do-not-edit guidance (write this once the above is settled)
+
+Both documents need an explicit warning, because the failure is silent:
+
+- **Never hand-edit the ESTO table.** Not to add a row, not to fix a value, not
+  to delete an economy.
+- The tools already add the rows a vintage is missing, from a reviewed rules
+  file. A hand-added row bypasses that review and will not match what the
+  mapping expects.
+- Every run records which ESTO file it used. An edited file is a file nobody
+  else can reproduce, so a result built on one cannot be checked by anyone.
+- If a row genuinely looks wrong or missing, that is a mapping question — raise
+  it rather than patching the data.
+
+For the maintainer reference, the same section should state plainly what the code
+does to the ESTO data on the way through: synthetic reference rows are injected;
+own-use and loss rows are sign-normalised; subtotal rows are excluded from
+frontier calculations. A reader comparing the raw file against a run's output
+will otherwise think values have been altered arbitrarily.
