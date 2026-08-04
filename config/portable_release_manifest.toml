@@ -109,7 +109,7 @@ paths = [
 # their absolute `codebase.*` imports (ast-based, not hand-maintained by
 # inspection - re-run that walk if the mapping chain's imports change).
 [repositories.leap_mappings_worker]
-commit = "8bd0fb627a5e23ca8244dfccdba3c26706078584"
+commit = "a7a21ba5a3b7846cf9bdf626c5dcc027b13a0c87"
 stage_dir = "leap_mappings_worker"
 source_key = "leap_mappings"
 on_sys_path = true
