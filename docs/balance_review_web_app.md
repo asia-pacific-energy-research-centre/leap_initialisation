@@ -13,9 +13,25 @@ The app replaces the balance-review part of the portable Windows release:
 4. run the existing diagnostics workflow;
 5. run the existing Python workbook builder;
 6. run the existing dashboard-from-export workflow;
-7. view the generated dashboard pages in the app and download the four-sheet
+7. view the generated dashboard pages in the app and download the three-sheet
    `.xlsx` result plus a combined diagnostic/dashboard bundle;
 8. reopen saved dashboards from previous economy/scenario runs.
+
+The economy and scenario are **not** asked for. LEAP writes its area name into
+each sheet's title row and the scenario, year, and units into the row beneath,
+so the export already states them. `infer_balance_export_identity` in
+`codebase/utilities/leap_balance_export_resolver.py` reads them, and the year is
+the only run input a user still supplies. That function is the single source of
+truth for the inference; the web app does not carry its own copy.
+
+Economy inference matches the LEAP area name against the APEC alias table in the
+same module. A leading alias wins outright — real area names open with the
+economy's short code, as in `aus clean slate 29_07` — and only when no alias
+leads the name are whole-word matches elsewhere considered. Either tier must
+yield exactly one economy, so an ambiguous or unrecognised name is reported as
+unknown rather than guessed at. That case, and only that case, reveals an
+economy-code field beside the year. A workbook covering more than one scenario
+is refused, because nothing in it says which scenario a review should use.
 
 The configured pinned ESTO table is used when no override is supplied. An
 override changes the active ESTO vintage for that run; the existing synthetic
@@ -40,9 +56,24 @@ button for removing them from that browser.
 
 ## Interface design
 
-The interface uses a simple three-step flow: identify the model run, upload the
-required LEAP export, and start the review. The optional ESTO override and the
+The interface uses a two-step flow: add the export and pick a year, then start
+the review. The upload sits on one row beside the year, because those are now
+the whole of the input; a readout beneath the row shows the economy, scenario,
+and available years read back out of the uploaded file, so the user can see that
+the inference was right before committing to a multi-minute run. The dropzone is
+styled and worded as the page's primary action, since supplying the export is
+the one thing the app cannot do for the user.
+
+Two things the export can be wrong about are checked at upload rather than at
+run time: a Level 1 export, which flattens the balance and leaves nothing to
+compare, and a review year the export has no sheet for. Both used to surface
+several minutes into a run that could not have succeeded.
+
+The optional ESTO override and the
 technical run summary are collapsed by default so the primary path stays clear.
+The ESTO disclosure states what opening it does and carries a left-hand chevron
+plus an "Optional — click to open" hint, because as a bare label with a distant
+triangle it read as decoration rather than a control.
 Results and browser-private dashboard views are grouped separately beneath the
 run controls. The responsive visual system echoes the LEAP desktop application:
 a light-blue workspace, orange action accents, compact blue-grey title bars,
@@ -134,6 +165,15 @@ to committed source. `allow_dirty_sources=True` is available only for a local
 experiment and should not be used for a public release.
 
 ## Parity notes
+
+The user guide (`docs/leap_review_tools_user_guide.md`) already promised that the
+tools read the workbook to work out its scenario when a filename does not say.
+The web app takes that further: the filename convention exists so the CLI can
+pick a file out of a folder, and a user who has uploaded one file has already
+made that choice, so nothing about the export needs restating. The guide's other
+two recurring points — that a Level 1 export cannot be compared, and that a red
+error cell is a disagreement rather than a verdict on LEAP — are surfaced in the
+app at the upload step and beside the results respectively.
 
 The web flow preserves the main guided-flow behavior: one export is enough,
 multiple review years can be entered as `2022,2030,2040`, each requested year
