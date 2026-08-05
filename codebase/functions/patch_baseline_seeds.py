@@ -617,6 +617,7 @@ def validate_seed_files(
         return 0
 
     total_bad = 0
+    total_documented_exceptions = 0
     validated_files = 0
     skipped_files = 0
     for seed_path in seed_files:
@@ -660,6 +661,7 @@ def validate_seed_files(
             continue
 
         bad_rows: list[str] = []
+        documented_exception_counts: dict[str, int] = {}
         for _, row in data.iterrows():
             bp = str(row.get("Branch Path", "") or "")
             if not bp or bp.lower() in ("nan", "area:", ""):
@@ -669,7 +671,10 @@ def validate_seed_files(
             if bp.split("\\")[-1] in ignore_fuel_names:
                 continue
 
-            if _validation_exception_note(bp) is not None:
+            exception_note = _validation_exception_note(bp)
+            if exception_note is not None:
+                documented_exception_counts.setdefault(bp, 0)
+                documented_exception_counts[bp] += 1
                 continue
 
             # Case-insensitive match: resolve to canonical template path if found.
@@ -728,10 +733,24 @@ def validate_seed_files(
             if len(bad_rows) > 20:
                 print(f"  ... and {len(bad_rows) - 20} more")
             total_bad += len(bad_rows)
+        if documented_exception_counts:
+            exception_count = sum(documented_exception_counts.values())
+            total_documented_exceptions += exception_count
+            print(
+                f"\n[EXCEPTION] {seed_path.name} — {exception_count} "
+                "documented missing branch row(s):"
+            )
+            for exception_path, count in documented_exception_counts.items():
+                note = _validation_exception_note(exception_path)
+                print(f"  {count} row(s): {exception_path}")
+                print(f"    note: {note}")
         validated_files += 1
 
     if total_bad == 0 and validated_files:
-        print("[OK] All seed file rows match the template.")
+        if total_documented_exceptions:
+            print("[OK] All non-excepted seed file rows match the template.")
+        else:
+            print("[OK] All seed file rows match the template.")
     elif total_bad:
         print(f"\n[WARN] {total_bad} invalid row(s) found across seed files.")
     else:

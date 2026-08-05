@@ -10,6 +10,7 @@ the ``validate_seed_files`` seed-file report, and the
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from codebase.functions.baseline_seed_validation import (
     apply_template_ids,
@@ -685,7 +686,9 @@ def test_validate_seed_files_allows_all_zero_optional_roots(tmp_path: Path) -> N
     assert total_bad == 0
 
 
-def test_validate_seed_files_allows_documented_branch_exception(tmp_path: Path) -> None:
+def test_validate_seed_files_reports_documented_branch_exception(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     from codebase.functions import patch_baseline_seeds
 
     template_path = tmp_path / "template.xlsx"
@@ -711,6 +714,12 @@ def test_validate_seed_files_allows_documented_branch_exception(tmp_path: Path) 
     )
 
     assert total_bad == 0
+    output = capsys.readouterr().out
+    assert "[EXCEPTION]" in output
+    assert "documented missing branch row(s)" in output
+    assert "Other recovered gases" in output
+    assert "Bio jet kerosene" in output
+    assert "[OK] All non-excepted seed file rows match the template." in output
 
 
 def test_validate_seed_files_checks_only_explicit_seed_paths(tmp_path: Path) -> None:
