@@ -42,24 +42,142 @@ if str(INITIALISATION_ROOT) not in sys.path:
 
 
 APP_CSS = """
-/* Keep the input form compact enough to fit comfortably on one screen. */
-.gradio-container { max-width: none !important; width: calc(100% - 2rem) !important; }
-#app-header h1 { margin: 0 0 0.25rem 0; font-size: 1.65rem; }
-#app-header p { margin: 0; color: #5b6472; font-size: 0.92rem; }
-#input-row, #upload-row, #action-row { gap: 0.65rem; }
-#input-row .gr-form, #upload-row .gr-form { padding: 0.55rem 0.7rem; }
-#upload-row .file-preview, #upload-row .upload-container,
-#upload-row .file-upload { min-height: 68px !important; }
-#upload-row .file-upload { padding: 0.45rem !important; }
-#esto-note { margin: -0.15rem 0 0.15rem 0; padding: 0.35rem 0.65rem;
-  border-left: 3px solid #8aa4c8; background: var(--block-background-fill);
-  font-size: 0.82rem; line-height: 1.3; color: var(--body-text-color); }
-#run-button { min-width: 285px; }
+/* A warm, quiet workspace instead of Gradio's default technical form. */
+.gradio-container {
+  --body-background-fill: #f5f7f3;
+  --body-text-color: #253530;
+  --block-background-fill: #ffffff;
+  --block-border-color: #dfe6df;
+  --input-background-fill: #fbfcfa;
+  --input-border-color: #d9e2da;
+  max-width: 1180px !important;
+  width: calc(100% - 2rem) !important;
+  margin: 0 auto !important;
+  padding: 1.5rem 0 4rem !important;
+  color: #253530 !important;
+}
+body, .gradio-container { background: #f5f7f3 !important; }
+.gradio-container .prose, .gradio-container label, .gradio-container span {
+  color: inherit;
+}
+#app-hero {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 1rem;
+  padding: 2rem 2.1rem;
+  border: 1px solid #dce7df;
+  border-radius: 24px;
+  background: linear-gradient(135deg, #ffffff 0%, #eef8f2 100%);
+  box-shadow: 0 16px 42px rgba(40, 74, 61, 0.08);
+}
+#app-hero::after {
+  content: "";
+  position: absolute;
+  right: -55px;
+  top: -70px;
+  width: 210px;
+  height: 210px;
+  border-radius: 50%;
+  background: rgba(67, 148, 111, 0.1);
+}
+.hero-eyebrow {
+  display: inline-flex;
+  margin-bottom: 0.6rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: #dff3e7;
+  color: #216347;
+  font-size: 0.75rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+#app-hero h1 {
+  position: relative;
+  z-index: 1;
+  margin: 0 0 0.55rem;
+  color: #173b30;
+  font-size: clamp(2rem, 4vw, 3.1rem);
+  line-height: 1.03;
+  letter-spacing: -0.04em;
+}
+#app-hero p {
+  position: relative;
+  z-index: 1;
+  max-width: 700px;
+  margin: 0;
+  color: #587068;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+.step-heading { margin: 1.5rem 0 0.65rem; }
+.step-heading .step-number {
+  display: inline-grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-right: 0.5rem;
+  place-items: center;
+  border-radius: 50%;
+  background: #27765a;
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+.step-heading strong { color: #203f35; font-size: 1.1rem; }
+.step-heading p { margin: 0.2rem 0 0 2.3rem; color: #6c7d77; font-size: 0.88rem; }
+#details-card, #upload-card, #run-card, #results-card, #dashboard-card {
+  gap: 0.8rem;
+  padding: 1rem !important;
+  border: 1px solid #dfe7e1 !important;
+  border-radius: 18px !important;
+  background: #ffffff !important;
+  box-shadow: 0 5px 18px rgba(43, 68, 58, 0.045);
+}
+#input-row, #upload-row, #action-row, #download-row, #dashboard-controls { gap: 0.8rem; }
+#input-row .gr-form, #upload-row .gr-form { padding: 0.65rem 0.75rem; }
+.gradio-container input, .gradio-container textarea, .gradio-container select {
+  border-radius: 10px !important;
+}
+.gradio-container span[data-testid="block-info"] {
+  padding: 0 0 0.35rem !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #43574f !important;
+  font-weight: 700 !important;
+}
+#balance-upload .file-preview, #balance-upload .upload-container,
+#balance-upload .file-upload { min-height: 104px !important; }
+#balance-upload .file-upload { padding: 0.75rem !important; border-radius: 13px !important; }
+#advanced-options { margin-top: 0.8rem; border-radius: 14px !important; }
+#advanced-options > button { color: #526b62 !important; font-weight: 650; }
+#esto-note {
+  margin: 0;
+  padding: 0.65rem 0.8rem;
+  border-radius: 10px;
+  background: #f2f6f3;
+  color: #62756e;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+#run-button { min-width: 320px; min-height: 48px; border-radius: 12px !important; font-weight: 750; }
+#run-button button { box-shadow: 0 7px 18px rgba(39, 118, 90, 0.2); }
 #run-status textarea, #run-status input { font-size: 0.88rem; }
+#results-empty, #dashboard-empty {
+  padding: 1.1rem;
+  border: 1px dashed #cad7ce;
+  border-radius: 12px;
+  background: #fafcf9;
+  color: #6d7c76;
+  text-align: center;
+}
+#results-card .file-preview, #dashboard-card .file-preview { min-height: 52px !important; }
+#results-card:has(a[download]) #results-empty { display: none; }
+#clear-dashboards { align-self: end; max-width: 210px; }
+#dashboard-viewer iframe { border-color: #dce4de !important; border-radius: 14px !important; }
 #calculator-animation { display: none; align-items: center; gap: 0.65rem;
-  min-height: 62px; margin: 0.25rem 0 0.5rem; padding: 0.4rem 0.8rem;
-  border-radius: 10px; background: linear-gradient(90deg, #fff7dc, #edf7ff);
-  border: 1px solid #e4d7a6; }
+  min-height: 62px; margin: 0.25rem 0; padding: 0.55rem 0.8rem;
+  border-radius: 12px; background: linear-gradient(90deg, #fff8df, #eff8f2);
+  border: 1px solid #e9dfb8; }
 #calculator-animation.is-running { display: flex; }
 .calc-machine { position: relative; width: 54px; height: 48px; padding: 5px;
   border: 3px solid #34495e; border-radius: 8px; background: #f8fbff;
@@ -80,9 +198,11 @@ APP_CSS = """
   to { transform: rotate(5deg) translateY(-2px); } }
 @keyframes calculator-blink { 50% { filter: brightness(1.45); transform: scale(0.85); } }
 @media (max-width: 760px) {
-  #upload-row { flex-direction: column; }
-  #input-row { flex-wrap: wrap; }
-  #input-row > div { min-width: 30%; }
+  .gradio-container { width: calc(100% - 1rem) !important; padding-top: 0.5rem !important; }
+  #app-hero { padding: 1.45rem; border-radius: 18px; }
+  #input-row, #upload-row, #action-row, #download-row, #dashboard-controls { flex-direction: column; }
+  #input-row > div, #run-button { min-width: 100%; }
+  #clear-dashboards { align-self: stretch; max-width: none; }
 }
 """
 
@@ -656,102 +776,177 @@ def create_app():
     """Create the web interface for local or Hugging Face execution."""
     import gradio as gr
 
-    with gr.Blocks(title="LEAP Balance Review", css=APP_CSS, js=APP_JS) as app:
-        gr.Markdown(
-            """# LEAP Balance Review
-
-Upload one LEAP Energy Balance export. The app runs the complete diagnostics
-workflow, creates the four-sheet review workbook, and renders the dashboard
-pages below. Optionally upload a replacement ESTO base-table CSV; otherwise the
-configured pinned ESTO table is used. The ESTO override changes the dataset
-compared against in both the balance-table review and dashboard. The dashboard
-then uses the latest year in that ESTO dataset as its base year.
-""",
-            elem_id="app-header",
+    theme = gr.themes.Soft(
+        primary_hue="emerald",
+        secondary_hue="amber",
+        neutral_hue="slate",
+        radius_size="lg",
+    )
+    with gr.Blocks(
+        title="LEAP Balance Review",
+        theme=theme,
+        css=APP_CSS,
+        js=APP_JS,
+    ) as app:
+        gr.HTML(
+            """<header id="app-hero">
+              <span class="hero-eyebrow">LEAP review workspace</span>
+              <h1>Check your energy balance with confidence.</h1>
+              <p>Upload a LEAP export and we’ll prepare the diagnostics,
+              review workbooks, and visual dashboards for you.</p>
+            </header>"""
         )
-        with gr.Row(elem_id="input-row"):
-            economy = gr.Textbox(label="Economy", value="20_USA")
-            scenario = gr.Textbox(label="Scenario", value="Target")
-            year = gr.Textbox(
-                label="Balance table review year(s)",
-                value="2022",
-                info="Use commas for multiple workbooks, e.g. 2022,2030,2040.",
-            )
-        with gr.Row(elem_id="upload-row"):
+
+        gr.HTML(
+            """<div class="step-heading"><span class="step-number">1</span>
+              <strong>Tell us what you’re reviewing</strong>
+              <p>These details keep the results focused on the right model run.</p>
+            </div>"""
+        )
+        with gr.Column(elem_id="details-card"):
+            with gr.Row(elem_id="input-row"):
+                economy = gr.Textbox(
+                    label="Economy code",
+                    value="20_USA",
+                    placeholder="e.g. 20_USA",
+                )
+                scenario = gr.Textbox(
+                    label="Scenario",
+                    value="Target",
+                    placeholder="e.g. Target",
+                )
+                year = gr.Textbox(
+                    label="Review year(s)",
+                    value="2022",
+                    placeholder="2022 or 2022, 2030, 2040",
+                    info="Separate multiple years with commas.",
+                )
+
+        gr.HTML(
+            """<div class="step-heading"><span class="step-number">2</span>
+              <strong>Add your LEAP export</strong>
+              <p>An Excel Energy Balance export is the only file you need.</p>
+            </div>"""
+        )
+        with gr.Column(elem_id="upload-card"):
             balance_export_workbook = gr.File(
-                label="LEAP Energy Balance export (.xlsx)",
+                label="Energy Balance export",
                 file_types=[".xlsx", ".xlsm"],
                 type="filepath",
-                height=105,
+                height=132,
                 elem_id="balance-upload",
             )
-            with gr.Column(scale=1, min_width=320):
+            with gr.Accordion(
+                "Advanced: compare against a different ESTO dataset",
+                open=False,
+                elem_id="advanced-options",
+            ):
                 esto_table = gr.File(
-                    label="Optional ESTO base-table override (.csv)",
+                    label="ESTO base-table override (optional)",
                     file_types=[".csv"],
                     type="filepath",
-                    height=105,
+                    height=96,
                     elem_id="esto-upload",
                 )
                 gr.Markdown(
-                    "**ESTO override:** changes the dataset compared against in the "
-                    "balance review and dashboard; the dashboard base year becomes "
-                    "the latest year in that ESTO dataset.",
+                    "This replaces the pinned ESTO comparison table for this run. "
+                    "The latest year in your CSV becomes the dashboard base year.",
                     elem_id="esto-note",
                 )
-        with gr.Row(elem_id="action-row"):
-            run_button = gr.Button(
-                "Calculate diagnostics and build review",
-                variant="primary",
-                elem_id="run-button",
-            )
-            status = gr.Textbox(label="Status", interactive=False, elem_id="run-status")
+
         gr.HTML(
-            """<div id="calculator-animation" role="status" aria-live="polite">
-              <div class="calc-machine" aria-hidden="true">
-                <div class="calc-display">CALCULATING</div>
-                <div class="calc-keys"><i class="calc-key"></i><i class="calc-key"></i><i class="calc-key"></i><i class="calc-key"></i><i class="calc-key"></i><i class="calc-key"></i></div>
-              </div>
-              <div class="calc-caption">Crunching balances<span>...</span></div>
+            """<div class="step-heading"><span class="step-number">3</span>
+              <strong>Build your review</strong>
+              <p>The full run can take several minutes. You can leave this tab open.</p>
             </div>"""
         )
-        with gr.Accordion("Run details", open=False):
-            summary = gr.Code(label="Run summary", language="json", interactive=False)
-        output = gr.File(
-            label="Download review workbook(s)",
-            file_count="multiple",
+        with gr.Column(elem_id="run-card"):
+            with gr.Row(elem_id="action-row"):
+                run_button = gr.Button(
+                    "Start balance review",
+                    variant="primary",
+                    elem_id="run-button",
+                )
+                status = gr.Textbox(
+                    label="Run status",
+                    value="Ready when you are",
+                    interactive=False,
+                    elem_id="run-status",
+                )
+            gr.HTML(
+                """<div id="calculator-animation" role="status" aria-live="polite">
+                  <div class="calc-machine" aria-hidden="true">
+                    <div class="calc-display">CALCULATING</div>
+                    <div class="calc-keys"><i class="calc-key"></i><i class="calc-key"></i><i class="calc-key"></i><i class="calc-key"></i><i class="calc-key"></i><i class="calc-key"></i></div>
+                  </div>
+                  <div class="calc-caption">Checking balances and preparing your files<span>...</span></div>
+                </div>"""
+            )
+            with gr.Accordion("Technical run details", open=False):
+                summary = gr.Code(
+                    label="Run summary",
+                    language="json",
+                    interactive=False,
+                )
+
+        gr.HTML(
+            """<div class="step-heading"><span class="step-number">✓</span>
+              <strong>Your results</strong>
+              <p>Workbooks and full diagnostic files will appear here when ready.</p>
+            </div>"""
         )
-        diagnostics_bundle = gr.File(
-            label="Download current full run archive (dashboard and subfolders)"
-        )
-        gr.Markdown(
-            "## Dashboards\n\n"
-            "The embedded dashboard is locked to the economy and scenario entered above. "
-            "Dashboard snapshots are saved in this browser only, so other users "
-            "cannot see them and no persistent server storage is required."
+        with gr.Column(elem_id="results-card"):
+            gr.HTML(
+                "<div id='results-empty'>Nothing to download yet — start a review above.</div>"
+            )
+            with gr.Row(elem_id="download-row"):
+                output = gr.File(
+                    label="Review workbook(s)",
+                    file_count="multiple",
+                )
+                diagnostics_bundle = gr.File(label="Complete run archive")
+
+        gr.HTML(
+            """<div class="step-heading"><span class="step-number">↗</span>
+              <strong>Explore the dashboard</strong>
+              <p>Saved views stay private in this browser and are not stored on the server.</p>
+            </div>"""
         )
         browser_archives = gr.BrowserState(
             default_value=[],
             storage_key="leap_balance_review_dashboard_archives",
         )
-        dashboard_archive = gr.Dropdown(
-            label="Saved dashboard archive",
-            choices=[],
-            value=None,
-            interactive=True,
-        )
-        clear_dashboard_button = gr.Button(
-            "Clear browser-saved dashboards", size="sm"
-        )
-        dashboard_page = gr.Dropdown(
-            label="Dashboard page",
-            choices=[],
-            value=None,
-            interactive=True,
-        )
-        dashboard_html = gr.HTML(value="<p>Run the workflow to generate a dashboard.</p>")
-        dashboard_bundle = gr.File(label="Download current full dashboard archive")
-        dashboard_state = gr.State(value=None)
+        with gr.Column(elem_id="dashboard-card"):
+            with gr.Row(elem_id="dashboard-controls"):
+                dashboard_archive = gr.Dropdown(
+                    label="Saved review",
+                    choices=[],
+                    value=None,
+                    interactive=True,
+                    scale=2,
+                )
+                dashboard_page = gr.Dropdown(
+                    label="Dashboard page",
+                    choices=[],
+                    value=None,
+                    interactive=True,
+                    scale=2,
+                )
+                clear_dashboard_button = gr.Button(
+                    "Clear saved views",
+                    size="sm",
+                    elem_id="clear-dashboards",
+                    scale=1,
+                )
+            dashboard_html = gr.HTML(
+                value=(
+                    "<div id='dashboard-empty'>Your charts will appear here after "
+                    "the review finishes.</div>"
+                ),
+                elem_id="dashboard-viewer",
+            )
+            dashboard_bundle = gr.File(label="Download dashboard archive")
+            dashboard_state = gr.State(value=None)
         run_button.click(
             fn=build_review_from_export,
             inputs=[
