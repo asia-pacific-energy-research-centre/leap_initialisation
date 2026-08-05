@@ -55,8 +55,8 @@ GUIDE_CSS = """
   z-index: 60; width: min(720px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem);
   overflow: auto; padding: 1.45rem; border: 1px solid #cbd8e7; border-radius: 9px;
   background: #fff; color: #173452; box-shadow: 0 22px 70px #0d254c55; }
-#leap-guide-popover.guide-has-image { width: min(900px, calc(100vw - 2rem)); }
-#leap-guide-popover.guide-image-tall { width: min(650px, calc(100vw - 2rem)); }
+#leap-guide-popover.guide-has-image { width: min(1450px, calc(100vw - 2rem)); }
+#leap-guide-popover.guide-image-tall { width: min(760px, calc(100vw - 2rem)); }
 #leap-guide-popover[hidden], #leap-guide-backdrop[hidden] { display: none !important; }
 .leap-guide-progress { color: #65788d; font-size: .72rem; letter-spacing: .08em; }
 #leap-guide-close { float: right; border: 0; background: transparent; color: #65788d;
@@ -65,7 +65,7 @@ GUIDE_CSS = """
   font-weight: 800; letter-spacing: .14em; }
 #leap-guide-title { margin: .35rem 0 .55rem; font-size: 1.55rem; line-height: 1.15; }
 #leap-guide-copy { margin: 0 0 1rem; color: #65788d; font-size: .95rem; line-height: 1.6; }
-#leap-guide-image { display: block; width: 100%; max-height: min(58vh, 560px); object-fit: contain;
+#leap-guide-image { display: block; width: 100%; max-height: min(70vh, 760px); object-fit: contain;
   object-position: left center; padding: .45rem; border: 1px solid #cbd8e7;
   border-radius: 5px; background: #f3f6fa; }
 #leap-guide-image[hidden] { display: none; }
@@ -135,7 +135,7 @@ GUIDE_JS = """
 
 
 GUIDE_JS = GUIDE_JS.replace("__WORKFLOW_IMAGE__", _image_data("workflow-overview.png"))
-GUIDE_JS = GUIDE_JS.replace("__INITIALISATION_IMAGE__", _image_data("initialisation-overview.svg"))
+GUIDE_JS = GUIDE_JS.replace("__INITIALISATION_IMAGE__", _image_data("initialisation-review-workflow-landscape.png"))
 GUIDE_JS = GUIDE_JS.replace("__EXPORT_IMAGE__", _image_data("leap-export-detail.png"))
 GUIDE_JS = GUIDE_JS.replace("__WORKBOOK_IMAGE__", _image_data("review-workbook.png"))
 GUIDE_JS = GUIDE_JS.replace("__DASHBOARD_IMAGE__", _image_data("dashboard-supply.png"))

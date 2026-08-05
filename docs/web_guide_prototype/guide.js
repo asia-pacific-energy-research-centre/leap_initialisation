@@ -9,7 +9,7 @@ const steps = [
   { target: 'target-run', title: 'Explore and save the dashboard', copy: 'Use the sector pages to see the whole picture. Historical values compare with ESTO and projections compare with the 9th Outlook. Saved views stay in this browser; download the full archive when you need a durable copy.', image: 'assets/dashboard-supply.png', alt: 'Interactive supply dashboard with comparison series.' }
 ];
 let current = 0;
-steps[0] = { target: 'target-upload', title: 'Where this app fits in LEAP initialisation', copy: 'This guided tour covers the review stage of the wider LEAP initialisation process. The sequence is: import the baseline seed and run LEAP, do a quick LEAP review, use this balance review app, inspect the dashboard, then resolve any material issue and repeat. The web app supports steps 2b and 2c; LEAP remains the source of the baseline and the fixes.', image: 'assets/initialisation-overview.svg', alt: 'Major steps in the LEAP initialisation process, including the balance review app.' };
+steps[0] = { target: 'target-upload', title: 'Where this app fits in LEAP initialisation', copy: 'This guided tour covers the review stage of the wider LEAP initialisation process. The sequence is: import the baseline seed and run LEAP, do a quick LEAP review, use this balance review app, inspect the dashboard, then resolve any material issue and repeat. The web app supports steps 2b and 2c; LEAP remains the source of the baseline and the fixes.', image: 'assets/initialisation-review-workflow-landscape.png', alt: 'Major steps in the LEAP initialisation process, including the balance review app.' };
 const $ = id => document.getElementById(id);
 function positionPopover(target) {
   const box = target.getBoundingClientRect();
