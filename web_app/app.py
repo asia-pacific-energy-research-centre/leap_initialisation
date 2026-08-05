@@ -22,14 +22,22 @@ from uuid import uuid4
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+HF_BUNDLE_ROOT = Path(
+    os.getenv("HF_BUNDLE_ROOT", str(REPO_ROOT / "hf_bundle"))
+)
+INITIALISATION_ROOT = (
+    HF_BUNDLE_ROOT / "leap_initialisation"
+    if (HF_BUNDLE_ROOT / "leap_initialisation").is_dir()
+    else REPO_ROOT
+)
 ARCHIVE_ROOT = Path(
     os.getenv(
         "LEAP_REVIEW_ARCHIVE_ROOT",
         str(Path.home() / "leap_review_tools" / "archives"),
     )
 )
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+if str(INITIALISATION_ROOT) not in sys.path:
+    sys.path.insert(0, str(INITIALISATION_ROOT))
 
 from codebase.portable_release import developer_launcher  # noqa: E402
 from codebase.portable_release.settings import DeveloperSettings  # noqa: E402
@@ -74,9 +82,17 @@ def _repository_roots() -> dict[str, Path]:
     Hugging Face or Docker deployments can mount/clone the sibling repositories
     elsewhere by setting the two optional environment variables.
     """
+    if (HF_BUNDLE_ROOT / "leap_mappings").is_dir() and (
+        HF_BUNDLE_ROOT / "leap_dashboard"
+    ).is_dir():
+        return {
+            "leap_initialisation": INITIALISATION_ROOT,
+            "leap_mappings": HF_BUNDLE_ROOT / "leap_mappings",
+            "leap_dashboard": HF_BUNDLE_ROOT / "leap_dashboard",
+        }
     parent = REPO_ROOT.parent
     return {
-        "leap_initialisation": REPO_ROOT,
+        "leap_initialisation": INITIALISATION_ROOT,
         "leap_mappings": Path(
             os.getenv("LEAP_MAPPINGS_ROOT", str(parent / "leap_mappings"))
         ),
@@ -89,7 +105,9 @@ def _repository_roots() -> dict[str, Path]:
 def _build_context(run_root: Path):
     """Build the same live-repository context used by developer mode."""
     settings = DeveloperSettings(
-        source_path=REPO_ROOT / "web_app" / "runtime_settings.toml",
+        source_path=INITIALISATION_ROOT
+        / "config"
+        / "portable_release_manifest.toml",
         repositories=_repository_roots(),
         output_root=run_root / "output",
         input_root=run_root / "input",

@@ -79,7 +79,8 @@ repository. This preserves provenance without making the Space dependent on
 GitHub links at runtime. A bundle refresh follows this sequence:
 
 1. update the three local sibling repositories;
-2. run the local bundle-preparation workflow;
+2. run `web_app/prepare_hf_bundle.py` from a notebook or interactive Python
+   session;
 3. replace `hf_bundle/` and review `source_manifest.json`;
 4. run the app locally against the bundle;
 5. commit and push the prepared web-app repository;
@@ -94,6 +95,22 @@ redistribution terms.
 
 The live-sibling layout remains the preferred development and debugging mode;
 the prepared bundle is the preferred deployment and release mode.
+
+The preparation function defaults to the sibling layout above and writes to
+`../leap_review_web_app/hf_bundle/`. It supports a dry run for reviewing source
+commits and file counts before copying:
+
+```python
+from web_app.prepare_hf_bundle import prepare_hf_bundle
+
+result = prepare_hf_bundle(dry_run=True)
+print(result["manifest"])
+```
+
+After reviewing the dry run, call `prepare_hf_bundle()` without `dry_run=True`.
+By default it refuses dirty source repositories so the bundle manifest points
+to committed source. `allow_dirty_sources=True` is available only for a local
+experiment and should not be used for a public release.
 
 ## Parity notes
 

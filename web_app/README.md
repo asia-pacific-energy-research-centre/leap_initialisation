@@ -43,6 +43,18 @@ runs from the bundled snapshot and does not need GitHub access at runtime.
 Record the source commits in `hf_bundle/source_manifest.json` and refresh the
 bundle locally whenever the source repositories change.
 
+From this repository, review a bundle without copying it:
+
+```python
+from web_app.prepare_hf_bundle import prepare_hf_bundle
+result = prepare_hf_bundle(dry_run=True)
+print(result["manifest"])
+```
+
+After reviewing the source commits and file counts, call
+`prepare_hf_bundle()` without `dry_run=True` to write the bundle into the
+sibling `leap_review_web_app` repository.
+
 The bundle should include only runtime code and required source/configuration
 assets. It does not need Git history, tests, notebooks, old release builds, or
 unrelated generated outputs. No bundled EXE or pre-existing diagnostics folder
