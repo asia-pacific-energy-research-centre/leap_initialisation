@@ -8,6 +8,11 @@ and cannot share a process — see
 module runs it as a subprocess, passing a JSON job on stdin and reading a JSON
 result from stdout, so the two ``codebase`` packages never load together.
 
+The worker's stdout is read line by line rather than captured whole, because
+the chain's steps take minutes and it announces each one as it starts (see
+``PROGRESS_PREFIX``). Those announcements drive the caller's progress display;
+the result is the last line that is not one of them.
+
 Locating the worker differs by mode:
 
 * portable mode: ``mapping-chain/leap-mapping-chain.exe`` beside the main
@@ -29,8 +34,101 @@ from typing import Any
 from codebase.portable_release.runtime import MODE_PORTABLE, RuntimeContext
 
 
+#: Must match ``leap_mappings/codebase/portable_mapping_chain.PROGRESS_PREFIX``.
+#: The two live in different repositories and cannot import each other, so this
+#: is asserted by a test that reads the worker's source rather than by imports.
+PROGRESS_PREFIX = "@@step "
+
+WORKER_LOG_NAME = "mapping_chain_worker.log"
+
+
 class MappingChainError(RuntimeError):
     """The mapping-chain worker could not produce a result."""
+
+
+def _run_streaming(
+    command: list[str], cwd: Path | None, job: dict[str, Any]
+) -> tuple[list[str], str, int]:
+    """Run the worker, reporting its steps as they happen.
+
+    Read line by line rather than with ``subprocess.run``: the chain's steps
+    take minutes each, and buffering the whole output means the user sees
+    nothing at all until the run is over. Progress lines are forwarded to the
+    reporter for the command in progress, if any.
+
+    stderr goes to a file rather than a second pipe. Draining two pipes from
+    one thread deadlocks as soon as either fills, and the worker can produce a
+    lot of pandas warnings on stderr.
+    """
+    from codebase.portable_release import progress
+
+    work_dir = Path(job.get("work_dir", "."))
+    try:
+        work_dir.mkdir(parents=True, exist_ok=True)
+        stderr_path = work_dir / "mapping_chain_worker.stderr.log"
+        stderr_file = open(stderr_path, "w", encoding="utf-8", errors="replace")
+    except OSError:
+        stderr_path = None
+        stderr_file = subprocess.DEVNULL
+
+    lines: list[str] = []
+    try:
+        try:
+            worker = subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=stderr_file,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                cwd=str(cwd) if cwd is not None else None,
+            )
+        except OSError as exc:
+            raise MappingChainError(
+                f"Could not start the mapping-chain worker: {exc}"
+            ) from exc
+
+        with worker:
+            assert worker.stdin is not None and worker.stdout is not None
+            try:
+                worker.stdin.write(json.dumps(job))
+                worker.stdin.close()
+            except OSError:
+                # The worker died before reading its job; the exit code and
+                # whatever it managed to say are handled by the caller.
+                pass
+            for raw in worker.stdout:
+                line = raw.rstrip("\r\n")
+                lines.append(line)
+                if line.startswith(PROGRESS_PREFIX):
+                    progress.begin_step(line[len(PROGRESS_PREFIX) :].strip())
+            returncode = worker.wait()
+    finally:
+        if stderr_file is not subprocess.DEVNULL:
+            stderr_file.close()
+
+    stderr_text = ""
+    if stderr_path is not None:
+        try:
+            stderr_text = stderr_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            stderr_text = ""
+    return lines, stderr_text, returncode
+
+
+def _write_worker_log(job: dict[str, Any], lines: list[str], stderr_text: str) -> None:
+    """Keep the worker's full output beside its outputs, best-effort."""
+    try:
+        work_dir = Path(job.get("work_dir", "."))
+        work_dir.mkdir(parents=True, exist_ok=True)
+        body = "\n".join(lines)
+        if stderr_text:
+            body += "\n\n--- stderr ---\n" + stderr_text
+        (work_dir / WORKER_LOG_NAME).write_text(body + "\n", encoding="utf-8")
+    except OSError:
+        pass
 
 
 def locate_worker(context: RuntimeContext) -> tuple[list[str], Path | None]:
@@ -69,39 +167,37 @@ def run_mapping_chain(context: RuntimeContext, job: dict[str, Any]) -> dict[str,
     the worker process.
     """
     command, cwd = locate_worker(context)
-    try:
-        completed = subprocess.run(
-            command,
-            input=json.dumps(job),
-            capture_output=True,
-            text=True,
-            cwd=str(cwd) if cwd is not None else None,
-        )
-    except OSError as exc:
-        raise MappingChainError(f"Could not start the mapping-chain worker: {exc}") from exc
+    stdout_lines, stderr_text, returncode = _run_streaming(command, cwd, job)
 
-    if completed.stderr:
-        print(completed.stderr, file=sys.stderr, end="" if completed.stderr.endswith("\n") else "\n")
+    if stderr_text:
+        print(stderr_text, file=sys.stderr, end="" if stderr_text.endswith("\n") else "\n")
 
-    stdout = completed.stdout.strip()
-    if not stdout:
+    # The worker's own chatter (and every print the mapping modules make) is
+    # kept beside its outputs rather than shown: it is maintainer-facing, and
+    # it is what a support bundle needs when a run goes wrong.
+    _write_worker_log(job, stdout_lines, stderr_text)
+
+    payload_lines = [
+        line for line in stdout_lines if line.strip() and not line.startswith(PROGRESS_PREFIX)
+    ]
+    if not payload_lines:
         raise MappingChainError(
             "The mapping-chain worker produced no output "
-            f"(exit code {completed.returncode})."
+            f"(exit code {returncode})."
         )
 
     try:
-        result = json.loads(stdout.splitlines()[-1])
+        result = json.loads(payload_lines[-1])
     except json.JSONDecodeError as exc:
         raise MappingChainError(
             f"The mapping-chain worker's output was not valid JSON: {exc}\n"
-            f"Raw output: {stdout[:2000]}"
+            f"Raw output: {chr(10).join(payload_lines)[:2000]}"
         ) from exc
 
     if "error" in result:
         raise MappingChainError(f"The mapping-chain worker failed: {result['error']}")
-    if completed.returncode != 0:
+    if returncode != 0:
         raise MappingChainError(
-            f"The mapping-chain worker exited with code {completed.returncode}."
+            f"The mapping-chain worker exited with code {returncode}."
         )
     return result

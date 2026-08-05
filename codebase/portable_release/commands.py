@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from codebase.portable_release import esto_vintage, validation, workspace
+from codebase.portable_release import esto_vintage, progress, validation, workspace
 from codebase.portable_release.provenance import (
     RunManifest,
     describe_directory_files,
@@ -153,6 +153,43 @@ def _configuration_records(
     return records
 
 
+def timing_store(context: RuntimeContext) -> progress.TimingStore:
+    """The recorded run timings for this copy of the tools.
+
+    Kept under ``logs/`` rather than ``config/``: it is a record of what this
+    machine has actually done, not a setting anyone edits, and it has to be
+    writable — which ``config/`` is not guaranteed to be. The builder seeds it
+    from the maintainer's own runs so the first run on a colleague's machine
+    can still show an estimate.
+    """
+    return progress.TimingStore(context.log_root / progress.TIMINGS_FILENAME)
+
+
+#: The chain steps, in the order the worker announces them. `esto_rows` is
+#: skipped unless the user supplied their own ESTO table, so it is declared
+#: only by the paths that can produce it.
+_CHAIN_STEPS = (
+    progress.Step("parse_export", "Reading the LEAP export"),
+    progress.Step("convert", "Converting LEAP results to the ESTO structure"),
+    progress.Step("compare", "Comparing LEAP, ESTO and the 9th"),
+)
+
+_VALIDATE_STEP = progress.Step("validate", "Checking your files")
+_ESTO_ROWS_STEP = progress.Step(
+    "esto_rows", "Re-deriving the ESTO comparison rows"
+)
+
+
+def _chain_steps(*, supplied_esto: bool, final: progress.Step) -> list[progress.Step]:
+    """Assemble the declared steps for one export-driven command."""
+    steps = [_VALIDATE_STEP]
+    if supplied_esto:
+        steps.append(_ESTO_ROWS_STEP)
+    steps.extend(_CHAIN_STEPS)
+    steps.append(final)
+    return steps
+
+
 def _execute(
     context: RuntimeContext,
     *,
@@ -166,10 +203,23 @@ def _execute(
     tool: str,
     economy: str | None = None,
     data_roles: Sequence[str] = (),
+    steps: Sequence[progress.Step] = (),
+    subject: str | None = None,
 ) -> CommandResult:
-    """Run one command with validation, manifest, and log capture around it."""
+    """Run one command with validation, manifest, and log capture around it.
+
+    ``steps`` declares the progress display for commands long enough to need
+    one. Without it the command runs exactly as before, silently.
+    """
     deliverable_dir, run_dir = _run_directories(
         context, tool=tool, economy=economy, label=run_label
+    )
+    reporter = (
+        progress.ProgressReporter(
+            command=command, steps=list(steps), store=timing_store(context)
+        )
+        if steps
+        else None
     )
     manifest = new_run_manifest(
         release_name=context.release_name,
@@ -182,42 +232,59 @@ def _execute(
     manifest.repositories = context.repository_states()
     manifest.configuration = _configuration_records(context, config_roles, data_roles)
 
-    report = validate()
-    manifest.validation = report.as_dict()
-    (run_dir / "validation_report.txt").write_text(report.as_text(), encoding="utf-8")
+    if reporter is not None:
+        reporter.start(subject)
 
-    if not report.ok:
-        finish_run_manifest(manifest, status="failed", error=report.failure_message())
-        paths = manifest.write(run_dir)
-        return CommandResult(
-            command=command,
-            ok=False,
-            run_directory=run_dir,
-            output_directory=deliverable_dir,
-            run_manifest=manifest,
-            manifest_paths=paths,
-            validation_report=report,
-            outputs={},
-            error=report.failure_message(),
-        )
+    # `progress.active` puts the reporter where the mapping-chain client can
+    # find it: the worker's step announcements arrive several frames below
+    # here, inside `work`.
+    with progress.active(reporter):
+        if reporter is not None:
+            reporter.begin("validate")
+        report = validate()
+        manifest.validation = report.as_dict()
+        (run_dir / "validation_report.txt").write_text(report.as_text(), encoding="utf-8")
 
-    try:
-        outputs = work(deliverable_dir)
-    except Exception as exc:  # noqa: BLE001 - recorded, then re-raised to the caller
-        finish_run_manifest(manifest, status="failed", error=f"{type(exc).__name__}: {exc}")
-        paths = manifest.write(run_dir)
-        return CommandResult(
-            command=command,
-            ok=False,
-            run_directory=run_dir,
-            output_directory=deliverable_dir,
-            run_manifest=manifest,
-            manifest_paths=paths,
-            validation_report=report,
-            outputs={},
-            error=f"{type(exc).__name__}: {exc}",
-        )
+        if not report.ok:
+            if reporter is not None:
+                reporter.finish(ok=False)
+            finish_run_manifest(manifest, status="failed", error=report.failure_message())
+            paths = manifest.write(run_dir)
+            return CommandResult(
+                command=command,
+                ok=False,
+                run_directory=run_dir,
+                output_directory=deliverable_dir,
+                run_manifest=manifest,
+                manifest_paths=paths,
+                validation_report=report,
+                outputs={},
+                error=report.failure_message(),
+            )
 
+        try:
+            outputs = work(deliverable_dir)
+        except Exception as exc:  # noqa: BLE001 - recorded, then re-raised to the caller
+            if reporter is not None:
+                reporter.finish(ok=False)
+            finish_run_manifest(manifest, status="failed", error=f"{type(exc).__name__}: {exc}")
+            paths = manifest.write(run_dir)
+            return CommandResult(
+                command=command,
+                ok=False,
+                run_directory=run_dir,
+                output_directory=deliverable_dir,
+                run_manifest=manifest,
+                manifest_paths=paths,
+                validation_report=report,
+                outputs={},
+                error=f"{type(exc).__name__}: {exc}",
+            )
+
+    if reporter is not None:
+        # Recorded only on success: a run that failed part-way would drag the
+        # estimate down for every run after it.
+        reporter.finish(ok=True)
     manifest.inputs = outputs.pop("_input_records", [])
     manifest.outputs = output_describer(outputs)
     manifest.results = outputs
@@ -491,6 +558,7 @@ def run_balance_review_from_export(
                 "ninth_pairs_to_esto_pairs",
             )
 
+        progress.begin_step("review")
         # run_balance_update_workflow owns the review orchestration and takes no
         # path overrides, but it does expose the diagnostic runner as a seam.
         # Binding the paths there keeps the real workflow in charge - including
@@ -576,6 +644,19 @@ def run_balance_review_from_export(
         },
         work=work,
         output_describer=describe_outputs,
+        # Two steps, not five: this command runs inside
+        # run_balance_update_workflow, which owns the orchestration and offers
+        # no seam between comparing and writing. Announcing steps this code
+        # cannot actually observe would put the display out of step with the
+        # run, which is worse than a coarse one.
+        steps=[
+            _VALIDATE_STEP,
+            progress.Step("review", "Comparing the balance with ESTO and building the workbook"),
+        ],
+        subject=(
+            f"Building the balance-review workbook for "
+            f"{validation.normalize_economy(economy)} {scenario} {year}."
+        ),
     )
 
 
@@ -838,6 +919,7 @@ def run_dashboard_from_export(
         chain_result = mapping_chain_client.run_mapping_chain(context, chain_job)
 
         missing_branches = _missing_leap_demand_branches(context, economy)
+        progress.begin_step("render")
         result = render_common_esto_dashboard(
             economy=economy_code,
             comparison_data_path=Path(chain_result["comparison_data_path"]),
@@ -906,6 +988,11 @@ def run_dashboard_from_export(
         },
         work=work,
         output_describer=describe_outputs,
+        steps=_chain_steps(
+            supplied_esto=supplied_esto is not None,
+            final=progress.Step("render", "Drawing the charts"),
+        ),
+        subject=f"Building the dashboard for {validation.normalize_economy(economy)}.",
     )
 
 

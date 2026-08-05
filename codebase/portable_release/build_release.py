@@ -45,7 +45,7 @@ from codebase.portable_release.manifest import (  # noqa: E402
     load_release_manifest,
     validate_release_manifest,
 )
-from codebase.portable_release import workspace  # noqa: E402
+from codebase.portable_release import progress, workspace  # noqa: E402
 from codebase.portable_release.provenance import sha256_file  # noqa: E402
 from codebase.portable_release.settings import (  # noqa: E402
     DeveloperSettingsError,
@@ -372,6 +372,45 @@ def _stage_user_guide(
             "`python scripts/convert_docs.py --docs-dir docs` and commit it."
         )
     (package_root / USER_GUIDE_PACKAGE_NAME).write_bytes(payload)
+    return None
+
+
+#: Measured run timings shipped with the package, so the very first run on a
+#: colleague's machine can already say how long it usually takes. Refreshed by
+#: the maintainer from `logs/run_timings.json` after a build (see
+#: docs/leap_review_tools.md), and staged from the pinned commit like every
+#: other file in the release.
+RUN_TIMINGS_SEED_PATH = "config/portable_release_run_timings.json"
+
+
+def _seed_run_timings(
+    package_root: Path,
+    manifest: ReleaseManifest,
+    roots: Mapping[str, Path],
+) -> str | None:
+    """Ship the maintainer's measured timings as the starting estimate.
+
+    Absent or unreadable, the package simply shows no estimate until it has
+    run once. That is a worse first experience, not a broken one, so this
+    never fails a build.
+    """
+    spec = manifest.repositories.get("leap_initialisation")
+    if spec is None:
+        return "No leap_initialisation entry; run timings not seeded."
+    try:
+        payload = _git_bytes(
+            Path(roots["leap_initialisation"]),
+            "cat-file",
+            "blob",
+            f"{spec.commit}:{RUN_TIMINGS_SEED_PATH}",
+        )
+    except ReleaseBuildError:
+        return (
+            f"No run-time estimate shipped: {RUN_TIMINGS_SEED_PATH} is not committed "
+            f"at {spec.commit[:12]}. The first run on a new machine will show no "
+            "estimate; every run after it will."
+        )
+    (package_root / "logs" / progress.TIMINGS_FILENAME).write_bytes(payload)
     return None
 
 
@@ -1034,6 +1073,7 @@ def build(
     )
     _write_package_scaffold(staging_dir, manifest, config_files=config_files)
     guide_note = _stage_user_guide(staging_dir, manifest, roots)
+    _seed_run_timings(staging_dir, manifest, roots)
 
     report = BuildReport(
         manifest_name=manifest.name,

@@ -105,6 +105,7 @@ paths = [
     "codebase/portable_release/esto_vintage.py",
     "codebase/portable_release/mapping_chain_client.py",
     "codebase/portable_release/portable_main.py",
+    "codebase/portable_release/progress.py",
     "codebase/portable_release/provenance.py",
     "codebase/portable_release/runtime.py",
     "codebase/portable_release/validation.py",
