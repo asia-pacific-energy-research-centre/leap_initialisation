@@ -222,9 +222,20 @@ class ProgressReporter:
         self._current = step
         self._index += 1
         self._started_step = time.monotonic()
+        # Wide enough for the longest declared label plus a space. Too narrow
+        # and the label runs straight into "done in" with no gap.
         label = f"  [{self._index}/{len(self.steps)}] {step.label}"
-        self._write(f"{label:<52}", end="")
+        self._write(f"{label:<{self._label_width()}}", end="")
         self._line_open = True
+
+    def _label_width(self) -> int:
+        """Column width that fits every declared label on this command."""
+        longest = max(
+            (len(f"  [{index}/{len(self.steps)}] {step.label}")
+             for index, step in enumerate(self.steps, start=1)),
+            default=0,
+        )
+        return longest + 2
 
     def _close_open_step(self) -> None:
         if self._current is None:

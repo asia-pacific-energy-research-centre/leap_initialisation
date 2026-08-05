@@ -299,3 +299,17 @@ def test_every_step_the_worker_announces_is_declared_by_a_command() -> None:
     declared = {step.key for step in commands._CHAIN_STEPS}
     declared |= {commands._VALIDATE_STEP.key, commands._ESTO_ROWS_STEP.key}
     assert announced <= declared, f"undeclared worker steps: {sorted(announced - declared)}"
+
+
+def test_a_long_label_does_not_run_into_its_timing(tmp_path: Path) -> None:
+    """A fixed column width let the longest step collide with 'done in'."""
+    steps = [
+        progress.Step("a", "Short"),
+        progress.Step("b", "Converting LEAP results to the ESTO structure"),
+    ]
+    reporter, stream, _ = _reporter(tmp_path, steps)
+    reporter.start()
+    reporter.begin("b")
+    reporter.finish()
+    line = next(l for l in stream.getvalue().splitlines() if "ESTO structure" in l)
+    assert "structure  " in line, line
