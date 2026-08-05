@@ -27,9 +27,12 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-#: Where the guide lives in this repository. The builder reads exactly this
-#: path out of the pinned commit (build_release.USER_GUIDE_SOURCE_PATH).
-REPO_GUIDE = REPO_ROOT / "docs" / "docx" / "leap_review_tools_user_guide.docx"
+#: The master copy, and where the builder reads it from at the pinned commit
+#: (build_release.USER_GUIDE_SOURCE_PATH). Same name as in the package, so the
+#: file a maintainer edits and the file a colleague receives are visibly one
+#: document. Edits made here need only a commit - this script is for the other
+#: direction, pulling edits back out of an extracted release.
+REPO_GUIDE = REPO_ROOT / "docs" / "docx" / "LEAP Review Tools - user guide.docx"
 
 #: The name the guide has inside an extracted release
 #: (build_release.USER_GUIDE_PACKAGE_NAME).

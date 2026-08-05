@@ -347,7 +347,13 @@ def _stage_data_assets(
 #: The user-facing guide shipped at the package's top level, read from the
 #: pinned leap_initialisation commit like everything else. A colleague who
 #: receives only a ZIP should not also need an accompanying email.
-USER_GUIDE_SOURCE_PATH = "docs/docx/leap_review_tools_user_guide.docx"
+#: The master copy of the user guide, kept under the same name it has in the
+#: package. It is edited by hand in Word - screenshots, wording, layout - so it
+#: is the source of truth for itself, not a build product of the Markdown
+#: beside it (`scripts/convert_docs.py` refuses to regenerate it). Keeping the
+#: two names identical means the file a maintainer opens, the file committed
+#: here, and the file a colleague receives are visibly the same document.
+USER_GUIDE_SOURCE_PATH = "docs/docx/LEAP Review Tools - user guide.docx"
 USER_GUIDE_PACKAGE_NAME = "LEAP Review Tools - user guide.docx"
 
 

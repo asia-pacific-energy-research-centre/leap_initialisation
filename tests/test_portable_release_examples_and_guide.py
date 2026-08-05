@@ -142,6 +142,24 @@ def test_the_importer_targets_the_path_the_builder_reads() -> None:
     assert import_user_guide.PACKAGE_GUIDE_NAME == build_release.USER_GUIDE_PACKAGE_NAME
 
 
+def test_the_master_guide_is_the_one_that_ships_under_the_same_name() -> None:
+    """One document, one name, in the repository and in the package.
+
+    Two names invited exactly one failure: editing the file whose name matched
+    the package while the builder read a differently-named generated one, and
+    shipping the wrong guide with no error anywhere.
+    """
+    master = REPO_ROOT / build_release.USER_GUIDE_SOURCE_PATH
+    assert master.name == build_release.USER_GUIDE_PACKAGE_NAME
+    assert master.is_file(), f"the master guide is missing: {master}"
+
+
+def test_the_superseded_generated_guide_is_gone() -> None:
+    """Leaving it behind leaves two files to drift apart."""
+    stale = REPO_ROOT / "docs" / "docx" / "leap_review_tools_user_guide.docx"
+    assert not stale.exists(), f"still present and no longer built or shipped: {stale}"
+
+
 def test_importing_an_edited_guide_replaces_the_repository_copy(tmp_path: Path) -> None:
     from scripts import import_user_guide
 

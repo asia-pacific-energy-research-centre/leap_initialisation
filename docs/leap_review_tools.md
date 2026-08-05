@@ -366,30 +366,44 @@ the runtime packages.
 
 ### The user guide is edited in Word, not in Markdown
 
-`docs/docx/leap_review_tools_user_guide.docx` is the deliverable a colleague
-reads, and it carries screenshots and wording added directly in Word. **It is
-the source of truth for itself.** `docs/leap_review_tools_user_guide.md` is only
-where it started, and `scripts/convert_docs.py` refuses to regenerate it
-(`HAND_EDITED_DOCX`) — regenerating would silently discard every screenshot.
+**Master copy: `docs/docx/LEAP Review Tools - user guide.docx`.**
 
-Edits are normally made in an extracted release, not in the repository, so they
-have to travel back before a build:
+It is the deliverable a colleague reads, it carries screenshots and wording
+added directly in Word, and it is the source of truth for itself. It is
+deliberately named exactly as it appears in the package, so the file a
+maintainer opens, the file committed here, and the file a colleague receives are
+visibly one document.
+
+`docs/leap_review_tools_user_guide.md` is only where it started.
+`scripts/convert_docs.py` refuses to regenerate the guide (`HAND_EDITED_DOCX`) —
+regenerating would silently discard every screenshot. The generated
+`leap_review_tools_user_guide.docx` that used to sit beside it has been retired
+for the same reason: two files under two names is one file too many.
+
+To change the guide, edit the master in place and commit it:
+
+```bash
+git add "docs/docx/LEAP Review Tools - user guide.docx" && git commit
+```
+
+The builder reads it from the **pinned commit**, so an edited-but-uncommitted
+guide will not ship — and neither will a committed one until the manifest is
+re-pinned past that commit.
+
+If the edits were made in an extracted release instead, carry them back first:
 
 ```bash
 python scripts/import_user_guide.py --check   # is there anything to carry over?
-python scripts/import_user_guide.py           # copy it into docs/docx/
-git add docs/docx/leap_review_tools_user_guide.docx && git commit
+python scripts/import_user_guide.py           # copy it onto the master
 ```
 
-The importer searches `../leap-review-tools-<version>/` and the built package;
-`--from` overrides it. It copies and stops there — committing is deliberate, so
-an unintended import is one `git checkout` away from undone. The builder reads
-the guide from the **pinned commit**, so an imported-but-uncommitted guide will
-not ship.
+It searches `../leap-review-tools-<version>/` and the built package; `--from`
+overrides it. It copies and stops there — committing stays deliberate, so an
+unintended import is one `git checkout` away from undone.
 
 ### Steps
 
-0. **Carry over any guide edits** (above) before pinning, or the build ships the
+0. **Commit any guide edits** (above) before pinning, or the build ships the
    previous version of it.
 1. **Land and test the code first.** Every allowlisted path must exist at the
    commit you are about to pin, so the code commits come before the manifest
