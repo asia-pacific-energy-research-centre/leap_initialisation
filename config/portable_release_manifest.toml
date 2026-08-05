@@ -258,6 +258,13 @@ role = "source_branch_fallback_rules"
 description = "Interim-branch fallback zeroing rules applied before mapping-chain conversion."
 
 [[config_assets]]
+repository = "leap_mappings"
+path = "config/mapping_issue_exception_sets.xlsx"
+dest = "mappings/mapping_issue_exception_sets.xlsx"
+role = "mapping_issue_exception_sets"
+description = "Reviewed mapping and subtotal exception decisions used by mapping QA."
+
+[[config_assets]]
 repository = "leap_initialisation"
 path = "config/runtime_tables/synthetic_reference_rows.csv"
 dest = "balance_review/synthetic_reference_rows.csv"
