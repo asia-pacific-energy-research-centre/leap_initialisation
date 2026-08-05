@@ -51,9 +51,11 @@ GUIDE_CSS = """
   height: 1.25rem; margin-right: .35rem; border: 1px solid #fff; border-radius: 50%; }
 #leap-guide-backdrop { position: fixed; inset: 0; z-index: 50; background: #102a4666; }
 #leap-guide-popover { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  z-index: 60; width: min(620px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem);
+  z-index: 60; width: min(720px, calc(100vw - 2rem)); max-height: calc(100vh - 2rem);
   overflow: auto; padding: 1.45rem; border: 1px solid #cbd8e7; border-radius: 9px;
   background: #fff; color: #173452; box-shadow: 0 22px 70px #0d254c55; }
+#leap-guide-popover.guide-has-image { width: min(900px, calc(100vw - 2rem)); }
+#leap-guide-popover.guide-image-tall { width: min(650px, calc(100vw - 2rem)); }
 #leap-guide-popover[hidden], #leap-guide-backdrop[hidden] { display: none !important; }
 .leap-guide-progress { color: #65788d; font-size: .72rem; letter-spacing: .08em; }
 #leap-guide-close { float: right; border: 0; background: transparent; color: #65788d;
@@ -62,7 +64,7 @@ GUIDE_CSS = """
   font-weight: 800; letter-spacing: .14em; }
 #leap-guide-title { margin: .35rem 0 .55rem; font-size: 1.55rem; line-height: 1.15; }
 #leap-guide-copy { margin: 0 0 1rem; color: #65788d; font-size: .95rem; line-height: 1.6; }
-#leap-guide-image { display: block; width: 100%; max-height: 280px; object-fit: contain;
+#leap-guide-image { display: block; width: 100%; max-height: min(58vh, 560px); object-fit: contain;
   object-position: left center; padding: .45rem; border: 1px solid #cbd8e7;
   border-radius: 5px; background: #f3f6fa; }
 #leap-guide-image[hidden] { display: none; }
@@ -96,6 +98,13 @@ GUIDE_JS = """
     if (launch.dataset.guideBound === '1') return true;
     launch.dataset.guideBound = '1';
     let current = 0;
+    const updateImageSizing = () => {
+      popover.classList.remove('guide-has-image', 'guide-image-tall');
+      if (image.hidden || !image.naturalWidth || !image.naturalHeight) return;
+      popover.classList.add('guide-has-image');
+      if (image.naturalHeight > image.naturalWidth) popover.classList.add('guide-image-tall');
+    };
+    image.addEventListener('load', updateImageSizing);
     const resolveTarget = (selector) => selector.split(',').map((part) => $(part.trim())).find(Boolean) || $('#upload-card');
   const show = (index) => {
     current = Math.max(0, Math.min(index, steps.length - 1));
@@ -104,6 +113,7 @@ GUIDE_JS = """
     $('#leap-guide-step').textContent = String(current + 1); $('#leap-guide-total').textContent = String(steps.length);
     $('#leap-guide-title').textContent = step.title; $('#leap-guide-copy').textContent = step.copy;
     image.hidden = !step.image; image.src = step.image || ''; image.alt = step.title;
+    updateImageSizing();
     $('#leap-guide-back').style.visibility = current ? 'visible' : 'hidden';
     $('#leap-guide-next').innerHTML = current === steps.length - 1 ? 'Done <span>✓</span>' : 'Next <span>→</span>';
     target.classList.add('leap-guide-highlight'); target.scrollIntoView({ behavior: 'smooth', block: 'center' });
