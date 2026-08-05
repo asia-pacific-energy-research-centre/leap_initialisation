@@ -836,6 +836,11 @@ def run_dashboard(
     produced by the ``leap_mappings`` pipeline and is far too large to bundle, so
     it is a run input rather than part of the package.
     """
+    # ``None`` can arrive from a web UI that does not expose year controls. Keep
+    # the normal dashboard horizon bounded instead of silently rendering every
+    # projection year through 2070.
+    min_year = 2010 if min_year is None else min_year
+    max_year = 2060 if max_year is None else max_year
     comparison_path = _resolve_user_path(context, comparison_data_path)
     rows_path = _resolve_user_path(context, common_rows_path)
     template_path = context.config_asset("dashboard_template")
@@ -967,6 +972,11 @@ def run_dashboard_from_export(
     supplied, the mapping chain is skipped entirely and this behaves like
     :func:`run_dashboard` against the supplied files.
     """
+    # The web app intentionally hides the old min/max controls.  Treat an
+    # omitted bound as the established default horizon, not as an instruction
+    # to include all years in the source tables.
+    min_year = 2010 if min_year is None else min_year
+    max_year = 2060 if max_year is None else max_year
     from codebase.portable_release import mapping_chain_client
 
     if comparison_data_path is not None:
