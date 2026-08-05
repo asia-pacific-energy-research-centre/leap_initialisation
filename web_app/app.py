@@ -43,7 +43,7 @@ if str(INITIALISATION_ROOT) not in sys.path:
 
 APP_CSS = """
 /* Keep the input form compact enough to fit comfortably on one screen. */
-.gradio-container { max-width: 1180px !important; }
+.gradio-container { max-width: none !important; width: calc(100% - 2rem) !important; }
 #app-header h1 { margin: 0 0 0.25rem 0; font-size: 1.65rem; }
 #app-header p { margin: 0; color: #5b6472; font-size: 0.92rem; }
 #input-row, #upload-row, #action-row { gap: 0.65rem; }
@@ -52,8 +52,8 @@ APP_CSS = """
 #upload-row .file-upload { min-height: 68px !important; }
 #upload-row .file-upload { padding: 0.45rem !important; }
 #esto-note { margin: -0.15rem 0 0.15rem 0; padding: 0.35rem 0.65rem;
-  border-left: 3px solid #8aa4c8; background: #f5f8fc; font-size: 0.82rem;
-  line-height: 1.3; color: #4d5868; }
+  border-left: 3px solid #8aa4c8; background: var(--block-background-fill);
+  font-size: 0.82rem; line-height: 1.3; color: var(--body-text-color); }
 #run-button { min-width: 285px; }
 #run-status textarea, #run-status input { font-size: 0.88rem; }
 #calculator-animation { display: none; align-items: center; gap: 0.65rem;
@@ -553,28 +553,28 @@ def build_review_from_export(
             [str(path) for path in persistent_workbooks],
             str(persistent_bundle),
             dashboard_html,
-            {
-                "choices": dashboard_page_names,
-                "value": dashboard_page_names[0] if dashboard_page_names else None,
-            },
+            _dropdown_update(
+                dashboard_page_names,
+                dashboard_page_names[0] if dashboard_page_names else None,
+            ),
             {
                 "pages": snapshot["pages"] if snapshot else {},
                 "economy": economy_value,
                 "scenario": scenario_value,
             },
-            {
-                "choices": _browser_dashboard_choices(browser_archive_records),
-                "value": snapshot["archive_id"] if snapshot else None,
-            },
+            _dropdown_update(
+                _browser_dashboard_choices(browser_archive_records),
+                snapshot["archive_id"] if snapshot else None,
+            ),
             str(persistent_bundle),
             browser_archive_records,
         )
     except Exception as error:  # Gradio should show a plain-language failure.
         return (
             "", f"Build failed: {error}", [], None, "",
-            {"choices": [], "value": None},
+            _dropdown_update([], None),
             None,
-            {"choices": _browser_dashboard_choices(browser_archives), "value": None},
+            _dropdown_update(_browser_dashboard_choices(browser_archives), None),
             None,
             browser_archives if isinstance(browser_archives, list) else [],
         )
@@ -604,6 +604,13 @@ def render_dashboard_page(page_name: str, dashboard_state: dict[str, object] | N
     )
 
 
+def _dropdown_update(choices: list[object], value: object) -> object:
+    """Return a real Dropdown component update for Gradio 5."""
+    import gradio as gr
+
+    return gr.Dropdown(choices=choices, value=value)
+
+
 def select_dashboard_archive(
     archive_id: str | None,
     browser_archives: object,
@@ -611,7 +618,7 @@ def select_dashboard_archive(
     """Load a previously saved browser-local dashboard into the viewer."""
     record = _browser_dashboard_record(archive_id, browser_archives)
     if record is None:
-        return {"choices": [], "value": None}, "<p>Select a saved dashboard.</p>", None, None
+        return _dropdown_update([], None), "<p>Select a saved dashboard.</p>", None, None
     pages = sorted(str(page) for page in (record.get("pages") or {}))
     state = {
         "pages": record.get("pages", {}),
@@ -620,7 +627,7 @@ def select_dashboard_archive(
     }
     rendered = render_dashboard_page(pages[0], state) if pages else "<p>No dashboard pages were saved.</p>"
     return (
-        {"choices": pages, "value": pages[0] if pages else None},
+        _dropdown_update(pages, pages[0] if pages else None),
         rendered,
         None,
         state,
@@ -630,15 +637,15 @@ def select_dashboard_archive(
 def load_browser_archives(browser_archives: object) -> object:
     """Populate the archive selector from the user's local browser state."""
     choices = _browser_dashboard_choices(browser_archives)
-    return {"choices": choices, "value": choices[0][1] if choices else None}
+    return _dropdown_update(choices, choices[0][1] if choices else None)
 
 
 def clear_browser_archives() -> tuple[list[object], object, object, str, None, None]:
     """Clear only this browser's saved dashboard snapshots."""
     return (
         [],
-        {"choices": [], "value": None},
-        {"choices": [], "value": None},
+        _dropdown_update([], None),
+        _dropdown_update([], None),
         "<p>Browser-saved dashboards cleared.</p>",
         None,
         None,
@@ -675,6 +682,7 @@ then uses the latest year in that ESTO dataset as its base year.
                 label="LEAP Energy Balance export (.xlsx)",
                 file_types=[".xlsx", ".xlsm"],
                 type="filepath",
+                height=105,
                 elem_id="balance-upload",
             )
             with gr.Column(scale=1, min_width=320):
@@ -682,6 +690,7 @@ then uses the latest year in that ESTO dataset as its base year.
                     label="Optional ESTO base-table override (.csv)",
                     file_types=[".csv"],
                     type="filepath",
+                    height=105,
                     elem_id="esto-upload",
                 )
                 gr.Markdown(
