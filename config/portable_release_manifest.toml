@@ -264,6 +264,65 @@ dest = "mappings/mapping_issue_exception_sets.xlsx"
 role = "mapping_issue_exception_sets"
 description = "Reviewed mapping and subtotal exception decisions used by mapping QA."
 
+# The HF bundle runs the mapping-chain worker from a staged copy of
+# leap_mappings.  These assets retain the worker's expected repository-relative
+# paths; the portable executable keeps them external under config/ as well.
+[[config_assets]]
+repository = "leap_mappings"
+path = "AGENTS.md"
+dest = "mapping_worker/AGENTS.md"
+role = "mapping_worker_root_marker"
+description = "Root marker required by the mapping-chain worker's source-path resolver."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/outlook_mappings_master.xlsx"
+dest = "mapping_worker/config/outlook_mappings_master.xlsx"
+role = "mapping_worker_outlook_mappings_master"
+description = "Worker-local copy of the canonical mapping workbook."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/datasets/comparison_scopes.csv"
+dest = "mapping_worker/config/datasets/comparison_scopes.csv"
+role = "mapping_worker_comparison_scopes"
+description = "Worker-local comparison-scope registry."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/datasets/dataset_registry.csv"
+dest = "mapping_worker/config/datasets/dataset_registry.csv"
+role = "mapping_worker_dataset_registry"
+description = "Worker-local dataset registry."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/datasets/diagnostic_adapter_registry.csv"
+dest = "mapping_worker/config/datasets/diagnostic_adapter_registry.csv"
+role = "mapping_worker_diagnostic_adapter_registry"
+description = "Worker-local diagnostic-adapter registry."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/datasets/mapping_sheet_registry.csv"
+dest = "mapping_worker/config/datasets/mapping_sheet_registry.csv"
+role = "mapping_worker_mapping_sheet_registry"
+description = "Worker-local mapping-sheet registry."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/datasets/rollup_sheet_registry.csv"
+dest = "mapping_worker/config/datasets/rollup_sheet_registry.csv"
+role = "mapping_worker_rollup_sheet_registry"
+description = "Worker-local rollup-sheet registry."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/datasets/value_adapter_registry.csv"
+dest = "mapping_worker/config/datasets/value_adapter_registry.csv"
+role = "mapping_worker_value_adapter_registry"
+description = "Worker-local value-adapter registry."
+
 [[config_assets]]
 repository = "leap_initialisation"
 path = "config/runtime_tables/synthetic_reference_rows.csv"

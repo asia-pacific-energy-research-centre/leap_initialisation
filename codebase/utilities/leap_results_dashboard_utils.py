@@ -569,16 +569,53 @@ def apply_explicit_sector_reassignments(
     ninth_out = ninth_df.copy()
     status_rows: list[dict[str, object]] = []
 
-    def _exact_mask(df: pd.DataFrame, criteria: dict[str, str]) -> pd.Series:
+    # The reference tables can contain millions of rows, while the explicit
+    # reassignment table is deliberately small.  Normalising a whole column
+    # inside every rule repeatedly made this stage needlessly expensive.  Keep
+    # the normalised views beside the output frames and update them whenever a
+    # rule changes a matched value so sequential rule semantics are preserved.
+    def _normalised_columns(df: pd.DataFrame) -> dict[str, pd.Series]:
+        return {
+            col: df[col].fillna("").astype(str).str.strip().str.lower()
+            for col in df.columns
+            if col in {
+                "flows",
+                "products",
+                "sectors",
+                "sub1sectors",
+                "sub2sectors",
+                "sub3sectors",
+                "sub4sectors",
+                "fuels",
+                "subfuels",
+            }
+        }
+
+    base_normalised = _normalised_columns(base_out)
+    ninth_normalised = _normalised_columns(ninth_out)
+
+    def _exact_mask(
+        df: pd.DataFrame,
+        normalised: dict[str, pd.Series],
+        criteria: dict[str, str],
+    ) -> pd.Series:
         if df.empty:
             return pd.Series(False, index=df.index)
         mask = pd.Series(True, index=df.index)
         for col, expected in criteria.items():
             if col not in df.columns or expected == "":
                 continue
-            values = df[col].fillna("").astype(str).str.strip().str.lower()
-            mask &= values.eq(expected.lower())
+            mask &= normalised[col].eq(expected.lower())
         return mask
+
+    def _set_normalised_value(
+        normalised: dict[str, pd.Series],
+        column: str,
+        mask: pd.Series,
+        value: str,
+    ) -> None:
+        if column in normalised:
+            normalised[column].loc[mask] = value.strip().lower()
 
     for _, rule in rules.iterrows():
         rule_name = _clean_token(rule.get("rule_name")) or "unnamed_rule"
@@ -586,6 +623,7 @@ def apply_explicit_sector_reassignments(
 
         base_mask = _exact_mask(
             base_out,
+            base_normalised,
             {
                 "flows": _clean_token(rule.get("source_esto_flow")),
                 "products": _clean_token(rule.get("source_esto_product")),
@@ -594,9 +632,13 @@ def apply_explicit_sector_reassignments(
         base_match_count = int(base_mask.sum())
         if base_match_count:
             if "flows" in base_out.columns and _clean_token(rule.get("target_esto_flow")):
-                base_out.loc[base_mask, "flows"] = _clean_token(rule.get("target_esto_flow"))
+                target = _clean_token(rule.get("target_esto_flow"))
+                base_out.loc[base_mask, "flows"] = target
+                _set_normalised_value(base_normalised, "flows", base_mask, target)
             if "products" in base_out.columns and _clean_token(rule.get("target_esto_product")):
-                base_out.loc[base_mask, "products"] = _clean_token(rule.get("target_esto_product"))
+                target = _clean_token(rule.get("target_esto_product"))
+                base_out.loc[base_mask, "products"] = target
+                _set_normalised_value(base_normalised, "products", base_mask, target)
         status_rows.append(
             {
                 "rule_name": rule_name,
@@ -612,6 +654,7 @@ def apply_explicit_sector_reassignments(
 
         ninth_mask = _exact_mask(
             ninth_out,
+            ninth_normalised,
             {
                 "sectors": _clean_token(rule.get("source_sectors")),
                 "sub1sectors": _clean_token(rule.get("source_sub1sectors")),
@@ -627,11 +670,15 @@ def apply_explicit_sector_reassignments(
             for col in ["sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"]:
                 target_key = f"target_{col}"
                 if col in ninth_out.columns and _clean_token(rule.get(target_key)):
-                    ninth_out.loc[ninth_mask, col] = _clean_token(rule.get(target_key))
+                    target = _clean_token(rule.get(target_key))
+                    ninth_out.loc[ninth_mask, col] = target
+                    _set_normalised_value(ninth_normalised, col, ninth_mask, target)
             for col in ["fuels", "subfuels"]:
                 target_key = f"target_{col}"
                 if col in ninth_out.columns and _clean_token(rule.get(target_key)):
-                    ninth_out.loc[ninth_mask, col] = _clean_token(rule.get(target_key))
+                    target = _clean_token(rule.get(target_key))
+                    ninth_out.loc[ninth_mask, col] = target
+                    _set_normalised_value(ninth_normalised, col, ninth_mask, target)
         status_rows.append(
             {
                 "rule_name": rule_name,
