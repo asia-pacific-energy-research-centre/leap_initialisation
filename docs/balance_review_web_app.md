@@ -1,6 +1,16 @@
 # Balance-review web app
 
-The `web_app/` directory contains a thin Gradio wrapper around
+> **The app now lives in the `leap_review_tools` repository.** Its interface,
+> guide, tests and deployment files moved there; this repository keeps the
+> analysis the app calls. `leap_review_tools/scripts/refresh_runtime.py` copies
+> the runtime closure declared in `config/portable_release_manifest.toml` out of
+> here, so a change to the diagnostics or the workbook builder reaches the app
+> by refreshing rather than by editing two copies.
+>
+> The notes below describe the app's behaviour and remain accurate; the paths
+> they mention are relative to `leap_review_tools`.
+
+The app is a thin Gradio wrapper around
 `codebase/functions/balance_review_workbook_builder.py`.
 
 ## Scope
