@@ -692,7 +692,7 @@ def test_validate_seed_files_allows_documented_branch_exception(tmp_path: Path) 
     _write_template(template_path, [_template_row("Resources\\Primary\\Gas", "Imports")])
 
     rows = []
-    for exception_path in patch_baseline_seeds.VALIDATION_EXCEPTION_BRANCH_NOTES:
+    for exception_path in patch_baseline_seeds.load_validation_exception_branch_notes():
         row = _template_row(exception_path, "Activity Level")
         row["BranchID"] = -1
         row["VariableID"] = -1

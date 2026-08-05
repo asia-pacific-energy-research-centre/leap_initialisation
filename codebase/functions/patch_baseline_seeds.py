@@ -46,6 +46,7 @@ ECONOMIES = None            # None = all economies, or e.g. ["20_USA", "01_AUS"]
 # ═══════════════════════════════════════════════════════════════════════════
 
 import argparse
+from functools import lru_cache
 import re
 import shutil
 import sys
@@ -368,27 +369,60 @@ VALIDATION_IGNORE_FUEL_NAMES: frozenset[str] = frozenset({
     # are remapped to "Solar nonspecified" at source in _safe_power_interim_display_label.
 })
 
-# Economy-independent branch exceptions that are intentionally absent from the
-# current LEAP templates.  Keep the reason beside the path so this remains a
-# documented, reviewable exception rather than an unexplained validator skip.
-VALIDATION_EXCEPTION_BRANCH_NOTES: dict[str, str] = {
-    "Demand\\All demand aggregated\\Other sector\\Other recovered gases": (
-        "The sector-split aggregated-demand workflow can produce a small Other "
-        "sector amount for this fuel, but the economy templates do not expose "
-        "that branch; the values are immaterial and are intentionally left out."
-    ),
-    "Stock Changes\\Secondary\\Bio jet kerosene": (
-        "A small stock-change value can be present in the source data, but the "
-        "current economy templates do not expose this branch; it is intentionally "
-        "left out as immaterial."
-    ),
-}
+# Economy-independent branch exceptions are maintained in this workbook rather
+# than in code so they remain easy to review and update:
+# config/baseline_seed_validation_exception_sets.xlsx
+VALIDATION_EXCEPTION_WORKBOOK_PATH = (
+    REPO_ROOT / "config" / "baseline_seed_validation_exception_sets.xlsx"
+)
+VALIDATION_EXCEPTION_SHEET = "branch_exceptions"
+
+
+def _validation_truthy(value: object) -> bool:
+    """Interpret the enabled flag used by the validation exception workbook."""
+    return str(value or "").strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
+@lru_cache(maxsize=None)
+def load_validation_exception_branch_notes(
+    workbook_path: Path = VALIDATION_EXCEPTION_WORKBOOK_PATH,
+) -> dict[str, str]:
+    """Load enabled branch-path exceptions and their review notes from Excel."""
+    if not workbook_path.exists():
+        return {}
+    try:
+        exceptions = pd.read_excel(
+            workbook_path,
+            sheet_name=VALIDATION_EXCEPTION_SHEET,
+            dtype=object,
+        ).fillna("")
+    except (FileNotFoundError, ValueError):
+        return {}
+
+    required_columns = {"enabled", "branch_path", "notes"}
+    missing_columns = required_columns.difference(exceptions.columns)
+    if missing_columns:
+        raise ValueError(
+            f"{VALIDATION_EXCEPTION_WORKBOOK_PATH.name} is missing columns: "
+            f"{sorted(missing_columns)}"
+        )
+
+    notes_by_path: dict[str, str] = {}
+    for row in exceptions.itertuples(index=False):
+        values = row._asdict()
+        if not _validation_truthy(values["enabled"]):
+            continue
+        branch_path = str(values["branch_path"] or "").strip()
+        note = str(values["notes"] or "").strip()
+        if branch_path and note:
+            notes_by_path[branch_path] = note
+    return notes_by_path
 
 
 def _validation_exception_note(branch_path: str) -> str | None:
     """Return the documented exception note for a branch path, if configured."""
     normalized_path = normalize_template_key(branch_path)
-    for exception_path, note in VALIDATION_EXCEPTION_BRANCH_NOTES.items():
+    for exception_path, note in load_validation_exception_branch_notes().items():
         if normalize_template_key(exception_path) == normalized_path:
             return note
     return None
