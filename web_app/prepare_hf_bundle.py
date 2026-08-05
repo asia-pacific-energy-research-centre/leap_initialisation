@@ -22,7 +22,6 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE_PARENT = REPO_ROOT.parent
 DEFAULT_OUTPUT_REPOSITORY = DEFAULT_SOURCE_PARENT / "leap_review_web_app"
-MANIFEST_PATH = REPO_ROOT / "config" / "portable_release_manifest.toml"
 
 REQUIRED_REPOSITORIES = (
     "leap_initialisation",
@@ -102,7 +101,15 @@ def prepare_hf_bundle(
     """
     source_parent_path = _normalise_path(source_parent).resolve()
     output_repository_path = _normalise_path(output_repository).resolve()
-    manifest = tomllib.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    manifest_path = (
+        source_parent_path
+        / "leap_initialisation"
+        / "config"
+        / "portable_release_manifest.toml"
+    )
+    if not manifest_path.is_file():
+        raise FileNotFoundError(f"Release manifest is missing: {manifest_path}")
+    manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
     repositories = manifest.get("repositories") or {}
     config_assets = manifest.get("config_assets") or []
     data_assets = manifest.get("data_assets") or []

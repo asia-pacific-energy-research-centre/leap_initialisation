@@ -20,7 +20,10 @@ The app accepts:
 - one LEAP balance export workbook;
 - one review year or a comma-separated list such as `2022,2030,2040`;
 - optionally, an ESTO base-table CSV override.
-- dashboard minimum and maximum years.
+
+The optional ESTO override changes the dataset compared against in both the
+balance-table review and dashboard. The dashboard uses the latest year in that
+ESTO dataset as its base year.
 
 It runs the diagnostics internally using the configured ESTO and 9th-edition
 source tables, then returns the same five-sheet balance-review workbook as the

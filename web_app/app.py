@@ -22,6 +22,8 @@ from uuid import uuid4
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_DASHBOARD_MIN_YEAR = 2010
+DEFAULT_DASHBOARD_MAX_YEAR = 2060
 HF_BUNDLE_ROOT = Path(
     os.getenv("HF_BUNDLE_ROOT", str(REPO_ROOT / "hf_bundle"))
 )
@@ -340,8 +342,8 @@ def build_review_from_export(
     year: object,
     balance_export_workbook: object,
     esto_table: object,
-    dashboard_min_year: float,
-    dashboard_max_year: float,
+    dashboard_min_year: float = DEFAULT_DASHBOARD_MIN_YEAR,
+    dashboard_max_year: float = DEFAULT_DASHBOARD_MAX_YEAR,
 ) -> tuple[str, str, object, str | None, str, object, object, object, str | None]:
     """Run diagnostics and workbook construction from one LEAP export."""
     persistent_bundle: Path | None = None
@@ -357,8 +359,6 @@ def build_review_from_export(
             raise ValueError("Enter one or more review years, for example 2022,2030.")
         dashboard_min_year_value = int(dashboard_min_year)
         dashboard_max_year_value = int(dashboard_max_year)
-        if dashboard_min_year_value > dashboard_max_year_value:
-            raise ValueError("Dashboard minimum year must not exceed maximum year.")
 
         export_path = _path_from_gradio_file(
             balance_export_workbook,
@@ -568,23 +568,18 @@ def create_app():
 Upload one LEAP Energy Balance export. The app runs the complete diagnostics
 workflow, creates the five-sheet review workbook, and renders the dashboard
 pages below. Optionally upload a replacement ESTO base-table CSV; otherwise the
-configured pinned ESTO table is used.
+configured pinned ESTO table is used. The ESTO override changes the dataset
+compared against in both the balance-table review and dashboard. The dashboard
+then uses the latest year in that ESTO dataset as its base year.
 """
         )
         with gr.Row():
             economy = gr.Textbox(label="Economy", value="20_USA")
             scenario = gr.Textbox(label="Scenario", value="Target")
             year = gr.Textbox(
-                label="Review year(s)",
+                label="Balance table review year(s)",
                 value="2022",
                 info="Use commas for multiple workbooks, e.g. 2022,2030,2040.",
-            )
-        with gr.Row():
-            dashboard_min_year = gr.Number(
-                label="Dashboard minimum year", value=2010, precision=0
-            )
-            dashboard_max_year = gr.Number(
-                label="Dashboard maximum year", value=2060, precision=0
             )
         balance_export_workbook = gr.File(
             label="LEAP Energy Balance export workbook (.xlsx)",
@@ -595,6 +590,11 @@ configured pinned ESTO table is used.
             label="Optional ESTO base-table override (.csv)",
             file_types=[".csv"],
             type="filepath",
+        )
+        gr.Markdown(
+            "*ESTO override note:* Uploading a replacement CSV changes the ESTO "
+            "dataset compared against in the balance XLSX review and dashboard. "
+            "The dashboard uses the latest year in that ESTO dataset as its base year."
         )
         run_button = gr.Button("Calculate diagnostics and build review", variant="primary")
         status = gr.Textbox(label="Status", interactive=False)
@@ -634,8 +634,6 @@ configured pinned ESTO table is used.
                 year,
                 balance_export_workbook,
                 esto_table,
-                dashboard_min_year,
-                dashboard_max_year,
             ],
             outputs=[
                 summary,

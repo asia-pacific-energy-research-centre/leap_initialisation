@@ -10,17 +10,21 @@ The app replaces the balance-review part of the portable Windows release:
 1. upload one LEAP balance export workbook;
 2. enter one review year or a comma-separated year list;
 3. optionally upload an ESTO base-table CSV override;
-4. choose dashboard minimum and maximum years;
-5. run the existing diagnostics workflow;
-6. run the existing Python workbook builder;
-7. run the existing dashboard-from-export workflow;
-8. view the generated dashboard pages in the app and download the five-sheet
+4. run the existing diagnostics workflow;
+5. run the existing Python workbook builder;
+6. run the existing dashboard-from-export workflow;
+7. view the generated dashboard pages in the app and download the five-sheet
    `.xlsx` result plus a combined diagnostic/dashboard bundle;
-9. reopen saved dashboards from previous economy/scenario runs.
+8. reopen saved dashboards from previous economy/scenario runs.
 
 The configured pinned ESTO table is used when no override is supplied. An
 override changes the active ESTO vintage for that run; the existing synthetic
 reference-row rules still apply.
+
+The optional ESTO base-table override changes the dataset compared against in
+both the balance-table review and dashboard. The dashboard uses the latest year
+in that ESTO dataset as its base year. Dashboard year bounds remain internal
+workflow defaults rather than user-facing controls.
 
 The embedded dashboard is intentionally a single-run view. Its generated
 economy selector and Reference/Target toggle are hidden, and the submitted
