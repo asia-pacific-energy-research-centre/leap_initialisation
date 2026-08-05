@@ -917,12 +917,12 @@ def _normalize_process_boundary_for_leap(
 ):
     """Return LEAP-facing net outputs and rebased auxiliary ratios.
 
-    ESTO transformation output is gross. Most legacy transformation records
-    use a net-deliverable boundary when a module also consumes one of its
-    output fuels as auxiliary energy. Oil refining instead preserves one
-    consistent gross basis for capacity, output shares, auxiliary ratios, and
-    efficiency; LEAP then records the auxiliary consumption separately in the
-    module balance.
+    ESTO transformation output is gross. When a module also consumes one of
+    its output fuels as auxiliary energy, LEAP must retain one gross basis for
+    capacity, output shares, auxiliary ratios, and efficiency; LEAP then
+    records the auxiliary consumption separately in the module balance. This
+    applies to every transformation module, not only Oil Refining: coke ovens,
+    blast furnaces, and LNG regasification can have the same overlap.
 
     A fully self-consuming process has no valid auxiliary-per-net-output
     denominator. Preserve its gross representation until that edge case has a
@@ -1153,9 +1153,7 @@ def build_process_record(
         leap_boundary = _normalize_process_boundary_for_leap(
             output_values,
             auxiliary_ratios,
-            preserve_gross_output_basis=(
-                str(sector_title or "").strip().casefold() == "oil refining"
-            ),
+            preserve_gross_output_basis=True,
         )
         return {
             "economy": economy,

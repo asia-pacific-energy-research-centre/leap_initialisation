@@ -170,6 +170,44 @@ def test_non_overlapping_auxiliary_fuels_leave_process_record_unchanged() -> Non
     assert record["process_boundary_status"] == "no_output_auxiliary_overlap"
 
 
+@pytest.mark.parametrize(
+    ("sector_title", "output_label", "auxiliary_label"),
+    [
+        ("Blast furnaces", "Blast furnace gas", "Blast furnace gas"),
+        ("Coke ovens", "Coke oven gas", "Coke oven gas"),
+        ("LNG regasification", "Natural gas", "Natural gas"),
+    ],
+)
+def test_overlapping_transformation_output_and_auxiliary_use_keep_gross_basis(
+    sector_title: str,
+    output_label: str,
+    auxiliary_label: str,
+) -> None:
+    """All overlapping modules need the same LEAP balance boundary as refining."""
+    gross_output = 100.0
+    auxiliary_energy = 25.0
+    record = build_process_record(
+        economy="20_USA",
+        sector_title=sector_title,
+        process_name=sector_title,
+        output_values={output_label: {2023: gross_output}},
+        feedstock_values={"Feedstock": {2023: 125.0}},
+        efficiency={2023: 0.0},
+        auxiliary_ratios={auxiliary_label: {2023: auxiliary_energy / gross_output}},
+        loss_values={auxiliary_label: {2023: auxiliary_energy}},
+        loss_total=auxiliary_energy,
+    )
+
+    assert record["output_values"][output_label][2023] == pytest.approx(gross_output)
+    assert record["deliverable_output_values"][output_label][2023] == pytest.approx(75.0)
+    assert record["auxiliary_ratios"][auxiliary_label][2023] == pytest.approx(0.25)
+    assert record["process_boundary_status"] == "gross_output_with_separate_auxiliary_use"
+    assert (
+        record["output_values"][output_label][2023]
+        - record["auxiliary_ratios"][auxiliary_label][2023] * gross_output
+    ) == pytest.approx(75.0)
+
+
 def test_refinery_capacity_uses_deliverable_output_and_preserves_runtime_additions(
     monkeypatch,
     tmp_path,
@@ -238,10 +276,11 @@ def test_auxiliary_above_matching_output_preserves_excess_as_external() -> None:
         loss_total=15.0,
     )
 
-    assert record["output_values"]["Coke oven gas"][2022] == pytest.approx(0.0)
+    assert record["output_values"]["Coke oven gas"][2022] == pytest.approx(10.0)
     assert record["same_module_auxiliary_values"]["Coke oven gas"][2022] == pytest.approx(10.0)
     assert record["external_auxiliary_energy_values"]["Coke oven gas"][2022] == pytest.approx(5.0)
-    assert record["auxiliary_ratios"]["Coke oven gas"][2022] == pytest.approx(1.5)
+    assert record["auxiliary_ratios"]["Coke oven gas"][2022] == pytest.approx(0.75)
+    assert record["process_boundary_status"] == "gross_output_with_separate_auxiliary_use"
 
 
 def test_multiple_exported_feedstocks_are_summed_in_denominator() -> None:
