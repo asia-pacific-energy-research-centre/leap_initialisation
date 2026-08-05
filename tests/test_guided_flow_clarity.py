@@ -53,7 +53,19 @@ def test_the_scenario_prompt_says_what_to_type() -> None:
 def test_the_year_prompt_says_what_the_year_is_used_for() -> None:
     """A bare 'Which year' does not say the workbook is built for that year."""
     assert "Which year should the balance review compare?" in GUIDED_FLOW
-    assert "LEAP against ESTO" in GUIDED_FLOW
+    assert "compares LEAP with the ESTO or 9th balances" in GUIDED_FLOW
+
+
+def test_the_workbook_is_described_as_a_comparison_not_a_verdict() -> None:
+    """"Where LEAP disagrees with ESTO" stated a conclusion and dropped the 9th.
+
+    The workbook compares LEAP against whichever comparator each row has - ESTO
+    or the 9th - and reports matches as well as mismatches. Describing it as a
+    list of disagreements tells a reader to expect only problems, and to expect
+    them from one source.
+    """
+    assert "disagrees" not in GUIDED_FLOW
+    assert "compared with the ESTO or 9th" in GUIDED_FLOW
 
 
 def test_the_year_prompt_offers_more_than_one_year() -> None:
