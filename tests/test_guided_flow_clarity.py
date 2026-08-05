@@ -217,3 +217,30 @@ def test_a_result_without_a_rendered_root_is_left_alone(tmp_path: Path) -> None:
     assert commands._flatten_dashboard_output(tmp_path, {"chart_count": 1}) == {
         "chart_count": 1
     }
+
+
+def test_a_year_list_survives_the_dispatch_to_the_command() -> None:
+    """The bug this caught: parse_years was correct and never reached.
+
+    `_dispatch_balance_review_from_export` coerced the answer with `int()`
+    before calling the command, so "2022,2030" died at the boundary between the
+    prompt that offered it and the parser that understood it. Every unit test
+    passed - they exercised `parse_years` directly - and the real run failed.
+    """
+    source = inspect.getsource(portable_main._dispatch_balance_review_from_export)
+    assert 'int(values.get("year")' not in source
+    assert 'year=values.get("year")' in source
+
+
+def test_the_command_line_also_accepts_a_year_list() -> None:
+    """argparse type=int would reject 2022,2030 before the command sees it."""
+    parser_source = inspect.getsource(portable_main.build_parser)
+    review_block = parser_source[parser_source.index("review_from_export = "):]
+    year_argument = review_block[review_block.index('"--year"'):][:400]
+    assert "type=int" not in year_argument
+
+
+def test_the_single_year_command_still_takes_one_year() -> None:
+    """balance-review (from diagnostics artifacts) is genuinely one year."""
+    source = inspect.getsource(portable_main._dispatch_balance_review)
+    assert 'int(values.get("year")' in source

@@ -287,7 +287,10 @@ def _dispatch_balance_review_from_export(
             context,
             economy=values.get("economy", ""),
             scenario=values.get("scenario", ""),
-            year=int(values.get("year") or 0),
+            # Passed through as typed. The command parses it, because it is the
+            # side that knows one year or several are both valid; coercing to
+            # int here threw away the comma form before the parser ever saw it.
+            year=values.get("year") or 0,
             balance_export_workbook=(
                 values.get("balance_export_workbook") or None
             ),
@@ -368,7 +371,14 @@ def build_parser(frozen: dict[str, Any]) -> argparse.ArgumentParser:
         )
         review_from_export.add_argument("--economy", required=True)
         review_from_export.add_argument("--scenario", required=True)
-        review_from_export.add_argument("--year", required=True, type=int)
+        # Not type=int: this command accepts several years, and argparse would
+        # reject "2022,2030" before the command's own parser could read it.
+        review_from_export.add_argument(
+            "--year",
+            required=True,
+            metavar="YEAR[,YEAR...]",
+            help="One year, or several separated by commas: 2022,2030",
+        )
         review_from_export.add_argument(
             "--balance-export-workbook",
             default=None,
