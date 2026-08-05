@@ -2061,6 +2061,7 @@ def write_per_economy_combined_workbooks(
                         template_path=id_lookup_resolved,
                         required_years_by_scenario=producer_years_by_scenario,
                         required_scenarios_by_source=producer_required_scenarios_by_source,
+                        validate_share_groups=False,
                         exceptions=configured_exceptions,
                         allow_exact_duplicate_resolution=False,
                     ),

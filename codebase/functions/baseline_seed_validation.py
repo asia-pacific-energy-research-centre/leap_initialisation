@@ -1920,11 +1920,17 @@ def validate_seed_rows(
     required_scenarios: Iterable[str] | None = None,
     required_scenarios_by_source: Mapping[str, Iterable[str]] | None = None,
     share_tolerance: float = 1e-6,
+    validate_share_groups: bool = True,
     zero_tolerance: float = 1e-12,
     exceptions: Iterable[dict[str, object]] | None = None,
     allow_exact_duplicate_resolution: bool = False,
 ) -> ValidationResult:
-    """Run focused baseline-seed rules without requiring a reference workbook."""
+    """Run focused baseline-seed rules without requiring a reference workbook.
+
+    Share-group rules require the complete assembled producer set.  Callers
+    validating one standalone producer artifact can disable them and leave
+    the cross-producer share check to the assembled seed validation.
+    """
     resolved, duplicate_groups = resolve_logical_duplicates(data)
     findings: list[dict[str, object]] = []
 
@@ -1977,7 +1983,8 @@ def validate_seed_rows(
                     evidence=f"{detail}; ids={'|'.join(invalid_columns)}", **context,
                 ))
 
-    findings.extend(_validate_shares(resolved, tolerance=share_tolerance))
+    if validate_share_groups:
+        findings.extend(_validate_shares(resolved, tolerance=share_tolerance))
     findings.extend(
         _validate_process_efficiency_for_capacity(
             resolved,
@@ -2061,7 +2068,8 @@ def validate_seed_rows(
     if template_path is not None:
         path = Path(template_path)
         template_rows = load_template_rows(path)
-        findings.extend(_validate_canonical_share_completeness(resolved, template_rows))
+        if validate_share_groups:
+            findings.extend(_validate_canonical_share_completeness(resolved, template_rows))
         valid_paths = _load_template_paths(path)
         for _, row in resolved.iterrows():
             branch_path = _text(row.get("Branch Path"))
