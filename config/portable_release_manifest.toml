@@ -48,7 +48,7 @@ packages = [
 # behaviour.
 
 [repositories.leap_initialisation]
-commit = "a05c844ef5c9252bf29051c45842876c3aad4db9"
+commit = "402ab7dde61b0cc88cb4146e3ec7918ffe98147f"
 stage_dir = "leap_initialisation"
 on_sys_path = true
 paths = [
@@ -119,7 +119,7 @@ paths = [
 # ``import LEAP_API_helpers``. Stage only that reviewed metadata module from
 # config/ on its own sys.path root; do not expose the rest of config/ as code.
 [repositories.leap_initialisation_config]
-commit = "82127466e012e82bff5a7cab070255aef14164a8"
+commit = "402ab7dde61b0cc88cb4146e3ec7918ffe98147f"
 source_key = "leap_initialisation"
 stage_dir = "leap_initialisation_config"
 strip_prefix = "config"
@@ -144,7 +144,7 @@ paths = [
 # `mapping_tools` has no __init__.py in its own repository either; it works as
 # an implicit namespace package here exactly as it does there.
 [repositories.leap_mappings]
-commit = "3787addfe38b4cce5b4961c8a29e4b8be580d56b"
+commit = "1f4861bc31e3b1e12400936c92d0a4d3550139eb"
 stage_dir = "leap_mappings"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -167,7 +167,7 @@ paths = [
 # packages into the worker to reach one module. Omitted, each becomes an implicit
 # namespace package (PEP 420) and the submodule imports on its own - verified.
 [repositories.leap_mappings_worker]
-commit = "7d1936ce0db4c94e0c65b9c8585fda9154a67456"
+commit = "1f4861bc31e3b1e12400936c92d0a4d3550139eb"
 stage_dir = "leap_mappings_worker"
 source_key = "leap_mappings"
 on_sys_path = true
