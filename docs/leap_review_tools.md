@@ -401,6 +401,43 @@ It searches `../leap-review-tools-<version>/` and the built package; `--from`
 overrides it. It copies and stops there — committing stays deliberate, so an
 unintended import is one `git checkout` away from undone.
 
+### What validation checks about the pins themselves
+
+Two checks exist because a pin is only worth what it guarantees. Both are silent
+when there is nothing to do — a warning that fires on every build is one nobody
+reads, which is how the first of these went unnoticed for two days.
+
+**A pin that has fallen behind.** For each repository, validation compares the
+pinned commit against that repository's HEAD and reports it **only when the
+commits in between touch paths this release stages**. Commits elsewhere in the
+repository — other people's work — say nothing:
+
+```
+repositories.leap_dashboard is pinned at f5aaf94f7207, behind HEAD 4792086eaa91.
+2 commit(s) since the pin change files this release ships:
+      783d219 Keep only the four domestic demand pages visible on placeholders
+      Re-pin to include them, or leave the pin deliberately.
+```
+
+A pin that is not an ancestor of HEAD is left alone: that is a deliberate choice,
+not staleness.
+
+**An untracked data table that changed.** Data tables are gitignored by design,
+so `allow_untracked = true` is normal and no longer warns — the declaration is
+the decision. What makes them reproducible is `sha256` beside it:
+
+```toml
+[[data_assets]]
+role = "esto_base_table"
+sha256 = "5a5787914491008c562b0398bf6ee14cd5eedcaa13e2d11d6de1a5ebf1d6ae1d"
+allow_untracked = true
+```
+
+With the digest declared, a table that is not the one the manifest describes
+**fails the build** rather than shipping. Without it, validation warns and prints
+the digest to paste in. When a table legitimately changes — a new ESTO issue —
+update the pin as a deliberate edit; do not delete it.
+
 ### Steps
 
 0. **Commit any guide edits** (above) before pinning, or the build ships the

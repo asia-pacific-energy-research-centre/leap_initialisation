@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
+from codebase.portable_release.provenance import sha256_file
+
 
 SCHEMA_VERSION = 1
 
@@ -170,6 +172,18 @@ class DataAssetSpec:
     #: Data tables are routinely gitignored, so a manifest may deliberately take
     #: them from the working tree. Set False to require a tracked blob.
     allow_untracked: bool = True
+    #: Optional content pin for an untracked table: its expected SHA-256.
+    #:
+    #: An untracked asset cannot be pinned by commit, which is what made a
+    #: release not fully reproducible from the manifest alone. Recording the
+    #: digest here closes that: the build fails if the file on disk is not the
+    #: one the manifest describes, so a table silently replaced between builds
+    #: is caught rather than shipped.
+    #:
+    #: Left empty while a table is still moving (a new ESTO issue, say), the
+    #: build records whatever digest it finds instead. That is the trade, and it
+    #: is stated per asset rather than assumed for all of them.
+    sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -370,6 +384,7 @@ def parse_release_manifest(text: str, *, source_path: Path | None = None) -> Rel
                 role=str(_require(block, "role", context)),
                 description=str(block.get("description", "")),
                 allow_untracked=bool(block.get("allow_untracked", True)),
+                sha256=str(block.get("sha256", "")).strip().lower(),
             )
         )
 
@@ -519,6 +534,76 @@ class ManifestValidationReport:
         for error in self.errors:
             lines.append(f"  [error]   {error}")
         return "\n".join(lines)
+
+
+def _staged_paths_of(manifest: ReleaseManifest, key: str) -> set[str]:
+    """Every repository path a release actually takes from *key*."""
+    paths: set[str] = set()
+    spec = manifest.repositories.get(key)
+    if spec is not None:
+        paths.update(spec.paths)
+    for asset in list(manifest.config_assets) + list(manifest.data_assets):
+        if asset.repository == key:
+            paths.add(asset.path)
+    return paths
+
+
+def _check_pins_are_current(
+    manifest: ReleaseManifest,
+    repository_roots: Mapping[str, Path],
+    report: ManifestValidationReport,
+) -> None:
+    """Warn when a pin has fallen behind commits that change what ships.
+
+    A pin makes a release reproducible; it is not meant to hold a repository
+    back, and one silently did — a dashboard fix sat unreleased for two days
+    because only the repositories under active edit were ever re-pinned.
+
+    The check reports a pin as behind **only when the commits it misses touch
+    paths this release stages**. Warning on every unrelated commit would fire
+    constantly in repositories other people are working in, and a warning that
+    is usually noise is one nobody reads — which is the failure this is meant
+    to prevent, not repeat.
+    """
+    for key, spec in manifest.repositories.items():
+        root = repository_roots.get(key)
+        if root is None:
+            continue
+        root = Path(root)
+        head = _git(root, "rev-parse", "HEAD")
+        if head.returncode != 0:
+            continue
+        head_sha = head.stdout.strip()
+        if not head_sha or head_sha == spec.commit:
+            continue
+        # Only meaningful when the pin is genuinely an ancestor: a pin on
+        # another branch is a deliberate choice, not staleness.
+        if _git(root, "merge-base", "--is-ancestor", spec.commit, head_sha).returncode != 0:
+            continue
+
+        staged = sorted(_staged_paths_of(manifest, key))
+        if not staged:
+            continue
+        missed = _git(
+            root,
+            "log",
+            "--oneline",
+            "--no-decorate",
+            f"{spec.commit}..{head_sha}",
+            "--",
+            *staged,
+        )
+        relevant = [line for line in missed.stdout.splitlines() if line.strip()]
+        if not relevant:
+            continue
+        listed = "\n".join(f"      {line}" for line in relevant[:5])
+        extra = f"\n      ... and {len(relevant) - 5} more" if len(relevant) > 5 else ""
+        report.warnings.append(
+            f"repositories.{key} is pinned at {spec.commit[:12]}, behind HEAD "
+            f"{head_sha[:12]}. {len(relevant)} commit(s) since the pin change files "
+            f"this release ships:\n{listed}{extra}\n"
+            "      Re-pin to include them, or leave the pin deliberately."
+        )
 
 
 def validate_release_manifest(
@@ -691,6 +776,8 @@ def validate_release_manifest(
     if not check_git or errors:
         return report
 
+    _check_pins_are_current(manifest, repository_roots, report)
+
     for key, spec in manifest.repositories.items():
         root = Path(repository_roots[key])
         context = f"repositories.{key}"
@@ -787,11 +874,32 @@ def validate_release_manifest(
                     f"{spec.commit[:12]} and allow_untracked is false."
                 )
                 continue
-            report.warnings.append(
-                f"{context}: {asset.path!r} is not tracked at commit "
-                f"{spec.commit[:12]}; it is taken from the working tree and "
-                "pinned by SHA-256 in the release report and every run manifest."
-            )
+            # No warning for being untracked: `allow_untracked = true` above is
+            # the maintainer already having decided that, and a warning that
+            # fires on every build for a settled decision only teaches everyone
+            # to skim past the warnings that do matter.
+            #
+            # What is worth checking is whether the file is still the one the
+            # manifest describes. With a declared digest that is a hard check;
+            # without one, the digest is recorded and the release report says
+            # the table was unpinned.
+            actual = sha256_file(working_copy)
+            if asset.sha256 and actual != asset.sha256:
+                errors.append(
+                    f"{context}: {asset.path!r} does not match the SHA-256 pinned "
+                    f"in the manifest.\n"
+                    f"  manifest : {asset.sha256}\n"
+                    f"  on disk   : {actual}\n"
+                    "  Either the table changed, or this manifest describes a "
+                    "different one. Update the pin deliberately - do not remove it."
+                )
+                continue
+            if not asset.sha256:
+                report.warnings.append(
+                    f"{context}: {asset.path!r} is untracked and has no sha256 pin, "
+                    f"so this release is not reproducible from the manifest alone. "
+                    f"Add `sha256 = \"{actual}\"` to pin it."
+                )
             size = working_copy.stat().st_size
         else:
             mode, object_type = entry

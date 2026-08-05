@@ -301,6 +301,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/energy_balance_relationships.csv"
 dest = "mapping_chain/energy_balance_relationships.csv"
 role = "mapping_chain_relationships"
+sha256 = "779566c358c621386e1d88df2e16f27c6c2385e7bdab391bedcb515466b213d8"
 description = "LEAP-to-ESTO conversion relationships, a function of the mapping workbook."
 allow_untracked = true
 
@@ -309,6 +310,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/esto_results_exact_rows.csv.gz"
 dest = "mapping_chain/esto_results_exact_rows.csv.gz"
 role = "mapping_chain_esto_exact_rows"
+sha256 = "8597658eede6af178976791cf8e8577175b63fc403b41163a5e8021449884f82"
 description = "ESTO exact-row extract the mapping chain converts LEAP output against."
 allow_untracked = true
 
@@ -317,6 +319,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/ninth_results_converted_to_esto.csv.gz"
 dest = "mapping_chain/ninth_results_converted_to_esto.csv.gz"
 role = "mapping_chain_ninth_converted"
+sha256 = "ada1deb8ef5a5a1b506cbd4c36d9a10c718504fbe66df4e5930829cab446abc9"
 description = "9th-edition results converted to ESTO structure, a mapping-chain source table."
 allow_untracked = true
 
@@ -325,6 +328,7 @@ repository = "leap_mappings"
 path = "results/common_esto/common_esto_rows.csv"
 dest = "mapping_chain/common_esto_rows.csv"
 role = "mapping_chain_common_esto_rows"
+sha256 = "d143ad25d67ed5b926cc8d9ecc8a11171edcf9a82644e069050f4b5fc402f8f6"
 description = "Common ESTO row definitions the mapping-chain fast path applies."
 allow_untracked = true
 
@@ -333,6 +337,7 @@ repository = "leap_initialisation"
 path = "data/00APEC_2024_low_with_subtotals.csv"
 dest = "balance_review/00APEC_2024_low_with_subtotals.csv"
 role = "esto_base_table"
+sha256 = "5a5787914491008c562b0398bf6ee14cd5eedcaa13e2d11d6de1a5ebf1d6ae1d"
 description = "Configured 2024 ESTO base table used by balance diagnostics."
 allow_untracked = true
 
@@ -341,6 +346,7 @@ repository = "leap_initialisation"
 path = "data/merged_file_energy_ALL_20251106.csv"
 dest = "balance_review/merged_file_energy_ALL_20251106.csv"
 role = "ninth_projection_table"
+sha256 = "b99869ad28edf8ea8d08ec0738d6eeb007eb0fd7527c2b27f6948589c818cc8d"
 description = "All-economy 9th-edition projection table used by balance diagnostics."
 allow_untracked = true
 
