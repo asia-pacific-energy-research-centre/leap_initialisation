@@ -11,7 +11,9 @@ The app replaces the balance-review part of the portable Windows release:
 2. optionally upload an ESTO base-table CSV override;
 3. run the existing diagnostics workflow;
 4. run the existing Python workbook builder;
-5. download the five-sheet `.xlsx` result and derived diagnostic bundle.
+5. run the existing dashboard-from-export workflow;
+6. view the generated dashboard pages in the app and download the five-sheet
+   `.xlsx` result plus a combined diagnostic/dashboard bundle.
 
 The configured pinned ESTO table is used when no override is supplied. An
 override changes the active ESTO vintage for that run; the existing synthetic

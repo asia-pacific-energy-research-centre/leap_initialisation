@@ -22,7 +22,9 @@ The app accepts:
 
 It runs the diagnostics internally using the configured ESTO and 9th-edition
 source tables, then returns the same five-sheet balance-review workbook as the
-desktop release. It also offers a ZIP containing the derived diagnostics CSVs.
+desktop release. It also runs the dashboard workflow, displays the generated
+interactive dashboard pages in the app, and offers a ZIP containing the
+workbook, diagnostics, and dashboard files.
 
 ## Hugging Face deployment
 

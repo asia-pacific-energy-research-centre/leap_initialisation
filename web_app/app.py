@@ -8,6 +8,7 @@ orchestration. It does not reimplement diagnostics or workbook construction.
 from __future__ import annotations
 
 import json
+import html
 import os
 import re
 import shutil
@@ -105,6 +106,7 @@ def _write_diagnostics_bundle(
     workbook_paths: list[Path],
     diagnostics_directory: Path,
     run_directory: Path,
+    dashboard_directory: Path | None = None,
 ) -> None:
     """Package derived diagnostics and the workbook for optional download."""
     with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
@@ -117,6 +119,55 @@ def _write_diagnostics_bundle(
             path = run_directory / name
             if path.is_file():
                 bundle.write(path, arcname=name)
+        if dashboard_directory is not None and dashboard_directory.is_dir():
+            for path in sorted(dashboard_directory.rglob("*")):
+                if path.is_file():
+                    bundle.write(path, arcname=f"dashboard/{path.relative_to(dashboard_directory)}")
+
+
+def _dashboard_pages(dashboard_directory: Path) -> list[str]:
+    """Return dashboard page filenames suitable for the page selector."""
+    return sorted(
+        path.name
+        for path in dashboard_directory.glob("*.html")
+        if path.name != "index.html"
+    )
+
+
+def _inline_dashboard_chart_bundle(page_path: Path, page_html: str) -> str:
+    """Inline the page's generated chart bundle for iframe rendering."""
+    marker = 'src="../chart_bundles/'
+    rendered = page_html
+    while marker in rendered:
+        start = rendered.index(marker) + len(marker)
+        end = rendered.index('"', start)
+        bundle_name = rendered[start:end]
+        bundle_path = page_path.parent.parent / "chart_bundles" / bundle_name
+        if not bundle_path.is_file():
+            break
+        bundle_text = bundle_path.read_text(encoding="utf-8")
+        script_tag = f"<script>\n{bundle_text}\n</script>"
+        old_tag = f'<script src="../chart_bundles/{bundle_name}"></script>'
+        rendered = rendered.replace(old_tag, script_tag, 1)
+    return rendered
+
+
+def _dashboard_iframe_html(dashboard_directory: Path, page_name: str) -> str:
+    """Render a generated dashboard page inside an isolated iframe."""
+    page_path = dashboard_directory / page_name
+    if not page_path.is_file():
+        return "<p>Choose a generated dashboard page.</p>"
+    page_html = _inline_dashboard_chart_bundle(
+        page_path,
+        page_path.read_text(encoding="utf-8"),
+    )
+    escaped = html.escape(page_html, quote=True)
+    return (
+        '<iframe title="Generated LEAP dashboard" '
+        'sandbox="allow-scripts" '
+        'style="width:100%;height:900px;border:1px solid #d8dee4;border-radius:8px;" '
+        f'srcdoc="{escaped}"></iframe>'
+    )
 
 
 def build_review_from_export(
@@ -125,7 +176,7 @@ def build_review_from_export(
     year: float,
     balance_export_workbook: object,
     esto_table: object,
-) -> tuple[str, str, str | None, str | None]:
+) -> tuple[str, str, str | None, str | None, str, object, str | None]:
     """Run diagnostics and workbook construction from one LEAP export."""
     persistent_output: Path | None = None
     persistent_bundle: Path | None = None
@@ -154,6 +205,9 @@ def build_review_from_export(
         run_root = Path(tempfile.mkdtemp(prefix="leap_balance_review_web_"))
         local_export = _copy_input(export_path, run_root / "uploads")
         local_esto = _copy_input(esto_path, run_root / "uploads") if esto_path else None
+        export_directory = run_root / "exports" / _safe_filename_token(economy_value)
+        export_directory.mkdir(parents=True, exist_ok=True)
+        _copy_input(local_export, export_directory)
         context = _build_context(run_root)
         result = developer_launcher.run_balance_review_from_export(
             context=context,
@@ -171,6 +225,30 @@ def build_review_from_export(
         if not workbook_paths or not all(path.is_file() for path in workbook_paths):
             raise FileNotFoundError("The workflow completed without producing a workbook.")
         diagnostics_directory = Path(result.outputs["diagnostics_directory"])
+
+        dashboard_result = developer_launcher.run_dashboard_from_export(
+            context=context,
+            economy=economy_value,
+            export_dir=export_directory,
+            esto_table_path=local_esto,
+            run_label="web",
+        )
+        dashboard_error = None
+        dashboard_directory: Path | None = None
+        dashboard_page_names: list[str] = []
+        dashboard_html = "<p>No dashboard was generated.</p>"
+        if dashboard_result.ok:
+            dashboard_index = Path(dashboard_result.outputs["dashboard_index"])
+            dashboard_directory = dashboard_index.parent
+            dashboard_page_names = _dashboard_pages(dashboard_directory)
+            if dashboard_page_names:
+                dashboard_html = _dashboard_iframe_html(
+                    dashboard_directory,
+                    dashboard_page_names[0],
+                )
+        else:
+            dashboard_error = dashboard_result.error or "Dashboard generation failed."
+
         persistent_dir = Path(tempfile.mkdtemp(prefix="leap_balance_review_download_"))
         persistent_output = persistent_dir / workbook_paths[0].name
         shutil.copy2(workbook_paths[0], persistent_output)
@@ -183,6 +261,7 @@ def build_review_from_export(
             workbook_paths=workbook_paths,
             diagnostics_directory=diagnostics_directory,
             run_directory=result.run_directory,
+            dashboard_directory=dashboard_directory,
         )
 
         build_result = result.outputs.get("build_result", {})
@@ -201,15 +280,35 @@ def build_review_from_export(
             "comparison_state_counts": build_result.get("comparisonStateCounts", {}),
             "missing_audit_rows": build_result.get("missingAuditRows"),
             "formula_error_cells": build_result.get("formulaErrorCells", []),
+            "dashboard_status": "succeeded" if dashboard_result.ok else "failed",
+            "dashboard_error": dashboard_error,
+            "dashboard_pages": dashboard_page_names,
         }
         return (
             json.dumps(summary, indent=2, default=str),
-            "Diagnostics calculated and review workbook created.",
+            (
+                "Diagnostics, review workbook, and dashboard created."
+                if dashboard_result.ok
+                else "Diagnostics and review workbook created; dashboard failed."
+            ),
             str(persistent_output),
             str(persistent_bundle),
+            dashboard_html,
+            {
+                "choices": dashboard_page_names,
+                "value": dashboard_page_names[0] if dashboard_page_names else None,
+            },
+            str(dashboard_directory) if dashboard_directory else None,
         )
     except Exception as error:  # Gradio should show a plain-language failure.
-        return "", f"Build failed: {error}", None, None
+        return "", f"Build failed: {error}", None, None, "", {"choices": [], "value": None}, None
+
+
+def render_dashboard_page(page_name: str, dashboard_directory: str | None) -> str:
+    """Render a selected generated dashboard page in the embedded view."""
+    if not page_name or not dashboard_directory:
+        return "<p>Run the workflow to generate a dashboard.</p>"
+    return _dashboard_iframe_html(Path(dashboard_directory), Path(page_name).name)
 
 
 def create_app():
@@ -221,9 +320,9 @@ def create_app():
             """# LEAP Balance Review
 
 Upload one LEAP Energy Balance export. The app runs the complete diagnostics
-workflow and then creates the five-sheet review workbook. Optionally upload a
-replacement ESTO base-table CSV; otherwise the configured pinned ESTO table is
-used.
+workflow, creates the five-sheet review workbook, and renders the dashboard
+pages below. Optionally upload a replacement ESTO base-table CSV; otherwise the
+configured pinned ESTO table is used.
 """
         )
         with gr.Row():
@@ -245,10 +344,32 @@ used.
         summary = gr.Code(label="Run summary", language="json", interactive=False)
         output = gr.File(label="Download review workbook")
         diagnostics_bundle = gr.File(label="Download diagnostics bundle")
+        gr.Markdown("## Generated dashboard")
+        dashboard_page = gr.Dropdown(
+            label="Dashboard page",
+            choices=[],
+            value=None,
+            interactive=True,
+        )
+        dashboard_html = gr.HTML(value="<p>Run the workflow to generate a dashboard.</p>")
+        dashboard_directory = gr.State(value=None)
         run_button.click(
             fn=build_review_from_export,
             inputs=[economy, scenario, year, balance_export_workbook, esto_table],
-            outputs=[summary, status, output, diagnostics_bundle],
+            outputs=[
+                summary,
+                status,
+                output,
+                diagnostics_bundle,
+                dashboard_html,
+                dashboard_page,
+                dashboard_directory,
+            ],
+        )
+        dashboard_page.change(
+            fn=render_dashboard_page,
+            inputs=[dashboard_page, dashboard_directory],
+            outputs=dashboard_html,
         )
     return app
 
