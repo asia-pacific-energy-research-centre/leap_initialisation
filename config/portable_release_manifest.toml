@@ -48,7 +48,7 @@ packages = [
 # behaviour.
 
 [repositories.leap_initialisation]
-commit = "1734be92601b63f0386c33ada9a87374edacfaaa"
+commit = "2b22d7bd1348b3f26f548543c87f11b8a382dc46"
 stage_dir = "leap_initialisation"
 on_sys_path = true
 paths = [
@@ -119,7 +119,7 @@ paths = [
 # ``import LEAP_API_helpers``. Stage only that reviewed metadata module from
 # config/ on its own sys.path root; do not expose the rest of config/ as code.
 [repositories.leap_initialisation_config]
-commit = "1734be92601b63f0386c33ada9a87374edacfaaa"
+commit = "2b22d7bd1348b3f26f548543c87f11b8a382dc46"
 source_key = "leap_initialisation"
 stage_dir = "leap_initialisation_config"
 strip_prefix = "config"
