@@ -45,6 +45,10 @@ INITIALISATION_ROOT = (
 if str(INITIALISATION_ROOT) not in sys.path:
     sys.path.insert(0, str(INITIALISATION_ROOT))
 
+APP_ASSETS_ROOT = Path(__file__).resolve().parent / "assets"
+LEAP_WALLPAPER_PATH = APP_ASSETS_ROOT / "leap_energy_wallpaper.png"
+LEAP_WALLPAPER_URL = f"/gradio_api/file={LEAP_WALLPAPER_PATH.as_posix()}"
+
 
 APP_CSS = """
 /* LEAP-inspired: light-blue workspace, orange actions, crisp desktop panels. */
@@ -54,7 +58,10 @@ APP_CSS = """
   --block-background-fill: #ffffff;
   --block-border-color: #b7c8da;
   --input-background-fill: #ffffff;
+  --input-background-fill-focus: #ffffff;
   --input-border-color: #aebfd2;
+  --input-border-color-focus: #e85d24;
+  --input-shadow-focus: 0 0 0 2px rgba(232, 93, 36, 0.18);
   max-width: 1180px !important;
   width: calc(100% - 2rem) !important;
   margin: 0 auto !important;
@@ -62,7 +69,16 @@ APP_CSS = """
   color: #1d2d3d !important;
   font-family: "Segoe UI", Arial, sans-serif !important;
 }
-body, .gradio-container { background: #edf3fa !important; }
+body, gradio-app {
+  background-color: #15263a !important;
+  background-image:
+    linear-gradient(rgba(13, 28, 46, 0.34), rgba(13, 28, 46, 0.46)),
+    url("__LEAP_WALLPAPER_URL__") !important;
+  background-position: center top !important;
+  background-size: cover !important;
+  background-attachment: fixed !important;
+}
+.gradio-container { background: #edf3fa !important; }
 .gradio-container .prose, .gradio-container label, .gradio-container span {
   color: inherit;
 }
@@ -186,6 +202,16 @@ body, .gradio-container { background: #edf3fa !important; }
   border-radius: 3px !important;
   border-color: #aebfd2 !important;
 }
+.gradio-container input:focus,
+.gradio-container textarea:focus,
+.gradio-container select:focus {
+  border-color: #e85d24 !important;
+  outline: none !important;
+  background: #ffffff !important;
+  color: #1d2d3d !important;
+  -webkit-text-fill-color: #1d2d3d !important;
+  box-shadow: 0 0 0 2px rgba(232, 93, 36, 0.18) !important;
+}
 .gradio-container span[data-testid="block-info"] {
   padding: 0 0 0.35rem !important;
   border: 0 !important;
@@ -263,6 +289,7 @@ body, .gradio-container { background: #edf3fa !important; }
   to { transform: rotate(5deg) translateY(-2px); } }
 @keyframes calculator-blink { 50% { filter: brightness(1.45); transform: scale(0.85); } }
 @media (max-width: 760px) {
+  body, gradio-app { background: #edf3fa !important; }
   .gradio-container { width: calc(100% - 1rem) !important; padding-top: 0.5rem !important; }
   .leap-titlebar .titlebar-context { display: none; }
   .hero-body { align-items: flex-start; flex-direction: column; padding: 1.15rem; }
@@ -272,6 +299,8 @@ body, .gradio-container { background: #edf3fa !important; }
   #clear-dashboards { align-self: stretch; max-width: none; }
 }
 """
+
+APP_CSS = APP_CSS.replace("__LEAP_WALLPAPER_URL__", LEAP_WALLPAPER_URL)
 
 APP_JS = """
 () => {
@@ -874,6 +903,7 @@ def create_app():
     """Create the web interface for local or Hugging Face execution."""
     import gradio as gr
 
+    gr.set_static_paths(paths=[LEAP_WALLPAPER_PATH])
     theme = gr.themes.Soft(
         primary_hue="orange",
         secondary_hue="blue",

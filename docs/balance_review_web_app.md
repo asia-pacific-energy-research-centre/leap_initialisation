@@ -47,7 +47,10 @@ Results and browser-private dashboard views are grouped separately beneath the
 run controls. The responsive visual system echoes the LEAP desktop application:
 a light-blue workspace, orange action accents, compact blue-grey title bars,
 and crisp bordered panels, without reproducing the desktop application's dense
-toolbars or navigation tree.
+toolbars or navigation tree. On wide screens, the user-supplied LEAP energy
+wallpaper fills only the side gutters behind a translucent wash; narrow screens
+fall back to the plain light-blue background. Focused form fields remain white
+and use an orange outline regardless of the browser's light or dark preference.
 
 ## Source-of-truth rule
 
