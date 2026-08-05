@@ -445,13 +445,68 @@ def _packaged_economy_folders(
     )
 
 
+#: Example exports shipped in the package's input folder. A colleague opening
+#: an empty folder has to build the example before they can see anything work;
+#: with a real export already in place the first double-click produces real
+#: output, and the folder itself demonstrates the naming rules that the README
+#: beside it only describes.
+EXAMPLE_EXPORTS_SOURCE = "data/leap balances exports"
+
+
+def _seed_example_exports(
+    package_root: Path,
+    roots: Mapping[str, Path],
+    economies: Sequence[str],
+) -> list[str]:
+    """Copy the newest export per economy and scenario into the package.
+
+    Resolution goes through the same
+    :func:`resolve_balance_export_workbook` the tools use at run time, so the
+    example obeys the newest-date rule and the ``archive/`` exclusion exactly
+    as a user's own folder will - rather than a second copy of those
+    conventions that can drift.
+
+    These are working-tree data files, not commits: they are model output, not
+    source, and they change on their own schedule. Each one is reported so the
+    build record says precisely which export shipped.
+    """
+    from codebase.utilities.leap_balance_export_resolver import (
+        resolve_balance_export_workbook,
+    )
+
+    source_root = Path(roots["leap_initialisation"]) / EXAMPLE_EXPORTS_SOURCE
+    if not source_root.is_dir():
+        return [f"No example exports shipped: {source_root} does not exist."]
+
+    exports_root = package_root / "input" / workspace.BALANCE_EXPORTS_DIRNAME
+    seeded: list[str] = []
+    for economy in economies:
+        for scenario in workspace.SCENARIO_CODES:
+            try:
+                found = resolve_balance_export_workbook(
+                    economy=economy, scenario=scenario, exports_root=source_root
+                )
+            except (FileNotFoundError, ValueError):
+                continue
+            destination = exports_root / economy / found.name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(found, destination)
+            seeded.append(f"{economy}/{found.name}")
+    if not seeded:
+        return [f"No example exports found under {source_root}."]
+    return [f"Example exports shipped ({len(seeded)}): {', '.join(seeded)}"]
+
+
 def _write_package_scaffold(
     package_root: Path,
     manifest: ReleaseManifest,
     *,
     config_files: Sequence[Mapping[str, Any]],
-) -> None:
-    """Create the package's folder layout and its README."""
+) -> list[str]:
+    """Create the package's folder layout and its README.
+
+    Returns the economy folders it created, for the caller to seed.
+    """
     for name in PACKAGE_DIRECTORIES:
         (package_root / name).mkdir(parents=True, exist_ok=True)
     # Scaffold the folder the documentation actually tells users to fill, and
@@ -464,7 +519,8 @@ def _write_package_scaffold(
     # Create a folder per economy up front. Telling a user to make folders with
     # exactly the right codes invites typos in the one thing that must match;
     # dropping a file into a folder that already exists cannot go wrong.
-    for economy in _packaged_economy_folders(config_files, package_root):
+    economies = _packaged_economy_folders(config_files, package_root)
+    for economy in economies:
         (exports_root / economy).mkdir(exist_ok=True)
     (package_root / "output" / "RESULTS_APPEAR_HERE.txt").write_text(
         "Results appear here, grouped by economy, so nothing is overwritten:\n"
@@ -556,6 +612,7 @@ def _write_package_scaffold(
         ),
         encoding="utf-8",
     )
+    return economies
 
 
 # ---------------------------------------------------------------------------
@@ -1071,9 +1128,10 @@ def build(
         json.dumps(frozen_manifest, indent=2),
         encoding="utf-8",
     )
-    _write_package_scaffold(staging_dir, manifest, config_files=config_files)
+    economies = _write_package_scaffold(staging_dir, manifest, config_files=config_files)
     guide_note = _stage_user_guide(staging_dir, manifest, roots)
     _seed_run_timings(staging_dir, manifest, roots)
+    example_notes = _seed_example_exports(staging_dir, roots, economies)
 
     report = BuildReport(
         manifest_name=manifest.name,
@@ -1086,7 +1144,7 @@ def build(
         source_files=source_files,
         config_files=config_files,
         data_files=data_files,
-        notes=[guide_note] if guide_note else [],
+        notes=([guide_note] if guide_note else []) + example_notes,
     )
 
     package_dir = staging_dir

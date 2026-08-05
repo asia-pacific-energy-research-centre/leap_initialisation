@@ -364,8 +364,33 @@ participating repository, every source path that may be copied, every external
 configuration asset, the supported commands and their input/output contract, and
 the runtime packages.
 
+### The user guide is edited in Word, not in Markdown
+
+`docs/docx/leap_review_tools_user_guide.docx` is the deliverable a colleague
+reads, and it carries screenshots and wording added directly in Word. **It is
+the source of truth for itself.** `docs/leap_review_tools_user_guide.md` is only
+where it started, and `scripts/convert_docs.py` refuses to regenerate it
+(`HAND_EDITED_DOCX`) — regenerating would silently discard every screenshot.
+
+Edits are normally made in an extracted release, not in the repository, so they
+have to travel back before a build:
+
+```bash
+python scripts/import_user_guide.py --check   # is there anything to carry over?
+python scripts/import_user_guide.py           # copy it into docs/docx/
+git add docs/docx/leap_review_tools_user_guide.docx && git commit
+```
+
+The importer searches `../leap-review-tools-<version>/` and the built package;
+`--from` overrides it. It copies and stops there — committing is deliberate, so
+an unintended import is one `git checkout` away from undone. The builder reads
+the guide from the **pinned commit**, so an imported-but-uncommitted guide will
+not ship.
+
 ### Steps
 
+0. **Carry over any guide edits** (above) before pinning, or the build ships the
+   previous version of it.
 1. **Land and test the code first.** Every allowlisted path must exist at the
    commit you are about to pin, so the code commits come before the manifest
    commit.
