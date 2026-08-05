@@ -7415,8 +7415,8 @@ def build_dashboards(
     def _dashboard_filename(path: tuple[str, ...]) -> str:
         if path in node_to_sheet:
             sheet = node_to_sheet[path]
-            return f"{_safe_token(sheet.replace('\\', '_'))}.html"
-        slug = "__".join(_safe_token(part.replace("\\", "_")) for part in path)
+            return f"{_safe_token(sheet.replace(chr(92), '_'))}.html"
+        slug = "__".join(_safe_token(part.replace(chr(92), "_")) for part in path)
         return f"node__{slug}.html"
 
     path_to_file = {path: dashboards_dir / _dashboard_filename(path) for path in ordered_node_paths}
@@ -8026,7 +8026,7 @@ def build_dashboards(
                             charts_dir,
                             backend="plotly",
                             display_sheet=f"{title} - {_compact_measure_name(_infer_page_measure(('Supply', child_sheet), child_sheet))}",
-                            file_sheet=f"node__{'__'.join(_safe_token(part.replace('\\', '_')) for part in path)}__overview__{child_sheet}",
+                            file_sheet=f"node__{'__'.join(_safe_token(part.replace(chr(92), '_')) for part in path)}__overview__{child_sheet}",
                         )
                         if total_chart_path:
                             overview_entries.append((child_sheet, "Total", total_chart_path))
@@ -8070,7 +8070,7 @@ def build_dashboards(
                             charts_dir,
                             backend="plotly",
                             display_sheet=f"{title} - {_compact_measure_name(str(measure_value).strip())}",
-                            file_sheet=f"node__{'__'.join(_safe_token(part.replace('\\', '_')) for part in path)}__{measure_value}",
+                            file_sheet=f"node__{'__'.join(_safe_token(part.replace(chr(92), '_')) for part in path)}__{measure_value}",
                         )
                         if node_chart:
                             normalized_measure = str(measure_value).strip()
@@ -8154,7 +8154,7 @@ def build_dashboards(
                     charts_dir,
                     backend="plotly",
                     display_sheet=f"{title} - {_compact_measure_name(_infer_page_measure(('Supply', child_sheet), child_sheet))}",
-                    file_sheet=f"node__{'__'.join(_safe_token(part.replace('\\', '_')) for part in path)}__overview__{child_sheet}",
+                    file_sheet=f"node__{'__'.join(_safe_token(part.replace(chr(92), '_')) for part in path)}__overview__{child_sheet}",
                 )
                 if total_chart_path:
                     overview_entries.append((child_sheet, "Total", total_chart_path))
