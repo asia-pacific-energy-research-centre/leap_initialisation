@@ -15,7 +15,10 @@ lives at ``config/leap_review_tools_settings.example.toml``.
 from __future__ import annotations
 
 import os
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 compatibility for hosted runtimes.
+    import tomli as tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping

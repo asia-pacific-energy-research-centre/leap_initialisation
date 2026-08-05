@@ -34,6 +34,7 @@ REQUIRED_REPOSITORIES = (
 EXTRA_RUNTIME_PATHS = {
     "leap_initialisation": (
         "codebase/portable_release/developer_launcher.py",
+        "codebase/portable_release/manifest.py",
         "codebase/portable_release/settings.py",
         "config/portable_release_manifest.toml",
     )

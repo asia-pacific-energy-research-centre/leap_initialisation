@@ -210,9 +210,14 @@ C:\Users\Work\miniconda3\python.exe -m pytest tests/test_balance_review_workbook
 ## 6. Create the Hugging Face Space
 
 Create the Space privately first. In the HF web UI, choose **New Space**, set
-the owner and repository name, select **Gradio**, choose CPU hardware for the
-first smoke test, and leave storage at its default unless a later feature
-explicitly requires server-side persistence.
+the owner and repository name, select **Gradio**, and leave storage at its
+default unless a later feature explicitly requires server-side persistence.
+
+HF currently gates the default `cpu-basic` Gradio hardware behind a paid plan.
+For a free personal account, choose the available `zero-a10g`/ZeroGPU flavor.
+This app is CPU-bound and does not use GPU time, but the root entry point
+contains an uncalled no-op `@spaces.GPU` registration because ZeroGPU requires
+at least one registered GPU function before it will start a Gradio Space.
 
 The same operation can be performed with the HF Python client:
 
@@ -248,6 +253,13 @@ HF installs the root requirements and builds the Gradio Space. Monitor the
 build and runtime logs in the Space page. The root `app.py` launches Gradio on
 the host and port supplied by the environment, which is the expected Space
 runtime behavior.
+
+For a ZeroGPU Space, keep the root `requirements.txt` limited to the
+application-specific packages (`pandas`, `numpy`, `openpyxl`, `plotly`, and
+`psutil`, plus `tomli` for Python versions below 3.11). Do not re-install
+`gradio` or `spaces`; the ZeroGPU runtime supplies and pins them. The bundled
+portable-release TOML readers fall back to `tomli` when the hosted Python
+runtime does not provide standard-library `tomllib`.
 
 ## 7. First hosted smoke test
 
