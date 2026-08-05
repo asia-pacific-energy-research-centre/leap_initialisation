@@ -82,3 +82,7 @@ if those repositories or required source assets are absent.
 
 See `docs/balance_review_web_app.md` for the bundle layout, refresh procedure,
 commit provenance, and publication-safety requirements.
+
+For the complete private-first Hugging Face Space creation, upload, smoke-test,
+and update procedure, see
+[`docs/leap_review_tools_hf_space_guide.md`](../docs/leap_review_tools_hf_space_guide.md).
