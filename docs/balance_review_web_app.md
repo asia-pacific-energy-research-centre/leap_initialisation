@@ -5,27 +5,27 @@ The `web_app/` directory contains a thin Gradio wrapper around
 
 ## Scope
 
-The app replaces the workbook-building part of the portable Windows release:
+The app replaces the balance-review part of the portable Windows release:
 
 1. upload one LEAP balance export workbook;
-2. upload `leap_balance_source_differences.csv` and
-   `leap_balance_source_review.csv`;
-3. optionally upload mapping/projection diagnostic CSVs;
-4. run the existing Python builder;
-5. download the five-sheet `.xlsx` result.
+2. optionally upload an ESTO base-table CSV override;
+3. run the existing diagnostics workflow;
+4. run the existing Python workbook builder;
+5. download the five-sheet `.xlsx` result and derived diagnostic bundle.
 
-The upstream diagnostic-generation pipeline is intentionally outside this
-minimal app. That pipeline needs the larger ESTO/9th-edition data and mapping
-repositories and should be added only as a separately tested workflow.
+The configured pinned ESTO table is used when no override is supplied. An
+override changes the active ESTO vintage for that run; the existing synthetic
+reference-row rules still apply.
 
 ## Source-of-truth rule
 
-The web app imports the builder directly from this repository. It does not copy
-the builder into a second implementation or invoke the packaged EXE. A local
-run reports the current Git commit when Git is available; a packaged release
-manifest is used as a fallback. A Hugging Face deployment must be rebuilt from
-the updated source checkout whenever the builder changes.
+The web app imports the existing `balance-review-from-export` orchestration from
+this repository. It does not copy the diagnostics or builder into a second
+implementation and it does not invoke the packaged EXE. A local run reports
+the current Git commit when Git is available. A deployment must be rebuilt from
+the updated source checkout whenever the workflow changes.
 
-The current builder workflow does not import `leap_dashboard` or
-`leap_mappings`; those repositories are used by upstream diagnostic-generation
-and dashboard workflows, not by the workbook construction function itself.
+The full workflow uses the exact live `leap_initialisation`, `leap_mappings`,
+and `leap_dashboard` checkouts through the same developer-mode context used by
+the release tooling. Set `LEAP_MAPPINGS_ROOT` and `LEAP_DASHBOARD_ROOT` when the
+siblings are mounted somewhere other than the default sibling directories.

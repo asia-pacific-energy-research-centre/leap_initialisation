@@ -1,10 +1,8 @@
 #%%
-"""Small Gradio web application for the Python balance-review builder.
+"""Gradio web application for the complete LEAP balance-review workflow.
 
-The app deliberately imports the repository's existing builder rather than
-reimplementing workbook logic.  When this repository is updated and the Space
-is rebuilt from the updated checkout, the web app uses the same source file as
-the local workflows and portable release.
+The app calls the repository's existing ``balance-review-from-export``
+orchestration. It does not reimplement diagnostics or workbook construction.
 """
 
 from __future__ import annotations
@@ -16,38 +14,22 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
-from typing import Iterable
-
-from openpyxl import load_workbook
 
 
-# Resolve the repository root from this file so the app works regardless of
-# the directory from which it is launched.
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from codebase.functions.balance_review_workbook_builder import (  # noqa: E402
-    build_balance_structure_review_workbook,
-)
+from codebase.portable_release import developer_launcher  # noqa: E402
+from codebase.portable_release.settings import DeveloperSettings  # noqa: E402
 
 
-REQUIRED_DIAGNOSTIC_FILES = {
-    "leap_balance_source_differences.csv",
-    "leap_balance_source_review.csv",
-}
-OPTIONAL_DIAGNOSTIC_FILES = {
-    "leap_balance_mapping_issues.csv",
-    "ninth_projection_allocation_diagnostics.csv",
-}
-ALLOWED_DIAGNOSTIC_FILES = REQUIRED_DIAGNOSTIC_FILES | OPTIONAL_DIAGNOSTIC_FILES
-
-
-def _path_from_gradio_file(value: object) -> Path:
-    """Return a safe local path from a Gradio File component value."""
+def _path_from_gradio_file(value: object, *, description: str) -> Path:
+    """Return a validated local path from a Gradio File component value."""
     if value is None or str(value).strip() == "":
-        raise ValueError("Please upload the LEAP balance export workbook.")
+        raise ValueError(f"Please upload {description}.")
     raw_path = getattr(value, "name", value)
     path = Path(str(raw_path))
     if not path.is_file():
@@ -55,80 +37,13 @@ def _path_from_gradio_file(value: object) -> Path:
     return path
 
 
-def _uploaded_paths(values: object) -> list[Path]:
-    """Normalize Gradio's single/multiple file values to existing Paths."""
-    if values is None:
-        return []
-    if isinstance(values, (str, Path)) or hasattr(values, "name"):
-        values = [values]
-    paths = []
-    for value in values:  # type: ignore[union-attr]
-        path = _path_from_gradio_file(value)
-        paths.append(path)
-    return paths
-
-
-def _select_source_sheet(workbook_path: Path, requested_year: int) -> str:
-    """Select the exact year sheet used by the existing builder."""
-    workbook = load_workbook(workbook_path, read_only=True, data_only=False)
-    try:
-        sheet_names = list(workbook.sheetnames)
-        exact_name = str(requested_year)
-        if exact_name in sheet_names:
-            return exact_name
-
-        for sheet_name in sheet_names:
-            sheet = workbook[sheet_name]
-            metadata = str(sheet["A2"].value or "")
-            if f"Year: {requested_year}" in metadata:
-                return sheet_name
-    finally:
-        workbook.close()
-
-    available = ", ".join(sheet_names) or "none"
-    raise ValueError(
-        f"Could not find a workbook sheet for year {requested_year}. "
-        f"Available sheets: {available}"
-    )
-
-
-def _validate_source_scenario(workbook_path: Path, sheet_name: str, scenario: str) -> None:
-    """Reject a UI scenario that disagrees with the workbook metadata."""
-    workbook = load_workbook(workbook_path, read_only=True, data_only=False)
-    try:
-        metadata = str(workbook[sheet_name]["A2"].value or "")
-    finally:
-        workbook.close()
-    match = re.search(r"Scenario:\s*([^,]+)", metadata, flags=re.IGNORECASE)
-    if match and match.group(1).strip().lower() != scenario.strip().lower():
-        raise ValueError(
-            f"The workbook sheet declares scenario {match.group(1).strip()!r}, "
-            f"but the form contains {scenario!r}."
-        )
-
-
-def _copy_diagnostics(paths: Iterable[Path], destination: Path) -> list[str]:
-    """Copy only recognised diagnostic filenames into the run workspace."""
-    copied: set[str] = set()
-    for source_path in paths:
-        filename = source_path.name
-        if filename not in ALLOWED_DIAGNOSTIC_FILES:
-            continue
-        if filename in copied:
-            raise ValueError(f"Diagnostic file uploaded more than once: {filename}")
-        shutil.copy2(source_path, destination / filename)
-        copied.add(filename)
-
-    missing = sorted(REQUIRED_DIAGNOSTIC_FILES - copied)
-    if missing:
-        raise ValueError(
-            "Upload both required diagnostic files: " + ", ".join(missing)
-        )
-    return sorted(copied)
+def _safe_filename_token(value: object) -> str:
+    token = re.sub(r"[^A-Za-z0-9_-]+", "_", str(value).strip())
+    return token.strip("_") or "unknown"
 
 
 def _source_commit() -> str:
-    """Return a lightweight source stamp without requiring Git at runtime."""
+    """Return the current source commit for the run summary."""
     try:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -137,37 +52,83 @@ def _source_commit() -> str:
             check=True,
             text=True,
         )
-        commit = result.stdout.strip()
-        if commit:
-            return commit
+        if result.stdout.strip():
+            return result.stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         pass
-
-    manifest_path = REPO_ROOT / "release_build" / "distribution" / "leap-review-tools-0.1.0" / "release_manifest.json"
-    if manifest_path.is_file():
-        try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            commit = manifest.get("repositories", {}).get("leap_initialisation", {}).get("commit")
-            if commit:
-                return str(commit)
-        except (OSError, json.JSONDecodeError):
-            pass
-    return "live repository checkout"
+    return "source checkout commit unavailable"
 
 
-def _safe_filename_token(value: object) -> str:
-    token = re.sub(r"[^A-Za-z0-9_-]+", "_", str(value).strip())
-    return token.strip("_") or "unknown"
+def _repository_roots() -> dict[str, Path]:
+    """Resolve the three live source repositories for developer-style runs.
+
+    Hugging Face or Docker deployments can mount/clone the sibling repositories
+    elsewhere by setting the two optional environment variables.
+    """
+    parent = REPO_ROOT.parent
+    return {
+        "leap_initialisation": REPO_ROOT,
+        "leap_mappings": Path(
+            os.getenv("LEAP_MAPPINGS_ROOT", str(parent / "leap_mappings"))
+        ),
+        "leap_dashboard": Path(
+            os.getenv("LEAP_DASHBOARD_ROOT", str(parent / "leap_dashboard"))
+        ),
+    }
 
 
-def build_review(
+def _build_context(run_root: Path):
+    """Build the same live-repository context used by developer mode."""
+    settings = DeveloperSettings(
+        source_path=REPO_ROOT / "web_app" / "runtime_settings.toml",
+        repositories=_repository_roots(),
+        output_root=run_root / "output",
+        input_root=run_root / "input",
+        log_root=run_root / "logs",
+    )
+    context = developer_launcher.build_context(settings=settings)
+    context.require_ready()
+    context.activate_sys_path()
+    return context
+
+
+def _copy_input(source: Path, destination: Path) -> Path:
+    destination.mkdir(parents=True, exist_ok=True)
+    copied = destination / source.name
+    shutil.copy2(source, copied)
+    return copied
+
+
+def _write_diagnostics_bundle(
+    *,
+    bundle_path: Path,
+    workbook_paths: list[Path],
+    diagnostics_directory: Path,
+    run_directory: Path,
+) -> None:
+    """Package derived diagnostics and the workbook for optional download."""
+    with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        for workbook_path in workbook_paths:
+            bundle.write(workbook_path, arcname=f"workbooks/{workbook_path.name}")
+        if diagnostics_directory.is_dir():
+            for path in sorted(diagnostics_directory.rglob("*.csv")):
+                bundle.write(path, arcname=f"diagnostics/{path.name}")
+        for name in ("validation_report.txt", "run_manifest.json", "run_manifest.txt"):
+            path = run_directory / name
+            if path.is_file():
+                bundle.write(path, arcname=name)
+
+
+def build_review_from_export(
     economy: str,
     scenario: str,
     year: float,
-    source_workbook: object,
-    diagnostic_files: object,
-) -> tuple[str, str, str | None]:
-    """Build one review workbook and return a user-facing summary and file."""
+    balance_export_workbook: object,
+    esto_table: object,
+) -> tuple[str, str, str | None, str | None]:
+    """Run diagnostics and workbook construction from one LEAP export."""
+    persistent_output: Path | None = None
+    persistent_bundle: Path | None = None
     try:
         economy_value = str(economy or "").strip()
         scenario_value = str(scenario or "").strip()
@@ -178,50 +139,77 @@ def build_review(
         if year is None or int(year) != year:
             raise ValueError("Enter a four-digit review year, for example 2022.")
         year_value = int(year)
-        workbook_path = _path_from_gradio_file(source_workbook)
-        diagnostic_paths = _uploaded_paths(diagnostic_files)
 
-        with tempfile.TemporaryDirectory(prefix="leap_balance_review_") as run_dir_text:
-            run_dir = Path(run_dir_text)
-            local_workbook = run_dir / workbook_path.name
-            shutil.copy2(workbook_path, local_workbook)
-            diagnostics_dir = run_dir / "diagnostics"
-            diagnostics_dir.mkdir()
-            copied_files = _copy_diagnostics(diagnostic_paths, diagnostics_dir)
-            source_sheet_name = _select_source_sheet(local_workbook, year_value)
-            _validate_source_scenario(local_workbook, source_sheet_name, scenario_value)
-            output_path = run_dir / (
-                f"balance_review_{_safe_filename_token(economy_value)}_"
-                f"{_safe_filename_token(scenario_value)}_{year_value}.xlsx"
+        export_path = _path_from_gradio_file(
+            balance_export_workbook,
+            description="the LEAP Energy Balance export workbook",
+        )
+        esto_path = None
+        if esto_table is not None and str(esto_table).strip() != "":
+            esto_path = _path_from_gradio_file(
+                esto_table,
+                description="the optional ESTO base-table CSV",
             )
 
-            result = build_balance_structure_review_workbook(
-                economy=economy_value,
-                source_workbook=local_workbook,
-                source_sheet_name=source_sheet_name,
-                diagnostics_directory=diagnostics_dir,
-                output_workbook=output_path,
-            )
-            summary = {
-                "status": "succeeded",
-                "source_commit": _source_commit(),
-                "economy": economy_value,
-                "scenario": scenario_value,
-                "year": year_value,
-                "source_sheet": source_sheet_name,
-                "diagnostic_files": copied_files,
-                "comparison_state_counts": result["comparisonStateCounts"],
-                "missing_audit_rows": result["missingAuditRows"],
-                "formula_error_cells": result["formulaErrorCells"],
-            }
-            # Copy the result outside the temporary directory so Gradio can
-            # serve it after this function returns; the caller owns cleanup.
-            persistent_output = Path(tempfile.mkdtemp(prefix="leap_balance_review_output_")) / output_path.name
-            shutil.copy2(output_path, persistent_output)
+        run_root = Path(tempfile.mkdtemp(prefix="leap_balance_review_web_"))
+        local_export = _copy_input(export_path, run_root / "uploads")
+        local_esto = _copy_input(esto_path, run_root / "uploads") if esto_path else None
+        context = _build_context(run_root)
+        result = developer_launcher.run_balance_review_from_export(
+            context=context,
+            economy=economy_value,
+            scenario=scenario_value,
+            year=year_value,
+            balance_export_workbook=local_export,
+            esto_table_path=local_esto,
+            run_label="web",
+        )
+        if not result.ok:
+            raise RuntimeError(result.error or "The balance-review workflow failed.")
 
-        return json.dumps(summary, indent=2), "Review workbook created.", str(persistent_output)
+        workbook_paths = [Path(path) for path in result.outputs["workbooks"]]
+        if not workbook_paths or not all(path.is_file() for path in workbook_paths):
+            raise FileNotFoundError("The workflow completed without producing a workbook.")
+        diagnostics_directory = Path(result.outputs["diagnostics_directory"])
+        persistent_dir = Path(tempfile.mkdtemp(prefix="leap_balance_review_download_"))
+        persistent_output = persistent_dir / workbook_paths[0].name
+        shutil.copy2(workbook_paths[0], persistent_output)
+        persistent_bundle = persistent_dir / (
+            f"{_safe_filename_token(economy_value)}_"
+            f"{_safe_filename_token(scenario_value)}_{year_value}_diagnostics.zip"
+        )
+        _write_diagnostics_bundle(
+            bundle_path=persistent_bundle,
+            workbook_paths=workbook_paths,
+            diagnostics_directory=diagnostics_directory,
+            run_directory=result.run_directory,
+        )
+
+        build_result = result.outputs.get("build_result", {})
+        summary = {
+            "status": "succeeded",
+            "source_commit": _source_commit(),
+            "economy": economy_value,
+            "scenario": scenario_value,
+            "year": year_value,
+            "esto_table_used": result.outputs.get("esto_table_used"),
+            "esto_table_is_user_supplied": result.outputs.get(
+                "esto_table_is_user_supplied", False
+            ),
+            "esto_base_year": result.outputs.get("esto_base_year"),
+            "diagnostics_directory": str(diagnostics_directory),
+            "comparison_state_counts": build_result.get("comparisonStateCounts", {}),
+            "missing_audit_rows": build_result.get("missingAuditRows"),
+            "formula_error_cells": build_result.get("formulaErrorCells", []),
+        }
+        return (
+            json.dumps(summary, indent=2, default=str),
+            "Diagnostics calculated and review workbook created.",
+            str(persistent_output),
+            str(persistent_bundle),
+        )
     except Exception as error:  # Gradio should show a plain-language failure.
-        return "", f"Build failed: {error}", None
+        return "", f"Build failed: {error}", None, None
 
 
 def create_app():
@@ -232,37 +220,35 @@ def create_app():
         gr.Markdown(
             """# LEAP Balance Review
 
-Upload one LEAP balance export workbook and the two required diagnostic CSVs.
-The app calls the repository's Python workbook builder and returns the same
-five-sheet `.xlsx` review workbook produced by the desktop release.
-
-Uploads are copied into a temporary run directory and are not intentionally
-retained by the application.
+Upload one LEAP Energy Balance export. The app runs the complete diagnostics
+workflow and then creates the five-sheet review workbook. Optionally upload a
+replacement ESTO base-table CSV; otherwise the configured pinned ESTO table is
+used.
 """
         )
         with gr.Row():
             economy = gr.Textbox(label="Economy", value="20_USA")
             scenario = gr.Textbox(label="Scenario", value="Target")
             year = gr.Number(label="Review year", value=2022, precision=0)
-        source_workbook = gr.File(
-            label="LEAP balance export workbook (.xlsx)",
+        balance_export_workbook = gr.File(
+            label="LEAP Energy Balance export workbook (.xlsx)",
             file_types=[".xlsx", ".xlsm"],
             type="filepath",
         )
-        diagnostic_files = gr.File(
-            label="Diagnostic CSV files (select both required files; optional files are accepted)",
-            file_count="multiple",
+        esto_table = gr.File(
+            label="Optional ESTO base-table override (.csv)",
             file_types=[".csv"],
             type="filepath",
         )
-        run_button = gr.Button("Build review workbook", variant="primary")
+        run_button = gr.Button("Calculate diagnostics and build review", variant="primary")
         status = gr.Textbox(label="Status", interactive=False)
         summary = gr.Code(label="Run summary", language="json", interactive=False)
-        output = gr.File(label="Download workbook")
+        output = gr.File(label="Download review workbook")
+        diagnostics_bundle = gr.File(label="Download diagnostics bundle")
         run_button.click(
-            fn=build_review,
-            inputs=[economy, scenario, year, source_workbook, diagnostic_files],
-            outputs=[summary, status, output],
+            fn=build_review_from_export,
+            inputs=[economy, scenario, year, balance_export_workbook, esto_table],
+            outputs=[summary, status, output, diagnostics_bundle],
         )
     return app
 

@@ -1,8 +1,8 @@
 # LEAP Balance Review web app
 
 This is a thin Gradio wrapper around the existing
-`codebase.functions.balance_review_workbook_builder` function. It is not a
-second implementation of the workbook logic.
+`balance-review-from-export` orchestration. It is not a second implementation
+of the diagnostics or workbook logic.
 
 ## Run locally
 
@@ -18,25 +18,35 @@ Open `http://127.0.0.1:7860`.
 The app accepts:
 
 - one LEAP balance export workbook;
-- `leap_balance_source_differences.csv`;
-- `leap_balance_source_review.csv`;
-- optional `leap_balance_mapping_issues.csv` and
-  `ninth_projection_allocation_diagnostics.csv`.
+- optionally, an ESTO base-table CSV override.
 
-It returns the same five-sheet balance-review workbook as the desktop release.
+It runs the diagnostics internally using the configured ESTO and 9th-edition
+source tables, then returns the same five-sheet balance-review workbook as the
+desktop release. It also offers a ZIP containing the derived diagnostics CSVs.
 
 ## Hugging Face deployment
 
 Use this repository as the source checkout for the Space, or copy `app.py` and
 `requirements.txt` into the Space while preserving the `codebase/` package.
-The app imports the builder from this repository at runtime. Rebuild the Space
-from the latest repository commit whenever the builder changes; no bundled EXE
-is required.
+The app imports the orchestration from this repository at runtime. Rebuild the
+Space from the latest repository commit whenever the workflow changes; no
+bundled EXE or pre-existing diagnostics folder is required.
 
 For a Space whose working directory is the repository root, set the Space SDK
 to Gradio and use `web_app/app.py` as the application file, or place the file
 at the Space root as `app.py`.
 
-The current wrapper implements the existing-diagnostics workflow. It does not
-run the upstream diagnostic-generation pipeline, which requires the much larger
-ESTO/9th-edition source data and mapping repositories.
+The complete workflow requires the sibling `leap_mappings` and
+`leap_dashboard` source repositories plus the configured ESTO/9th-edition data
+assets. For local runs, the app expects the sibling repositories by default:
+
+```text
+github/
+  leap_initialisation/
+  leap_mappings/
+  leap_dashboard/
+```
+
+For another deployment layout, set `LEAP_MAPPINGS_ROOT` and
+`LEAP_DASHBOARD_ROOT` before starting the app. The run preflight fails clearly
+if those repositories or required source assets are absent.
