@@ -87,7 +87,7 @@ GUIDE_JS = """
     { target: '#year-input', title: 'Choose the review year(s)', copy: 'Enter one year such as 2022, or several comma-separated years such as 2022, 2030, 2040. These control the workbook review.', image: '' },
     { target: '#outputs-wanted', title: 'Choose what to build', copy: 'Keep workbook and dashboard selected when you want both outputs. The dashboard is the visual overview; the workbook is the detailed worklist.', image: '' },
     { target: '#run-button', title: 'Start the review', copy: 'Run the workflow. Diagnostics, workbooks, dashboard pages, and archives appear in Results when processing finishes. The run can take several minutes.', image: '' },
-    { target: '#workbook-note, #results-card', title: 'Read the workbook in order', copy: 'Use LEAP Values to orient yourself, LEAP – Source Error to find disagreements, Correct Source Values to see the reference value, and Full Expected Source to understand missing structure.', image: '__WORKBOOK_IMAGE__' },
+    { target: '#workbook-note, #results-card', title: 'Read the workbook in order', copy: 'Use LEAP Values to orient yourself, LEAP – Source Error to find disagreements, and Full Expected Source to see the full ninth/ESTO balance table for that year.', image: '__WORKBOOK_IMAGE__' },
     { target: '#saved-reviews, #results-card', title: 'Explore and save the dashboard', copy: 'Open the dashboard link to see the whole picture. Saved reviews stay in this browser; download the complete archive when you need a durable copy.', image: '__DASHBOARD_IMAGE__' }
   ];
   const installGuide = () => {

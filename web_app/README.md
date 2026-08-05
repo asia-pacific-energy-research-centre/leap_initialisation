@@ -27,7 +27,7 @@ desktop/portable workflow, but the web wrapper always passes `None` and uses
 the configured pinned ESTO table.
 
 It runs the diagnostics internally using the configured ESTO and 9th-edition
-source tables, then returns the four-sheet balance-review workbook as the
+source tables, then returns the three-sheet balance-review workbook as the
 desktop release. It also runs the dashboard workflow, displays the generated
 interactive dashboard pages in the app, and offers a ZIP containing the full
 dashboard folder/subfolders, workbook, diagnostics, and logs. The embedded
