@@ -47,153 +47,213 @@ if str(INITIALISATION_ROOT) not in sys.path:
 
 
 APP_CSS = """
-/* A warm, quiet workspace instead of Gradio's default technical form. */
+/* LEAP-inspired: light-blue workspace, orange actions, crisp desktop panels. */
 .gradio-container {
-  --body-background-fill: #f5f7f3;
-  --body-text-color: #253530;
+  --body-background-fill: #edf3fa;
+  --body-text-color: #1d2d3d;
   --block-background-fill: #ffffff;
-  --block-border-color: #dfe6df;
-  --input-background-fill: #fbfcfa;
-  --input-border-color: #d9e2da;
+  --block-border-color: #b7c8da;
+  --input-background-fill: #ffffff;
+  --input-border-color: #aebfd2;
   max-width: 1180px !important;
   width: calc(100% - 2rem) !important;
   margin: 0 auto !important;
-  padding: 1.5rem 0 4rem !important;
-  color: #253530 !important;
+  padding: 1rem 0 4rem !important;
+  color: #1d2d3d !important;
+  font-family: "Segoe UI", Arial, sans-serif !important;
 }
-body, .gradio-container { background: #f5f7f3 !important; }
+body, .gradio-container { background: #edf3fa !important; }
 .gradio-container .prose, .gradio-container label, .gradio-container span {
   color: inherit;
 }
 #app-hero {
-  position: relative;
   overflow: hidden;
   margin-bottom: 1rem;
-  padding: 2rem 2.1rem;
-  border: 1px solid #dce7df;
-  border-radius: 24px;
-  background: linear-gradient(135deg, #ffffff 0%, #eef8f2 100%);
-  box-shadow: 0 16px 42px rgba(40, 74, 61, 0.08);
+  border: 1px solid #9eb3ca;
+  border-radius: 5px;
+  background: #f8fbff;
+  box-shadow: 0 3px 10px rgba(45, 72, 101, 0.1);
 }
-#app-hero::after {
-  content: "";
-  position: absolute;
-  right: -55px;
-  top: -70px;
-  width: 210px;
-  height: 210px;
-  border-radius: 50%;
-  background: rgba(67, 148, 111, 0.1);
+.leap-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 34px;
+  padding: 0.35rem 0.7rem;
+  background: #748aa8;
+  color: #ffffff;
+  font-size: 0.83rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
 }
+.leap-titlebar .leap-mini-mark {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 2px;
+  background: #e85d24;
+  color: #ffffff;
+  font: 800 0.78rem/1 Arial, sans-serif;
+}
+.leap-titlebar .titlebar-context {
+  margin-left: auto;
+  color: #eaf1f8;
+  font-size: 0.76rem;
+  font-weight: 450;
+}
+.hero-body {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1.45rem 1.65rem 1.55rem;
+  background: linear-gradient(100deg, #ffffff 0%, #f4f8fc 72%, #e7eef7 100%);
+}
+.hero-copy { min-width: 0; }
 .hero-eyebrow {
-  display: inline-flex;
-  margin-bottom: 0.6rem;
-  padding: 0.3rem 0.65rem;
-  border-radius: 999px;
-  background: #dff3e7;
-  color: #216347;
-  font-size: 0.75rem;
-  font-weight: 750;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  display: block;
+  margin-bottom: 0.3rem;
+  color: #d9521d;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.11em;
 }
 #app-hero h1 {
-  position: relative;
-  z-index: 1;
-  margin: 0 0 0.55rem;
-  color: #173b30;
-  font-size: clamp(2rem, 4vw, 3.1rem);
-  line-height: 1.03;
-  letter-spacing: -0.04em;
+  margin: 0 0 0.35rem;
+  color: #1f3d5b;
+  font-size: clamp(1.85rem, 4vw, 2.65rem);
+  line-height: 1.05;
+  letter-spacing: -0.025em;
 }
 #app-hero p {
+  max-width: 690px;
+  margin: 0;
+  color: #52677e;
+  font-size: 0.96rem;
+  line-height: 1.5;
+}
+.hero-badge {
+  flex: 0 0 auto;
+  min-width: 130px;
+  padding: 0.7rem 0.85rem;
+  border-left: 4px solid #e85d24;
+  background: #ffffff;
+  color: #52677e;
+  font-size: 0.8rem;
+  box-shadow: 0 1px 4px rgba(48, 76, 105, 0.12);
+}
+.hero-badge strong {
+  display: block;
+  color: #e85d24;
+  font-size: 1.25rem;
+  line-height: 1.05;
+}
+.step-heading {
   position: relative;
   z-index: 1;
-  max-width: 700px;
-  margin: 0;
-  color: #587068;
-  font-size: 1rem;
-  line-height: 1.6;
+  margin: 1.15rem 0 -1px;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #aebfd2;
+  border-bottom-color: #c4d2e0;
+  border-radius: 4px 4px 0 0;
+  background: #dfe9f4;
 }
-.step-heading { margin: 1.5rem 0 0.65rem; }
 .step-heading .step-number {
   display: inline-grid;
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 1.5rem;
+  height: 1.5rem;
   margin-right: 0.5rem;
   place-items: center;
-  border-radius: 50%;
-  background: #27765a;
+  border-radius: 2px;
+  background: #e85d24;
   color: white;
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   font-weight: 800;
 }
-.step-heading strong { color: #203f35; font-size: 1.1rem; }
-.step-heading p { margin: 0.2rem 0 0 2.3rem; color: #6c7d77; font-size: 0.88rem; }
+.step-heading strong { color: #233e58; font-size: 1rem; }
+.step-heading p { margin: 0.16rem 0 0 2.05rem; color: #60768d; font-size: 0.82rem; }
 #details-card, #upload-card, #run-card, #results-card, #dashboard-card {
   gap: 0.8rem;
   padding: 1rem !important;
-  border: 1px solid #dfe7e1 !important;
-  border-radius: 18px !important;
+  border: 1px solid #aebfd2 !important;
+  border-radius: 0 0 4px 4px !important;
   background: #ffffff !important;
-  box-shadow: 0 5px 18px rgba(43, 68, 58, 0.045);
+  box-shadow: 0 2px 6px rgba(45, 72, 101, 0.06);
 }
 #input-row, #upload-row, #action-row, #download-row, #dashboard-controls { gap: 0.8rem; }
 #input-row .gr-form, #upload-row .gr-form { padding: 0.65rem 0.75rem; }
 .gradio-container input, .gradio-container textarea, .gradio-container select {
-  border-radius: 10px !important;
+  border-radius: 3px !important;
+  border-color: #aebfd2 !important;
 }
 .gradio-container span[data-testid="block-info"] {
   padding: 0 0 0.35rem !important;
   border: 0 !important;
   background: transparent !important;
-  color: #43574f !important;
+  color: #304b66 !important;
   font-weight: 700 !important;
 }
 #balance-upload .file-preview, #balance-upload .upload-container,
 #balance-upload .file-upload { min-height: 104px !important; }
-#balance-upload .file-upload { padding: 0.75rem !important; border-radius: 13px !important; }
-#advanced-options { margin-top: 0.8rem; border-radius: 14px !important; }
-#advanced-options > button { color: #526b62 !important; font-weight: 650; }
+#balance-upload .file-upload {
+  padding: 0.75rem !important;
+  border: 1px dashed #e17a50 !important;
+  border-radius: 3px !important;
+  background: #fffaf7 !important;
+}
+#advanced-options { margin-top: 0.8rem; border-radius: 3px !important; border-color: #b7c8da !important; }
+#advanced-options > button { color: #405a73 !important; font-weight: 650; background: #f2f6fa !important; }
+#technical-details { border-radius: 3px !important; border-color: #b7c8da !important; }
+#technical-details > button { color: #405a73 !important; font-weight: 650; background: #f2f6fa !important; }
 #esto-note {
   margin: 0;
   padding: 0.65rem 0.8rem;
-  border-radius: 10px;
-  background: #f2f6f3;
-  color: #62756e;
+  border-left: 3px solid #e85d24;
+  border-radius: 2px;
+  background: #f4f7fb;
+  color: #5b7086;
   font-size: 0.82rem;
   line-height: 1.45;
 }
-#run-button { min-width: 320px; min-height: 48px; border-radius: 12px !important; font-weight: 750; }
-#run-button button { box-shadow: 0 7px 18px rgba(39, 118, 90, 0.2); }
+#run-button {
+  min-width: 320px;
+  min-height: 46px;
+  border: 1px solid #c94a19 !important;
+  border-radius: 3px !important;
+  background: #e85d24 !important;
+  color: #ffffff !important;
+  font-weight: 750;
+  box-shadow: 0 2px 5px rgba(188, 70, 24, 0.22);
+}
+#run-button:hover { background: #d9511d !important; }
 #run-status textarea, #run-status input { font-size: 0.88rem; }
 #results-empty, #dashboard-empty {
   padding: 1.1rem;
-  border: 1px dashed #cad7ce;
-  border-radius: 12px;
-  background: #fafcf9;
-  color: #6d7c76;
+  border: 1px dashed #afc1d3;
+  border-radius: 3px;
+  background: #f5f8fc;
+  color: #61758a;
   text-align: center;
 }
 #results-card .file-preview, #dashboard-card .file-preview { min-height: 52px !important; }
 #results-card:has(a[download]) #results-empty { display: none; }
 #clear-dashboards { align-self: end; max-width: 210px; }
-#dashboard-viewer iframe { border-color: #dce4de !important; border-radius: 14px !important; }
+#dashboard-viewer iframe { border-color: #aebfd2 !important; border-radius: 3px !important; }
 #calculator-animation { display: none; align-items: center; gap: 0.65rem;
   min-height: 62px; margin: 0.25rem 0; padding: 0.55rem 0.8rem;
-  border-radius: 12px; background: linear-gradient(90deg, #fff8df, #eff8f2);
-  border: 1px solid #e9dfb8; }
+  border-radius: 3px; background: linear-gradient(90deg, #fff4ed, #eef4fa);
+  border: 1px solid #e7b49f; }
 #calculator-animation.is-running { display: flex; }
 .calc-machine { position: relative; width: 54px; height: 48px; padding: 5px;
-  border: 3px solid #34495e; border-radius: 8px; background: #f8fbff;
-  box-shadow: 3px 3px 0 #34495e; transform: rotate(-3deg); }
+  border: 3px solid #526d88; border-radius: 4px; background: #f8fbff;
+  box-shadow: 3px 3px 0 #526d88; transform: rotate(-3deg); }
 .calc-display { height: 13px; padding: 1px 3px; overflow: hidden; border-radius: 3px;
-  background: #bde8c1; color: #214a2a; font: 700 8px/11px monospace; }
+  background: #dbe7f2; color: #29445f; font: 700 8px/11px monospace; }
 .calc-keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-top: 5px; }
-.calc-key { height: 6px; border-radius: 2px; background: #f2a65a; }
-.calc-key:nth-child(2n) { background: #72b7d8; }
-.calc-key:nth-child(3n) { background: #e76f51; }
-.calc-caption { font-size: 0.86rem; color: #39485a; }
+.calc-key { height: 6px; border-radius: 1px; background: #e85d24; }
+.calc-key:nth-child(2n) { background: #5e8fbe; }
+.calc-key:nth-child(3n) { background: #f09a43; }
+.calc-caption { font-size: 0.86rem; color: #405a73; }
 .calc-caption span { display: inline-block; width: 1.2em; text-align: left; }
 #calculator-animation.is-running .calc-machine { animation: calculator-wobble 0.65s ease-in-out infinite alternate; }
 #calculator-animation.is-running .calc-key { animation: calculator-blink 0.8s steps(2, end) infinite; }
@@ -204,7 +264,9 @@ body, .gradio-container { background: #f5f7f3 !important; }
 @keyframes calculator-blink { 50% { filter: brightness(1.45); transform: scale(0.85); } }
 @media (max-width: 760px) {
   .gradio-container { width: calc(100% - 1rem) !important; padding-top: 0.5rem !important; }
-  #app-hero { padding: 1.45rem; border-radius: 18px; }
+  .leap-titlebar .titlebar-context { display: none; }
+  .hero-body { align-items: flex-start; flex-direction: column; padding: 1.15rem; }
+  .hero-badge { min-width: 0; width: 100%; }
   #input-row, #upload-row, #action-row, #download-row, #dashboard-controls { flex-direction: column; }
   #input-row > div, #run-button { min-width: 100%; }
   #clear-dashboards { align-self: stretch; max-width: none; }
@@ -813,8 +875,8 @@ def create_app():
     import gradio as gr
 
     theme = gr.themes.Soft(
-        primary_hue="emerald",
-        secondary_hue="amber",
+        primary_hue="orange",
+        secondary_hue="blue",
         neutral_hue="slate",
         radius_size="lg",
     )
@@ -826,10 +888,20 @@ def create_app():
     ) as app:
         gr.HTML(
             """<header id="app-hero">
-              <span class="hero-eyebrow">LEAP review workspace</span>
-              <h1>Check your energy balance with confidence.</h1>
-              <p>Upload a LEAP export and we’ll prepare the diagnostics,
-              review workbooks, and visual dashboards for you.</p>
+              <div class="leap-titlebar">
+                <span class="leap-mini-mark">L</span>
+                <span>LEAP Balance Review</span>
+                <span class="titlebar-context">Energy Balance Diagnostics</span>
+              </div>
+              <div class="hero-body">
+                <div class="hero-copy">
+                  <span class="hero-eyebrow">LOW EMISSIONS ANALYSIS PLATFORM</span>
+                  <h1>Balance Review</h1>
+                  <p>Upload a LEAP export and we’ll prepare the diagnostics,
+                  review workbooks, and visual dashboards for you.</p>
+                </div>
+                <div class="hero-badge"><strong>3 steps</strong>from export to review</div>
+              </div>
             </header>"""
         )
 
@@ -918,7 +990,11 @@ def create_app():
                   <div class="calc-caption">Checking balances and preparing your files<span>...</span></div>
                 </div>"""
             )
-            with gr.Accordion("Technical run details", open=False):
+            with gr.Accordion(
+                "Technical run details",
+                open=False,
+                elem_id="technical-details",
+            ):
                 summary = gr.Code(
                     label="Run summary",
                     language="json",

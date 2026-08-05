@@ -44,8 +44,10 @@ The interface uses a simple three-step flow: identify the model run, upload the
 required LEAP export, and start the review. The optional ESTO override and the
 technical run summary are collapsed by default so the primary path stays clear.
 Results and browser-private dashboard views are grouped separately beneath the
-run controls. The layout is responsive and uses the same warm, low-contrast
-visual system on desktop and narrow screens.
+run controls. The responsive visual system echoes the LEAP desktop application:
+a light-blue workspace, orange action accents, compact blue-grey title bars,
+and crisp bordered panels, without reproducing the desktop application's dense
+toolbars or navigation tree.
 
 ## Source-of-truth rule
 
