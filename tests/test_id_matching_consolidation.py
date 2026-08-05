@@ -685,6 +685,32 @@ def test_validate_seed_files_allows_all_zero_optional_roots(tmp_path: Path) -> N
     assert total_bad == 0
 
 
+def test_validate_seed_files_allows_documented_branch_exception(tmp_path: Path) -> None:
+    from codebase.functions import patch_baseline_seeds
+
+    template_path = tmp_path / "template.xlsx"
+    _write_template(template_path, [_template_row("Resources\\Primary\\Gas", "Imports")])
+
+    exception_path = next(iter(patch_baseline_seeds.VALIDATION_EXCEPTION_BRANCH_NOTES))
+    row = _template_row(exception_path, "Activity Level")
+    row["BranchID"] = -1
+    row["VariableID"] = -1
+    row["Expression"] = "Data(2022,0.01)"
+
+    seed_dir = tmp_path / "seeds"
+    seed_dir.mkdir()
+    _write_seed_workbook(seed_dir / "leap_import_baseline_seed_03_TST.xlsx", [row])
+
+    total_bad = patch_baseline_seeds.validate_seed_files(
+        seed_dir=seed_dir,
+        template_path=template_path,
+        ignore_prefixes=frozenset(),
+        ignore_fuel_names=frozenset(),
+    )
+
+    assert total_bad == 0
+
+
 def test_validate_seed_files_checks_only_explicit_seed_paths(tmp_path: Path) -> None:
     from codebase.functions import patch_baseline_seeds
 

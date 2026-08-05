@@ -368,6 +368,26 @@ VALIDATION_IGNORE_FUEL_NAMES: frozenset[str] = frozenset({
     # are remapped to "Solar nonspecified" at source in _safe_power_interim_display_label.
 })
 
+# Economy-independent branch exceptions that are intentionally absent from the
+# current LEAP templates.  Keep the reason beside the path so this remains a
+# documented, reviewable exception rather than an unexplained validator skip.
+VALIDATION_EXCEPTION_BRANCH_NOTES: dict[str, str] = {
+    "Demand\\All demand aggregated\\Other sector\\Other recovered gases": (
+        "The sector-split aggregated-demand workflow can produce a small Other "
+        "sector amount for this fuel, but the economy templates do not expose "
+        "that branch; the values are immaterial and are intentionally left out."
+    ),
+}
+
+
+def _validation_exception_note(branch_path: str) -> str | None:
+    """Return the documented exception note for a branch path, if configured."""
+    normalized_path = normalize_template_key(branch_path)
+    for exception_path, note in VALIDATION_EXCEPTION_BRANCH_NOTES.items():
+        if normalize_template_key(exception_path) == normalized_path:
+            return note
+    return None
+
 def split_documented_exclusions(
     df: pd.DataFrame,
     branch_path_col: str = "Branch Path",
@@ -608,6 +628,9 @@ def validate_seed_files(
             if any(bp.startswith(p) for p in ignore_prefixes):
                 continue
             if bp.split("\\")[-1] in ignore_fuel_names:
+                continue
+
+            if _validation_exception_note(bp) is not None:
                 continue
 
             # Case-insensitive match: resolve to canonical template path if found.
