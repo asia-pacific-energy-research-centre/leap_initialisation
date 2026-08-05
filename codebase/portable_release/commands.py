@@ -16,11 +16,13 @@ Every command follows the same shape:
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
@@ -71,6 +73,21 @@ class CommandResult:
         for key, value in self.outputs.items():
             lines.append(f"  {key}: {value}")
         return lines
+
+
+
+# Dashboards are read by the APERC team in Tokyo, so a hosted render is
+# stamped in their timezone rather than whichever one the server sits in.
+DASHBOARD_TIMEZONE = os.environ.get("COMMON_ESTO_DASHBOARD_TIMEZONE", "Asia/Tokyo")
+
+
+def _dashboard_updated_label() -> str:
+    """Return the timestamp shown in rendered dashboard headers."""
+    try:
+        zone = ZoneInfo(DASHBOARD_TIMEZONE)
+    except (ZoneInfoNotFoundError, ValueError):
+        zone = datetime.now().astimezone().tzinfo
+    return datetime.now(zone).strftime("%Y-%m-%d %H:%M %Z")
 
 
 def _resolve_user_path(context: RuntimeContext, value: Path | str) -> Path:
@@ -874,9 +891,7 @@ def run_dashboard(
             max_year=max_year,
             include_ninth_pre_base_year_data=include_ninth_pre_base_year_data,
             missing_leap_demand_branches=missing_branches,
-            dashboard_updated_label=datetime.now().astimezone().strftime(
-                "%Y-%m-%d %H:%M %Z"
-            ),
+            dashboard_updated_label=_dashboard_updated_label(),
             clear_existing=True,
         )
         return {
@@ -1075,9 +1090,7 @@ def run_dashboard_from_export(
             max_year=max_year,
             include_ninth_pre_base_year_data=include_ninth_pre_base_year_data,
             missing_leap_demand_branches=missing_branches,
-            dashboard_updated_label=datetime.now().astimezone().strftime(
-                "%Y-%m-%d %H:%M %Z"
-            ),
+            dashboard_updated_label=_dashboard_updated_label(),
             clear_existing=True,
         )
         return {
