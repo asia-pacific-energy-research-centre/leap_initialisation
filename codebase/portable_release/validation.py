@@ -508,6 +508,7 @@ def validate_balance_review_from_export_inputs(
     mapping_workbook_path: Path | str | None,
     bundled_esto_table: Path | str | None,
     projection_table: Path | str | None,
+    extra_years: Sequence[int] = (),
 ) -> ValidationReport:
     """Validate the inputs for a LEAP-export-to-workbook run.
 
@@ -544,6 +545,29 @@ def validate_balance_review_from_export_inputs(
             report.add("year", True, f"Review year {year_value}.")
         report.facts["year"] = year_value
 
+    # Additional years are checked here too. Left to the run, a bad third year
+    # surfaces only after the first two have each taken several minutes.
+    extra_values: list[int] = []
+    for extra in extra_years:
+        try:
+            extra_value = int(extra)
+        except (TypeError, ValueError):
+            report.add(
+                f"year_{extra}", False,
+                f"The year must be a four-digit number, got {extra!r}.",
+            )
+            continue
+        if not 1990 <= extra_value <= 2100:
+            report.add(
+                f"year_{extra_value}", False,
+                f"The year {extra_value} is outside the supported range 1990-2100.",
+            )
+            continue
+        report.add(f"year_{extra_value}", True, f"Review year {extra_value}.")
+        extra_values.append(extra_value)
+    if extra_years:
+        report.facts["years"] = [year_value, *extra_values]
+
     workbook_path = Path(str(balance_export_workbook)) if balance_export_workbook else None
     workbook_ok = _check_readable_file(
         report,
@@ -553,9 +577,10 @@ def validate_balance_review_from_export_inputs(
         suffixes=(".xlsx",),
     )
     if workbook_ok and workbook_path is not None and scenario_name and year_value:
-        _check_balance_export_sheet(
-            report, workbook_path, scenario=scenario_name, year=year_value
-        )
+        for value in [year_value, *extra_values]:
+            _check_balance_export_sheet(
+                report, workbook_path, scenario=scenario_name, year=value
+            )
         _check_balance_export_level2(report, workbook_path)
 
     _check_readable_file(

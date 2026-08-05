@@ -13,6 +13,38 @@ in the program's first line identify a copy; that file identifies it precisely.
 
 ---
 
+## 0.3.0
+
+**The opening screen explains itself.**
+It now says what the program does — which folder it reads your LEAP exports
+from, what the two outputs are, and where they will be written — before asking
+anything. It also says what to type: which numbers are valid, that pressing
+Enter accepts the value shown in `[brackets]`, and which words the scenario
+question expects.
+
+**You can review several years at once.**
+The year question now says what the year is *for* — the workbook compares LEAP
+against ESTO for the year(s) you name — and accepts more than one:
+
+```
+Year(s) [2022]: 2022,2030,2040
+```
+
+Each year produces its own workbook and adds a few minutes. Previously a list
+was accepted silently and only the first year was used.
+
+**The dashboard is easier to find.**
+It was five folders deep, with the economy code repeated twice. That level is
+gone, and `OPEN THE DASHBOARD.html` sits at the top of the folder:
+
+```text
+output/20_USA/dashboard/OPEN THE DASHBOARD.html     <- open this
+output/20_USA/dashboard/dashboards/
+output/20_USA/dashboard/chart_bundles/
+```
+
+---
+
 ## 0.2.0
 
 **Double-clicking now just asks what you want.**

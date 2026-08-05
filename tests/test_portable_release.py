@@ -890,8 +890,12 @@ def test_guided_flow_asks_only_what_a_user_can_answer() -> None:
     source = (
         REPO_ROOT / "codebase" / "portable_release" / "portable_main.py"
     ).read_text(encoding="utf-8")
-    assert '_prompt("Which economy"' in source
-    assert '_prompt("Which year"' in source
+    # Assert the questions asked, not their exact wording: the prompts were
+    # since reworded for someone seeing them for the first time, and pinning
+    # the strings here made that a test failure rather than an improvement.
+    guided_flow = source[source.index("def _guided_flow("):source.index("def _report(")]
+    assert "_prompt(" in guided_flow
+    assert "Economy" in guided_flow and "Year" in guided_flow
     assert "_dispatch_balance_review_from_export(context, values)" in source
     assert "_dispatch_dashboard_from_export(context," in source
     # No path questions inside the guided flow: the exports are found from the

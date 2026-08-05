@@ -140,8 +140,20 @@ def _guided_flow(context, frozen: dict[str, Any]) -> int:
     print()
     print(f"{context.release_name} {context.release_version}{_build_stamp(frozen)}")
     print("=" * 72)
-    print(f"Put your LEAP exports in : {exports_root}")
-    print(f"Results appear in        : {context.output_root}")
+    # Say what the program does before asking anything. Someone opening this for
+    # the first time was previously shown two folder paths and a numbered list,
+    # with nothing explaining what was about to happen to them.
+    print("This reads the energy balances you exported from LEAP and produces")
+    print("two things for one economy:")
+    print()
+    print("  * a balance-review workbook - where LEAP disagrees with ESTO, by")
+    print("    flow and product, for the year(s) you choose;")
+    print("  * a dashboard - LEAP against ESTO and the 9th, as charts you open")
+    print("    in a browser.")
+    print()
+    print(f"  Reading exports from : {exports_root}")
+    print(f"  Writing results to   : {context.output_root}")
+    print("=" * 72)
     print()
 
     found = [item for item in workspace.discover_economies(exports_root) if item.workbooks]
@@ -151,7 +163,8 @@ def _guided_flow(context, frozen: dict[str, Any]) -> int:
         print(workspace.describe_workspace(exports_root))
         return 1
 
-    print("Economies with exports:")
+    print("Economies I can see exports for:")
+    print()
     for index, item in enumerate(found, start=1):
         scenarios = ", ".join(w.scenario for w in item.workbooks)
         years = f"{min(item.years)}-{max(item.years)}" if item.years else "years unknown"
@@ -160,8 +173,14 @@ def _guided_flow(context, frozen: dict[str, Any]) -> int:
     print("  c. check that this copy is working")
     print("  q. quit")
     print()
+    # Spell out the interaction. "[1]" is obvious only to someone who already
+    # knows the convention; a new user cannot tell whether it is a label, a
+    # count, or something they are meant to type.
+    print(f"Type a number from the list above (1 to {len(found)}) and press Enter.")
+    print("Press Enter on its own to accept the [default] shown in brackets.")
+    print()
 
-    choice = _prompt("Which economy", default="1").strip().lower()
+    choice = _prompt("Economy number", default="1").strip().lower()
     if choice in {"q", "quit", "exit"}:
         return 0
     if choice in {"c", "check", "selfcheck"}:
@@ -174,22 +193,40 @@ def _guided_flow(context, frozen: dict[str, Any]) -> int:
             break
     if chosen is None:
         print(f"'{choice}' is not one of the economies listed above.")
+        print(f"Type a number from 1 to {len(found)}, or q to quit.")
         return 2
 
+    print()
     scenarios = [w.scenario for w in chosen.workbooks]
     if len(scenarios) == 1:
         scenario = scenarios[0]
-        print(f"Scenario: {scenario} (the only one available for {chosen.economy})")
+        print(f"Scenario: {scenario} - the only one exported for {chosen.economy}.")
     else:
-        scenario = _prompt(f"Which scenario ({' or '.join(scenarios)})", default=scenarios[-1])
-    year = _prompt("Which year", default=str(workspace._suggested_review_year(chosen.years)))
+        print(f"{chosen.economy} has both scenarios exported.")
+        print(f"Type {' or '.join(scenarios)} and press Enter.")
+        scenario = _prompt("Scenario", default=scenarios[-1])
+
+    print()
+    suggested = workspace._suggested_review_year(chosen.years)
+    span = (
+        f"{min(chosen.years)} to {max(chosen.years)}"
+        if chosen.years
+        else "the years in your export"
+    )
+    print("Which year should the balance review compare?")
+    print(f"  The workbook checks LEAP against ESTO for the year(s) you name.")
+    print(f"  Your export covers {span}. {suggested} is the base year LEAP is")
+    print("  calibrated on, which is usually the one worth checking first.")
+    print("  For more than one year, separate them with commas: 2022,2030,2040")
+    print("  (each year adds a few minutes, and produces its own workbook).")
+    years_text = _prompt("Year(s)", default=str(suggested))
     print()
 
-    print(f"Running both tools for {chosen.economy} {scenario} {year}.")
-    print("The dashboard takes a few minutes; progress is printed as it goes.")
+    print(f"Running both tools for {chosen.economy} {scenario} {years_text}.")
+    print("This takes several minutes; each step is printed as it starts.")
     print()
 
-    values = {"economy": chosen.economy, "scenario": scenario, "year": year}
+    values = {"economy": chosen.economy, "scenario": scenario, "year": years_text}
     review_status = _dispatch_balance_review_from_export(context, values)
     print()
     print("-" * 72)

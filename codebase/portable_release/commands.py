@@ -16,6 +16,8 @@ Every command follows the same shape:
 from __future__ import annotations
 
 import json
+import re
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -469,6 +471,33 @@ def resolve_export_for(
         ) from None
 
 
+def parse_years(value: Any) -> list[int]:
+    """Read one year, or several, from what a user typed.
+
+    ``2022``, ``2022,2030``, ``2022, 2030`` and ``2022 2030`` all work. The
+    diagnostics workflow has always taken a list of years and built a workbook
+    for each; only this command's signature said one, silently discarding the
+    rest, so a comma here used to produce a single workbook with no complaint.
+    """
+    if isinstance(value, int):
+        return [value]
+    parts = [part for part in re.split(r"[,\s]+", str(value).strip()) if part]
+    if not parts:
+        raise ValueError("No year given.")
+    years: list[int] = []
+    for part in parts:
+        try:
+            year = int(part)
+        except ValueError:
+            raise ValueError(
+                f"{part!r} is not a year. Give a year like 2022, or several "
+                "separated by commas: 2022,2030"
+            ) from None
+        if year not in years:
+            years.append(year)
+    return years
+
+
 def run_balance_review_from_export(
     context: RuntimeContext,
     *,
@@ -494,6 +523,7 @@ def run_balance_review_from_export(
     supplied table does not carry them. That behaviour is not reimplemented
     here; it is the same code path and the same rules file.
     """
+    review_years = parse_years(year)
     workbook_path = resolve_export_for(
         context,
         economy=economy,
@@ -508,7 +538,8 @@ def run_balance_review_from_export(
         return validation.validate_balance_review_from_export_inputs(
             economy=economy,
             scenario=scenario,
-            year=year,
+            year=review_years[0],
+            extra_years=review_years[1:],
             balance_export_workbook=workbook_path,
             esto_table_path=supplied_esto,
             mapping_workbook_path=context.config_asset("outlook_mappings_master"),
@@ -566,7 +597,7 @@ def run_balance_review_from_export(
         outcome = run_balance_update_workflow(
             preset=_PRESET_REVIEW_ONLY,
             economies=[economy_code],
-            review_years=[int(year)],
+            review_years=review_years,
             review_scenarios=[scenario_name],
             update_scenarios=[],
             output_root=run_dir,
@@ -580,8 +611,12 @@ def run_balance_review_from_export(
         )
 
         diagnostics_dir = run_dir / "diagnostics"
-        built = outcome["review_workbooks"][0]
-        built.pop("reconciliationSamples", None)
+        # One workbook per requested year. This used to take [0] and drop the
+        # rest on the floor, so asking for three years quietly produced one.
+        produced_all = list(outcome["review_workbooks"])
+        for item in produced_all:
+            item.pop("reconciliationSamples", None)
+        built = produced_all[0]
 
         # The diagnostics workflow writes the workbook under its own
         # diagnostics/comparison_workbooks/ tree. That is the right shape for a
@@ -589,13 +624,16 @@ def run_balance_review_from_export(
         # point of the command, and burying it two folders below the supporting
         # CSVs makes a user hunt for it. Lift it to the deliverable folder and
         # leave the diagnostics beside it.
-        produced = Path(str(built["outputWorkbook"]))
-        if produced.is_file() and produced.parent != run_dir:
-            final = run_dir / produced.name
-            if final.exists():
-                final.unlink()
-            produced.replace(final)
-            built["outputWorkbook"] = str(final)
+        workbooks: list[str] = []
+        for item in produced_all:
+            produced = Path(str(item["outputWorkbook"]))
+            if produced.is_file() and produced.parent != run_dir:
+                final = run_dir / produced.name
+                if final.exists():
+                    final.unlink()
+                produced.replace(final)
+                item["outputWorkbook"] = str(final)
+            workbooks.append(str(item["outputWorkbook"]))
 
         input_records = [describe_file(workbook_path, role="input:balance_export_workbook")]
         if supplied_esto is not None:
@@ -605,10 +643,12 @@ def run_balance_review_from_export(
         return {
             "_input_records": input_records,
             "workbook": built["outputWorkbook"],
+            "workbooks": workbooks,
             "diagnostics_directory": str(diagnostics_dir),
             "economy": economy_code,
             "scenario": scenario_name,
-            "year": int(year),
+            "year": review_years[0],
+            "years": review_years,
             "esto_table_used": str(esto_table),
             "esto_table_is_user_supplied": supplied_esto is not None,
             "esto_vintage_years": vintage.label,
@@ -617,7 +657,10 @@ def run_balance_review_from_export(
         }
 
     def describe_outputs(outputs: dict[str, Any]) -> list:
-        records = [describe_file(outputs["workbook"], role="output:balance_review_workbook")]
+        records = [
+            describe_file(path, role="output:balance_review_workbook")
+            for path in outputs["workbooks"]
+        ]
         records += describe_directory_files(
             outputs["diagnostics_directory"],
             role_prefix="output:diagnostic_artifact",
@@ -637,7 +680,8 @@ def run_balance_review_from_export(
         settings={
             "economy": economy,
             "scenario": scenario,
-            "year": year,
+            "year": review_years[0],
+            "years": review_years,
             "balance_export_workbook": str(workbook_path),
             "esto_table_override": str(supplied_esto) if supplied_esto else "",
             "input_mode": "leap_balance_export",
@@ -655,7 +699,8 @@ def run_balance_review_from_export(
         ],
         subject=(
             f"Building the balance-review workbook for "
-            f"{validation.normalize_economy(economy)} {scenario} {year}."
+            f"{validation.normalize_economy(economy)} {scenario} "
+            f"{', '.join(str(y) for y in review_years)}."
         ),
     )
 
@@ -663,6 +708,58 @@ def run_balance_review_from_export(
 # ---------------------------------------------------------------------------
 # dashboard
 # ---------------------------------------------------------------------------
+
+
+#: Written at the top of a dashboard folder so the pages are one click away.
+#: The rendered pages link to each other by bare filename and to
+#: ``../chart_bundles/``, so they cannot simply be moved up a level - this
+#: points at them instead, which is the same result with none of the risk.
+_DASHBOARD_SHORTCUT_NAME = "OPEN THE DASHBOARD.html"
+_DASHBOARD_SHORTCUT = """<!doctype html>
+<meta charset="utf-8">
+<title>Opening the dashboard...</title>
+<meta http-equiv="refresh" content="0; url=dashboards/index.html">
+<p style="font-family: Segoe UI, Arial, sans-serif">
+Opening the dashboard. If nothing happens,
+<a href="dashboards/index.html">click here</a>.
+</p>
+"""
+
+
+def _flatten_dashboard_output(run_dir: Path, result: dict[str, Any]) -> dict[str, Any]:
+    """Lift the rendered dashboard out of its redundant economy sub-folder.
+
+    The renderer writes into ``<output_root>/<ECONOMY>/``, which is the right
+    shape when one root holds every economy. Here the folder above it is already
+    that economy, so the result was
+    ``output/20_USA/dashboard/20USA/dashboards/index.html`` - five levels down,
+    with the economy named twice, to reach the one file anyone wants.
+
+    The pages themselves are left exactly as rendered: they link to each other
+    by bare filename and reach their charts through ``../chart_bundles/``, so
+    moving individual files would break them. Only the duplicated directory
+    level is removed, and a one-line page at the top points at the index.
+    """
+    rendered_root = Path(result.get("output_root", "")) if result.get("output_root") else None
+    if rendered_root is None or not rendered_root.is_dir() or rendered_root == run_dir:
+        return result
+    for item in list(rendered_root.iterdir()):
+        destination = run_dir / item.name
+        if destination.exists():
+            shutil.rmtree(destination) if destination.is_dir() else destination.unlink()
+        shutil.move(str(item), str(destination))
+    rendered_root.rmdir()
+
+    moved = dict(result)
+    for key, value in result.items():
+        if isinstance(value, (str, Path)) and str(value).startswith(str(rendered_root)):
+            moved[key] = str(run_dir / Path(str(value)).relative_to(rendered_root))
+    moved["output_root"] = str(run_dir)
+
+    shortcut = run_dir / _DASHBOARD_SHORTCUT_NAME
+    shortcut.write_text(_DASHBOARD_SHORTCUT, encoding="utf-8")
+    moved["open_this"] = str(shortcut)
+    return moved
 
 
 def _missing_leap_demand_branches(context: RuntimeContext, economy: str) -> list[str]:
@@ -949,7 +1046,7 @@ def run_dashboard_from_export(
             # why a number differs from the previous run.
             "esto_source_notes": list(chain_result.get("notes", [])),
             "mapping_chain": chain_result,
-            **result,
+            **_flatten_dashboard_output(run_dir, result),
         }
 
     def describe_outputs(outputs: dict[str, Any]) -> list:
