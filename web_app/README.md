@@ -26,7 +26,7 @@ balance-table review and dashboard. The dashboard uses the latest year in that
 ESTO dataset as its base year.
 
 It runs the diagnostics internally using the configured ESTO and 9th-edition
-source tables, then returns the same five-sheet balance-review workbook as the
+source tables, then returns the four-sheet balance-review workbook as the
 desktop release. It also runs the dashboard workflow, displays the generated
 interactive dashboard pages in the app, and offers a ZIP containing the full
 dashboard folder/subfolders, workbook, diagnostics, and logs. The embedded

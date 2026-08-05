@@ -15,7 +15,6 @@ from openpyxl import load_workbook
 from openpyxl.cell import Cell
 from openpyxl.styles import Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.worksheet.worksheet import Worksheet
 
 
@@ -23,7 +22,6 @@ LEAP_SHEET_NAME = "LEAP Values"
 ERROR_SHEET_NAME = "LEAP - Source Error"
 CORRECT_SHEET_NAME = "Correct Source Values"
 FULL_EXPECTED_SHEET_NAME = "Full Expected Source"
-MISSING_SHEET_NAME = "Missing Combinations"
 OUTPUT_UNITS = "Petajoule"
 
 RED_FONT = "9C0006"
@@ -36,11 +34,7 @@ NO_COMPARATOR_FILL = "E4DFEC"
 AFFECTED_SUPPLY_FONT = "375623"
 AFFECTED_SUPPLY_FILL = "E2F0D9"
 AFFECTED_SUPPLY_BORDER = "70AD47"
-PALE_RED_FILL = "F4CCCC"
 NEUTRAL_FILL = "F2F2F2"
-HEADER_FILL = "1F4E78"
-HEADER_FONT = "FFFFFF"
-SUBHEADER_FILL = "D9EAF7"
 PJ_NUMBER_FORMAT = "#,##0.00;-#,##0.00;-"
 FORMULA_ERROR_PATTERN = re.compile(r"#REF!|#DIV/0!|#VALUE!|#NAME\?|#N/A", re.I)
 
@@ -304,136 +298,6 @@ def _make_missing_record(
     ]
 
 
-def _write_missing_sheet(
-    sheet: Worksheet,
-    *,
-    economy: str,
-    source_metadata: dict[str, object],
-    reviews: list[dict[str, str]],
-    mapping_issues: list[dict[str, str]],
-    status_counts: Counter,
-    issue_counts: Counter,
-    comparison_state_counts: dict[str, int],
-    affected_supply_count: int,
-    missing_records: list[list[object]],
-) -> int:
-    headers = [
-        "Category",
-        "Economy",
-        "Scenario",
-        "Year",
-        "LEAP balance row",
-        "LEAP fuel",
-        "LEAP value (PJ)",
-        "Diagnostic/source status",
-        "Reason/details",
-        "Present in visible structure",
-        "Candidate cell count",
-        "Intended cell address",
-        "Structure resolution status",
-        "Recommended interpretation",
-    ]
-    sheet.sheet_view.showGridLines = False
-    sheet.merge_cells("A1:N1")
-    sheet["A1"] = (
-        f"{economy} {source_metadata['scenario']} {source_metadata['year']} "
-        "Balance Diagnostic - Missing and Unavailable Combinations"
-    )
-    sheet["A1"].fill = PatternFill("solid", fgColor=HEADER_FILL)
-    sheet["A1"].font = Font(bold=True, color=HEADER_FONT, size=14)
-    sheet.merge_cells("A2:N2")
-    sheet["A2"] = (
-        "Diagnostic view only. Red = mismatch; blue = source; purple = no direct "
-        "projection comparator (seed/carry-forward); yellow = other unavailable "
-        "comparator; green = production/import/export affected by those "
-        "transformation values."
-    )
-    sheet["A2"].fill = PatternFill("solid", fgColor=SUBHEADER_FILL)
-    sheet["A2"].font = Font(color="1F1F1F", italic=True)
-
-    summary = [
-        ["Comparison rows", len(reviews), "Mapped comparable rows", comparison_state_counts["mapped"]],
-        ["Mismatches", status_counts["value_mismatch"], "Matches", status_counts["match"]],
-        ["Seed/carry-forward comparator gaps", comparison_state_counts["no_direct_projection_comparator"], "Affected supply cells", affected_supply_count],
-        ["Reference unavailable", status_counts["reference_unavailable"], "Structure absent", comparison_state_counts["missing_visible_structure"]],
-        ["Mapping/check issue rows", len(mapping_issues), "Missing ESTO pair", issue_counts["missing_esto_pair"]],
-        ["Total-balance boundary errors", issue_counts["total_balance_mapping_check"], "Ambiguous structure", comparison_state_counts["ambiguous_structure_resolution"]],
-    ]
-    thin_blue = Side(style="thin", color="B4C6E7")
-    for row_offset, values in enumerate(summary, start=4):
-        for column, value in enumerate(values, start=1):
-            cell = sheet.cell(row=row_offset, column=column, value=value)
-            cell.border = Border(
-                left=thin_blue,
-                right=thin_blue,
-                top=thin_blue,
-                bottom=thin_blue,
-            )
-            if column in {1, 3}:
-                cell.font = Font(bold=True, color=BLUE_FONT)
-            else:
-                cell.number_format = "#,##0"
-        sheet.row_dimensions[row_offset].height = 18
-
-    header_row = 10
-    first_data_row = 11
-    for column, header in enumerate(headers, start=1):
-        cell = sheet.cell(row=header_row, column=column, value=header)
-        cell.fill = PatternFill("solid", fgColor=HEADER_FILL)
-        cell.font = Font(bold=True, color=HEADER_FONT)
-        alignment = copy(cell.alignment)
-        alignment.wrap_text = True
-        alignment.vertical = "center"
-        cell.alignment = alignment
-
-    pale_border = Side(style="thin", color="E7E6E6")
-    bottom_border = Side(style="thin", color="BFBFBF")
-    for row_index, record in enumerate(missing_records, start=first_data_row):
-        category = str(record[0])
-        fill_color = (
-            PALE_RED_FILL
-            if category == "aggregate_boundary_error"
-            else NO_COMPARATOR_FILL
-            if category == "no_direct_projection_comparator"
-            else YELLOW_FILL
-        )
-        for column, value in enumerate(record, start=1):
-            cell = sheet.cell(row=row_index, column=column, value=value)
-            cell.fill = PatternFill("solid", fgColor=fill_color)
-            alignment = copy(cell.alignment)
-            alignment.wrap_text = True
-            alignment.vertical = "top"
-            cell.alignment = alignment
-            cell.border = Border(top=pale_border, bottom=bottom_border)
-        sheet.cell(row=row_index, column=4).number_format = "0"
-        sheet.cell(row=row_index, column=7).number_format = PJ_NUMBER_FORMAT
-        sheet.cell(row=row_index, column=11).number_format = "0"
-
-    last_data_row = header_row + len(missing_records)
-    widths_pixels = [
-        200, 90, 200, 65, 230, 170, 110, 190, 330, 120, 100, 120, 160, 300
-    ]
-    for column, pixels in enumerate(widths_pixels, start=1):
-        sheet.column_dimensions[get_column_letter(column)].width = max(8, pixels / 7)
-    sheet.row_dimensions[header_row].height = 27
-    sheet.freeze_panes = f"A{first_data_row}"
-
-    if missing_records:
-        table = Table(
-            displayName="MissingCombinationsTable",
-            ref=f"A{header_row}:N{last_data_row}",
-        )
-        table.tableStyleInfo = TableStyleInfo(
-            name="TableStyleMedium2",
-            showFirstColumn=False,
-            showLastColumn=False,
-            showRowStripes=False,
-            showColumnStripes=False,
-        )
-        sheet.add_table(table)
-    return last_data_row
-
-
 def _scan_formula_errors(workbook) -> list[str]:
     errors: list[str] = []
     for sheet_name in [ERROR_SHEET_NAME, CORRECT_SHEET_NAME, FULL_EXPECTED_SHEET_NAME]:
@@ -453,7 +317,7 @@ def build_balance_structure_review_workbook(
     diagnostics_directory: Path | str,
     output_workbook: Path | str,
 ) -> dict[str, object]:
-    """Create the five-sheet balance-review workbook without Node dependencies."""
+    """Create the four-sheet balance-review workbook without Node dependencies."""
     source_path = Path(source_workbook)
     diagnostics_dir = Path(diagnostics_directory)
     output_path = Path(output_workbook)
@@ -951,20 +815,6 @@ def build_balance_structure_review_workbook(
 
     status_counts = Counter(row.get("status") or "" for row in reviews)
     issue_counts = Counter(row.get("reason") or "" for row in mapping_issues)
-    missing_sheet = workbook.create_sheet(MISSING_SHEET_NAME)
-    _write_missing_sheet(
-        missing_sheet,
-        economy=economy,
-        source_metadata=source_metadata,
-        reviews=reviews,
-        mapping_issues=mapping_issues,
-        status_counts=status_counts,
-        issue_counts=issue_counts,
-        comparison_state_counts=comparison_state_counts,
-        affected_supply_count=len(affected_supply_keys),
-        missing_records=missing_records,
-    )
-
     formula_error_cells = _scan_formula_errors(workbook)
     if formula_error_cells:
         raise ValueError(f"Formula errors found: {formula_error_cells}")

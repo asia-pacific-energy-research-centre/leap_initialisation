@@ -113,7 +113,7 @@ See `baseline_seed_final_artifact_contract.md` and
 
 **Status: completed 2026-08-03.**
 
-The five-sheet balance-review workbook is now authored by
+The four-sheet balance-review workbook is now authored by
 `codebase/functions/balance_review_workbook_builder.py` with Python and
 `openpyxl`. The former Node.js
 `codebase/balance_structure_review_workbook_workflow.mjs` builder and its

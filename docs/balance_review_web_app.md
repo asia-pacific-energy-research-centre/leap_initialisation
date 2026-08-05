@@ -13,7 +13,7 @@ The app replaces the balance-review part of the portable Windows release:
 4. run the existing diagnostics workflow;
 5. run the existing Python workbook builder;
 6. run the existing dashboard-from-export workflow;
-7. view the generated dashboard pages in the app and download the five-sheet
+7. view the generated dashboard pages in the app and download the four-sheet
    `.xlsx` result plus a combined diagnostic/dashboard bundle;
 8. reopen saved dashboards from previous economy/scenario runs.
 

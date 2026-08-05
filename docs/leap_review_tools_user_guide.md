@@ -186,7 +186,7 @@ that comparison, laid out in the shape of the balance table you already know.
 So a difference is a disagreement between the model and the source — not a
 verdict about which one is wrong.
 
-## The five sheets
+## The four sheets
 
 They are meant to be read in order, and each answers a different question.
 
@@ -196,8 +196,7 @@ flowchart TD
     S2["2. LEAP - Source Error<br/><i>Where does it disagree, and by how much?</i>"]
     S3["3. Correct Source Values<br/><i>What should it have been?</i>"]
     S4["4. Full Expected Source<br/><i>The same, including what is missing</i>"]
-    S5["5. Missing Combinations<br/><i>What could not be compared, and why</i>"]
-    S1 --> S2 --> S3 --> S4 --> S5
+    S1 --> S2 --> S3 --> S4
 ```
 
 **LEAP Values** is your energy balance exactly as LEAP produced it, converted to
@@ -217,9 +216,10 @@ this is the sheet.
 do not exist in your balance structure at all. It answers "is this missing, or is
 it just not applicable here?"
 
-**Missing Combinations** lists everything that could not be compared, one row per
-case, with the reason and a suggested interpretation. Read this before concluding
-that a blank cell means zero — it usually does not.
+Missing and unavailable comparison rows are still counted in the run summary and
+remain available in the diagnostic CSV outputs. They are no longer copied into a
+separate workbook sheet, so the review workbook stays focused on the four core
+balance views.
 
 ## Where the differences come from
 

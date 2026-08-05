@@ -339,7 +339,7 @@ def validate_balance_review_inputs(
                 f"optional:{filename}",
                 True,
                 f"Optional artifact {filename} is "
-                f"{'present and will be included' if artifact.is_file() else 'absent; the Missing Combinations sheet will omit mapping issues'}.",
+                f"{'present and will be included' if artifact.is_file() else 'absent; mapping issues remain available in the diagnostic CSVs'}.",
             )
 
         review_path = diagnostics_dir / "leap_balance_source_review.csv"

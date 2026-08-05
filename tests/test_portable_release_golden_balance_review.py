@@ -55,7 +55,6 @@ GOLDEN_SHEET_NAMES = [
     "LEAP - Source Error",
     "Correct Source Values",
     "Full Expected Source",
-    "Missing Combinations",
 ]
 GOLDEN_SOURCE_SHAPE = {"rows": 79, "columns": 49}
 
@@ -93,15 +92,6 @@ GOLDEN_CELLS = [
     {"address": "O5", "row": "Imports", "fuel": "Bitumen",
      "error": 99.2477, "leap_value": 241.8549805826103},
 ]
-GOLDEN_SUMMARY_ROWS = {
-    4: ["Comparison rows", 356, "Mapped comparable rows", 316],
-    5: ["Mismatches", 180, "Matches", 162],
-}
-GOLDEN_MISSING_SHEET_TITLE = (
-    "20_USA Target 2022 Balance Diagnostic - Missing and Unavailable Combinations"
-)
-GOLDEN_MISSING_SHEET_LAST_ROW = 61
-
 TOLERANCE = 1e-6
 
 
@@ -209,13 +199,6 @@ def test_workbook_structural_contract(golden_result) -> None:
         assert leap_values.freeze_panes == "B4"
         assert str(leap_values["A2"].value or "").endswith("Units: Petajoule")
 
-        missing = workbook["Missing Combinations"]
-        assert missing["A1"].value == GOLDEN_MISSING_SHEET_TITLE
-        assert missing.max_row == GOLDEN_MISSING_SHEET_LAST_ROW
-        assert missing.cell(10, 1).value == "Category"
-        for row, expected in GOLDEN_SUMMARY_ROWS.items():
-            actual = [missing.cell(row, column).value for column in range(1, 5)]
-            assert actual == expected, f"summary row {row}"
     finally:
         workbook.close()
 

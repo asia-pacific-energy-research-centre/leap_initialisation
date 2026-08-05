@@ -566,7 +566,7 @@ def create_app():
             """# LEAP Balance Review
 
 Upload one LEAP Energy Balance export. The app runs the complete diagnostics
-workflow, creates the five-sheet review workbook, and renders the dashboard
+workflow, creates the four-sheet review workbook, and renders the dashboard
 pages below. Optionally upload a replacement ESTO base-table CSV; otherwise the
 configured pinned ESTO table is used. The ESTO override changes the dataset
 compared against in both the balance-table review and dashboard. The dashboard

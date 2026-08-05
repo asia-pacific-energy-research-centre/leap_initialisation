@@ -12,7 +12,6 @@ from codebase.functions.balance_review_workbook_builder import (
     ERROR_SHEET_NAME,
     FULL_EXPECTED_SHEET_NAME,
     LEAP_SHEET_NAME,
-    MISSING_SHEET_NAME,
     NO_COMPARATOR_FILL,
     RED_FILL,
     build_balance_structure_review_workbook,
@@ -188,7 +187,6 @@ def test_python_builder_preserves_layout_and_writes_diagnostics(tmp_path: Path) 
         ERROR_SHEET_NAME,
         "Correct Source Values",
         FULL_EXPECTED_SHEET_NAME,
-        MISSING_SHEET_NAME,
     ]
     assert workbook[LEAP_SHEET_NAME].freeze_panes == "B4"
     assert workbook[ERROR_SHEET_NAME]["B4"].value == 2
@@ -203,7 +201,6 @@ def test_python_builder_preserves_layout_and_writes_diagnostics(tmp_path: Path) 
     assert workbook[LEAP_SHEET_NAME]["B7"].fill.fgColor.rgb.endswith(
         NO_COMPARATOR_FILL
     )
-    assert "MissingCombinationsTable" in workbook[MISSING_SHEET_NAME].tables
     workbook.close()
 
 
