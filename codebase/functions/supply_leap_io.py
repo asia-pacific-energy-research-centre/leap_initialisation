@@ -73,9 +73,11 @@ from codebase.functions.baseline_seed_validation import (
     check_producer_coverage,
     complete_canonical_share_groups,
     drop_zero_only_optional_unmatched_rows,
+    enrich_seed_ids_from_template,
     filter_actionable_findings,
     load_template_rows,
     prepare_seed_rows_for_write,
+    validate_seed_rows,
 )
 from codebase import (
     electricity_heat_interim_workflow,
@@ -1925,11 +1927,13 @@ def write_per_economy_combined_workbooks(
     written: list[Path] = []
     prepared_workbooks: list[tuple[str, pd.DataFrame, Path]] = []
     validation_results: list[tuple[str, object]] = []
+    producer_validation_results: list[tuple[str, object]] = []
     producer_coverage_findings: list[dict[str, object]] = []
     artifact_expected_rows: dict[str, pd.DataFrame] = {}
     artifact_zero_scope_manifests: dict[str, pd.DataFrame] = {}
     artifact_candidate_paths: dict[str, Path] = {}
     artifact_template_paths: dict[str, Path] = {}
+    artifact_producer_workbooks: dict[str, dict[str, list[Path]]] = {}
 
     def _producer_for_row(configured_source: str, branch_path: object) -> str:
         path = str(branch_path or "").strip().lower()
@@ -2001,6 +2005,50 @@ def write_per_economy_combined_workbooks(
         branch_to_id, variable_to_id, scenario_to_id = _id_lookups_for_template(id_lookup_resolved)
         reference_df = _load_reference_export_data(id_lookup_resolved)
         frames, found_sources, source_probe = _current_source_frames(econ_token)
+
+        # Validate each supplied producer artifact before combined assembly.
+        # This keeps standalone rows visible in the same readiness diagnostics,
+        # including their workflow and source-workbook provenance. Resolve
+        # ordinary template IDs first, matching final assembly; any IDs that
+        # remain unresolved are genuine producer/template mismatches.
+        if enforce_validation:
+            producer_years_by_scenario = workflow_cfg.get_baseline_seed_validation_years(
+                [
+                    str(value).strip()
+                    for frame in frames
+                    for value in frame.get("Scenario", pd.Series(dtype=object))
+                    if str(value).strip()
+                ],
+                base_year=coverage_start,
+                final_year=coverage_end,
+            )
+            if required_years_by_scenario is not None:
+                producer_years_by_scenario.update({
+                    str(scenario): sorted({int(year) for year in years})
+                    for scenario, years in required_years_by_scenario.items()
+                })
+            for producer_rows in frames:
+                source_workflow = str(producer_rows[SOURCE_WORKFLOW_COLUMN].iloc[0])
+                source_path = Path(str(producer_rows[SOURCE_FILE_COLUMN].iloc[0]))
+                artifact_producer_workbooks.setdefault(econ_token, {}).setdefault(
+                    source_workflow, []
+                ).append(source_path)
+                rows_for_validation = enrich_seed_ids_from_template(
+                    producer_rows,
+                    id_lookup_resolved,
+                )
+                rows_for_validation = drop_zero_only_optional_unmatched_rows(rows_for_validation)
+                producer_validation_results.append((
+                    econ_token,
+                    validate_seed_rows(
+                        rows_for_validation,
+                        template_path=id_lookup_resolved,
+                        required_years_by_scenario=producer_years_by_scenario,
+                        required_scenarios_by_source=required_scenarios_by_source,
+                        exceptions=configured_exceptions,
+                        allow_exact_duplicate_resolution=False,
+                    ),
+                ))
 
         producer_coverage_findings.extend(
             check_producer_coverage(
@@ -2335,6 +2383,12 @@ def write_per_economy_combined_workbooks(
             frame = filter_actionable_findings(validation.findings)
             frame.insert(0, "economy", econ_token)
             consolidated_frames.append(frame)
+        for econ_token, validation in producer_validation_results:
+            if validation.findings.empty:
+                continue
+            frame = filter_actionable_findings(validation.findings)
+            frame.insert(0, "economy", econ_token)
+            consolidated_frames.append(frame)
         consolidated = (
             pd.concat(consolidated_frames, ignore_index=True, sort=False)
             if consolidated_frames
@@ -2472,6 +2526,7 @@ def write_per_economy_combined_workbooks(
                 expected_years_by_scenario=artifact_years_by_scenario,
                 expected_producers=sorted(producer_artifacts),
                 producer_artifacts_by_producer=producer_artifacts,
+                producer_workbooks_by_economy=artifact_producer_workbooks,
                 source_rows_by_economy=artifact_expected_rows,
                 zero_scope_manifests_by_economy=artifact_zero_scope_manifests,
                 required_diagnostics=artifact_required_diagnostics,

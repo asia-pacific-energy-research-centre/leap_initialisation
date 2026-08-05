@@ -219,8 +219,10 @@ def test_final_writer_collapses_exact_duplicates_and_populates_ids(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
-    _write_leap_workbook(source, [_row("Data(2023,1)"), _row("Data(2023, 1.0)")])
+    source = tmp_path / "supply_leap_imports_20_USA_reference_a.xlsx"
+    duplicate_source = tmp_path / "supply_leap_imports_20_USA_reference_b.xlsx"
+    _write_leap_workbook(source, [_row("Data(2023,1)")])
+    _write_leap_workbook(duplicate_source, [_row("Data(2023, 1.0)")])
     template = tmp_path / "full model export.xlsx"
     _write_template(template)
     monkeypatch.setattr(
@@ -232,7 +234,7 @@ def test_final_writer_collapses_exact_duplicates_and_populates_ids(
         economies=["20_USA"],
         output_dir=tmp_path / "output",
         id_lookup_path=template,
-        source_workbooks_by_workflow={"supply_workflow": [source]},
+        source_workbooks_by_workflow={"supply_workflow": [source, duplicate_source]},
         required_years_by_scenario={"Reference": [2023]},
     )
 
@@ -399,7 +401,7 @@ def test_final_writer_writes_grouped_missing_branch_issue_summary(
         "VariableID": -1,
         "ScenarioID": -1,
         "RegionID": -1,
-        "Branch Path": "Transformation\\CHP interim\\Processes\\CHP interim\\Feedstock Fuels\\Ammonia",
+        "Branch Path": "Transformation\\CHP interim\\Processes\\CHP interim\\Feedstock Fuels\\Petroleum coke",
         "Variable": "Imports",
         "Scenario": "Reference",
         "Region": "United States",
@@ -438,6 +440,16 @@ def test_final_writer_writes_grouped_missing_branch_issue_summary(
     assert grouped["primary_rule_id"].iloc[0] == "SEED-011"
     assert grouped["member_rule_ids"].iloc[0] == "SEED-003|SEED-004|SEED-011"
     assert "missing from the selected economy's LEAP template" in grouped["summary"].iloc[0]
+    consolidated = pd.read_csv(next(diagnostics.glob("*_consolidated_rule_findings.csv")))
+    standalone = consolidated[
+        consolidated["source_file"].eq(str(source))
+        & consolidated["Branch Path"].eq(
+            "Transformation\\CHP interim\\Processes\\CHP interim\\Feedstock Fuels\\Petroleum coke"
+        )
+    ]
+    assert set(standalone["rule_id"]) == {"SEED-003", "SEED-004", "SEED-011"}
+    assert standalone["blocking"].any()
+    assert set(standalone["source_workflow"]) == {"electricity_heat_interim_workflow"}
 
 
 def test_missing_branch_issue_group_collapses_variables_and_scenarios() -> None:

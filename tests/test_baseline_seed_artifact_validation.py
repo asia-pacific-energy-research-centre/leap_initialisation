@@ -95,6 +95,15 @@ def _write_candidate(
     return path
 
 
+def _write_producer_workbook(path: Path, rows: pd.DataFrame) -> Path:
+    """Write a native standalone producer artifact (LEAP sheet only)."""
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        add_leap_preamble(rows).to_excel(
+            writer, sheet_name="LEAP", index=False, header=False
+        )
+    return path
+
+
 def _empty_zero_manifest() -> pd.DataFrame:
     return pd.DataFrame(columns=[*[
         "Branch Path", "Variable", "Scenario", "Region"
@@ -114,6 +123,7 @@ def _run(
     expected_years: dict[str, list[int]] | None = None,
     enforcement: dict[str, str] | None = None,
     validation_exceptions: list[dict[str, object]] | None = None,
+    producer_workbooks: dict[str, dict[str, list[Path]]] | None = None,
     check_functions=None,
     output_name: str = "audit",
 ):
@@ -136,6 +146,7 @@ def _run(
         expected_years_by_scenario=expected_years or {"Reference": [2023]},
         expected_producers=["supply_workflow"],
         producer_artifacts_by_producer={"supply_workflow": [candidate]},
+        producer_workbooks_by_economy=producer_workbooks,
         source_rows_by_economy={} if resolved_expected is None else {ECONOMY: resolved_expected},
         zero_scope_manifests_by_economy={} if resolved_zero is None else {ECONOMY: resolved_zero},
         required_diagnostics=required_diagnostics,
@@ -266,6 +277,104 @@ def test_aggregate_demand_placeholder_warning_never_blocks(tmp_path: Path) -> No
     assert not warning["run_was_blocked"].any()
     assert result.accepted is True
     assert result.shadow_status == "SHADOW_WARN"
+
+
+def test_standalone_chp_missing_petroleum_coke_is_blocking_with_provenance(
+    tmp_path: Path,
+) -> None:
+    branch_path = r"Transformation\CHP interim\Processes\CHP interim\Feedstock Fuels\Petroleum coke"
+    producer = _write_producer_workbook(
+        tmp_path / "electricity_heat_interim_20_USA_Target_Reference_Current_Accounts.xlsx",
+        pd.DataFrame([_row(branch_path=branch_path, expression="Data(2023,4)", branch_id=-1, variable_id=-1, scenario_id=-1, region_id=-1)]),
+    )
+    result = _run(
+        tmp_path,
+        producer_workbooks={ECONOMY: {"electricity_heat_interim_workflow": [producer]}},
+        enforcement={"BSA-004": "block", "BSA-005": "block"},
+    )
+
+    findings = result.findings[
+        result.findings["workbook"].eq(str(producer.resolve()))
+        & result.findings["branch_path"].eq(branch_path)
+    ]
+    assert set(findings["source_workflow"]) == {"electricity_heat_interim_workflow"}
+    assert findings["evidence"].str.contains("SEED-003|SEED-004|SEED-011").any()
+    assert findings["would_block"].any()
+    assert not result.accepted
+
+
+def test_valid_standalone_producer_has_no_shared_seed_failures(tmp_path: Path) -> None:
+    row = pd.DataFrame([_row()])
+    producer = _write_producer_workbook(tmp_path / "supply_20_USA.xlsx", row)
+    result = _run(
+        tmp_path,
+        producer_workbooks={ECONOMY: {"supply_workflow": [producer]}},
+    )
+
+    producer_failures = result.findings[
+        result.findings["workbook"].eq(str(producer.resolve()))
+        & result.findings["status"].isin({"FAIL", "CHECK_ERROR", "INCOMPLETE"})
+    ]
+    assert producer_failures.empty
+
+
+def test_standalone_aggregate_placeholder_remains_warning_only(tmp_path: Path) -> None:
+    placeholder = pd.DataFrame([_row(
+        branch_path=r"Demand\All demand aggregated\Industry\Geothermal",
+        variable="Activity Level",
+        expression="Data(2023,4)",
+        branch_id=-1,
+    )])
+    producer = _write_producer_workbook(tmp_path / "aggregated_demand_20_USA.xlsx", placeholder)
+    result = _run(
+        tmp_path,
+        producer_workbooks={ECONOMY: {"aggregated_demand_workflow": [producer]}},
+        enforcement={"BSA-004": "block", "BSA-005": "block"},
+    )
+
+    warnings = result.findings[result.findings["workbook"].eq(str(producer.resolve()))]
+    assert "WARN" in set(warnings["status"])
+    assert not warnings["would_block"].any()
+
+
+def test_zero_only_unmatched_transformation_row_remains_nonblocking(tmp_path: Path) -> None:
+    zero_row = pd.DataFrame([_row(
+        branch_path=r"Resources\Primary\Unused fuel",
+        variable="Imports",
+        expression="Data(2023,0)",
+        branch_id=-1,
+        variable_id=-1,
+        scenario_id=-1,
+        region_id=-1,
+    )])
+    producer = _write_producer_workbook(tmp_path / "transformation_20_USA.xlsx", zero_row)
+    result = _run(
+        tmp_path,
+        producer_workbooks={ECONOMY: {"transformation_workflow": [producer]}},
+    )
+
+    producer_findings = result.findings[result.findings["workbook"].eq(str(producer.resolve()))]
+    assert not producer_findings["would_block"].any()
+
+
+def test_multiple_standalone_producers_keep_workflow_and_workbook_provenance(tmp_path: Path) -> None:
+    supply = _write_producer_workbook(tmp_path / "supply_20_USA.xlsx", pd.DataFrame([_row()]))
+    transfers = _write_producer_workbook(tmp_path / "transfers_20_USA.xlsx", pd.DataFrame([_row()]))
+    result = _run(
+        tmp_path,
+        producer_workbooks={ECONOMY: {
+            "supply_workflow": [supply],
+            "transfers_workflow": [transfers],
+        }},
+    )
+
+    producer_passes = result.findings[
+        result.findings["workbook"].isin([str(supply.resolve()), str(transfers.resolve())])
+        & result.findings["status"].eq("PASS")
+    ]
+    assert set(producer_passes["source_workflow"]) == {
+        "supply_workflow", "transfers_workflow"
+    }
 
 
 def _share_rows(values: tuple[float, ...], *, include_second: bool = True) -> pd.DataFrame:

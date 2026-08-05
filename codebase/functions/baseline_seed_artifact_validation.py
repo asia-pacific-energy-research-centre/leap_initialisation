@@ -23,6 +23,7 @@ from codebase.functions.baseline_seed_validation import (
     SOURCE_WORKFLOW_COLUMN,
     apply_template_ids,
     build_template_id_lookup,
+    drop_zero_only_optional_unmatched_rows,
     row_has_only_zero_payload,
     validate_seed_rows,
 )
@@ -483,7 +484,7 @@ def check_shared_seed_rules(
     for _, seed_finding in result.findings.iterrows():
         seed_rule = _text(seed_finding.get("rule_id"))
         check_id = SEED_RULE_TO_BSA.get(seed_rule)
-        if check_id not in {"BSA-003", "BSA-005", "BSA-006", "BSA-007"}:
+        if check_id not in {"BSA-003", "BSA-004", "BSA-005", "BSA-006", "BSA-007"}:
             continue
         seed_status = _normalized(seed_finding.get("status"))
         if seed_status not in {"fail", "warn", "excepted"}:
@@ -565,6 +566,7 @@ def check_template_identity(
             expected=json.dumps({key: pair[0] for key, pair in mismatches.items()}, sort_keys=True),
             actual=json.dumps({key: pair[1] for key, pair in mismatches.items()}, sort_keys=True),
             evidence=str(template_path),
+            source_workflow=actual_row.get(SOURCE_WORKFLOW_COLUMN),
             suggested_fix="Resolve labels and all four IDs from this economy's target template.",
         ))
     if not findings:
@@ -576,6 +578,68 @@ def check_template_identity(
             workbook=workbook,
             evidence=f"template={template_path}",
         ))
+    return findings
+
+
+def check_producer_workbook_seed_rules(
+    *,
+    run_id: str,
+    economy: str,
+    source_workflow: str,
+    workbook: Path,
+    template_path: Path,
+    expected_scenarios: Iterable[str],
+    expected_years_by_scenario: Mapping[str, Iterable[int]],
+    enforcement_by_check: Mapping[str, str],
+    validation_exceptions: Iterable[dict[str, object]] | None = None,
+) -> list[dict[str, object]]:
+    """Audit one standalone producer workbook using the shared seed rules.
+
+    Producer files deliberately retain their native single-sheet LEAP format,
+    so they do not need the combined-workbook ``FOR_VIEWING`` structure check.
+    They do need the same logical-key, template-ID, payload, and share checks
+    before their rows are treated as ready for LEAP import.
+    """
+    try:
+        rows = read_leap_sheet(workbook, sheet_name="LEAP").data.copy()
+    except Exception as exc:
+        return [_error_finding(
+            run_id=run_id,
+            check_id="BSA-002",
+            enforcement_mode=enforcement_by_check["BSA-002"],
+            exc=exc,
+            economy=economy,
+            workbook=workbook,
+        )]
+    rows[SOURCE_WORKFLOW_COLUMN] = source_workflow
+    # Producer exports can intentionally defer ordinary template IDs to the
+    # assembly stage. Resolve those labels exactly as the final seed writer
+    # does; IDs that remain -1 are therefore genuine template mismatches.
+    rows = apply_template_ids(rows, build_template_id_lookup(template_path))
+    rows = drop_zero_only_optional_unmatched_rows(rows)
+    shared_findings = check_shared_seed_rules(
+        run_id=run_id,
+        economy=economy,
+        workbook=workbook,
+        rows=rows,
+        template_path=template_path,
+        expected_scenarios=expected_scenarios,
+        expected_years_by_scenario=expected_years_by_scenario,
+        enforcement_by_check=enforcement_by_check,
+        validation_exceptions=validation_exceptions,
+    )
+    identity_findings = check_template_identity(
+        run_id=run_id,
+        economy=economy,
+        workbook=workbook,
+        rows=rows,
+        template_path=template_path,
+        enforcement_mode=enforcement_by_check["BSA-004"],
+    )
+    findings = [*shared_findings, *identity_findings]
+    for finding in findings:
+        if not _text(finding.get("source_workflow")):
+            finding["source_workflow"] = source_workflow
     return findings
 
 
@@ -1061,6 +1125,7 @@ def run_baseline_seed_artifact_validation(
     expected_years_by_scenario: Mapping[str, Iterable[int]],
     expected_producers: Iterable[str] = (),
     producer_artifacts_by_producer: Mapping[str, Iterable[Path | str]] | None = None,
+    producer_workbooks_by_economy: Mapping[str, Mapping[str, Iterable[Path | str]]] | None = None,
     source_rows_by_economy: Mapping[str, pd.DataFrame | Path | str] | None = None,
     zero_scope_manifests_by_economy: Mapping[str, pd.DataFrame | Path | str] | None = None,
     required_diagnostics: Iterable[Path | str] = (),
@@ -1083,6 +1148,7 @@ def run_baseline_seed_artifact_validation(
     expected = _normalize_economies(expected_economies)
     required_diagnostic_paths = [_normalize_path(path) for path in required_diagnostics]
     producer_artifacts = producer_artifacts_by_producer or {}
+    producer_workbooks = producer_workbooks_by_economy or {}
     source_rows = source_rows_by_economy or {}
     zero_manifests = zero_scope_manifests_by_economy or {}
     expected_scenario_list = [
@@ -1111,6 +1177,50 @@ def run_baseline_seed_artifact_validation(
 
     for economy in expected:
         workbook = candidates.get(economy)
+        template = templates.get(economy)
+
+        # Standalone producer workbooks are retained for audit and must meet the
+        # same ID/readiness rules as the assembled seed, even when that combined
+        # candidate is unavailable. Their native format is a LEAP sheet only, so
+        # only the applicable shared checks are run here.
+        for source_workflow, paths in sorted(producer_workbooks.get(economy, {}).items()):
+            for producer_workbook in sorted({_normalize_path(path) for path in paths}, key=str):
+                if not producer_workbook.is_file():
+                    findings.append(_finding(
+                        run_id=run_id,
+                        check_id="BSA-001",
+                        enforcement_mode=enforcement["BSA-001"],
+                        status="INCOMPLETE",
+                        economy=economy,
+                        workbook=producer_workbook,
+                        actual="configured standalone producer workbook unavailable",
+                        source_workflow=source_workflow,
+                    ))
+                    continue
+                if template is None or not template.is_file():
+                    findings.append(_finding(
+                        run_id=run_id,
+                        check_id="BSA-004",
+                        enforcement_mode=enforcement["BSA-004"],
+                        status="INCOMPLETE",
+                        economy=economy,
+                        workbook=producer_workbook,
+                        expected="target economy template",
+                        actual="missing",
+                        source_workflow=source_workflow,
+                    ))
+                    continue
+                findings.extend(check_producer_workbook_seed_rules(
+                    run_id=run_id,
+                    economy=economy,
+                    source_workflow=source_workflow,
+                    workbook=producer_workbook,
+                    template_path=template,
+                    expected_scenarios=expected_scenario_list,
+                    expected_years_by_scenario=expected_years,
+                    enforcement_by_check=enforcement,
+                    validation_exceptions=validation_exceptions,
+                ))
         if workbook is None or not workbook.is_file():
             for check_id in CHECK_IDS[1:9]:
                 findings.append(_finding(
@@ -1160,8 +1270,6 @@ def run_baseline_seed_artifact_validation(
 
         leap_rows = sheets["LEAP"].data
         viewing_rows = sheets["FOR_VIEWING"].data
-        template = templates.get(economy)
-
         # BSA-003/005/006/007 all route through one shared validator invocation.
         shared_checks = ("BSA-003", "BSA-005", "BSA-006", "BSA-007")
         if template is None or not template.is_file():
@@ -1300,6 +1408,7 @@ __all__ = [
     "FINDING_COLUMNS",
     "check_authorized_zero_scope",
     "check_diagnostics_and_manifests",
+    "check_producer_workbook_seed_rules",
     "check_required_artifact_set",
     "check_serialized_value_conservation",
     "check_shared_seed_rules",
