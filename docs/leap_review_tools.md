@@ -438,10 +438,44 @@ With the digest declared, a table that is not the one the manifest describes
 the digest to paste in. When a table legitimately changes — a new ESTO issue —
 update the pin as a deliberate edit; do not delete it.
 
+### Versioning and the changelog
+
+`docs/CHANGELOG.md` ships in the package. It is written for the person **using**
+the tools — what is different when they run it — not from the commit history.
+Internal work does not belong in it.
+
+Raise the version whenever a colleague would notice a difference:
+
+```bash
+python scripts/bump_release_version.py minor --dry-run
+python scripts/bump_release_version.py minor
+```
+
+It edits `release.version` and opens an entry to write in. Which part to raise
+is a judgement about the reader: **patch** — same behaviour, something broken
+now works; **minor** — new or changed behaviour they should read about;
+**major** — they have to do something differently, or results change.
+
+Validation warns if the declared version has no `## <version>` entry, reading the
+working tree so the gap is caught before committing.
+
+A version alone cannot tell two copies apart, and did not: several builds went
+out as 0.1.0 with different behaviour. The program's first line now also carries
+the build date —
+
+```
+leap-review-tools 0.2.0  (built 2026-08-05)
+```
+
+— and `release_manifest.json` beside it identifies the build exactly. Ask for
+that line first when someone reports a problem.
+
 ### Steps
 
 0. **Commit any guide edits** (above) before pinning, or the build ships the
    previous version of it.
+0b. **Bump the version and write its changelog entry** if a colleague would
+   notice any difference.
 1. **Land and test the code first.** Every allowlisted path must exist at the
    commit you are about to pin, so the code commits come before the manifest
    commit.

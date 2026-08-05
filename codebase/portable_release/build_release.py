@@ -356,6 +356,12 @@ def _stage_data_assets(
 USER_GUIDE_SOURCE_PATH = "docs/docx/LEAP Review Tools - user guide.docx"
 USER_GUIDE_PACKAGE_NAME = "LEAP Review Tools - user guide.docx"
 
+#: Ships beside the guide so someone holding an older copy can see what is
+#: different in a newer one without asking. Staged from the pinned commit like
+#: everything else, so it describes the release it travels in.
+CHANGELOG_SOURCE_PATH = "docs/CHANGELOG.md"
+CHANGELOG_PACKAGE_NAME = "CHANGELOG.md"
+
 
 def _stage_user_guide(
     package_root: Path,
@@ -417,6 +423,31 @@ def _seed_run_timings(
             "estimate; every run after it will."
         )
     (package_root / "logs" / progress.TIMINGS_FILENAME).write_bytes(payload)
+    return None
+
+
+def _stage_changelog(
+    package_root: Path,
+    manifest: ReleaseManifest,
+    roots: Mapping[str, Path],
+) -> str | None:
+    """Copy the changelog into the package, or explain why it is absent."""
+    spec = manifest.repositories.get("leap_initialisation")
+    if spec is None:
+        return "No leap_initialisation entry; changelog not shipped."
+    try:
+        payload = _git_bytes(
+            Path(roots["leap_initialisation"]),
+            "cat-file",
+            "blob",
+            f"{spec.commit}:{CHANGELOG_SOURCE_PATH}",
+        )
+    except ReleaseBuildError:
+        return (
+            f"Changelog not shipped: {CHANGELOG_SOURCE_PATH} is not committed at "
+            f"{spec.commit[:12]}."
+        )
+    (package_root / CHANGELOG_PACKAGE_NAME).write_bytes(payload)
     return None
 
 
@@ -1136,6 +1167,7 @@ def build(
     )
     economies = _write_package_scaffold(staging_dir, manifest, config_files=config_files)
     guide_note = _stage_user_guide(staging_dir, manifest, roots)
+    changelog_note = _stage_changelog(staging_dir, manifest, roots)
     _seed_run_timings(staging_dir, manifest, roots)
     example_notes = _seed_example_exports(staging_dir, roots, economies)
 
@@ -1150,7 +1182,9 @@ def build(
         source_files=source_files,
         config_files=config_files,
         data_files=data_files,
-        notes=([guide_note] if guide_note else []) + example_notes,
+        notes=(
+            [note for note in (guide_note, changelog_note) if note] + example_notes
+        ),
     )
 
     package_dir = staging_dir

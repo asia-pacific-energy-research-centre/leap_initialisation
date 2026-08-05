@@ -107,6 +107,19 @@ def _pause_before_closing() -> None:
         pass
 
 
+def _build_stamp(frozen: dict[str, Any]) -> str:
+    """Return ' (built 2026-08-05)', or nothing if the date is unavailable.
+
+    A version number alone cannot tell two copies apart, and in practice it
+    did not: several builds went out as 0.1.0 with materially different
+    behaviour, and nobody holding one could say which they had. The build date
+    settles it in the first line a user sees, and it is the first thing to ask
+    for when someone reports a problem.
+    """
+    built = str(frozen.get("built_utc", ""))[:10]
+    return f"  (built {built})" if len(built) == 10 else ""
+
+
 def _guided_flow(context, frozen: dict[str, Any]) -> int:
     """Ask for an economy, scenario and year, then produce both outputs.
 
@@ -125,7 +138,7 @@ def _guided_flow(context, frozen: dict[str, Any]) -> int:
 
     exports_root = workspace.balance_exports_root(context.input_root)
     print()
-    print(f"{context.release_name} {context.release_version}")
+    print(f"{context.release_name} {context.release_version}{_build_stamp(frozen)}")
     print("=" * 72)
     print(f"Put your LEAP exports in : {exports_root}")
     print(f"Results appear in        : {context.output_root}")

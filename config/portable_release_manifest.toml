@@ -12,7 +12,7 @@ schema_version = 1
 
 [release]
 name = "leap-review-tools"
-version = "0.1.0"
+version = "0.2.0"
 description = """\
 Portable Windows build of two LEAP review tools: the Common ESTO dashboard \
 renderer, and the balance-review workbook builder. Runs without Python, Conda, \

@@ -202,3 +202,96 @@ def test_declared_digests_are_full_length_lowercase_sha256() -> None:
         if asset.sha256:
             assert len(asset.sha256) == 64, f"{asset.role}: {asset.sha256}"
             assert asset.sha256 == asset.sha256.lower()
+
+
+# ---------------------------------------------------------------------------
+# Version and changelog
+# ---------------------------------------------------------------------------
+
+
+def test_the_declared_version_has_a_changelog_entry() -> None:
+    """A bump advertises a change; the entry is what says what it was."""
+    from codebase.portable_release.build_release import DEFAULT_MANIFEST_PATH
+    from codebase.portable_release.manifest import CHANGELOG_PATH, load_release_manifest
+
+    manifest = load_release_manifest(DEFAULT_MANIFEST_PATH)
+    changelog = Path(__file__).resolve().parents[1] / CHANGELOG_PATH
+    assert changelog.is_file()
+    assert f"## {manifest.version}" in changelog.read_text(encoding="utf-8")
+
+
+def test_a_version_with_no_entry_is_reported(tmp_path: Path) -> None:
+    from codebase.portable_release.manifest import (
+        CHANGELOG_PATH,
+        _check_version_is_described,
+    )
+
+    root = tmp_path / "repo"
+    (root / Path(CHANGELOG_PATH).parent).mkdir(parents=True)
+    (root / CHANGELOG_PATH).write_text("# Log\n\n## 0.1.0\n\nFirst.\n", encoding="utf-8")
+
+    report = ManifestValidationReport(manifest_name="t", manifest_version="0.2.0")
+    _check_version_is_described(
+        dataclasses.replace(_manifest("0" * 40, paths=[]), version="0.2.0"),
+        {"leap_initialisation": root},
+        report,
+    )
+    assert len(report.warnings) == 1 and "0.2.0" in report.warnings[0]
+
+
+def test_a_described_version_is_silent(tmp_path: Path) -> None:
+    from codebase.portable_release.manifest import (
+        CHANGELOG_PATH,
+        _check_version_is_described,
+    )
+
+    root = tmp_path / "repo"
+    (root / Path(CHANGELOG_PATH).parent).mkdir(parents=True)
+    (root / CHANGELOG_PATH).write_text("# Log\n\n## 0.2.0\n\nThings.\n", encoding="utf-8")
+
+    report = ManifestValidationReport(manifest_name="t", manifest_version="0.2.0")
+    _check_version_is_described(
+        dataclasses.replace(_manifest("0" * 40, paths=[]), version="0.2.0"),
+        {"leap_initialisation": root},
+        report,
+    )
+    assert report.warnings == []
+
+
+@pytest.mark.parametrize(
+    "current,part,expected",
+    [
+        ((0, 1, 0), "minor", "0.2.0"),
+        ((0, 2, 0), "patch", "0.2.1"),
+        ((0, 2, 3), "major", "1.0.0"),
+        ((0, 2, 3), "1.4.2", "1.4.2"),
+    ],
+)
+def test_version_arithmetic(current, part, expected) -> None:
+    from scripts.bump_release_version import next_version
+
+    assert next_version(current, part) == expected
+
+
+def test_a_nonsense_bump_is_refused() -> None:
+    from scripts.bump_release_version import next_version
+
+    with pytest.raises(SystemExit):
+        next_version((0, 1, 0), "sideways")
+
+
+def test_the_changelog_ships_in_the_package() -> None:
+    """Useless in the repository if a colleague never receives it."""
+    from codebase.portable_release import build_release
+
+    assert build_release.CHANGELOG_SOURCE_PATH == "docs/CHANGELOG.md"
+    assert build_release.CHANGELOG_PACKAGE_NAME == "CHANGELOG.md"
+
+
+def test_the_build_stamp_distinguishes_two_builds_of_one_version() -> None:
+    """The gap this closes: several 0.1.0 builds, no way to tell them apart."""
+    from codebase.portable_release.portable_main import _build_stamp
+
+    assert _build_stamp({"built_utc": "2026-08-05T02:50:20+00:00"}) == "  (built 2026-08-05)"
+    assert _build_stamp({}) == ""
+    assert _build_stamp({"built_utc": "nonsense"}) == ""

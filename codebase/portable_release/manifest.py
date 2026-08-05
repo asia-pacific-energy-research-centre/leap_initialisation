@@ -606,6 +606,46 @@ def _check_pins_are_current(
         )
 
 
+#: Where the user-facing changelog lives. Mirrors
+#: ``build_release.CHANGELOG_SOURCE_PATH``; kept here as a literal so the
+#: validator does not import the builder.
+CHANGELOG_PATH = "docs/CHANGELOG.md"
+
+
+def _check_version_is_described(
+    manifest: ReleaseManifest,
+    repository_roots: Mapping[str, Path],
+    report: ManifestValidationReport,
+) -> None:
+    """Warn when the declared version has no changelog entry.
+
+    Bumping the version is what tells a colleague their copy is different;
+    the entry is what tells them *how*. A version with nothing written against
+    it is worse than no bump at all - it advertises a change and then declines
+    to say what it was.
+
+    Read from the working tree rather than the pinned commit on purpose: the
+    entry is normally written in the same working session as the bump, and the
+    point is to catch a missing one *before* committing and pinning.
+    """
+    root = repository_roots.get("leap_initialisation")
+    if root is None:
+        return
+    changelog = Path(root) / CHANGELOG_PATH
+    if not changelog.is_file():
+        report.warnings.append(
+            f"No changelog at {CHANGELOG_PATH}; a colleague has no way to see what "
+            "changed between their copy and this one."
+        )
+        return
+    text = changelog.read_text(encoding="utf-8", errors="replace")
+    if f"## {manifest.version}" not in text:
+        report.warnings.append(
+            f"{CHANGELOG_PATH} has no '## {manifest.version}' entry. Describe what "
+            "changed for someone using the tools before shipping this version."
+        )
+
+
 def validate_release_manifest(
     manifest: ReleaseManifest,
     repository_roots: Mapping[str, Path],
@@ -777,6 +817,7 @@ def validate_release_manifest(
         return report
 
     _check_pins_are_current(manifest, repository_roots, report)
+    _check_version_is_described(manifest, repository_roots, report)
 
     for key, spec in manifest.repositories.items():
         root = Path(repository_roots[key])
