@@ -14,7 +14,8 @@ def _image_data(filename: str) -> str:
     if not path.is_file():
         return ""
     encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-    return f"data:image/png;base64,{encoded}"
+    mime_type = "image/svg+xml" if path.suffix.lower() == ".svg" else "image/png"
+    return f"data:{mime_type};base64,{encoded}"
 
 
 GUIDE_HTML = f"""
@@ -81,7 +82,7 @@ GUIDE_CSS = """
 GUIDE_JS = """
 () => {
   const steps = [
-    { target: '#balance-upload', title: 'Start with one LEAP export', copy: 'Upload one Energy Balance workbook. The app reads the economy and scenario from the file, so there is no second metadata form to complete.', image: '__WORKFLOW_IMAGE__' },
+    { target: '#balance-upload', title: 'Where this app fits in LEAP initialisation', copy: 'This guided tour covers the review stage of the wider LEAP initialisation process. The major sequence is: import the baseline seed and run LEAP, do a quick LEAP review, use this balance review app, inspect the dashboard, then resolve any material issue and repeat. The web app supports steps 2b and 2c; LEAP remains the source of the baseline and the fixes.', image: '__INITIALISATION_IMAGE__' },
     { target: '#balance-upload', title: 'Prepare the right export', copy: 'In LEAP, use Petajoules and Detail Level 2 or deeper. A Level 1 export is too shallow to compare meaningfully.', image: '__EXPORT_IMAGE__' },
     { target: '#year-input', title: 'Choose the review year(s)', copy: 'Enter one year such as 2022, or several comma-separated years such as 2022, 2030, 2040. These control the workbook review.', image: '' },
     { target: '#outputs-wanted', title: 'Choose what to build', copy: 'Keep workbook and dashboard selected when you want both outputs. The dashboard is the visual overview; the workbook is the detailed worklist.', image: '' },
@@ -134,6 +135,7 @@ GUIDE_JS = """
 
 
 GUIDE_JS = GUIDE_JS.replace("__WORKFLOW_IMAGE__", _image_data("workflow-overview.png"))
+GUIDE_JS = GUIDE_JS.replace("__INITIALISATION_IMAGE__", _image_data("initialisation-overview.svg"))
 GUIDE_JS = GUIDE_JS.replace("__EXPORT_IMAGE__", _image_data("leap-export-detail.png"))
 GUIDE_JS = GUIDE_JS.replace("__WORKBOOK_IMAGE__", _image_data("review-workbook.png"))
 GUIDE_JS = GUIDE_JS.replace("__DASHBOARD_IMAGE__", _image_data("dashboard-supply.png"))
