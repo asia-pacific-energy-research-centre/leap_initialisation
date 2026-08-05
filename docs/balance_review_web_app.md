@@ -8,11 +8,13 @@ The `web_app/` directory contains a thin Gradio wrapper around
 The app replaces the balance-review part of the portable Windows release:
 
 1. upload one LEAP balance export workbook;
-2. optionally upload an ESTO base-table CSV override;
-3. run the existing diagnostics workflow;
-4. run the existing Python workbook builder;
-5. run the existing dashboard-from-export workflow;
-6. view the generated dashboard pages in the app and download the five-sheet
+2. enter one review year or a comma-separated year list;
+3. optionally upload an ESTO base-table CSV override;
+4. choose dashboard minimum and maximum years;
+5. run the existing diagnostics workflow;
+6. run the existing Python workbook builder;
+7. run the existing dashboard-from-export workflow;
+8. view the generated dashboard pages in the app and download the five-sheet
    `.xlsx` result plus a combined diagnostic/dashboard bundle.
 
 The configured pinned ESTO table is used when no override is supplied. An
@@ -31,3 +33,16 @@ The full workflow uses the exact live `leap_initialisation`, `leap_mappings`,
 and `leap_dashboard` checkouts through the same developer-mode context used by
 the release tooling. Set `LEAP_MAPPINGS_ROOT` and `LEAP_DASHBOARD_ROOT` when the
 siblings are mounted somewhere other than the default sibling directories.
+
+## Parity notes
+
+The web flow preserves the main guided-flow behavior: one export is enough,
+multiple review years can be entered as `2022,2030,2040`, each requested year
+produces its own workbook, the optional ESTO table is passed to both diagnostics
+and dashboard generation, and dashboard year bounds are configurable.
+
+The old CLI-only `info`, `list`, `selfcheck`, repository-update, and
+existing-diagnostics/comparison-data escape-hatch commands are not separate web
+buttons. Repository preflight runs automatically at submission, and the web
+flow intentionally starts from a LEAP export rather than requiring users to
+manage diagnostic folders or large precomputed comparison files.

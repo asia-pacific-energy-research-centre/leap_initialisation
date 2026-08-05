@@ -18,7 +18,9 @@ Open `http://127.0.0.1:7860`.
 The app accepts:
 
 - one LEAP balance export workbook;
+- one review year or a comma-separated list such as `2022,2030,2040`;
 - optionally, an ESTO base-table CSV override.
+- dashboard minimum and maximum years.
 
 It runs the diagnostics internally using the configured ESTO and 9th-edition
 source tables, then returns the same five-sheet balance-review workbook as the

@@ -107,6 +107,7 @@ def _write_diagnostics_bundle(
     diagnostics_directory: Path,
     run_directory: Path,
     dashboard_directory: Path | None = None,
+    log_directory: Path | None = None,
 ) -> None:
     """Package derived diagnostics and the workbook for optional download."""
     with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
@@ -123,6 +124,9 @@ def _write_diagnostics_bundle(
             for path in sorted(dashboard_directory.rglob("*")):
                 if path.is_file():
                     bundle.write(path, arcname=f"dashboard/{path.relative_to(dashboard_directory)}")
+        if log_directory is not None and log_directory.is_dir():
+            for path in sorted(log_directory.glob("*.log")):
+                bundle.write(path, arcname=f"logs/{path.name}")
 
 
 def _dashboard_pages(dashboard_directory: Path) -> list[str]:
@@ -173,12 +177,13 @@ def _dashboard_iframe_html(dashboard_directory: Path, page_name: str) -> str:
 def build_review_from_export(
     economy: str,
     scenario: str,
-    year: float,
+    year: object,
     balance_export_workbook: object,
     esto_table: object,
-) -> tuple[str, str, str | None, str | None, str, object, str | None]:
+    dashboard_min_year: float,
+    dashboard_max_year: float,
+) -> tuple[str, str, object, str | None, str, object, str | None]:
     """Run diagnostics and workbook construction from one LEAP export."""
-    persistent_output: Path | None = None
     persistent_bundle: Path | None = None
     try:
         economy_value = str(economy or "").strip()
@@ -187,9 +192,13 @@ def build_review_from_export(
             raise ValueError("Enter an economy code, for example 20_USA.")
         if not scenario_value:
             raise ValueError("Enter the scenario, for example Target.")
-        if year is None or int(year) != year:
-            raise ValueError("Enter a four-digit review year, for example 2022.")
-        year_value = int(year)
+        year_value = str(year or "").strip()
+        if not year_value:
+            raise ValueError("Enter one or more review years, for example 2022,2030.")
+        dashboard_min_year_value = int(dashboard_min_year)
+        dashboard_max_year_value = int(dashboard_max_year)
+        if dashboard_min_year_value > dashboard_max_year_value:
+            raise ValueError("Dashboard minimum year must not exceed maximum year.")
 
         export_path = _path_from_gradio_file(
             balance_export_workbook,
@@ -231,6 +240,8 @@ def build_review_from_export(
             economy=economy_value,
             export_dir=export_directory,
             esto_table_path=local_esto,
+            min_year=dashboard_min_year_value,
+            max_year=dashboard_max_year_value,
             run_label="web",
         )
         dashboard_error = None
@@ -250,8 +261,11 @@ def build_review_from_export(
             dashboard_error = dashboard_result.error or "Dashboard generation failed."
 
         persistent_dir = Path(tempfile.mkdtemp(prefix="leap_balance_review_download_"))
-        persistent_output = persistent_dir / workbook_paths[0].name
-        shutil.copy2(workbook_paths[0], persistent_output)
+        persistent_workbooks: list[Path] = []
+        for workbook_path in workbook_paths:
+            persistent_workbook = persistent_dir / workbook_path.name
+            shutil.copy2(workbook_path, persistent_workbook)
+            persistent_workbooks.append(persistent_workbook)
         persistent_bundle = persistent_dir / (
             f"{_safe_filename_token(economy_value)}_"
             f"{_safe_filename_token(scenario_value)}_{year_value}_diagnostics.zip"
@@ -262,6 +276,7 @@ def build_review_from_export(
             diagnostics_directory=diagnostics_directory,
             run_directory=result.run_directory,
             dashboard_directory=dashboard_directory,
+            log_directory=run_root / "logs",
         )
 
         build_result = result.outputs.get("build_result", {})
@@ -270,7 +285,9 @@ def build_review_from_export(
             "source_commit": _source_commit(),
             "economy": economy_value,
             "scenario": scenario_value,
-            "year": year_value,
+            "years": result.outputs.get("years", year_value),
+            "dashboard_min_year": dashboard_min_year_value,
+            "dashboard_max_year": dashboard_max_year_value,
             "esto_table_used": result.outputs.get("esto_table_used"),
             "esto_table_is_user_supplied": result.outputs.get(
                 "esto_table_is_user_supplied", False
@@ -291,7 +308,7 @@ def build_review_from_export(
                 if dashboard_result.ok
                 else "Diagnostics and review workbook created; dashboard failed."
             ),
-            str(persistent_output),
+            [str(path) for path in persistent_workbooks],
             str(persistent_bundle),
             dashboard_html,
             {
@@ -301,7 +318,7 @@ def build_review_from_export(
             str(dashboard_directory) if dashboard_directory else None,
         )
     except Exception as error:  # Gradio should show a plain-language failure.
-        return "", f"Build failed: {error}", None, None, "", {"choices": [], "value": None}, None
+        return "", f"Build failed: {error}", [], None, "", {"choices": [], "value": None}, None
 
 
 def render_dashboard_page(page_name: str, dashboard_directory: str | None) -> str:
@@ -328,7 +345,18 @@ configured pinned ESTO table is used.
         with gr.Row():
             economy = gr.Textbox(label="Economy", value="20_USA")
             scenario = gr.Textbox(label="Scenario", value="Target")
-            year = gr.Number(label="Review year", value=2022, precision=0)
+            year = gr.Textbox(
+                label="Review year(s)",
+                value="2022",
+                info="Use commas for multiple workbooks, e.g. 2022,2030,2040.",
+            )
+        with gr.Row():
+            dashboard_min_year = gr.Number(
+                label="Dashboard minimum year", value=2010, precision=0
+            )
+            dashboard_max_year = gr.Number(
+                label="Dashboard maximum year", value=2060, precision=0
+            )
         balance_export_workbook = gr.File(
             label="LEAP Energy Balance export workbook (.xlsx)",
             file_types=[".xlsx", ".xlsm"],
@@ -342,7 +370,10 @@ configured pinned ESTO table is used.
         run_button = gr.Button("Calculate diagnostics and build review", variant="primary")
         status = gr.Textbox(label="Status", interactive=False)
         summary = gr.Code(label="Run summary", language="json", interactive=False)
-        output = gr.File(label="Download review workbook")
+        output = gr.File(
+            label="Download review workbook(s)",
+            file_count="multiple",
+        )
         diagnostics_bundle = gr.File(label="Download diagnostics bundle")
         gr.Markdown("## Generated dashboard")
         dashboard_page = gr.Dropdown(
@@ -355,7 +386,15 @@ configured pinned ESTO table is used.
         dashboard_directory = gr.State(value=None)
         run_button.click(
             fn=build_review_from_export,
-            inputs=[economy, scenario, year, balance_export_workbook, esto_table],
+            inputs=[
+                economy,
+                scenario,
+                year,
+                balance_export_workbook,
+                esto_table,
+                dashboard_min_year,
+                dashboard_max_year,
+            ],
             outputs=[
                 summary,
                 status,
