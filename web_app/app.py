@@ -29,6 +29,11 @@ DEFAULT_DASHBOARD_MAX_YEAR = 2060
 # Keep the browser-local payload within common localStorage quotas while still
 # allowing comparison between several recent economy/scenario runs.
 MAX_BROWSER_DASHBOARDS = 3
+WEB_ARTIFACT_MAX_AGE_SECONDS = 48 * 60 * 60
+WEB_ARTIFACT_PREFIXES = (
+    "leap_balance_review_web_",
+    "leap_balance_review_download_",
+)
 HF_BUNDLE_ROOT = Path(
     os.getenv("HF_BUNDLE_ROOT", str(REPO_ROOT / "hf_bundle"))
 )
@@ -253,6 +258,36 @@ def _path_from_gradio_file(value: object, *, description: str) -> Path:
     if not path.is_file():
         raise FileNotFoundError(f"Uploaded file was not found: {path.name}")
     return path
+
+
+def _cleanup_stale_web_artifacts(
+    *, max_age_seconds: int = WEB_ARTIFACT_MAX_AGE_SECONDS
+) -> list[Path]:
+    """Remove only this app's expired temporary run and download folders.
+
+    Gradio keeps returned files available after a callback finishes, so the
+    current run's artifacts cannot be deleted immediately. A bounded cleanup
+    at the beginning of later runs prevents a long-lived Space from growing
+    without limit while preserving recent downloads for a reasonable period.
+    """
+    now = datetime.now(timezone.utc).timestamp()
+    removed: list[Path] = []
+    temp_root = Path(tempfile.gettempdir())
+    for prefix in WEB_ARTIFACT_PREFIXES:
+        for candidate in temp_root.glob(f"{prefix}*"):
+            if not candidate.is_dir():
+                continue
+            try:
+                age_seconds = now - candidate.stat().st_mtime
+                if age_seconds <= max_age_seconds:
+                    continue
+                shutil.rmtree(candidate)
+                removed.append(candidate)
+            except (FileNotFoundError, OSError):
+                # Another cleanup or the operating system may have removed a
+                # file between the directory scan and deletion.
+                continue
+    return removed
 
 
 def _safe_filename_token(value: object) -> str:
@@ -530,6 +565,7 @@ def build_review_from_export(
     """Run diagnostics and workbook construction from one LEAP export."""
     persistent_bundle: Path | None = None
     try:
+        _cleanup_stale_web_artifacts()
         economy_value = str(economy or "").strip()
         scenario_value = str(scenario or "").strip()
         if not economy_value:
