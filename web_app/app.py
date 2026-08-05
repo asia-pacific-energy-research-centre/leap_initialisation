@@ -40,6 +40,86 @@ INITIALISATION_ROOT = (
 if str(INITIALISATION_ROOT) not in sys.path:
     sys.path.insert(0, str(INITIALISATION_ROOT))
 
+
+APP_CSS = """
+/* Keep the input form compact enough to fit comfortably on one screen. */
+.gradio-container { max-width: 1180px !important; }
+#app-header h1 { margin: 0 0 0.25rem 0; font-size: 1.65rem; }
+#app-header p { margin: 0; color: #5b6472; font-size: 0.92rem; }
+#input-row, #upload-row, #action-row { gap: 0.65rem; }
+#input-row .gr-form, #upload-row .gr-form { padding: 0.55rem 0.7rem; }
+#upload-row .file-preview, #upload-row .upload-container,
+#upload-row .file-upload { min-height: 68px !important; }
+#upload-row .file-upload { padding: 0.45rem !important; }
+#esto-note { margin: -0.15rem 0 0.15rem 0; padding: 0.35rem 0.65rem;
+  border-left: 3px solid #8aa4c8; background: #f5f8fc; font-size: 0.82rem;
+  line-height: 1.3; color: #4d5868; }
+#run-button { min-width: 285px; }
+#run-status textarea, #run-status input { font-size: 0.88rem; }
+#calculator-animation { display: none; align-items: center; gap: 0.65rem;
+  min-height: 62px; margin: 0.25rem 0 0.5rem; padding: 0.4rem 0.8rem;
+  border-radius: 10px; background: linear-gradient(90deg, #fff7dc, #edf7ff);
+  border: 1px solid #e4d7a6; }
+#calculator-animation.is-running { display: flex; }
+.calc-machine { position: relative; width: 54px; height: 48px; padding: 5px;
+  border: 3px solid #34495e; border-radius: 8px; background: #f8fbff;
+  box-shadow: 3px 3px 0 #34495e; transform: rotate(-3deg); }
+.calc-display { height: 13px; padding: 1px 3px; overflow: hidden; border-radius: 3px;
+  background: #bde8c1; color: #214a2a; font: 700 8px/11px monospace; }
+.calc-keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; margin-top: 5px; }
+.calc-key { height: 6px; border-radius: 2px; background: #f2a65a; }
+.calc-key:nth-child(2n) { background: #72b7d8; }
+.calc-key:nth-child(3n) { background: #e76f51; }
+.calc-caption { font-size: 0.86rem; color: #39485a; }
+.calc-caption span { display: inline-block; width: 1.2em; text-align: left; }
+#calculator-animation.is-running .calc-machine { animation: calculator-wobble 0.65s ease-in-out infinite alternate; }
+#calculator-animation.is-running .calc-key { animation: calculator-blink 0.8s steps(2, end) infinite; }
+#calculator-animation.is-running .calc-key:nth-child(2) { animation-delay: 0.15s; }
+#calculator-animation.is-running .calc-key:nth-child(3) { animation-delay: 0.3s; }
+@keyframes calculator-wobble { from { transform: rotate(-5deg) translateY(1px); }
+  to { transform: rotate(5deg) translateY(-2px); } }
+@keyframes calculator-blink { 50% { filter: brightness(1.45); transform: scale(0.85); } }
+@media (max-width: 760px) {
+  #upload-row { flex-direction: column; }
+  #input-row { flex-wrap: wrap; }
+  #input-row > div { min-width: 30%; }
+}
+"""
+
+APP_JS = """
+() => {
+  const install = () => {
+    const button = document.querySelector('#run-button button');
+    const animation = document.querySelector('#calculator-animation');
+    const status = document.querySelector('#run-status textarea, #run-status input');
+    if (!button || !animation || button.dataset.calculatorBound === '1') return;
+    button.dataset.calculatorBound = '1';
+    let running = false;
+    let timer = null;
+    const stop = () => {
+      running = false;
+      animation.classList.remove('is-running');
+      if (timer) window.clearInterval(timer);
+      timer = null;
+    };
+    button.addEventListener('click', () => {
+      const initialStatus = status ? (status.value || '') : '';
+      running = true;
+      animation.classList.add('is-running');
+      timer = window.setInterval(() => {
+        const rawValue = status ? (status.value || '') : '';
+        const value = rawValue.toLowerCase();
+        if (rawValue && rawValue !== initialStatus &&
+            !value.includes('running') && !value.includes('starting')) stop();
+      }, 300);
+      window.setTimeout(() => { if (running) stop(); }, 900000);
+    });
+  };
+  window.setTimeout(install, 150);
+  new MutationObserver(install).observe(document.body, { childList: true, subtree: true });
+}
+"""
+
 from codebase.portable_release import developer_launcher  # noqa: E402
 from codebase.portable_release.settings import DeveloperSettings  # noqa: E402
 
@@ -569,7 +649,7 @@ def create_app():
     """Create the web interface for local or Hugging Face execution."""
     import gradio as gr
 
-    with gr.Blocks(title="LEAP Balance Review") as app:
+    with gr.Blocks(title="LEAP Balance Review", css=APP_CSS, js=APP_JS) as app:
         gr.Markdown(
             """# LEAP Balance Review
 
@@ -579,9 +659,10 @@ pages below. Optionally upload a replacement ESTO base-table CSV; otherwise the
 configured pinned ESTO table is used. The ESTO override changes the dataset
 compared against in both the balance-table review and dashboard. The dashboard
 then uses the latest year in that ESTO dataset as its base year.
-"""
+""",
+            elem_id="app-header",
         )
-        with gr.Row():
+        with gr.Row(elem_id="input-row"):
             economy = gr.Textbox(label="Economy", value="20_USA")
             scenario = gr.Textbox(label="Scenario", value="Target")
             year = gr.Textbox(
@@ -589,24 +670,44 @@ then uses the latest year in that ESTO dataset as its base year.
                 value="2022",
                 info="Use commas for multiple workbooks, e.g. 2022,2030,2040.",
             )
-        balance_export_workbook = gr.File(
-            label="LEAP Energy Balance export workbook (.xlsx)",
-            file_types=[".xlsx", ".xlsm"],
-            type="filepath",
+        with gr.Row(elem_id="upload-row"):
+            balance_export_workbook = gr.File(
+                label="LEAP Energy Balance export (.xlsx)",
+                file_types=[".xlsx", ".xlsm"],
+                type="filepath",
+                elem_id="balance-upload",
+            )
+            with gr.Column(scale=1, min_width=320):
+                esto_table = gr.File(
+                    label="Optional ESTO base-table override (.csv)",
+                    file_types=[".csv"],
+                    type="filepath",
+                    elem_id="esto-upload",
+                )
+                gr.Markdown(
+                    "**ESTO override:** changes the dataset compared against in the "
+                    "balance review and dashboard; the dashboard base year becomes "
+                    "the latest year in that ESTO dataset.",
+                    elem_id="esto-note",
+                )
+        with gr.Row(elem_id="action-row"):
+            run_button = gr.Button(
+                "Calculate diagnostics and build review",
+                variant="primary",
+                elem_id="run-button",
+            )
+            status = gr.Textbox(label="Status", interactive=False, elem_id="run-status")
+        gr.HTML(
+            """<div id="calculator-animation" role="status" aria-live="polite">
+              <div class="calc-machine" aria-hidden="true">
+                <div class="calc-display">CALCULATING</div>
+                <div class="calc-keys"><i class="calc-key"></i><i class="calc-key"></i><i class="calc-key"></i><i class="calc-key"></i><i class="calc-key"></i><i class="calc-key"></i></div>
+              </div>
+              <div class="calc-caption">Crunching balances<span>...</span></div>
+            </div>"""
         )
-        esto_table = gr.File(
-            label="Optional ESTO base-table override (.csv)",
-            file_types=[".csv"],
-            type="filepath",
-        )
-        gr.Markdown(
-            "*ESTO override note:* Uploading a replacement CSV changes the ESTO "
-            "dataset compared against in the balance XLSX review and dashboard. "
-            "The dashboard uses the latest year in that ESTO dataset as its base year."
-        )
-        run_button = gr.Button("Calculate diagnostics and build review", variant="primary")
-        status = gr.Textbox(label="Status", interactive=False)
-        summary = gr.Code(label="Run summary", language="json", interactive=False)
+        with gr.Accordion("Run details", open=False):
+            summary = gr.Code(label="Run summary", language="json", interactive=False)
         output = gr.File(
             label="Download review workbook(s)",
             file_count="multiple",
