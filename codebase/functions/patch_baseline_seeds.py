@@ -377,6 +377,11 @@ VALIDATION_EXCEPTION_BRANCH_NOTES: dict[str, str] = {
         "sector amount for this fuel, but the economy templates do not expose "
         "that branch; the values are immaterial and are intentionally left out."
     ),
+    "Stock Changes\\Secondary\\Bio jet kerosene": (
+        "A small stock-change value can be present in the source data, but the "
+        "current economy templates do not expose this branch; it is intentionally "
+        "left out as immaterial."
+    ),
 }
 
 
