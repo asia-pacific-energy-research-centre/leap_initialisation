@@ -7248,10 +7248,18 @@ def build_dashboards(
                     f'<div style="margin-top:4px;color:{palette["text"]};font-size:12px;font-weight:600;">'
                     f'{issue["label"]}</div>'
                 )
+            # Built outside the f-string: a replacement field cannot contain a
+            # backslash before Python 3.12, and the Space runs an older one.
+            measure_heading = (
+                "<div style='margin-bottom:4px;color:#4b5563;font-size:12px;"
+                "font-weight:600;'>" + str(measure) + "</div>"
+                if str(measure).strip()
+                else ""
+            )
             cards.append(
                 f"""
 <figure style="{card_style}">
-  {"<div style=\"margin-bottom:4px;color:#4b5563;font-size:12px;font-weight:600;\">" + str(measure) + "</div>" if str(measure).strip() else ""}
+  {measure_heading}
   {issue_badge}
   {chart_markup}
 </figure>
