@@ -20,7 +20,6 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 LEAP_SHEET_NAME = "LEAP Values"
 ERROR_SHEET_NAME = "LEAP - Source Error"
-CORRECT_SHEET_NAME = "Correct Source Values"
 FULL_EXPECTED_SHEET_NAME = "Full Expected Source"
 OUTPUT_UNITS = "Petajoule"
 
@@ -300,7 +299,7 @@ def _make_missing_record(
 
 def _scan_formula_errors(workbook) -> list[str]:
     errors: list[str] = []
-    for sheet_name in [ERROR_SHEET_NAME, CORRECT_SHEET_NAME, FULL_EXPECTED_SHEET_NAME]:
+    for sheet_name in [ERROR_SHEET_NAME, FULL_EXPECTED_SHEET_NAME]:
         sheet = workbook[sheet_name]
         for row in sheet.iter_rows():
             for cell in row:
@@ -317,7 +316,7 @@ def build_balance_structure_review_workbook(
     diagnostics_directory: Path | str,
     output_workbook: Path | str,
 ) -> dict[str, object]:
-    """Create the four-sheet balance-review workbook without Node dependencies."""
+    """Create the three-sheet balance-review workbook without Node dependencies."""
     source_path = Path(source_workbook)
     diagnostics_dir = Path(diagnostics_directory)
     output_path = Path(output_workbook)
@@ -423,19 +422,12 @@ def build_balance_structure_review_workbook(
 
     error_sheet = workbook.copy_worksheet(source_sheet)
     error_sheet.title = ERROR_SHEET_NAME
-    correct_sheet = workbook.copy_worksheet(source_sheet)
-    correct_sheet.title = CORRECT_SHEET_NAME
     full_expected_sheet = workbook.copy_worksheet(source_sheet)
     full_expected_sheet.title = FULL_EXPECTED_SHEET_NAME
-    for sheet in [source_sheet, error_sheet, correct_sheet, full_expected_sheet]:
+    for sheet in [source_sheet, error_sheet, full_expected_sheet]:
         _copy_sheet_view(source_sheet, sheet)
     _clear_diagnostic_values(
         error_sheet,
-        source_rows=source_rows,
-        source_columns=source_columns,
-    )
-    _clear_diagnostic_values(
-        correct_sheet,
         source_rows=source_rows,
         source_columns=source_columns,
     )
@@ -452,14 +444,6 @@ def build_balance_structure_review_workbook(
         f"Units: {OUTPUT_UNITS} | Red = LEAP minus source; purple blank = "
         "seed/carry-forward process; yellow blank = other unavailable comparator; "
         "green outline = supply affected by a seed-derived transformation",
-    )
-    _set_diagnostic_title(
-        correct_sheet,
-        f'Correct Source Values for Area "{economy}"',
-        f"Scenario: {source_metadata['scenario']}, Year: {source_metadata['year']}, "
-        f"Units: {OUTPUT_UNITS} | Blue = source value; purple blank = "
-        "seed/carry-forward process; yellow blank = other unavailable comparator; "
-        "green outline = affected supply",
     )
     _set_diagnostic_title(
         full_expected_sheet,
@@ -614,7 +598,6 @@ def build_balance_structure_review_workbook(
         displayed_error = state["reported_difference"] if state["has_mismatch"] else 0
 
         error_cell = error_sheet[address]
-        correct_cell = correct_sheet[address]
         full_expected_cell = full_expected_sheet[address]
         error_cell.value = displayed_error
         if state["has_mismatch"]:
@@ -624,10 +607,6 @@ def build_balance_structure_review_workbook(
                 font_color=RED_FONT,
                 bold=True,
             )
-            formula = (
-                f"='{LEAP_SHEET_NAME}'!{address}-'{ERROR_SHEET_NAME}'!{address}"
-            )
-            correct_cell.value = formula
             # This sheet is a source-of-truth view, not a derived reconciliation
             # view.  Store the resolved source value directly so it remains
             # auditable even before Excel recalculates workbook formulas.
@@ -638,9 +617,7 @@ def build_balance_structure_review_workbook(
                 fill_color=NEUTRAL_FILL,
                 font_color="666666",
             )
-            correct_cell.value = state["source_value"]
             full_expected_cell.value = state["source_value"]
-        _style_cell(correct_cell, fill_color=BLUE_FILL, font_color=BLUE_FONT)
         _style_cell(full_expected_cell, fill_color=BLUE_FILL, font_color=BLUE_FONT)
 
         sample = {
@@ -717,7 +694,7 @@ def build_balance_structure_review_workbook(
             yellow_keys.add(str(resolution["address"]))
 
     for address in yellow_keys:
-        for sheet in [error_sheet, correct_sheet, full_expected_sheet]:
+        for sheet in [error_sheet, full_expected_sheet]:
             sheet[address] = '=""'
             sheet[address].fill = PatternFill("solid", fgColor=YELLOW_FILL)
     for address in no_comparator_keys:
@@ -727,7 +704,7 @@ def build_balance_structure_review_workbook(
             font_color=NO_COMPARATOR_FONT,
             bold=True,
         )
-        for sheet in [error_sheet, correct_sheet, full_expected_sheet]:
+        for sheet in [error_sheet, full_expected_sheet]:
             sheet[address] = '=""'
             _style_cell(
                 sheet[address],
@@ -791,7 +768,7 @@ def build_balance_structure_review_workbook(
             font_color=AFFECTED_SUPPLY_FONT,
             bold=True,
         )
-        for sheet in [error_sheet, correct_sheet, full_expected_sheet]:
+        for sheet in [error_sheet, full_expected_sheet]:
             sheet[address].border = copy(green_border)
 
     accounted = sum(comparison_state_counts.values())
@@ -846,9 +823,8 @@ def build_balance_structure_review_workbook(
         "missingAuditRows": len(missing_records),
         "formulaErrorCells": formula_error_cells,
         "formulaPolicy": (
-            "Mismatch source values use LEAP-minus-error formulas; match source "
-            "values are numeric because the error sheet intentionally displays "
-            "within-tolerance differences as zero."
+            "Full Expected Source stores resolved source values directly; the "
+            "error sheet intentionally displays within-tolerance differences as zero."
         ),
         "reconciliationSamples": reconciliation_samples,
         "renders": {},

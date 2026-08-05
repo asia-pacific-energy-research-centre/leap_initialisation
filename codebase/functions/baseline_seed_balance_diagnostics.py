@@ -375,7 +375,7 @@ def _include_nonenergy_in_other_sector_comparator_mapping(
     flows 16.03-16.05 plus flow 17 non-energy use. The maintained canonical
     mapping retains the ordinary Other-sector selector because it serves wider
     mapping purposes; this diagnostic-only copy needs the combined selector so
-    its Correct Source Values compare the same scope written to LEAP.
+    its Full Expected Source compares the same scope written to LEAP.
     """
     out = esto_mapping.copy()
     path_column = "leap_sector_name_full_path"

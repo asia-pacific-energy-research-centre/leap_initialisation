@@ -113,13 +113,13 @@ See `baseline_seed_final_artifact_contract.md` and
 
 **Status: completed 2026-08-03.**
 
-The four-sheet balance-review workbook is now authored by
+The three-sheet balance-review workbook is now authored by
 `codebase/functions/balance_review_workbook_builder.py` with Python and
 `openpyxl`. The former Node.js
 `codebase/balance_structure_review_workbook_workflow.mjs` builder and its
 `@oai/artifact-tool` runtime dependency were removed. The maintained review
 path still preserves the selected LEAP balance layout, PJ normalization,
-LEAP-minus-source formulas, unavailable-comparator styling, and the missing
+LEAP-minus-source diagnostics, unavailable-comparator styling, and the missing
 combinations audit. An active-code search found no other
 `@oai/artifact-tool` imports in `leap_initialisation`. A wider audit found two
 remaining Python-migration candidates in the sibling `leap_mappings` repo:
@@ -171,7 +171,7 @@ the validation/monitoring chain have been audited.
 The reviewed model decision is to keep ESTO `17.*` and Ninth
 `17_nonenergy_use` inside `Demand\All demand aggregated\Other sector`; no
 separate LEAP Non energy branch should be created. The misleading AUS preview
-was caused by the diagnostic's Correct Source Values selector using only ESTO
+was caused by the diagnostic's expected-source selector using only ESTO
 `16.03-16.05`. The diagnostic now compares the same scope written to LEAP:
 `16.03-16.05,17`.
 

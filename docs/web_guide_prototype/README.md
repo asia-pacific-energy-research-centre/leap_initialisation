@@ -28,7 +28,7 @@ The four images in `assets/` were extracted from that Word document:
 - `review-workbook.png` — the review workbook;
 - `dashboard-supply.png` — a dashboard page.
 
-The current prototype intentionally reflects the web app's latest four-sheet
+The current prototype intentionally reflects the web app's latest three-sheet
 workbook. The older Word guide describes a fifth “Missing Combinations” sheet;
 that text should not be copied into the production web guide unchanged.
 

@@ -53,7 +53,6 @@ GOLDEN_YEAR = 2022
 GOLDEN_SHEET_NAMES = [
     "LEAP Values",
     "LEAP - Source Error",
-    "Correct Source Values",
     "Full Expected Source",
 ]
 GOLDEN_SOURCE_SHAPE = {"rows": 79, "columns": 49}
@@ -211,7 +210,7 @@ def test_selected_core_values_match_the_golden_expectation(golden_result) -> Non
     try:
         leap_values = workbook["LEAP Values"]
         error_sheet = workbook["LEAP - Source Error"]
-        correct_sheet = workbook["Correct Source Values"]
+        full_expected_sheet = workbook["Full Expected Source"]
         for cell in GOLDEN_CELLS:
             address = cell["address"]
             column = error_sheet[address].column
@@ -224,8 +223,9 @@ def test_selected_core_values_match_the_golden_expectation(golden_result) -> Non
             assert error_sheet[address].value == pytest.approx(
                 cell["error"], abs=TOLERANCE
             ), address
-            # Mismatched cells carry a LEAP-minus-error formula, not a literal.
-            assert str(correct_sheet[address].value).startswith("="), address
+            assert full_expected_sheet[address].value == pytest.approx(
+                cell["leap_value"] - cell["error"], abs=TOLERANCE
+            ), address
     finally:
         workbook.close()
 
@@ -246,7 +246,8 @@ def test_rebuild_matches_the_historical_reference_workbook(golden_result) -> Non
     rebuilt = load_workbook(Path(result.outputs["workbook"]))
     reference = load_workbook(GOLDEN_REFERENCE_WORKBOOK)
     try:
-        assert rebuilt.sheetnames == reference.sheetnames
+        assert rebuilt.sheetnames == GOLDEN_SHEET_NAMES
+        assert all(name in reference.sheetnames for name in GOLDEN_SHEET_NAMES)
         for sheet_name in ["LEAP Values", "LEAP - Source Error"]:
             new_sheet = rebuilt[sheet_name]
             old_sheet = reference[sheet_name]

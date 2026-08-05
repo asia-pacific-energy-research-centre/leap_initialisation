@@ -28,7 +28,7 @@ deployment work is operational rather than a second application build:
 - verify one real export end-to-end in the hosted container;
 - review licensing and publication safety before changing the Space to public.
 
-The current app includes internal diagnostics, the four-sheet balance-review
+The current app includes internal diagnostics, the three-sheet balance-review
 workbook, dashboard generation and in-app dashboard viewing. It accepts a LEAP
 balance export workbook, one or more review years, and an optional ESTO CSV
 override. Dashboard scenario and economy selectors are intentionally hidden;
@@ -268,7 +268,7 @@ Keep the Space private until this checklist passes:
 - the build completes without missing-package errors;
 - the app opens and shows the expected input controls;
 - a small representative export produces the balance-review workbook;
-- the workbook has the expected four sheets;
+- the workbook has the expected three sheets;
 - diagnostics and the dashboard are produced from the upload;
 - the dashboard opens inside the app with the submitted economy/scenario;
 - the full ZIP contains the dashboard subfolders, workbook, diagnostics, and

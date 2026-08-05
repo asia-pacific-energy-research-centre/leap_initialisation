@@ -57,8 +57,8 @@ result back into the source Energy Balance layout using Python and `openpyxl`
 only; the review workflow has no Node.js or `@oai/artifact-tool` dependency.
 When the source metadata reports `Thousand Petajoule`, it multiplies the
 displayed LEAP values by 1,000 and relabels the copied review sheet as
-`Petajoule`, keeping the LEAP, error, and expected-source sheets on the same PJ
-basis. Source files are never modified.
+`Petajoule`, keeping the LEAP, error, and full expected-source sheets on the
+same PJ basis. Source files are never modified.
 
 The normal review path now reads the maintained all-years files under
 `data/leap balances exports/<economy>/`. Both filename forms are accepted:

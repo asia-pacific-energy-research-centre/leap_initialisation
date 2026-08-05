@@ -185,17 +185,14 @@ def test_python_builder_preserves_layout_and_writes_diagnostics(tmp_path: Path) 
     assert workbook.sheetnames == [
         LEAP_SHEET_NAME,
         ERROR_SHEET_NAME,
-        "Correct Source Values",
         FULL_EXPECTED_SHEET_NAME,
     ]
     assert workbook[LEAP_SHEET_NAME].freeze_panes == "B4"
     assert workbook[ERROR_SHEET_NAME]["B4"].value == 2
     assert workbook[ERROR_SHEET_NAME]["B4"].fill.fgColor.rgb.endswith(RED_FILL)
-    assert workbook["Correct Source Values"]["B4"].value == (
-        "='LEAP Values'!B4-'LEAP - Source Error'!B4"
-    )
-    assert workbook["Correct Source Values"]["C5"].value == 5
-    assert workbook["Correct Source Values"]["C5"].fill.fgColor.rgb.endswith(
+    assert workbook[FULL_EXPECTED_SHEET_NAME]["B4"].value == 8
+    assert workbook[FULL_EXPECTED_SHEET_NAME]["C5"].value == 5
+    assert workbook[FULL_EXPECTED_SHEET_NAME]["C5"].fill.fgColor.rgb.endswith(
         BLUE_FILL
     )
     assert workbook[LEAP_SHEET_NAME]["B7"].fill.fgColor.rgb.endswith(

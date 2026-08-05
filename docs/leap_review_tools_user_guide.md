@@ -186,7 +186,7 @@ that comparison, laid out in the shape of the balance table you already know.
 So a difference is a disagreement between the model and the source — not a
 verdict about which one is wrong.
 
-## The four sheets
+## The three sheets
 
 They are meant to be read in order, and each answers a different question.
 
@@ -194,9 +194,8 @@ They are meant to be read in order, and each answers a different question.
 flowchart TD
     S1["1. LEAP Values<br/><i>What did LEAP produce?</i>"]
     S2["2. LEAP - Source Error<br/><i>Where does it disagree, and by how much?</i>"]
-    S3["3. Correct Source Values<br/><i>What should it have been?</i>"]
-    S4["4. Full Expected Source<br/><i>The same, including what is missing</i>"]
-    S1 --> S2 --> S3 --> S4
+    S3["3. Full Expected Source<br/><i>The full ninth/ESTO balance table for the year</i>"]
+    S1 --> S2 --> S3
 ```
 
 **LEAP Values** is your energy balance exactly as LEAP produced it, converted to
@@ -208,17 +207,14 @@ source. A red cell means they disagree, and the number is the size of the gap.
 A grey zero means they agree. This is your worklist: start with the largest red
 numbers.
 
-**Correct Source Values** shows what the source data says each cell should be.
-When you want to know not just that something is wrong but what it ought to be,
-this is the sheet.
-
-**Full Expected Source** is the same again, but it also greys out the cells that
-do not exist in your balance structure at all. It answers "is this missing, or is
-it just not applicable here?"
+**Full Expected Source** shows the full ninth/ESTO balance table for the selected
+year. It includes the source values and greys out cells that do not exist in the
+LEAP balance structure, so it also answers "is this missing, or is it just not
+applicable here?"
 
 Missing and unavailable comparison rows are still counted in the run summary and
 remain available in the diagnostic CSV outputs. They are no longer copied into a
-separate workbook sheet, so the review workbook stays focused on the four core
+separate workbook sheet, so the review workbook stays focused on the three core
 balance views.
 
 ## Where the differences come from
