@@ -37,19 +37,23 @@ restarts.
 
 ## Hugging Face deployment
 
-Use this repository as the source checkout for the Space, or copy `app.py` and
-`requirements.txt` into the Space while preserving the `codebase/` package.
-The app imports the orchestration from this repository at runtime. Rebuild the
-Space from the latest repository commit whenever the workflow changes; no
-bundled EXE or pre-existing diagnostics folder is required.
+The preferred deployment is a self-contained web-app repository containing an
+`hf_bundle/` prepared from the three local sibling repositories. The Space then
+runs from the bundled snapshot and does not need GitHub access at runtime.
+Record the source commits in `hf_bundle/source_manifest.json` and refresh the
+bundle locally whenever the source repositories change.
+
+The bundle should include only runtime code and required source/configuration
+assets. It does not need Git history, tests, notebooks, old release builds, or
+unrelated generated outputs. No bundled EXE or pre-existing diagnostics folder
+is required.
 
 For a Space whose working directory is the repository root, set the Space SDK
 to Gradio and use `web_app/app.py` as the application file, or place the file
 at the Space root as `app.py`.
 
-The complete workflow requires the sibling `leap_mappings` and
-`leap_dashboard` source repositories plus the configured ESTO/9th-edition data
-assets. For local runs, the app expects the sibling repositories by default:
+For local development before preparing a bundle, the app expects the sibling
+repositories by default:
 
 ```text
 github/
@@ -61,3 +65,6 @@ github/
 For another deployment layout, set `LEAP_MAPPINGS_ROOT` and
 `LEAP_DASHBOARD_ROOT` before starting the app. The run preflight fails clearly
 if those repositories or required source assets are absent.
+
+See `docs/balance_review_web_app.md` for the bundle layout, refresh procedure,
+commit provenance, and publication-safety requirements.

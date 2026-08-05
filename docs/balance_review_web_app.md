@@ -39,10 +39,61 @@ implementation and it does not invoke the packaged EXE. A local run reports
 the current Git commit when Git is available. A deployment must be rebuilt from
 the updated source checkout whenever the workflow changes.
 
-The full workflow uses the exact live `leap_initialisation`, `leap_mappings`,
-and `leap_dashboard` checkouts through the same developer-mode context used by
-the release tooling. Set `LEAP_MAPPINGS_ROOT` and `LEAP_DASHBOARD_ROOT` when the
-siblings are mounted somewhere other than the default sibling directories.
+For local development, the full workflow uses the exact live
+`leap_initialisation`, `leap_mappings`, and `leap_dashboard` checkouts through
+the same developer-mode context used by the release tooling. Set
+`LEAP_MAPPINGS_ROOT` and `LEAP_DASHBOARD_ROOT` when the siblings are mounted
+somewhere other than the default sibling directories.
+
+## Hugging Face deployment bundle
+
+The preferred public deployment is a self-contained `leap_review_web_app`
+repository. Hugging Face should not need access to the three local sibling
+repositories at runtime. Instead, prepare a versioned runtime bundle locally
+from the sibling checkouts and commit the prepared files to the web-app
+repository:
+
+```text
+github/
+  leap_review_web_app/
+    app.py
+    requirements.txt
+    hf_bundle/
+      leap_initialisation/
+      leap_mappings/
+      leap_dashboard/
+      source_manifest.json
+  leap_initialisation/
+  leap_mappings/
+  leap_dashboard/
+```
+
+The bundle should contain only the runtime closure: imported Python modules,
+required configuration, source tables, mapping results, and dashboard assets.
+It does not need Git history, tests, notebooks, old release builds, or
+unrelated generated outputs. The app must point its repository roots at the
+three directories under `hf_bundle/`, not at the local sibling paths.
+
+`source_manifest.json` records the source commit used for each copied
+repository. This preserves provenance without making the Space dependent on
+GitHub links at runtime. A bundle refresh follows this sequence:
+
+1. update the three local sibling repositories;
+2. run the local bundle-preparation workflow;
+3. replace `hf_bundle/` and review `source_manifest.json`;
+4. run the app locally against the bundle;
+5. commit and push the prepared web-app repository;
+6. allow Hugging Face to rebuild the Space.
+
+The preparation step must reject missing sibling repositories and must not
+silently fall back to stale files. Before publishing, verify that every copied
+file is safe to redistribute: a public GitHub repository containing the bundle
+also publishes the copied code and data. Keep the Space private or exclude the
+affected files if any source material is confidential or has incompatible
+redistribution terms.
+
+The live-sibling layout remains the preferred development and debugging mode;
+the prepared bundle is the preferred deployment and release mode.
 
 ## Parity notes
 
