@@ -29,11 +29,14 @@ workflow defaults rather than user-facing controls.
 The embedded dashboard is intentionally a single-run view. Its generated
 economy selector and Reference/Target toggle are hidden, and the submitted
 economy/scenario are shown in a fixed banner. The downloadable archive retains
-the complete generated dashboard directory and its chart-bundle subfolder.
-Each run is persisted under `LEAP_REVIEW_ARCHIVE_ROOT` (default:
-`~/leap_review_tools/archives`) with metadata so it can be selected again after
-the page is refreshed or the app is restarted, subject to the deployment's
-filesystem persistence.
+the complete generated dashboard directory and its chart-bundle subfolder. A
+compressed snapshot of every dashboard page is saved in the user's browser via
+Gradio `BrowserState`; it is not stored in shared server-side archive storage.
+This lets the same browser reopen earlier economy/scenario runs without a
+persistent Hugging Face volume. The full ZIP remains a download for the current
+run and should be saved by the user if they need an external archive. The app
+retains the three most recent browser-local snapshots and provides a clear
+button for removing them from that browser.
 
 ## Source-of-truth rule
 

@@ -30,13 +30,12 @@ source tables, then returns the four-sheet balance-review workbook as the
 desktop release. It also runs the dashboard workflow, displays the generated
 interactive dashboard pages in the app, and offers a ZIP containing the full
 dashboard folder/subfolders, workbook, diagnostics, and logs. The embedded
-dashboard is fixed to the submitted economy and scenario; use the saved archive
-dropdown to reopen earlier runs for comparison.
-
-Archives are stored outside the repository by default at
-`~/leap_review_tools/archives`. Set `LEAP_REVIEW_ARCHIVE_ROOT` to a persistent
-mounted directory when deploying to Hugging Face if archives must survive Space
-restarts.
+dashboard is fixed to the submitted economy and scenario; use the browser-local
+saved archive dropdown to reopen earlier runs for comparison. Dashboard page
+snapshots are kept in the user's browser, not in shared server storage, so a
+public Space does not expose one user's saved dashboards to another user.
+Download the current full ZIP if an external copy of the dashboard folder is
+needed.
 
 ## Hugging Face deployment
 

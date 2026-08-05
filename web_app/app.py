@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import html
+import base64
+import gzip
 import os
 import re
 import shutil
@@ -24,6 +26,9 @@ from uuid import uuid4
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DASHBOARD_MIN_YEAR = 2010
 DEFAULT_DASHBOARD_MAX_YEAR = 2060
+# Keep the browser-local payload within common localStorage quotas while still
+# allowing comparison between several recent economy/scenario runs.
+MAX_BROWSER_DASHBOARDS = 3
 HF_BUNDLE_ROOT = Path(
     os.getenv("HF_BUNDLE_ROOT", str(REPO_ROOT / "hf_bundle"))
 )
@@ -31,12 +36,6 @@ INITIALISATION_ROOT = (
     HF_BUNDLE_ROOT / "leap_initialisation"
     if (HF_BUNDLE_ROOT / "leap_initialisation").is_dir()
     else REPO_ROOT
-)
-ARCHIVE_ROOT = Path(
-    os.getenv(
-        "LEAP_REVIEW_ARCHIVE_ROOT",
-        str(Path.home() / "leap_review_tools" / "archives"),
-    )
 )
 if str(INITIALISATION_ROOT) not in sys.path:
     sys.path.insert(0, str(INITIALISATION_ROOT))
@@ -166,98 +165,75 @@ def _dashboard_pages(dashboard_directory: Path) -> list[str]:
     )
 
 
-def _dashboard_archive_records() -> list[dict[str, object]]:
-    """Read persisted dashboard metadata, newest first."""
-    if not ARCHIVE_ROOT.is_dir():
+def _compress_dashboard_html(page_html: str) -> str:
+    compressed = gzip.compress(page_html.encode("utf-8"), compresslevel=9)
+    return base64.b64encode(compressed).decode("ascii")
+
+
+def _decompress_dashboard_html(encoded_html: str) -> str:
+    compressed = base64.b64decode(encoded_html.encode("ascii"))
+    return gzip.decompress(compressed).decode("utf-8")
+
+
+def _browser_dashboard_choices(records: object) -> list[tuple[str, str]]:
+    if not isinstance(records, list):
         return []
-    records: list[dict[str, object]] = []
-    for metadata_path in ARCHIVE_ROOT.glob("*/metadata.json"):
-        try:
-            record = json.loads(metadata_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if (metadata_path.parent / "dashboard").is_dir():
-            records.append(record)
-    return sorted(records, key=lambda item: str(item.get("created_at", "")), reverse=True)
-
-
-def _dashboard_archive_choices() -> list[tuple[str, str]]:
-    """Return friendly labels and stable archive IDs for a Gradio dropdown."""
     choices = []
-    for record in _dashboard_archive_records():
-        archive_id = str(record.get("archive_id", ""))
-        label = (
-            f"{record.get('economy', 'unknown')} / "
-            f"{record.get('scenario', 'unknown')} / "
-            f"{record.get('years', '')} ({record.get('created_at', '')})"
+    for record in records:
+        if not isinstance(record, dict) or not record.get("archive_id"):
+            continue
+        choices.append(
+            (
+                f"{record.get('economy', 'unknown')} / "
+                f"{record.get('scenario', 'unknown')} / "
+                f"{record.get('years', '')} ({record.get('created_at', '')})",
+                str(record["archive_id"]),
+            )
         )
-        if archive_id:
-            choices.append((label, archive_id))
     return choices
 
 
-def _dashboard_archive_record(archive_id: str | None) -> dict[str, object] | None:
-    if not archive_id:
+def _browser_dashboard_record(
+    archive_id: str | None,
+    records: object,
+) -> dict[str, object] | None:
+    if not archive_id or not isinstance(records, list):
         return None
     return next(
-        (record for record in _dashboard_archive_records()
-         if record.get("archive_id") == archive_id),
+        (
+            record
+            for record in records
+            if isinstance(record, dict) and record.get("archive_id") == archive_id
+        ),
         None,
     )
 
 
-def _persist_dashboard_archive(
+def _dashboard_snapshot(
+    dashboard_directory: Path,
     *,
     economy: str,
     scenario: str,
     years: object,
-    dashboard_directory: Path | None,
-    workbook_paths: list[Path],
-    diagnostics_directory: Path,
-    run_directory: Path,
-    log_directory: Path,
-) -> tuple[Path, dict[str, object]]:
-    """Persist a complete derived run for later dashboard comparison."""
-    if dashboard_directory is None or not dashboard_directory.is_dir():
-        raise FileNotFoundError("Dashboard output was not available to archive.")
-    ARCHIVE_ROOT.mkdir(parents=True, exist_ok=True)
-    archive_id = (
-        f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_"
-        f"{_safe_filename_token(economy)}_{_safe_filename_token(scenario)}_"
-        f"{uuid4().hex[:8]}"
-    )
-    archive_directory = ARCHIVE_ROOT / archive_id
-    archive_directory.mkdir(parents=True, exist_ok=False)
-    shutil.copytree(dashboard_directory, archive_directory / "dashboard")
-    persistent_workbooks = []
-    for workbook_path in workbook_paths:
-        target = archive_directory / "workbooks" / workbook_path.name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(workbook_path, target)
-        persistent_workbooks.append(target)
-    bundle_path = ARCHIVE_ROOT / f"{archive_id}.zip"
-    _write_diagnostics_bundle(
-        bundle_path=bundle_path,
-        workbook_paths=workbook_paths,
-        diagnostics_directory=diagnostics_directory,
-        run_directory=run_directory,
-        dashboard_directory=archive_directory / "dashboard",
-        log_directory=log_directory,
-    )
-    record = {
-        "archive_id": archive_id,
+) -> dict[str, object]:
+    """Create a compressed browser-local snapshot of every dashboard page."""
+    pages = {}
+    for page_name in _dashboard_pages(dashboard_directory):
+        page_path = dashboard_directory / page_name
+        page_html = _inline_dashboard_chart_bundle(
+            page_path,
+            page_path.read_text(encoding="utf-8"),
+        )
+        pages[page_name] = _compress_dashboard_html(page_html)
+    return {
+        "archive_id": f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_{uuid4().hex[:8]}",
         "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "economy": economy,
         "scenario": scenario,
         "years": years,
-        "dashboard_directory": str(archive_directory / "dashboard"),
-        "bundle_path": str(bundle_path),
-        "dashboard_pages": _dashboard_pages(archive_directory / "dashboard"),
+        "pages": pages,
+        "storage": "browser-local",
     }
-    (archive_directory / "metadata.json").write_text(
-        json.dumps(record, indent=2, default=str), encoding="utf-8"
-    )
-    return bundle_path, record
 
 
 def _inline_dashboard_chart_bundle(page_path: Path, page_html: str) -> str:
@@ -278,20 +254,8 @@ def _inline_dashboard_chart_bundle(page_path: Path, page_html: str) -> str:
     return rendered
 
 
-def _dashboard_iframe_html(
-    dashboard_directory: Path,
-    page_name: str,
-    economy: str,
-    scenario: str,
-) -> str:
-    """Render a generated dashboard page inside an isolated iframe."""
-    page_path = dashboard_directory / page_name
-    if not page_path.is_file():
-        return "<p>Choose a generated dashboard page.</p>"
-    page_html = _inline_dashboard_chart_bundle(
-        page_path,
-        page_path.read_text(encoding="utf-8"),
-    )
+def _dashboard_iframe_from_html(page_html: str, economy: str, scenario: str) -> str:
+    """Render dashboard HTML inside an isolated, run-locked iframe."""
     scenario_mode = {"reference": "ref", "target": "tgt"}.get(
         scenario.casefold(), ""
     )
@@ -336,15 +300,33 @@ def _dashboard_iframe_html(
     )
 
 
+def _dashboard_iframe_html(
+    dashboard_directory: Path,
+    page_name: str,
+    economy: str,
+    scenario: str,
+) -> str:
+    """Render a generated dashboard page inside an isolated iframe."""
+    page_path = dashboard_directory / page_name
+    if not page_path.is_file():
+        return "<p>Choose a generated dashboard page.</p>"
+    page_html = _inline_dashboard_chart_bundle(
+        page_path,
+        page_path.read_text(encoding="utf-8"),
+    )
+    return _dashboard_iframe_from_html(page_html, economy, scenario)
+
+
 def build_review_from_export(
     economy: str,
     scenario: str,
     year: object,
     balance_export_workbook: object,
     esto_table: object,
+    browser_archives: object = None,
     dashboard_min_year: float = DEFAULT_DASHBOARD_MIN_YEAR,
     dashboard_max_year: float = DEFAULT_DASHBOARD_MAX_YEAR,
-) -> tuple[str, str, object, str | None, str, object, object, object, str | None]:
+) -> tuple[str, str, object, str | None, str, object, object, object, str | None, object]:
     """Run diagnostics and workbook construction from one LEAP export."""
     persistent_bundle: Path | None = None
     try:
@@ -422,46 +404,40 @@ def build_review_from_export(
         else:
             dashboard_error = dashboard_result.error or "Dashboard generation failed."
 
-        if dashboard_directory is not None:
-            persistent_bundle, archive_record = _persist_dashboard_archive(
+        persistent_dir = Path(tempfile.mkdtemp(prefix="leap_balance_review_download_"))
+        persistent_workbooks = []
+        for workbook_path in workbook_paths:
+            target = persistent_dir / workbook_path.name
+            shutil.copy2(workbook_path, target)
+            persistent_workbooks.append(target)
+        persistent_bundle = persistent_dir / (
+            f"{_safe_filename_token(economy_value)}_"
+            f"{_safe_filename_token(scenario_value)}_{year_value}_diagnostics.zip"
+        )
+        _write_diagnostics_bundle(
+            bundle_path=persistent_bundle,
+            workbook_paths=workbook_paths,
+            diagnostics_directory=diagnostics_directory,
+            run_directory=result.run_directory,
+            dashboard_directory=dashboard_directory,
+            log_directory=run_root / "logs",
+        )
+        snapshot = (
+            _dashboard_snapshot(
+                dashboard_directory,
                 economy=economy_value,
                 scenario=scenario_value,
                 years=result.outputs.get("years", year_value),
-                dashboard_directory=dashboard_directory,
-                workbook_paths=workbook_paths,
-                diagnostics_directory=diagnostics_directory,
-                run_directory=result.run_directory,
-                log_directory=run_root / "logs",
             )
-            persistent_workbooks = [
-                Path(archive_record["dashboard_directory"]).parent.parent
-                / "workbooks"
-                / workbook_path.name
-                for workbook_path in workbook_paths
-            ]
-        else:
-            persistent_dir = Path(tempfile.mkdtemp(prefix="leap_balance_review_download_"))
-            persistent_workbooks = []
-            for workbook_path in workbook_paths:
-                target = persistent_dir / workbook_path.name
-                shutil.copy2(workbook_path, target)
-                persistent_workbooks.append(target)
-            persistent_bundle = persistent_dir / (
-                f"{_safe_filename_token(economy_value)}_"
-                f"{_safe_filename_token(scenario_value)}_{year_value}_diagnostics.zip"
-            )
-            _write_diagnostics_bundle(
-                bundle_path=persistent_bundle,
-                workbook_paths=workbook_paths,
-                diagnostics_directory=diagnostics_directory,
-                run_directory=result.run_directory,
-                log_directory=run_root / "logs",
-            )
-            archive_record = {
-                "archive_id": None,
-                "dashboard_directory": None,
-                "dashboard_pages": [],
-            }
+            if dashboard_directory is not None
+            else None
+        )
+        existing_archives = browser_archives if isinstance(browser_archives, list) else []
+        browser_archive_records = (
+            [snapshot, *existing_archives[: MAX_BROWSER_DASHBOARDS - 1]]
+            if snapshot is not None
+            else existing_archives[:MAX_BROWSER_DASHBOARDS]
+        )
 
         build_result = result.outputs.get("build_result", {})
         summary = {
@@ -484,10 +460,9 @@ def build_review_from_export(
             "dashboard_status": "succeeded" if dashboard_result.ok else "failed",
             "dashboard_error": dashboard_error,
             "dashboard_pages": dashboard_page_names,
-            "dashboard_archive_id": archive_record["archive_id"],
-            "dashboard_archive_root": str(ARCHIVE_ROOT),
+            "dashboard_archive_id": snapshot["archive_id"] if snapshot else None,
+            "dashboard_storage": "browser-local",
         }
-        archive_choices = _dashboard_archive_choices()
         return (
             json.dumps(summary, indent=2, default=str),
             (
@@ -503,23 +478,25 @@ def build_review_from_export(
                 "value": dashboard_page_names[0] if dashboard_page_names else None,
             },
             {
-                "dashboard_directory": archive_record["dashboard_directory"],
+                "pages": snapshot["pages"] if snapshot else {},
                 "economy": economy_value,
                 "scenario": scenario_value,
             },
             {
-                "choices": archive_choices,
-                "value": archive_record["archive_id"] if archive_record["archive_id"] else None,
+                "choices": _browser_dashboard_choices(browser_archive_records),
+                "value": snapshot["archive_id"] if snapshot else None,
             },
             str(persistent_bundle),
+            browser_archive_records,
         )
     except Exception as error:  # Gradio should show a plain-language failure.
         return (
             "", f"Build failed: {error}", [], None, "",
             {"choices": [], "value": None},
             None,
-            {"choices": _dashboard_archive_choices(), "value": None},
+            {"choices": _browser_dashboard_choices(browser_archives), "value": None},
             None,
+            browser_archives if isinstance(browser_archives, list) else [],
         )
 
 
@@ -527,6 +504,18 @@ def render_dashboard_page(page_name: str, dashboard_state: dict[str, object] | N
     """Render a selected generated dashboard page in the embedded view."""
     if not page_name or not dashboard_state:
         return "<p>Run the workflow to generate a dashboard.</p>"
+    pages = dashboard_state.get("pages")
+    if isinstance(pages, dict) and page_name in pages:
+        try:
+            return _dashboard_iframe_from_html(
+                _decompress_dashboard_html(str(pages[page_name])),
+                str(dashboard_state.get("economy", "")),
+                str(dashboard_state.get("scenario", "")),
+            )
+        except (OSError, ValueError, UnicodeDecodeError) as error:
+            return f"<p>Could not restore this browser-local dashboard page: {html.escape(str(error))}</p>"
+    if not dashboard_state.get("dashboard_directory"):
+        return "<p>This saved dashboard has no page data.</p>"
     return _dashboard_iframe_html(
         Path(str(dashboard_state["dashboard_directory"])),
         Path(page_name).name,
@@ -537,14 +526,15 @@ def render_dashboard_page(page_name: str, dashboard_state: dict[str, object] | N
 
 def select_dashboard_archive(
     archive_id: str | None,
+    browser_archives: object,
 ) -> tuple[object, str, str | None, dict[str, object] | None]:
-    """Load a previously persisted dashboard into the embedded viewer."""
-    record = _dashboard_archive_record(archive_id)
+    """Load a previously saved browser-local dashboard into the viewer."""
+    record = _browser_dashboard_record(archive_id, browser_archives)
     if record is None:
         return {"choices": [], "value": None}, "<p>Select a saved dashboard.</p>", None, None
-    pages = [str(page) for page in record.get("dashboard_pages", [])]
+    pages = sorted(str(page) for page in (record.get("pages") or {}))
     state = {
-        "dashboard_directory": record["dashboard_directory"],
+        "pages": record.get("pages", {}),
         "economy": record.get("economy", ""),
         "scenario": record.get("scenario", ""),
     }
@@ -552,8 +542,26 @@ def select_dashboard_archive(
     return (
         {"choices": pages, "value": pages[0] if pages else None},
         rendered,
-        str(record.get("bundle_path")) if record.get("bundle_path") else None,
+        None,
         state,
+    )
+
+
+def load_browser_archives(browser_archives: object) -> object:
+    """Populate the archive selector from the user's local browser state."""
+    choices = _browser_dashboard_choices(browser_archives)
+    return {"choices": choices, "value": choices[0][1] if choices else None}
+
+
+def clear_browser_archives() -> tuple[list[object], object, object, str, None, None]:
+    """Clear only this browser's saved dashboard snapshots."""
+    return (
+        [],
+        {"choices": [], "value": None},
+        {"choices": [], "value": None},
+        "<p>Browser-saved dashboards cleared.</p>",
+        None,
+        None,
     )
 
 
@@ -609,13 +617,21 @@ then uses the latest year in that ESTO dataset as its base year.
         gr.Markdown(
             "## Dashboards\n\n"
             "The embedded dashboard is locked to the economy and scenario entered above. "
-            "Each run is saved locally so you can compare earlier runs."
+            "Dashboard snapshots are saved in this browser only, so other users "
+            "cannot see them and no persistent server storage is required."
+        )
+        browser_archives = gr.BrowserState(
+            default_value=[],
+            storage_key="leap_balance_review_dashboard_archives",
         )
         dashboard_archive = gr.Dropdown(
             label="Saved dashboard archive",
-            choices=_dashboard_archive_choices(),
+            choices=[],
             value=None,
             interactive=True,
+        )
+        clear_dashboard_button = gr.Button(
+            "Clear browser-saved dashboards", size="sm"
         )
         dashboard_page = gr.Dropdown(
             label="Dashboard page",
@@ -624,7 +640,7 @@ then uses the latest year in that ESTO dataset as its base year.
             interactive=True,
         )
         dashboard_html = gr.HTML(value="<p>Run the workflow to generate a dashboard.</p>")
-        dashboard_bundle = gr.File(label="Download selected full dashboard archive")
+        dashboard_bundle = gr.File(label="Download current full dashboard archive")
         dashboard_state = gr.State(value=None)
         run_button.click(
             fn=build_review_from_export,
@@ -645,17 +661,34 @@ then uses the latest year in that ESTO dataset as its base year.
                 dashboard_state,
                 dashboard_archive,
                 dashboard_bundle,
+                browser_archives,
             ],
         )
         dashboard_archive.change(
             fn=select_dashboard_archive,
-            inputs=dashboard_archive,
+            inputs=[dashboard_archive, browser_archives],
             outputs=[dashboard_page, dashboard_html, dashboard_bundle, dashboard_state],
         )
         dashboard_page.change(
             fn=render_dashboard_page,
             inputs=[dashboard_page, dashboard_state],
             outputs=dashboard_html,
+        )
+        clear_dashboard_button.click(
+            fn=clear_browser_archives,
+            outputs=[
+                browser_archives,
+                dashboard_archive,
+                dashboard_page,
+                dashboard_html,
+                dashboard_bundle,
+                dashboard_state,
+            ],
+        )
+        app.load(
+            fn=load_browser_archives,
+            inputs=browser_archives,
+            outputs=dashboard_archive,
         )
     return app
 
