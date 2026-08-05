@@ -1,8 +1,12 @@
 const steps = [
-  { target: 'target-upload', title: 'Start with the export', copy: 'Drop the LEAP Energy Balance workbook here. The web app reads the economy and scenario from the file, so there is no second metadata form to complete.' },
-  { target: 'target-year', title: 'Choose the review year(s)', copy: 'Enter one year or several comma-separated years. This controls which balance tables are checked and which review workbooks are returned.' },
-  { target: 'target-esto', title: 'Change the comparison dataset when needed', copy: 'Open this optional area when you have a different ESTO base table. It changes the comparison used by both the review workbook and the dashboard.' },
-  { target: 'target-run', title: 'Build the review', copy: 'Start the run. Diagnostics, the four-sheet workbook, dashboard pages, and downloadable archives appear in the results area when processing finishes.' }
+  { target: 'target-upload', title: 'Welcome — start with one export', copy: 'The web app needs one LEAP Energy Balance export workbook. The economy and scenario are read from the file, so there is no second metadata form to complete.', image: 'assets/workflow-overview.png', alt: 'One LEAP export flows into the review workbook and dashboard.' },
+  { target: 'target-upload', title: 'Prepare the LEAP export', copy: 'In LEAP, set Units to Petajoules and Detail to Level 2 or deeper. Export all years you want to inspect. A Level 1 export is too shallow to compare meaningfully.', image: 'assets/leap-export-detail.png', alt: 'LEAP energy balance detail selection.' },
+  { target: 'target-upload', title: 'Add the workbook', copy: 'Drop the workbook into the highlighted area or choose it from your computer. No Python, Git, or LEAP connection is needed once the web app is open.', image: 'assets/workflow-overview.png', alt: 'The export is the starting point for the workflow.' },
+  { target: 'target-year', title: 'Choose the review year(s)', copy: 'Enter one year such as 2022, or several separated by commas such as 2022, 2030, 2040. These years control which balance tables are checked and returned.' },
+  { target: 'target-esto', title: 'Optionally change the ESTO comparison', copy: 'Open this area only when you have a different ESTO base table. It changes the comparison used by both the review workbook and dashboard. The latest ESTO year becomes the dashboard base year.' },
+  { target: 'target-run', title: 'Build the review', copy: 'Start the run. The app calculates the diagnostics, creates the four-sheet workbook, renders the dashboard, and prepares downloadable outputs. The full run can take several minutes.' },
+  { target: 'target-run', title: 'Read the workbook in order', copy: 'Use LEAP Values to orient yourself, LEAP – Source Error to find the largest disagreements, Correct Source Values to see the reference value, and Full Expected Source to understand missing structure.', image: 'assets/review-workbook.png', alt: 'The balance review workbook in Excel.' },
+  { target: 'target-run', title: 'Explore and save the dashboard', copy: 'Use the sector pages to see the whole picture. Historical values compare with ESTO and projections compare with the 9th Outlook. Saved views stay in this browser; download the full archive when you need a durable copy.', image: 'assets/dashboard-supply.png', alt: 'Interactive supply dashboard with comparison series.' }
 ];
 let current = 0;
 const $ = id => document.getElementById(id);
@@ -17,7 +21,8 @@ function showStep(index) {
   current = Math.max(0, Math.min(index, steps.length - 1));
   document.querySelectorAll('.tour-target').forEach(el => el.classList.remove('is-highlighted'));
   const step = steps[current]; const target = $(step.target);
-  $('tour-step').textContent = current + 1; $('tour-title').textContent = step.title; $('tour-copy').textContent = step.copy;
+  $('tour-step').textContent = current + 1; $('tour-title').textContent = step.title; $('tour-copy').textContent = step.copy; $('tour-total').textContent = steps.length;
+  const image = $('tour-image'); image.hidden = !step.image; image.src = step.image || ''; image.alt = step.alt || '';
   $('tour-back').style.visibility = current ? 'visible' : 'hidden'; $('tour-next').innerHTML = current === steps.length - 1 ? 'Done <span>✓</span>' : 'Next <span>→</span>';
   target.classList.add('is-highlighted'); target.scrollIntoView({ behavior: 'smooth', block: 'center' });
   setTimeout(() => positionPopover(target), 220);

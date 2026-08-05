@@ -21,8 +21,8 @@
     <section class="hero" id="start">
       <div class="eyebrow">LOW EMISSIONS ANALYSIS PLATFORM</div>
       <h1>From one LEAP export<br><em>to a review you can act on.</em></h1>
-      <p class="hero-copy">A visual guide to the Balance Review workflow: prepare the right export, understand the comparison, and use the dashboard to see the whole picture.</p>
-      <div class="hero-actions"><button class="primary" id="hero-tour">Start the guided tour <span>→</span></button><a class="quiet-link" href="#quick-start">Read the three-minute version</a></div>
+      <p class="hero-copy">The guidance lives in one guided tour. Follow the screenshots and highlighted controls from your LEAP export all the way to the workbook and dashboard.</p>
+      <div class="hero-actions"><button class="primary" id="hero-tour">Start the guided tour <span>→</span></button><a class="quiet-link" href="#quick-start">See the app preview</a></div>
       <div class="hero-note"><span>●</span> No Python, Git, or LEAP connection is needed once the web app is open.</div>
     </section>
 
@@ -82,9 +82,10 @@
 
   <div class="tour-backdrop" id="tour-backdrop" hidden></div>
   <aside class="tour-popover" id="tour-popover" hidden aria-live="polite">
-    <div class="tour-progress"><span id="tour-step">1</span> of <span id="tour-total">4</span><button id="close-tour" aria-label="Close guided tour">×</button></div>
-    <h3 id="tour-title"></h3><p id="tour-copy"></p><div class="tour-actions"><button class="quiet-link" id="tour-back">Back</button><button class="primary" id="tour-next">Next <span>→</span></button></div>
+    <div class="tour-progress"><span id="tour-step">1</span> of <span id="tour-total">8</span><button id="close-tour" aria-label="Close guided tour">×</button></div>
+    <div class="tour-kicker">LEAP BALANCE REVIEW GUIDE</div><h3 id="tour-title"></h3><p id="tour-copy"></p><img id="tour-image" class="tour-image" alt=""><div class="tour-actions"><button class="quiet-link" id="tour-back">Back</button><button class="primary" id="tour-next">Next <span>→</span></button></div>
   </aside>
+  <link rel="stylesheet" href="tour-overrides.css">
   <script src="guide.js"></script>
 </body>
 </html>
