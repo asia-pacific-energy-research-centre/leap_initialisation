@@ -16,10 +16,18 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+ARCHIVE_ROOT = Path(
+    os.getenv(
+        "LEAP_REVIEW_ARCHIVE_ROOT",
+        str(Path.home() / "leap_review_tools" / "archives"),
+    )
+)
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -138,6 +146,100 @@ def _dashboard_pages(dashboard_directory: Path) -> list[str]:
     )
 
 
+def _dashboard_archive_records() -> list[dict[str, object]]:
+    """Read persisted dashboard metadata, newest first."""
+    if not ARCHIVE_ROOT.is_dir():
+        return []
+    records: list[dict[str, object]] = []
+    for metadata_path in ARCHIVE_ROOT.glob("*/metadata.json"):
+        try:
+            record = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if (metadata_path.parent / "dashboard").is_dir():
+            records.append(record)
+    return sorted(records, key=lambda item: str(item.get("created_at", "")), reverse=True)
+
+
+def _dashboard_archive_choices() -> list[tuple[str, str]]:
+    """Return friendly labels and stable archive IDs for a Gradio dropdown."""
+    choices = []
+    for record in _dashboard_archive_records():
+        archive_id = str(record.get("archive_id", ""))
+        label = (
+            f"{record.get('economy', 'unknown')} / "
+            f"{record.get('scenario', 'unknown')} / "
+            f"{record.get('years', '')} ({record.get('created_at', '')})"
+        )
+        if archive_id:
+            choices.append((label, archive_id))
+    return choices
+
+
+def _dashboard_archive_record(archive_id: str | None) -> dict[str, object] | None:
+    if not archive_id:
+        return None
+    return next(
+        (record for record in _dashboard_archive_records()
+         if record.get("archive_id") == archive_id),
+        None,
+    )
+
+
+def _persist_dashboard_archive(
+    *,
+    economy: str,
+    scenario: str,
+    years: object,
+    dashboard_directory: Path | None,
+    workbook_paths: list[Path],
+    diagnostics_directory: Path,
+    run_directory: Path,
+    log_directory: Path,
+) -> tuple[Path, dict[str, object]]:
+    """Persist a complete derived run for later dashboard comparison."""
+    if dashboard_directory is None or not dashboard_directory.is_dir():
+        raise FileNotFoundError("Dashboard output was not available to archive.")
+    ARCHIVE_ROOT.mkdir(parents=True, exist_ok=True)
+    archive_id = (
+        f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_"
+        f"{_safe_filename_token(economy)}_{_safe_filename_token(scenario)}_"
+        f"{uuid4().hex[:8]}"
+    )
+    archive_directory = ARCHIVE_ROOT / archive_id
+    archive_directory.mkdir(parents=True, exist_ok=False)
+    shutil.copytree(dashboard_directory, archive_directory / "dashboard")
+    persistent_workbooks = []
+    for workbook_path in workbook_paths:
+        target = archive_directory / "workbooks" / workbook_path.name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(workbook_path, target)
+        persistent_workbooks.append(target)
+    bundle_path = ARCHIVE_ROOT / f"{archive_id}.zip"
+    _write_diagnostics_bundle(
+        bundle_path=bundle_path,
+        workbook_paths=workbook_paths,
+        diagnostics_directory=diagnostics_directory,
+        run_directory=run_directory,
+        dashboard_directory=archive_directory / "dashboard",
+        log_directory=log_directory,
+    )
+    record = {
+        "archive_id": archive_id,
+        "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "economy": economy,
+        "scenario": scenario,
+        "years": years,
+        "dashboard_directory": str(archive_directory / "dashboard"),
+        "bundle_path": str(bundle_path),
+        "dashboard_pages": _dashboard_pages(archive_directory / "dashboard"),
+    }
+    (archive_directory / "metadata.json").write_text(
+        json.dumps(record, indent=2, default=str), encoding="utf-8"
+    )
+    return bundle_path, record
+
+
 def _inline_dashboard_chart_bundle(page_path: Path, page_html: str) -> str:
     """Inline the page's generated chart bundle for iframe rendering."""
     marker = 'src="../chart_bundles/'
@@ -156,7 +258,12 @@ def _inline_dashboard_chart_bundle(page_path: Path, page_html: str) -> str:
     return rendered
 
 
-def _dashboard_iframe_html(dashboard_directory: Path, page_name: str) -> str:
+def _dashboard_iframe_html(
+    dashboard_directory: Path,
+    page_name: str,
+    economy: str,
+    scenario: str,
+) -> str:
     """Render a generated dashboard page inside an isolated iframe."""
     page_path = dashboard_directory / page_name
     if not page_path.is_file():
@@ -165,6 +272,41 @@ def _dashboard_iframe_html(dashboard_directory: Path, page_name: str) -> str:
         page_path,
         page_path.read_text(encoding="utf-8"),
     )
+    scenario_mode = {"reference": "ref", "target": "tgt"}.get(
+        scenario.casefold(), ""
+    )
+    context_banner = (
+        '<div style="font:600 14px system-ui,sans-serif;padding:10px 14px;'
+        'margin:0 0 12px;border:1px solid #c5ccd3;border-radius:8px;'
+        'background:#f6f8fa;color:#24292f">'
+        f"Economy: {html.escape(economy)} &nbsp;|&nbsp; "
+        f"Scenario: {html.escape(scenario)}"
+        "</div>"
+    )
+    locked_controls = """
+<style>
+  .dashboard-switcher, .scenario-toggle { display:none !important; }
+</style>
+<script>
+  (function () {
+    var mode = %s;
+    if (mode) {
+      try { localStorage.setItem('common-esto-scenario-mode', mode); } catch (e) {}
+      if (window.applyScenarioMode) {
+        document.querySelectorAll('[data-plot-id]').forEach(function (plot) {
+          window.applyScenarioMode(plot);
+        });
+      }
+    }
+  }());
+</script>
+""" % json.dumps(scenario_mode)
+    if "</body>" in page_html:
+        page_html = page_html.replace(
+            "</body>", context_banner + locked_controls + "</body>", 1
+        )
+    else:
+        page_html = context_banner + locked_controls + page_html
     escaped = html.escape(page_html, quote=True)
     return (
         '<iframe title="Generated LEAP dashboard" '
@@ -182,7 +324,7 @@ def build_review_from_export(
     esto_table: object,
     dashboard_min_year: float,
     dashboard_max_year: float,
-) -> tuple[str, str, object, str | None, str, object, str | None]:
+) -> tuple[str, str, object, str | None, str, object, object, object, str | None]:
     """Run diagnostics and workbook construction from one LEAP export."""
     persistent_bundle: Path | None = None
     try:
@@ -256,28 +398,52 @@ def build_review_from_export(
                 dashboard_html = _dashboard_iframe_html(
                     dashboard_directory,
                     dashboard_page_names[0],
+                    economy_value,
+                    scenario_value,
                 )
         else:
             dashboard_error = dashboard_result.error or "Dashboard generation failed."
 
-        persistent_dir = Path(tempfile.mkdtemp(prefix="leap_balance_review_download_"))
-        persistent_workbooks: list[Path] = []
-        for workbook_path in workbook_paths:
-            persistent_workbook = persistent_dir / workbook_path.name
-            shutil.copy2(workbook_path, persistent_workbook)
-            persistent_workbooks.append(persistent_workbook)
-        persistent_bundle = persistent_dir / (
-            f"{_safe_filename_token(economy_value)}_"
-            f"{_safe_filename_token(scenario_value)}_{year_value}_diagnostics.zip"
-        )
-        _write_diagnostics_bundle(
-            bundle_path=persistent_bundle,
-            workbook_paths=workbook_paths,
-            diagnostics_directory=diagnostics_directory,
-            run_directory=result.run_directory,
-            dashboard_directory=dashboard_directory,
-            log_directory=run_root / "logs",
-        )
+        if dashboard_directory is not None:
+            persistent_bundle, archive_record = _persist_dashboard_archive(
+                economy=economy_value,
+                scenario=scenario_value,
+                years=result.outputs.get("years", year_value),
+                dashboard_directory=dashboard_directory,
+                workbook_paths=workbook_paths,
+                diagnostics_directory=diagnostics_directory,
+                run_directory=result.run_directory,
+                log_directory=run_root / "logs",
+            )
+            persistent_workbooks = [
+                Path(archive_record["dashboard_directory"]).parent.parent
+                / "workbooks"
+                / workbook_path.name
+                for workbook_path in workbook_paths
+            ]
+        else:
+            persistent_dir = Path(tempfile.mkdtemp(prefix="leap_balance_review_download_"))
+            persistent_workbooks = []
+            for workbook_path in workbook_paths:
+                target = persistent_dir / workbook_path.name
+                shutil.copy2(workbook_path, target)
+                persistent_workbooks.append(target)
+            persistent_bundle = persistent_dir / (
+                f"{_safe_filename_token(economy_value)}_"
+                f"{_safe_filename_token(scenario_value)}_{year_value}_diagnostics.zip"
+            )
+            _write_diagnostics_bundle(
+                bundle_path=persistent_bundle,
+                workbook_paths=workbook_paths,
+                diagnostics_directory=diagnostics_directory,
+                run_directory=result.run_directory,
+                log_directory=run_root / "logs",
+            )
+            archive_record = {
+                "archive_id": None,
+                "dashboard_directory": None,
+                "dashboard_pages": [],
+            }
 
         build_result = result.outputs.get("build_result", {})
         summary = {
@@ -300,7 +466,10 @@ def build_review_from_export(
             "dashboard_status": "succeeded" if dashboard_result.ok else "failed",
             "dashboard_error": dashboard_error,
             "dashboard_pages": dashboard_page_names,
+            "dashboard_archive_id": archive_record["archive_id"],
+            "dashboard_archive_root": str(ARCHIVE_ROOT),
         }
+        archive_choices = _dashboard_archive_choices()
         return (
             json.dumps(summary, indent=2, default=str),
             (
@@ -315,17 +484,59 @@ def build_review_from_export(
                 "choices": dashboard_page_names,
                 "value": dashboard_page_names[0] if dashboard_page_names else None,
             },
-            str(dashboard_directory) if dashboard_directory else None,
+            {
+                "dashboard_directory": archive_record["dashboard_directory"],
+                "economy": economy_value,
+                "scenario": scenario_value,
+            },
+            {
+                "choices": archive_choices,
+                "value": archive_record["archive_id"] if archive_record["archive_id"] else None,
+            },
+            str(persistent_bundle),
         )
     except Exception as error:  # Gradio should show a plain-language failure.
-        return "", f"Build failed: {error}", [], None, "", {"choices": [], "value": None}, None
+        return (
+            "", f"Build failed: {error}", [], None, "",
+            {"choices": [], "value": None},
+            None,
+            {"choices": _dashboard_archive_choices(), "value": None},
+            None,
+        )
 
 
-def render_dashboard_page(page_name: str, dashboard_directory: str | None) -> str:
+def render_dashboard_page(page_name: str, dashboard_state: dict[str, object] | None) -> str:
     """Render a selected generated dashboard page in the embedded view."""
-    if not page_name or not dashboard_directory:
+    if not page_name or not dashboard_state:
         return "<p>Run the workflow to generate a dashboard.</p>"
-    return _dashboard_iframe_html(Path(dashboard_directory), Path(page_name).name)
+    return _dashboard_iframe_html(
+        Path(str(dashboard_state["dashboard_directory"])),
+        Path(page_name).name,
+        str(dashboard_state.get("economy", "")),
+        str(dashboard_state.get("scenario", "")),
+    )
+
+
+def select_dashboard_archive(
+    archive_id: str | None,
+) -> tuple[object, str, str | None, dict[str, object] | None]:
+    """Load a previously persisted dashboard into the embedded viewer."""
+    record = _dashboard_archive_record(archive_id)
+    if record is None:
+        return {"choices": [], "value": None}, "<p>Select a saved dashboard.</p>", None, None
+    pages = [str(page) for page in record.get("dashboard_pages", [])]
+    state = {
+        "dashboard_directory": record["dashboard_directory"],
+        "economy": record.get("economy", ""),
+        "scenario": record.get("scenario", ""),
+    }
+    rendered = render_dashboard_page(pages[0], state) if pages else "<p>No dashboard pages were saved.</p>"
+    return (
+        {"choices": pages, "value": pages[0] if pages else None},
+        rendered,
+        str(record.get("bundle_path")) if record.get("bundle_path") else None,
+        state,
+    )
 
 
 def create_app():
@@ -374,8 +585,20 @@ configured pinned ESTO table is used.
             label="Download review workbook(s)",
             file_count="multiple",
         )
-        diagnostics_bundle = gr.File(label="Download diagnostics bundle")
-        gr.Markdown("## Generated dashboard")
+        diagnostics_bundle = gr.File(
+            label="Download current full run archive (dashboard and subfolders)"
+        )
+        gr.Markdown(
+            "## Dashboards\n\n"
+            "The embedded dashboard is locked to the economy and scenario entered above. "
+            "Each run is saved locally so you can compare earlier runs."
+        )
+        dashboard_archive = gr.Dropdown(
+            label="Saved dashboard archive",
+            choices=_dashboard_archive_choices(),
+            value=None,
+            interactive=True,
+        )
         dashboard_page = gr.Dropdown(
             label="Dashboard page",
             choices=[],
@@ -383,7 +606,8 @@ configured pinned ESTO table is used.
             interactive=True,
         )
         dashboard_html = gr.HTML(value="<p>Run the workflow to generate a dashboard.</p>")
-        dashboard_directory = gr.State(value=None)
+        dashboard_bundle = gr.File(label="Download selected full dashboard archive")
+        dashboard_state = gr.State(value=None)
         run_button.click(
             fn=build_review_from_export,
             inputs=[
@@ -402,12 +626,19 @@ configured pinned ESTO table is used.
                 diagnostics_bundle,
                 dashboard_html,
                 dashboard_page,
-                dashboard_directory,
+                dashboard_state,
+                dashboard_archive,
+                dashboard_bundle,
             ],
+        )
+        dashboard_archive.change(
+            fn=select_dashboard_archive,
+            inputs=dashboard_archive,
+            outputs=[dashboard_page, dashboard_html, dashboard_bundle, dashboard_state],
         )
         dashboard_page.change(
             fn=render_dashboard_page,
-            inputs=[dashboard_page, dashboard_directory],
+            inputs=[dashboard_page, dashboard_state],
             outputs=dashboard_html,
         )
     return app

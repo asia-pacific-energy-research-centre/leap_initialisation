@@ -15,11 +15,21 @@ The app replaces the balance-review part of the portable Windows release:
 6. run the existing Python workbook builder;
 7. run the existing dashboard-from-export workflow;
 8. view the generated dashboard pages in the app and download the five-sheet
-   `.xlsx` result plus a combined diagnostic/dashboard bundle.
+   `.xlsx` result plus a combined diagnostic/dashboard bundle;
+9. reopen saved dashboards from previous economy/scenario runs.
 
 The configured pinned ESTO table is used when no override is supplied. An
 override changes the active ESTO vintage for that run; the existing synthetic
 reference-row rules still apply.
+
+The embedded dashboard is intentionally a single-run view. Its generated
+economy selector and Reference/Target toggle are hidden, and the submitted
+economy/scenario are shown in a fixed banner. The downloadable archive retains
+the complete generated dashboard directory and its chart-bundle subfolder.
+Each run is persisted under `LEAP_REVIEW_ARCHIVE_ROOT` (default:
+`~/leap_review_tools/archives`) with metadata so it can be selected again after
+the page is refreshed or the app is restarted, subject to the deployment's
+filesystem persistence.
 
 ## Source-of-truth rule
 
