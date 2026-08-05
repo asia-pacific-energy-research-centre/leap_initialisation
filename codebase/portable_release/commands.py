@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -471,6 +472,38 @@ def resolve_export_for(
         ) from None
 
 
+@contextmanager
+def _canonical_workbook_pointed_at(path: Path | None):
+    """Point the shared mapping-workbook globals at the packaged workbook.
+
+    ``master_config.OUTLOOK_MAPPINGS_MASTER_PATH`` is computed at import time
+    from ``__file__`` as ``<repo>/../leap_mappings/config/...``. Inside a frozen
+    package that resolves to a folder which does not exist, so anything reading
+    a canonical mapping sheet fails with "Canonical mapping workbook not found".
+
+    The diagnostics step already redirects it, but only for its own duration -
+    and the workbook build runs *after* that window closes. Holding the
+    redirection across the whole command covers both, and is restored on the way
+    out so a developer-mode run in the same process is unaffected.
+    """
+    from codebase.mappings import canonical_loaders
+    from codebase.utilities import master_config
+
+    if path is None or not Path(path).is_file():
+        yield
+        return
+    workbook = Path(path)
+    previous_master = master_config.OUTLOOK_MAPPINGS_MASTER_PATH
+    previous_canonical = canonical_loaders.CANONICAL_WORKBOOK_PATH
+    master_config.OUTLOOK_MAPPINGS_MASTER_PATH = workbook
+    canonical_loaders.CANONICAL_WORKBOOK_PATH = workbook
+    try:
+        yield
+    finally:
+        master_config.OUTLOOK_MAPPINGS_MASTER_PATH = previous_master
+        canonical_loaders.CANONICAL_WORKBOOK_PATH = previous_canonical
+
+
 def parse_years(value: Any) -> list[int]:
     """Read one year, or several, from what a user typed.
 
@@ -594,21 +627,22 @@ def run_balance_review_from_export(
         # path overrides, but it does expose the diagnostic runner as a seam.
         # Binding the paths there keeps the real workflow in charge - including
         # its synthetic-reference-row handling - rather than reimplementing it.
-        outcome = run_balance_update_workflow(
-            preset=_PRESET_REVIEW_ONLY,
-            economies=[economy_code],
-            review_years=review_years,
-            review_scenarios=[scenario_name],
-            update_scenarios=[],
-            output_root=run_dir,
-            review_output_label="diagnostics",
-            workbook_paths_by_economy={economy_code: workbook_path},
-            diagnostic_runner=partial(
-                run_baseline_seed_balance_diagnostics,
-                base_year=vintage.base_year,
-                **diagnostic_paths,
-            ),
-        )
+        with _canonical_workbook_pointed_at(mapping_workbook):
+            outcome = run_balance_update_workflow(
+                preset=_PRESET_REVIEW_ONLY,
+                economies=[economy_code],
+                review_years=review_years,
+                review_scenarios=[scenario_name],
+                update_scenarios=[],
+                output_root=run_dir,
+                review_output_label="diagnostics",
+                workbook_paths_by_economy={economy_code: workbook_path},
+                diagnostic_runner=partial(
+                    run_baseline_seed_balance_diagnostics,
+                    base_year=vintage.base_year,
+                    **diagnostic_paths,
+                ),
+            )
 
         diagnostics_dir = run_dir / "diagnostics"
         # One workbook per requested year. This used to take [0] and drop the
