@@ -2038,13 +2038,29 @@ def write_per_economy_combined_workbooks(
                     id_lookup_resolved,
                 )
                 rows_for_validation = drop_zero_only_optional_unmatched_rows(rows_for_validation)
+                # Producer artifacts are scenario-specific workbooks.  The
+                # combined validation below checks that each logical key is
+                # complete across all configured scenarios; this artifact
+                # check must only require the scenarios actually present in
+                # the producer workbook, otherwise every standalone scenario
+                # workbook reports the other scenarios as missing.
+                producer_scenarios = sorted({
+                    str(value).strip()
+                    for value in producer_rows.get("Scenario", pd.Series(dtype=object))
+                    if str(value).strip()
+                })
+                producer_required_scenarios_by_source = (
+                    {source_workflow: producer_scenarios}
+                    if producer_scenarios
+                    else {}
+                )
                 producer_validation_results.append((
                     econ_token,
                     validate_seed_rows(
                         rows_for_validation,
                         template_path=id_lookup_resolved,
                         required_years_by_scenario=producer_years_by_scenario,
-                        required_scenarios_by_source=required_scenarios_by_source,
+                        required_scenarios_by_source=producer_required_scenarios_by_source,
                         exceptions=configured_exceptions,
                         allow_exact_duplicate_resolution=False,
                     ),
