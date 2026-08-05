@@ -19,11 +19,12 @@ The app accepts:
 
 - one LEAP balance export workbook;
 - one review year or a comma-separated list such as `2022,2030,2040`;
-- optionally, an ESTO base-table CSV override.
+- the configured ESTO and 9th-edition source tables are used automatically.
 
-The optional ESTO override changes the dataset compared against in both the
-balance-table review and dashboard. The dashboard uses the latest year in that
-ESTO dataset as its base year.
+The web interface does not expose an ESTO base-table upload. The shared
+portable-release commands still accept an optional `esto_table_path` for the
+desktop/portable workflow, but the web wrapper always passes `None` and uses
+the configured pinned ESTO table.
 
 It runs the diagnostics internally using the configured ESTO and 9th-edition
 source tables, then returns the four-sheet balance-review workbook as the
