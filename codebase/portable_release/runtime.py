@@ -198,12 +198,22 @@ def run_logging(context: RuntimeContext, command: str) -> Iterator[Path]:
 
     class _Tee:
         def write(self, data: str) -> int:
-            original_stdout.write(data)
+            try:
+                if original_stdout is not None:
+                    original_stdout.write(data)
+            except (AttributeError, OSError, ValueError):
+                # Hosted workers may have no usable stdout at all. The file
+                # handler remains the authoritative run log in that case.
+                pass
             handler.stream.write(data)
             return len(data)
 
         def flush(self) -> None:
-            original_stdout.flush()
+            try:
+                if original_stdout is not None:
+                    original_stdout.flush()
+            except (AttributeError, OSError, ValueError):
+                pass
             handler.stream.flush()
 
         def isatty(self) -> bool:
