@@ -407,20 +407,21 @@ def format_value(value):
 
 
 def _safe_print_line(text):
-    """Print debug text without aborting on console encoding quirks.
-
-    The LNG/LPG debug structure is informational only. If the platform console
-    rejects a label, fall back to an ASCII-escaped write so the analysis can
-    continue.
-    """
-    try:
-        print(text)
-    except Exception:
-        safe_text = str(text).encode("ascii", "backslashreplace").decode("ascii")
-        try:
-            sys.stdout.write(safe_text + "\n")
-        except Exception:
-            sys.__stdout__.write(safe_text + "\n")
+    """Print optional debug text without depending on a hosted console stream."""
+    text_value = str(text)
+    escaped_value = text_value.encode("ascii", "backslashreplace").decode("ascii")
+    for stream in (getattr(sys, "stdout", None), getattr(sys, "__stdout__", None)):
+        if stream is None or not callable(getattr(stream, "write", None)):
+            continue
+        for value in (text_value, escaped_value):
+            try:
+                stream.write(value + "\n")
+                flush = getattr(stream, "flush", None)
+                if callable(flush):
+                    flush()
+                return
+            except Exception:
+                continue
 
 
 def build_year_rows(branch_path, measure, scenario, value_by_year, units, scale, per_value):
