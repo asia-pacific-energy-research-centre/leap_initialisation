@@ -19,6 +19,7 @@ from codebase.functions.supply_leap_io import (
     save_combined_supply_transformation_export,
     write_per_economy_combined_workbooks,
 )
+from codebase.functions.leap_expressions import build_data_expression_from_row
 from codebase.configuration.workflow_config import get_baseline_seed_validation_years
 
 
@@ -221,6 +222,12 @@ def test_default_scenario_windows_use_2022_base_and_2060_final_year() -> None:
     assert windows["Reference"][0] == 2023
     assert windows["Reference"][-1] == 2060
     assert windows["Target"] == windows["Reference"]
+
+
+def test_wide_year_expression_builder_matches_float_excel_headers() -> None:
+    row = pd.Series({2022.0: -11.077893, 2023.0: 0.0})
+
+    assert build_data_expression_from_row(row, [2022]) == "Data(2022,-11.077893)"
 
 
 def test_final_writer_collapses_exact_duplicates_and_populates_ids(
