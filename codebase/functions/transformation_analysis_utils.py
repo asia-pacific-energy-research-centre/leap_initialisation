@@ -249,6 +249,9 @@ HYDROGEN_DISPLAY_NAME_OVERRIDES = {
     "16_x_hydrogen": "Hydrogen",
     "16_x_ammonia": "Ammonia",
     "16_x_efuel": "Efuel",
+    # Ninth green electricity is kept separate from ordinary electricity in
+    # LEAP so electrolysers can use an isolated supply pool.
+    "17_x_green_electricity": "Electricity for hydrogen",
     "electrolysers_non_green": "Electrolysers (non-green electricity)",
 }
 

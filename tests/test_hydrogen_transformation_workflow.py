@@ -7,6 +7,16 @@ from codebase import hydrogen_transformation_workflow as hw
 
 
 class TestHydrogenTransformationWorkflow(unittest.TestCase):
+    def test_green_electricity_uses_hydrogen_only_leap_label(self) -> None:
+        self.assertEqual(
+            core.HYDROGEN_DISPLAY_NAME_OVERRIDES["17_x_green_electricity"],
+            "Electricity for hydrogen",
+        )
+        self.assertEqual(
+            core.code_to_name_mapping.get("17_electricity", "Electricity"),
+            "Electricity",
+        )
+
     def test_modeled_outputs_match_ninth_source(self) -> None:
         checks, summary = hw.verify_hydrogen_output_reproduction(
             economies=list(core.ECONOMIES_TO_ANALYZE),
@@ -78,4 +88,3 @@ class TestHydrogenTransformationWorkflow(unittest.TestCase):
         )
         economies = sorted({str(record.get("economy")) for record in rows})
         self.assertEqual(economies, ["ALL_ECONOMIES"])
-

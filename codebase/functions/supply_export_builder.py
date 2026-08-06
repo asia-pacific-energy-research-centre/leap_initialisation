@@ -84,6 +84,7 @@ SUPPLY_MEASURES = [
 SUPPLY_FUEL_MATCH_EXCEPTIONS = {
     "biomass",
     "green electricity",
+    "electricity for hydrogen",
 }
 _SUPPLY_FUEL_MATCH_ERRORS_REPORTED: set[tuple[str, str]] = set()
 
