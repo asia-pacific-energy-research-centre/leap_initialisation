@@ -30,6 +30,7 @@ animation leaves a mess in the scrollback and in any redirected log.
 
 from __future__ import annotations
 
+import io
 import json
 import statistics
 import sys
@@ -171,7 +172,12 @@ class ProgressReporter:
 
     def __post_init__(self) -> None:
         if self.stream is None:
-            self.stream = sys.stdout
+            candidate = getattr(sys, "stdout", None)
+            self.stream = (
+                candidate
+                if callable(getattr(candidate, "write", None))
+                else io.StringIO()
+            )
 
     # -- writing -----------------------------------------------------------
 
@@ -180,7 +186,7 @@ class ProgressReporter:
             return
         try:
             print(text, end=end, file=self.stream, flush=True)
-        except (OSError, ValueError):
+        except (AttributeError, OSError, ValueError):
             # A closed or broken stdout must not take the run down with it.
             self.enabled = False
 

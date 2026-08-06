@@ -112,6 +112,16 @@ def test_a_broken_stream_does_not_stop_the_run(tmp_path: Path) -> None:
     reporter.finish()  # must not raise
 
 
+def test_missing_stdout_uses_a_discard_stream(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("codebase.portable_release.progress.sys.stdout", None)
+    store = progress.TimingStore(tmp_path / "timings.json")
+    reporter = progress.ProgressReporter(command="probe", steps=STEPS, store=store)
+
+    reporter.start("Subject.")
+    reporter.begin("validate")
+    reporter.finish()
+
+
 # ---------------------------------------------------------------------------
 # The estimate
 # ---------------------------------------------------------------------------
