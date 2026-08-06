@@ -839,9 +839,13 @@ def allocate_ninth_projection_to_esto(
     )
     merged["apec_group_total"] = merged["apec_group_total"].fillna(0.0)
     merged["apec_share"] = merged["apec_share"].fillna(0.0)
-    # A mapped aggregate parent may be zero while its detailed child-flow
-    # profile contains the explicit economy allocation evidence. Treat that
-    # child profile as the parent's base-year allocation magnitude.
+    # A mapped aggregate parent may be absent after subtotal filtering while
+    # its detailed child-flow profile contains the explicit economy allocation
+    # evidence. Coal's projected parent is a *net* balance across products,
+    # so its product weights must use the absolute signed child total, not the
+    # sum of gross child magnitudes. The latter double-counts a product that is
+    # output by Coke ovens and consumed by Blast furnaces, causing an artificial
+    # shift of the aggregate projection into both processes.
     profile_base_abs: dict[tuple[str, str, str], float] = {}
     for profile_frame, parent_flow in (
         (child_flow_profiles, COAL_PARENT_ESTO_FLOW),
@@ -849,9 +853,26 @@ def allocate_ninth_projection_to_esto(
     ):
         if profile_frame is None or profile_frame.empty:
             continue
+        profile_value_column = "base_value_abs"
+        if parent_flow == COAL_PARENT_ESTO_FLOW:
+            profile_frame = profile_frame.copy()
+            profile_group_cols = ["economy_key", "esto_product"]
+            net_profile_abs = profile_frame.groupby(
+                profile_group_cols, dropna=False
+            )["base_value"].transform("sum").abs()
+            gross_profile_abs = profile_frame.groupby(
+                profile_group_cols, dropna=False
+            )["base_value_abs"].transform("sum")
+            # A zero net is underdetermined: retain the established gross
+            # fallback so the later sign-stable child allocator can emit the
+            # positive or negative side of the profile explicitly.
+            profile_frame["net_profile_abs"] = net_profile_abs.where(
+                net_profile_abs.gt(0.0), gross_profile_abs
+            )
+            profile_value_column = "net_profile_abs"
         grouped_profile = profile_frame.groupby(
             ["economy_key", "esto_product"], dropna=False
-        )["base_value_abs"].sum()
+        )[profile_value_column].first()
         for (economy_key, esto_product), value in grouped_profile.items():
             profile_base_abs[
                 (str(economy_key), str(esto_product), parent_flow)
