@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import builtins
 import re
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +30,28 @@ SECTOR_COLUMNS = {"sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4s
 FUEL_COLUMNS = {"fuels", "subfuels"}
 MAX_SCAN_COLS = 200
 MAX_SCAN_ROWS = 2000
+
+
+def _safe_console_print(*values: object, **kwargs: object) -> None:
+    """Best-effort console output for hosted and detached Windows runs.
+
+    A local Gradio process can outlive the terminal that launched it.  Windows
+    then raises ``OSError(22)`` when ordinary ``print`` writes to the inherited
+    invalid stdout handle; diagnostics must never turn that into a failed run.
+    """
+    for stream in (getattr(sys, "stdout", None), getattr(sys, "__stdout__", None)):
+        if stream is None or not callable(getattr(stream, "write", None)):
+            continue
+        try:
+            builtins.print(*values, file=stream, **kwargs)
+            return
+        except (AttributeError, OSError, ValueError):
+            continue
+
+
+# Keep the existing diagnostic calls concise while making every print in this
+# module safe when stdout is closed, detached, or otherwise invalid.
+print = _safe_console_print
 
 # Reviewed subtotal-mismatch exceptions maintained in the leap_mappings repo.
 SUBTOTAL_MISMATCH_EXCEPTIONS_PATH = (
