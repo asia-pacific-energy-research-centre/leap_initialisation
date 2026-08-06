@@ -478,7 +478,7 @@ Method:
 Sector coverage:
 
 - 9th process inputs currently configured: `09_13_01_electrolysers`, `09_13_03_smr_w_ccs`, and `09_13_02_smr_wo_ccs`.
-- Feedstock fuel inputs currently configured: green electricity for electrolysers and natural gas for SMR with/without CCS. A non-green electricity electrolyser config exists but is disabled.
+- Feedstock fuel inputs currently configured: Ninth `17_x_green_electricity` for electrolysers and natural gas for SMR with/without CCS. Green electricity is deliberately isolated from ordinary `17_electricity`: it is exported to LEAP as `Electricity for hydrogen` at the exact branch path `Transformation\Hydrogen transformation\Processes\Electrolysers\Feedstock Fuels\Electricity for hydrogen`. A non-green electricity electrolyser config exists but is disabled. Current LEAP templates may not yet contain this renamed branch; template alignment is a separate follow-up.
 - Output subfuels currently configured: `16_x_hydrogen`, `16_x_ammonia`, and `16_x_efuel`, written to LEAP as `Hydrogen`, `Ammonia`, and `Efuel`.
 - LEAP output module: `Transformation\Hydrogen transformation`.
 

@@ -358,11 +358,14 @@ diagnostics, and no invalid final workbook is written or substituted.
   (Reference and Target), with `evidence: sum=0` — the electrolyser feedstock
   share group sums to zero while capacity is explicitly nonzero. Subsequent
   row-level inspection on 2026-08-03 narrowed the cause: the transformation
-  source workbooks contain Electricity=0 and Green electricity=100 for every
-  year, but the assembled/final workbook retains only Electricity=0. The
-  validator is therefore correctly reporting a broken final artifact; the
-  upstream mix exists, but its 100% Green electricity member is lost during
-  template alignment/final assembly. **For this the judgement was wrong** — the
+  source workbooks contain ordinary Electricity=0 and Ninth Green electricity=100
+  for every year, but the assembled/final workbook retains only Electricity=0.
+  The intended retained branch is now
+  `Transformation\Hydrogen transformation\Processes\Electrolysers\Feedstock Fuels\Electricity for hydrogen`;
+  the validator is therefore correctly reporting a broken final artifact when
+  that branch is absent. The upstream mix exists, but its 100% green-electricity
+  member is lost during template alignment/final assembly. **For this the
+  judgement was wrong** — the
   global warning downgrade masks a real final-artifact defect.
 
   A later `12_NZ` artifact (`BASELINE_12NZ_20260803_1904`) does not reproduce
