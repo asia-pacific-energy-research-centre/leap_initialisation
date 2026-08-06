@@ -83,7 +83,7 @@ def test_power_interim_capacity_addition_updates_exogenous_capacity(
     )[0]
 
     assert updated["exogenous_capacity_by_year"][2023] == pytest.approx(110.0)
-    assert updated["historical_production_by_year"][2023] == pytest.approx(110.0)
+    assert "historical_production_by_year" not in updated
 
 
 def test_power_workbook_builder_receives_scenario_specific_adjusted_records(

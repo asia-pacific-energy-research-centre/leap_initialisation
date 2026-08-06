@@ -1090,7 +1090,6 @@ def _build_interim_process_record(
     # Match transformation capacity exports: total output in PJ is equivalent
     # to Million GJ/year for Exogenous Capacity.
     total_output_by_year = core.series_to_year_dict(total_output_series, export_base, export_final)
-    record["historical_production_by_year"] = dict(total_output_by_year)
     record["exogenous_capacity_by_year"] = dict(total_output_by_year)
     record["capacity_units"] = "Gigajoules/Year"
     record["capacity_scale"] = "Million"

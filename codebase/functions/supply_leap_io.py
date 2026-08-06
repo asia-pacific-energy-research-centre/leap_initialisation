@@ -622,10 +622,6 @@ def apply_transformation_target_overrides_for_scenario(
             }
             record["capacity_units"] = str(CAPACITY_CONSTRAINT_UNITS)
             record["capacity_scale"] = str(CAPACITY_CONSTRAINT_SCALE)
-            record["historical_production_by_year"] = {
-                int(year): max(float(value), 0.0)
-                for year, value in capacity_output_total_by_year.items()
-            }
         if missing_output_scope_modules:
             missing_preview = ", ".join(sorted({item for item in missing_output_scope_modules if item}))
             print(

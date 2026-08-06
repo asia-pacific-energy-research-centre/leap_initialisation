@@ -257,10 +257,10 @@ def test_refinery_capacity_uses_deliverable_output_and_preserves_runtime_additio
     )[0]
 
     # LEAP meets refinery auxiliary fuel from module outputs, so it grosses
-    # deliverable production up itself. Capacity and historical production
-    # therefore exclude same-module own use, then add runtime capacity.
+    # deliverable production up itself. Capacity excludes same-module own use,
+    # then adds runtime capacity; historical production is not exported.
     assert updated["exogenous_capacity_by_year"][2022] == pytest.approx(85.0)
-    assert updated["historical_production_by_year"][2022] == pytest.approx(85.0)
+    assert "historical_production_by_year" not in updated
 
 
 def test_auxiliary_above_matching_output_preserves_excess_as_external() -> None:

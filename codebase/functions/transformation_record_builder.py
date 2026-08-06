@@ -1244,7 +1244,6 @@ def build_zero_skeleton_record(
         output_import_targets=zero_targets,
         output_export_targets=dict(zero_targets),
     )
-    record["historical_production_by_year"] = dict(zero_by_year)
     record["exogenous_capacity_by_year"] = dict(zero_by_year)
     record["capacity_units"] = "Gigajoules/Year"
     record["is_zero_skeleton"] = True
@@ -1961,25 +1960,6 @@ def build_transformation_log_rows(
 
             capacity_units = str(record.get("capacity_units") or "Gigajoules/Year")
             capacity_scale = str(record.get("capacity_scale") or "")
-            historical_production_by_year = record.get("historical_production_by_year")
-            if isinstance(historical_production_by_year, dict) and historical_production_by_year:
-                historical_values = clip_value_by_year_range(
-                    historical_production_by_year,
-                    scenario_base_year,
-                    scenario_final_year,
-                )
-                rows.extend(
-                    build_year_rows(
-                        process_branch_path,
-                        "Historical Production",
-                        scenario,
-                        historical_values,
-                        "Petajoule",
-                        "",
-                        "",
-                    )
-                )
-
             exogenous_capacity_by_year = record.get("exogenous_capacity_by_year")
             if isinstance(exogenous_capacity_by_year, dict) and exogenous_capacity_by_year:
                 exogenous_values = clip_value_by_year_range(
@@ -2683,8 +2663,8 @@ def build_aux_fuel_zero_rows(
                                     }
                                 )
 
-        # Tier-2 extension: zero process-level variables (Historical Production,
-        # Exogenous Capacity) and output-fuel targets (Import Target, Export Target)
+        # Tier-2 extension: zero process-level variables (Exogenous Capacity)
+        # and output-fuel targets (Import Target, Export Target)
         # for in-scope sectors that had no data this run.
         #
         # "Had data" means tier-1 wrote Feedstock Fuel Share or Auxiliary Fuel Use
@@ -2725,13 +2705,10 @@ def build_aux_fuel_zero_rows(
             elif fg == "Output Fuels":
                 tier2_ext_output_fuel_paths.add(bp)
 
-        # Process-level zero rows: Historical Production and Exogenous Capacity.
+        # Process-level zero rows: Exogenous Capacity.
         # Explicit zeros tell LEAP this module had no output/capacity rather than
         # inheriting stale values from a prior import.
-        process_level_spec = [
-            ("Historical Production", "Petajoule", "", ""),
-            ("Exogenous Capacity", "Gigajoules/Year", "", ""),
-        ]
+        process_level_spec = [("Exogenous Capacity", "Gigajoules/Year", "", "")]
         for process_prefix in sorted(tier2_ext_process_prefixes):
             for scenario in scenarios:
                 years = _years_for_scenario(scenario)
