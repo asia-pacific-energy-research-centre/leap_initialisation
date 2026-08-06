@@ -273,7 +273,7 @@ def test_no_data_chp_skeleton_anchors_shares_but_keeps_energy_rows_zero(
     assert (
         "Transformation\\CHP interim\\Processes\\CHP interim",
         "Historical Production",
-    ) not in paths_by_measure
+    ) in paths_by_measure
     assert (
         "Transformation\\CHP interim\\Processes\\CHP interim",
         "Exogenous Capacity",
@@ -307,6 +307,7 @@ def test_no_data_chp_skeleton_anchors_shares_but_keeps_energy_rows_zero(
     zero_energy_measures = {
         "Import Target",
         "Export Target",
+        "Historical Production",
         "Exogenous Capacity",
     }
     assert all(

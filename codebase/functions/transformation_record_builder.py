@@ -60,6 +60,12 @@ DEFAULT_FEEDSTOCK_SCALE = "%"
 DEFAULT_AUXILIARY_UNITS = "Petajoule"
 DEFAULT_AUXILIARY_PER = "Petajoule"
 
+# Temporary migration behavior: retain the existing LEAP variable rows while
+# clearing values that were previously populated in the LEAP areas. Remove this
+# after the transition period once old Historical Production values no longer
+# need to be explicitly cleared by imports.
+EMIT_ZERO_HISTORICAL_PRODUCTION = True
+
 APEC_ECONOMY_TO_LEAP_REGION = {
     "01_AUS": "Australia",
     "02_BD": "Brunei Darussalam",
@@ -1946,6 +1952,21 @@ def build_transformation_log_rows(
             process_branch_path = build_branch_path(
                 ["Transformation", sector_title, "Processes", str(process_name)]
             )
+            if EMIT_ZERO_HISTORICAL_PRODUCTION:
+                rows.extend(
+                    build_year_rows(
+                        process_branch_path,
+                        "Historical Production",
+                        scenario,
+                        {
+                            year: 0.0
+                            for year in range(scenario_base_year, scenario_final_year + 1)
+                        },
+                        "Petajoule",
+                        "",
+                        "",
+                    )
+                )
             rows.extend(
                 build_year_rows(
                     process_branch_path,
@@ -2663,8 +2684,8 @@ def build_aux_fuel_zero_rows(
                                     }
                                 )
 
-        # Tier-2 extension: zero process-level variables (Exogenous Capacity)
-        # and output-fuel targets (Import Target, Export Target)
+        # Tier-2 extension: zero process-level variables (Historical Production,
+        # Exogenous Capacity) and output-fuel targets (Import Target, Export Target)
         # for in-scope sectors that had no data this run.
         #
         # "Had data" means tier-1 wrote Feedstock Fuel Share or Auxiliary Fuel Use
@@ -2705,10 +2726,12 @@ def build_aux_fuel_zero_rows(
             elif fg == "Output Fuels":
                 tier2_ext_output_fuel_paths.add(bp)
 
-        # Process-level zero rows: Exogenous Capacity.
+        # Process-level zero rows: Historical Production and Exogenous Capacity.
         # Explicit zeros tell LEAP this module had no output/capacity rather than
         # inheriting stale values from a prior import.
         process_level_spec = [("Exogenous Capacity", "Gigajoules/Year", "", "")]
+        if EMIT_ZERO_HISTORICAL_PRODUCTION:
+            process_level_spec.insert(0, ("Historical Production", "Petajoule", "", ""))
         for process_prefix in sorted(tier2_ext_process_prefixes):
             for scenario in scenarios:
                 years = _years_for_scenario(scenario)
