@@ -139,6 +139,14 @@ def test_nonzero_balance_roots_missing_from_template_are_blocking(
             "Statistical Differences\\Primary\\Unused fuel",
             "Statistical Differences",
         ),
+        (
+            "Transformation\\CHP interim\\Processes\\CHP interim\\Feedstock Fuels\\Petroleum coke",
+            "Feedstock Fuel Share",
+        ),
+        (
+            "Transformation\\Electricity interim\\Processes\\Electricity interim\\Feedstock Fuels\\Sub bituminous coal",
+            "Feedstock Fuel Share",
+        ),
     ],
 )
 def test_all_zero_optional_roots_do_not_require_template_branches(

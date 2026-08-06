@@ -30,6 +30,12 @@ OPTIONAL_ZERO_ONLY_TEMPLATE_BRANCH_PREFIXES: tuple[str, ...] = (
     "resources\\",
     "stock changes\\",
     "statistical differences\\",
+    "transformation\\chp interim\\processes\\chp interim\\feedstock fuels\\petroleum coke",
+    "transformation\\chp interim\\processes\\chp interim\\feedstock fuels\\sub bituminous coal",
+    "transformation\\electricity interim\\processes\\electricity interim\\feedstock fuels\\petroleum coke",
+    "transformation\\electricity interim\\processes\\electricity interim\\feedstock fuels\\sub bituminous coal",
+    "transformation\\heat plant interim\\processes\\heat plant interim\\feedstock fuels\\petroleum coke",
+    "transformation\\heat plant interim\\processes\\heat plant interim\\feedstock fuels\\sub bituminous coal",
 )
 SOURCE_WORKFLOW_COLUMN = "source_workflow"
 SOURCE_FILE_COLUMN = "source_file"
@@ -789,7 +795,7 @@ def drop_zero_only_optional_unmatched_rows(
     data: pd.DataFrame,
     tolerance: float = 1e-12,
 ) -> pd.DataFrame:
-    """Omit all-zero unmatched Resources, Stock, and Statistical rows."""
+    """Omit all-zero unmatched optional resource and transformation rows."""
     required_columns = {"BranchID", "Branch Path"}
     if data.empty or not required_columns.issubset(data.columns):
         return data.copy()
