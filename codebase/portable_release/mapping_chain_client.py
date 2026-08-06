@@ -170,7 +170,12 @@ def run_mapping_chain(context: RuntimeContext, job: dict[str, Any]) -> dict[str,
     stdout_lines, stderr_text, returncode = _run_streaming(command, cwd, job)
 
     if stderr_text:
-        print(stderr_text, file=sys.stderr, end="" if stderr_text.endswith("\n") else "\n")
+        try:
+            print(stderr_text, file=sys.stderr, end="" if stderr_text.endswith("\n") else "\n")
+        except (AttributeError, OSError, ValueError):
+            # A detached Windows/Gradio process may inherit an invalid stderr
+            # handle. Worker diagnostics are already persisted to its log.
+            pass
 
     # The worker's own chatter (and every print the mapping modules make) is
     # kept beside its outputs rather than shown: it is maintainer-facing, and
