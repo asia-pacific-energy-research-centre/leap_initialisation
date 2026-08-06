@@ -2680,6 +2680,118 @@ def _override_direct_demand_sources(
     return out.drop(columns=["_difference_row", "_direct_group", "_direct_source_value_pj"])
 
 
+def _override_direct_base_demand_sources(
+    difference_table: pd.DataFrame,
+    base_df: pd.DataFrame,
+    economy: str,
+    base_year: int,
+    tolerance_pj: float,
+) -> pd.DataFrame:
+    """Resolve Road and non-road base-year comparators from declared ESTO flows.
+
+    The aggregate-demand branches are deliberately built from explicit ESTO
+    component selectors. Reading the same components here prevents the
+    comparison path from retaining an incomplete legacy alias (for example,
+    only domestic navigation under non-road transport).
+    """
+    if difference_table.empty or base_df is None or base_df.empty:
+        return difference_table
+    required_columns = {"economy", "flows", "products"}
+    if not required_columns.issubset(base_df.columns):
+        return difference_table
+
+    out = difference_table.copy().reset_index(names="_difference_row")
+    out["_direct_base_group"] = out["comparison_branch_path"].fillna("").astype(str).str.casefold().map(
+        {
+            "all demand aggregated/road": "road",
+            "all demand aggregated/transport non road": "transport_non_road",
+        }
+    )
+    targets = out.loc[
+        out["_direct_base_group"].notna()
+        & pd.to_numeric(out["year"], errors="coerce").le(int(base_year))
+    ].copy()
+    if targets.empty:
+        return difference_table
+
+    source = base_df.loc[
+        base_df["economy"].fillna("").astype(str).map(_compact_economy_code).eq(
+            _compact_economy_code(economy)
+        )
+    ].copy()
+    if "is_subtotal" in source.columns:
+        is_subtotal = (
+            source["is_subtotal"]
+            .fillna(False)
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .isin({"1", "true", "yes", "y", "t"})
+        )
+        source = source.loc[~is_subtotal].copy()
+    if source.empty:
+        return difference_table
+
+    source["_flow_code"] = source["flows"].fillna("").astype(str).str.extract(
+        r"^(\d+(?:\.\d+)*)", expand=False
+    ).fillna("")
+    year_columns = [column for column in source.columns if str(column).isdigit()]
+    replacements: list[dict[str, object]] = []
+    for _, row in targets.iterrows():
+        year = int(row["year"])
+        year_column = str(year)
+        if year_column not in year_columns:
+            continue
+        selector_codes = _expand_esto_flow_code_selector(str(row.get("esto_flow") or ""))
+        if not selector_codes:
+            continue
+        flow_mask = pd.Series(False, index=source.index)
+        for code in selector_codes:
+            flow_mask |= source["_flow_code"].eq(code)
+        value = pd.to_numeric(
+            source.loc[
+                flow_mask
+                & source["products"].fillna("").astype(str).eq(str(row.get("esto_product") or "")),
+                year_column,
+            ],
+            errors="coerce",
+        ).sum(min_count=1)
+        if pd.isna(value):
+            continue
+        replacements.append(
+            {
+                "_difference_row": row["_difference_row"],
+                "_direct_base_source_value_pj": float(value),
+            }
+        )
+    if not replacements:
+        return difference_table
+
+    out = out.merge(pd.DataFrame(replacements), on="_difference_row", how="left")
+    replaced = out["_direct_base_source_value_pj"].notna()
+    out.loc[replaced, "source_value_pj"] = out.loc[
+        replaced, "_direct_base_source_value_pj"
+    ]
+    out.loc[replaced, "reference_source"] = "ESTO (direct demand components)"
+    both = out["leap_value_pj"].notna() & out["source_value_pj"].notna()
+    out["difference_pj"] = out["leap_value_pj"] - out["source_value_pj"]
+    out["absolute_difference_pj"] = out["difference_pj"].abs()
+    out["correction_to_match_source_pj"] = -out["difference_pj"]
+    out["difference_percent"] = pd.NA
+    nonzero = both & out["source_value_pj"].abs().gt(float(tolerance_pj))
+    out.loc[nonzero, "difference_percent"] = (
+        out.loc[nonzero, "difference_pj"] / out.loc[nonzero, "source_value_pj"] * 100.0
+    )
+    match = both & (
+        out["absolute_difference_pj"].le(float(tolerance_pj))
+        | out["difference_percent"].abs().le(DEFAULT_ROUNDING_TOLERANCE_PERCENT)
+    )
+    out.loc[match, "status"] = "match"
+    out.loc[both & ~match, "status"] = "value_mismatch"
+    out["is_mismatch"] = out["status"].isin({"value_mismatch", "missing_in_leap"})
+    return out.drop(columns=["_difference_row", "_direct_base_group", "_direct_base_source_value_pj"])
+
+
 def run_economy_balance_diagnostic(
     *,
     economy: str,
@@ -2897,6 +3009,13 @@ def run_economy_balance_diagnostic(
         base_year=int(base_year),
         tolerance_pj=tolerance_pj,
         mapping_pairs_path=mapping_pairs_path,
+    )
+    difference_table = _override_direct_base_demand_sources(
+        difference_table=difference_table,
+        base_df=comparison.get("base_df", pd.DataFrame()),
+        economy=economy,
+        base_year=int(base_year),
+        tolerance_pj=tolerance_pj,
     )
     difference_table, ignored_comparison_rows = _partition_comparison_rows(
         difference_table

@@ -6,6 +6,7 @@ import pytest
 from openpyxl import Workbook
 
 import codebase.functions.baseline_seed_balance_diagnostics as diagnostics
+import codebase.supply_reconciliation_balance_tables as balance_tables
 
 
 def _comparison_rows(
@@ -179,6 +180,67 @@ def test_direct_demand_comparators_use_declared_non_road_components() -> None:
 
     assert result.loc[1, "source_value_pj"] == pytest.approx(15.0)
     assert result.loc[1, "reference_source"] == "9th Outlook (direct demand detail)"
+
+
+def test_direct_base_demand_comparators_use_declared_transport_components() -> None:
+    difference_table = pd.DataFrame(
+        [
+            {
+                "scenario": "Target",
+                "comparison_branch_path": "All demand aggregated/Road",
+                "esto_flow": "15.02 Road",
+                "esto_product": "07.08 Fuel oil",
+                "year": 2022,
+                "leap_value_pj": 3.994348,
+                "source_value_pj": 0.0,
+                "reference_source": "ESTO",
+                "status": "value_mismatch",
+            },
+            {
+                "scenario": "Target",
+                "comparison_branch_path": "All demand aggregated/Transport non road",
+                "esto_flow": "15.01,15.03-15.06 Transport non-road",
+                "esto_product": "07.01 Motor gasoline",
+                "year": 2022,
+                "leap_value_pj": 406.926,
+                "source_value_pj": 91.675324,
+                "reference_source": "ESTO",
+                "status": "value_mismatch",
+            },
+        ]
+    )
+    base_df = pd.DataFrame(
+        [
+            {"economy": "05PRC", "flows": "15.02 Road", "products": "07.08 Fuel oil", "is_subtotal": "False", "2022": 3.994348},
+            {"economy": "05PRC", "flows": "15.03 Rail", "products": "07.01 Motor gasoline", "is_subtotal": "False", "2022": 5.799383},
+            {"economy": "05PRC", "flows": "15.04 Domestic navigation", "products": "07.01 Motor gasoline", "is_subtotal": "False", "2022": 91.675324},
+            {"economy": "05PRC", "flows": "15.05 Pipeline transport", "products": "07.01 Motor gasoline", "is_subtotal": "False", "2022": 0.052172},
+            {"economy": "05PRC", "flows": "15.06 Non-specified transport", "products": "07.01 Motor gasoline", "is_subtotal": "False", "2022": 309.398970},
+            {"economy": "05PRC", "flows": "15 Transport sector", "products": "07.01 Motor gasoline", "is_subtotal": "True", "2022": 999.0},
+        ]
+    )
+
+    result = diagnostics._override_direct_base_demand_sources(
+        difference_table=difference_table,
+        base_df=base_df,
+        economy="05_PRC",
+        base_year=2022,
+        tolerance_pj=1e-6,
+    )
+
+    assert result.loc[0, "source_value_pj"] == pytest.approx(3.994348)
+    assert result.loc[1, "source_value_pj"] == pytest.approx(406.925849)
+    assert set(result["status"]) == {"match"}
+    assert set(result["reference_source"]) == {"ESTO (direct demand components)"}
+
+
+def test_transmission_parent_and_loss_branch_remain_distinct() -> None:
+    assert balance_tables._normalize_conventional_sector_name(
+        "Transmission and Distribution"
+    ) == "Transmission and Distribution"
+    assert balance_tables._normalize_conventional_sector_name(
+        "Transmission and distribution loss"
+    ) == "Transmission and distribution loss"
 
 
 @pytest.mark.parametrize(

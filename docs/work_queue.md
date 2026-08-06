@@ -4,6 +4,16 @@
 
 **Status: planned; do not broaden rollout without a reviewed mapping contract.**
 
+**2026-08-06 narrow comparator follow-up:** the balance-review diagnostic now
+uses the declared ESTO component selectors directly for the base-year `Road`
+and `Transport non road` branches, and already uses the analogous direct Ninth
+component path for projected Industry and non-road transport.  This is a
+contained correction, not the general resolver described below.  The remaining
+Hydrogen-transformation comparator gap is deferred while templates migrate
+`17_x_green_electricity` into Electricity: the eventual resolver must retain a
+parent subtotal when it is the sole non-zero representation of that parent, or
+derive it from child rows without double counting.
+
 Create one shared resolver for LEAP, ESTO, 9th Outlook, and future datasets.
 It must preserve exact raw identities, and only derive a rolled identity when
 an active, context-appropriate rule explicitly declares its components. It

@@ -707,7 +707,6 @@ def _normalize_conventional_sector_name(label: object) -> str:
         "09_13_hydrogen_transformation": "Hydrogen transformation",
         "Total Primary Supply": "Total primary energy supply",
         "Total Transformation": "Total transformation sector",
-        "Transmission and Distribution": "Transmission and distribution losses",
         "Upstream & refinery transfers": "Transfers unallocated",
     }
     return replacements.get(text, text)
