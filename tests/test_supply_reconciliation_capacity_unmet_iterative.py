@@ -188,6 +188,33 @@ def test_build_supply_overrides_capacity_unmet_iterative_balanced(monkeypatch: p
     assert payload["max_production"][2030] == pytest.approx(20.0)
 
 
+def test_build_supply_overrides_does_not_zero_an_unconstrained_producer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An absent cap is not an instruction to write Maximum Production = 0."""
+    monkeypatch.setattr(workflow, "CAPACITY_UNMET_PASS_MODE", "baseline_seed", raising=False)
+    reconciliation = pd.DataFrame(
+        [
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "esto_product": "17 Electricity",
+                "year": 2030,
+                "projected_exports": 0.0,
+                "constrained_production": 0.0,
+                "max_production": pd.NA,
+            }
+        ]
+    )
+
+    overrides = workflow.build_supply_overrides(reconciliation)
+    payload = overrides["20_USA"]["Reference"]["17 Electricity"]
+
+    assert payload["imports"][2030] == pytest.approx(0.0)
+    assert payload["exports"][2030] == pytest.approx(0.0)
+    assert "max_production" not in payload
+
+
 def test_balanced_supply_link_requires_workbook_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

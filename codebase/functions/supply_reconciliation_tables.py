@@ -1740,6 +1740,8 @@ def build_supply_overrides(
             base_production_value = 0.0 if pd.isna(base_production) else max(float(base_production), 0.0)
             production_target = max(base_production_value + float(primary_add), 0.0)
             max_production_value = pd.to_numeric(row.get("max_production"), errors="coerce")
+            if pd.isna(max_production_value) and production_target <= 0.0:
+                continue
             if pd.isna(max_production_value):
                 max_production_target = production_target
             else:
