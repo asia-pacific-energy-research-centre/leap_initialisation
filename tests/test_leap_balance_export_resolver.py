@@ -94,6 +94,29 @@ def test_resolve_balance_export_workbook_accepts_four_digit_day_month(
     assert resolved == expected
 
 
+def test_resolve_balance_export_workbook_validates_nonstandard_filename_from_headers(
+    tmp_path: Path,
+) -> None:
+    export_dir = tmp_path / "01_AUS"
+    expected = export_dir / "3007 REF.xlsx"
+    export_dir.mkdir()
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "2060"
+    sheet.append(['Energy Balance for Area "aus clean slate 29_07"'])
+    sheet.append(["Scenario: Reference, Year: 2060, Units: Petajoule"])
+    sheet.append([None, "Electricity"])
+    workbook.save(expected)
+
+    resolved = resolve_balance_export_workbook(
+        economy="01_AUS",
+        scenario="Reference",
+        exports_root=tmp_path,
+    )
+
+    assert resolved == expected
+
+
 def test_resolve_balance_export_workbook_reports_missing_match(tmp_path: Path) -> None:
     try:
         resolve_balance_export_workbook(

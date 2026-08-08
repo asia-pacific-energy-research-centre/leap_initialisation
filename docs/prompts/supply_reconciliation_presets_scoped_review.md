@@ -20,9 +20,9 @@ configuration pattern.
 - `_PRESET_RESULTS_UPDATE`: results-linked pass, no import/export reset,
   interim power disabled, aggregate demand/zeroing retained while demand models
   are absent, and second-stage own-use activity.
-- `_PRESET_PATCH_BASELINE_SEEDS`: selective regeneration of verified modules in
-  existing seeds. Transformation auto-regeneration is deliberately gated until
-  it can reproduce a full run exactly.
+- `_PRESET_PATCH_BASELINE_SEEDS`: selective regeneration of modules in existing
+  seeds. Transformation modules regenerate their source workbooks through the
+  owning producer before their configured branch prefixes are patched.
 - `ECONOMIES`, `SCENARIOS`, output label, preflight toggles, cache toggle, and
   deferred-error policy are run controls around the preset, but some interact
   with it and need explicit ownership.
@@ -93,15 +93,15 @@ code was changed; this is evidence only.
 | Setting | `_PRESET_BASELINE_SEED` | `_PRESET_RESULTS_UPDATE` | `_PRESET_PATCH_BASELINE_SEEDS` | Downstream consumer |
 |---|---|---|---|---|
 | `RUN_MODE` | not set (defaults `"full"`, workflow.py:1066) | not set (`"full"`) | `"patch_baseline_seeds"` (workflow.py:988) | workflow.py:1283 branches the whole run |
-| `CAPACITY_UNMET_PASS_MODE` | `"baseline_seed"` (workflow.py:883) | `"results_update"` (workflow.py:1012) | **not set** | `_resolve_capacity_unmet_pass_mode` (supply_reconciliation_history.py:410); also drives `_automatic_run_output_label` (workflow.py:699) and the results_update readiness gate (workflow.py:1214) |
-| `RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT` | `True` (workflow.py:884) | `False` (workflow.py:1013) | not set | gated by `reset_is_effective()` (analysis_input_write_dispatcher.py:87), consumed at supply_leap_io.py:2479 and supply_results_saver.py:3081,3456,3935 |
-| `RUN_ELECTRICITY_HEAT_INTERIM` | `True` (workflow.py:887) | `False` (workflow.py:1015) | not set (config default `False`, supply_reconciliation_config.py:254) | supply_results_saver.py:3712/3813 |
-| `USE_AGGREGATED_DEMAND_AS_DUMMY` | `True` (workflow.py:892) | `True` (workflow.py:1033) | not set (config default `True`, supply_reconciliation_config.py:1058) | `load_results_demand_table` (supply_reconciliation_tables.py:734-828) |
-| `AGGREGATED_DEMAND_USE_SECTOR_BRANCHES` | `False` (workflow.py:916) | `False` (workflow.py:1039) | not set | forwarded into both `build_aggregated_demand_as_dummy` and the LEAP-import workbook writer, must stay consistent (supply_reconciliation_tables.py:806/821, supply_results_saver.py:3766) |
-| `ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT` | `True` (workflow.py:920) | `True` (workflow.py:1042) | not set | supply_results_saver.py:3950/4051, gated jointly with `USE_AGGREGATED_DEMAND_AS_DUMMY` |
-| `OTHER_LOSS_OWN_USE_PROXY_STAGE` | `"first"` (workflow.py:927) | `"second"` (workflow.py:1049) | **not set** (config default `"auto"`, supply_reconciliation_config.py:264) | `_resolve_other_loss_own_use_proxy_activity_source_mode` (supply_leap_io.py:1071-1097); `"auto"` falls through to `CAPACITY_UNMET_PASS_MODE` |
+| `CAPACITY_UNMET_PASS_MODE` | `"baseline_seed"` (workflow.py:883) | `"results_update"` (workflow.py:1012) | **not set** | `_resolve_capacity_unmet_pass_mode` (supply_reconciliation/history.py:410); also drives `_automatic_run_output_label` (workflow.py:699) and the results_update readiness gate (workflow.py:1214) |
+| `RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT` | `True` (workflow.py:884) | `False` (workflow.py:1013) | not set | gated by `reset_is_effective()` (analysis_input_write_dispatcher.py:87), consumed at supply_reconciliation/leap_io.py:2479 and supply_reconciliation/results_saver.py:3081,3456,3935 |
+| `RUN_ELECTRICITY_HEAT_INTERIM` | `True` (workflow.py:887) | `False` (workflow.py:1015) | not set (config default `False`, supply_reconciliation/config.py:254) | supply_reconciliation/results_saver.py:3712/3813 |
+| `USE_AGGREGATED_DEMAND_AS_DUMMY` | `True` (workflow.py:892) | `True` (workflow.py:1033) | not set (config default `True`, supply_reconciliation/config.py:1058) | `load_results_demand_table` (supply_reconciliation/tables.py:734-828) |
+| `AGGREGATED_DEMAND_USE_SECTOR_BRANCHES` | `False` (workflow.py:916) | `False` (workflow.py:1039) | not set | forwarded into both `build_aggregated_demand_as_dummy` and the LEAP-import workbook writer, must stay consistent (supply_reconciliation/tables.py:806/821, supply_reconciliation/results_saver.py:3766) |
+| `ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT` | `True` (workflow.py:920) | `True` (workflow.py:1042) | not set | supply_reconciliation/results_saver.py:3950/4051, gated jointly with `USE_AGGREGATED_DEMAND_AS_DUMMY` |
+| `OTHER_LOSS_OWN_USE_PROXY_STAGE` | `"first"` (workflow.py:927) | `"second"` (workflow.py:1049) | **not set** (config default `"auto"`, supply_reconciliation/config.py:264) | `_resolve_other_loss_own_use_proxy_activity_source_mode` (supply_reconciliation/leap_io.py:1071-1097); `"auto"` falls through to `CAPACITY_UNMET_PASS_MODE` |
 | `PATCH_MODULE` / `PATCH_ECONOMIES` / `PATCH_RUN_WORKFLOW` | n/a | n/a | `["losses_own_use"]` / `None` / `True` (workflow.py:996-1003) | `patch_baseline_seeds.run_patch` (patch_baseline_seeds.py:1041), routed per-module through `MODULE_REGISTRY` (patch_baseline_seeds.py:181-257) |
-| Capacity-unmet caps | n/a (not preset-controlled) | n/a | n/a | `CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS` / `..._PRODUCTION_UPPER_LIMITS` (supply_reconciliation_config.py:717-829): sentinel *code* (`_ModuleCapRule`, lines 61-118) mixed with a hardcoded, economy-keyed literal dict — only `"20_USA"` has entries today, everything else falls back to whatever the unkeyed default resolves to. This is exactly the "structural code vs. economy numeric data" split Design Goal 2 asks to separate, and it is not separated yet. |
+| Capacity-unmet caps | n/a (not preset-controlled) | n/a | n/a | `CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS` / `..._PRODUCTION_UPPER_LIMITS` (supply_reconciliation/config.py:717-829): sentinel *code* (`_ModuleCapRule`, lines 61-118) mixed with a hardcoded, economy-keyed literal dict — only `"20_USA"` has entries today, everything else falls back to whatever the unkeyed default resolves to. This is exactly the "structural code vs. economy numeric data" split Design Goal 2 asks to separate, and it is not separated yet. |
 | Preflight toggles | `RUN_PREFLIGHT_COMPRESSED_PROJECTION=True` (workflow.py:881) | `RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE=True` (workflow.py:1009) | n/a (patch mode returns before either preflight runs, workflow.py:1283-1290) | both preflight toggles' *other* member keeps whatever the workflow-level default is (`RUN_PREFLIGHT_COMPRESSED_PROJECTION=True` at workflow.py:1079, `RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE=False` at workflow.py:1089) rather than the inactive preset explicitly disabling it — intentional per the comment at workflow.py:870-876, not a defect |
 | Cache / skip-existing / deferred-error / output label | none of the three presets set `TRANSFORMATION_SUPPLY_CACHE_ENABLED`, `SKIP_ECONOMIES_WITH_EXISTING_EXPORTS` (baseline/results_update explicitly re-set it to their own `False`, workflow.py:932/1054), `THROW_ERROR_AFTER_RUN`, or `RUN_OUTPUT_LABEL` | | | these remain true run-scope controls, confirming the brief's assumption that they are separate from pass-mode selection |
 
@@ -110,7 +110,7 @@ code was changed; this is evidence only.
 `_broadcast_preset_overrides()` (workflow.py:378-394) pushes every preset key
 (union of all three `_PRESET_*` dicts, workflow.py:369-375) into every loaded
 `codebase.*` module's own `__dict__` via `_broadcast_config_overrides`
-(supply_preflight.py:1815-1835) — this includes `supply_reconciliation_config`
+(supply_reconciliation/preflight.py:1815-1835) — this includes `supply_reconciliation_config`
 itself, since it is already imported and holds the same attribute names.
 `_effective_setting()` (workflow.py:449-471) then reports what consumers
 actually hold, not what the wrapper's own global says, and
@@ -149,19 +149,19 @@ in the other two dicts but are absent from `_PRESET_PATCH_BASELINE_SEEDS`
 (workflow.py:983-1004). Unlike `RUN_MODE`, which the wrapper explicitly resets
 to `"full"` before unpacking any preset (workflow.py:1066), there is no
 equivalent reset for `CAPACITY_UNMET_PASS_MODE` — its only "default" is the
-`from codebase.supply_reconciliation_config import *` at load time
+`from codebase.supply_reconciliation.config import *` at load time
 (workflow.py:65), which sets it to `"results_update"`
-(supply_reconciliation_config.py:162).
+(supply_reconciliation/config.py:162).
 
 Consequence, traced end to end: when `PATCH_MODULE=["losses_own_use"]` runs,
 `patch_baseline_seeds.py`'s `losses_own_use` branch (patch_baseline_seeds.py:859-882)
-does a **fresh, local** `from codebase.supply_reconciliation_config import
+does a **fresh, local** `from codebase.supply_reconciliation.config import
 CAPACITY_UNMET_PASS_MODE, OTHER_LOSS_OWN_USE_PROXY_STAGE` and calls
 `_resolve_other_loss_own_use_proxy_activity_source_mode(proxy_stage=OTHER_LOSS_OWN_USE_PROXY_STAGE,
 iteration_run_mode=CAPACITY_UNMET_PASS_MODE)` (patch_baseline_seeds.py:879-882).
 Since the patch preset never sets either name, `OTHER_LOSS_OWN_USE_PROXY_STAGE`
 stays `"auto"` and resolves via whatever `CAPACITY_UNMET_PASS_MODE` currently is
-(supply_leap_io.py:1071-1097) — the config-module default `"results_update"`
+(supply_reconciliation/leap_io.py:1071-1097) — the config-module default `"results_update"`
 on a fresh interpreter, or leftover state from whichever preset ran earlier in
 the same session. A modeller who starts a new kernel, sets `ACTIVE_PRESET =
 _PRESET_PATCH_BASELINE_SEEDS` directly, and patches `"losses_own_use"` into
@@ -182,11 +182,11 @@ a *patch of baseline-seed data* silently picking up results-update semantics.
 
 `_PRESET_BASELINE_SEED`'s comment on `USE_AGGREGATED_DEMAND_AS_DUMMY`
 (workflow.py:891: "Only works for single-economy runs") does not match the
-current code. `load_results_demand_table` (supply_reconciliation_tables.py:734-828)
+current code. `load_results_demand_table` (supply_reconciliation/tables.py:734-828)
 explicitly handles the multi-economy case at lines 808-825: "Multiple
 individual economies: build each separately (no cross-economy aggregation),"
 looping `build_aggregated_demand_as_dummy(economy=econ, ...)` per economy and
-concatenating. The per-economy export path in `supply_results_saver.py`
+concatenating. The per-economy export path in `supply_reconciliation/results_saver.py`
 (3700-3768) also calls it with `economies=[economy]` inside its own per-economy
 loop. Either the comment is stale (multi-economy was fixed after the comment
 was written and it was never updated) or it refers to a narrower risk not
@@ -223,7 +223,7 @@ No new evidence changes that verdict.
   detailed-demand) are each already guarded: `_run_results_update_readiness_check`
   (workflow.py:1212-1262) and the `reset_is_effective`/workbook-mode fail-closed
   rule (analysis_input_write_dispatcher.py:87-109) respectively.
-- **Should capacity-unmet caps move out of `supply_reconciliation_config.py`?**
+- **Should capacity-unmet caps move out of `supply_reconciliation/config.py`?**
   The sentinel *rules* (`_ModuleCapRule` and friends) are exactly the kind of
   structural code Design Goal 2 says to keep in Python. The economy-keyed
   literal dict that currently only covers `"20_USA"` is the "genuinely

@@ -25,6 +25,37 @@ BALANCE_EXPORT_FILENAME_PATTERN = re.compile(
 )
 
 
+_ECONOMY_AREA_ALIASES = {
+    "01_AUS": ("aus", "australia"),
+    "02_BD": ("bd", "brunei", "brunei darussalam"),
+    "03_CDA": ("cda", "canada"),
+    "04_CHL": ("chl", "chile"),
+    "05_PRC": ("prc", "china", "people's republic of china"),
+    "06_HKC": ("hkc", "hong kong", "hong kong china"),
+    "07_INA": ("ina", "indonesia"),
+    "08_JPN": ("jpn", "japan"),
+    "09_ROK": ("rok", "korea", "republic of korea", "south korea"),
+    "10_MAS": ("mas", "malaysia"),
+    "11_MEX": ("mex", "mexico"),
+    "12_NZ": ("nz", "new zealand"),
+    "13_PNG": ("png", "papua new guinea"),
+    "14_PE": ("pe", "peru"),
+    "15_PHL": ("phl", "philippines", "the philippines"),
+    "16_RUS": ("rus", "russia", "russian federation"),
+    "17_SGP": ("sgp", "singapore"),
+    "18_CT": ("ct", "chinese taipei"),
+    "19_THA": ("tha", "thailand"),
+    "20_USA": ("usa", "united states", "united states of america"),
+    "21_VN": ("vn", "vietnam", "viet nam"),
+}
+
+# LEAP writes the area name into the title row of every balance sheet.
+_ECONOMY_AREA_TITLE_PATTERN = re.compile(
+    r"Energy Balance for Area\s*[\"'](?P<area>.+?)[\"']",
+    re.IGNORECASE,
+)
+
+
 SCENARIO_CODE_ALIASES = {
     "ref": "REF",
     "reference": "REF",
@@ -64,6 +95,24 @@ class BalanceExportSheet:
     units: str
 
 
+@dataclass(frozen=True)
+class BalanceExportIdentity:
+    """The economy, scenario, and years a LEAP export declares about itself."""
+
+    path: Path
+    economy: str
+    area_name: str
+    scenario: str
+    scenario_code: str
+    years: tuple[int, ...]
+    units: str
+
+
+BALANCE_LABEL_ALIASES = {
+    "total transformation sector": "total transformation",
+}
+
+
 def normalize_balance_scenario_code(scenario: str) -> str:
     """Return the balance-export filename scenario token."""
     text = str(scenario).strip()
@@ -74,7 +123,8 @@ def normalize_balance_scenario_code(scenario: str) -> str:
 
 def normalize_balance_label(value: object) -> str:
     """Return a compact lowercase key for LEAP balance row/fuel matching."""
-    return " ".join(str(value or "").strip().lower().split())
+    normalized = " ".join(str(value or "").strip().lower().split())
+    return BALANCE_LABEL_ALIASES.get(normalized, normalized)
 
 
 def inspect_balance_export_detail(
@@ -259,6 +309,63 @@ def _balance_export_filename_parts(path: Path) -> tuple[str, str] | None:
     return date_id, normalize_balance_scenario_code(scenario)
 
 
+def _inspect_balance_export_identity(
+    path: Path,
+    *,
+    economy: str,
+    scenario_code: str,
+) -> tuple[str, str] | None:
+    """Read economy/scenario identity from workbook headers for nonstandard names."""
+    from openpyxl import load_workbook
+
+    aliases = _ECONOMY_AREA_ALIASES.get(economy, (economy.rsplit("_", 1)[-1],))
+    alias_pattern = re.compile(
+        r"(?:^|[^a-z])(?:" + "|".join(re.escape(alias) for alias in aliases) + r")(?:[^a-z]|$)",
+        re.IGNORECASE,
+    )
+    area_pattern = re.compile(
+        r"Energy Balance for Area\s*[\"'](?P<area>.+?)[\"']",
+        re.IGNORECASE,
+    )
+    scenario_pattern = re.compile(
+        r"Scenario:\s*(?P<scenario>[^,]+)",
+        re.IGNORECASE,
+    )
+
+    try:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+    except Exception:
+        return None
+    try:
+        area_matches: list[str] = []
+        scenario_matches: set[str] = set()
+        for sheet in workbook.worksheets:
+            for row_number in range(1, min(sheet.max_row, 3) + 1):
+                values = [sheet.cell(row_number, column).value for column in range(1, 5)]
+                text = " ".join(str(value).strip() for value in values if value is not None)
+                area_match = area_pattern.search(text)
+                if area_match:
+                    area_matches.append(area_match.group("area"))
+                scenario_match = scenario_pattern.search(text)
+                if scenario_match:
+                    scenario_matches.add(normalize_balance_scenario_code(scenario_match.group("scenario")))
+            if area_matches and scenario_matches:
+                break
+    finally:
+        workbook.close()
+
+    if not area_matches or not any(alias_pattern.search(area) for area in area_matches):
+        return None
+    if scenario_code not in scenario_matches:
+        return None
+
+    date_id = next(
+        (match.group(0) for match in re.finditer(r"\d{4,8}", path.stem)),
+        str(int(path.stat().st_mtime)),
+    )
+    return date_id, scenario_code
+
+
 def _iter_balance_export_workbooks(
     export_dir: Path,
     *,
@@ -272,7 +379,13 @@ def _iter_balance_export_workbooks(
             continue
         parts = _balance_export_filename_parts(path)
         if parts is None:
-            continue
+            parts = _inspect_balance_export_identity(
+                path,
+                economy=economy,
+                scenario_code=scenario_code,
+            )
+            if parts is None:
+                continue
         date_id, candidate_scenario_code = parts
         if candidate_scenario_code != scenario_code:
             continue
@@ -404,6 +517,101 @@ def list_balance_export_sheets(
             f"{path}."
         )
     return sheets
+
+
+def read_balance_export_area_name(workbook_path: Path | str) -> str:
+    """Return the LEAP area name declared in an export's sheet titles."""
+    path = _resolve_path(workbook_path)
+    if not path.exists():
+        raise FileNotFoundError(f"LEAP balance-export workbook does not exist: {path}")
+
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    try:
+        for sheet in workbook.worksheets:
+            for row_number in range(1, min(sheet.max_row, 3) + 1):
+                values = [sheet.cell(row_number, column).value for column in range(1, 5)]
+                text = " ".join(
+                    str(value).strip() for value in values if value is not None
+                )
+                match = _ECONOMY_AREA_TITLE_PATTERN.search(text)
+                if match:
+                    return match.group("area").strip()
+    finally:
+        workbook.close()
+    return ""
+
+
+def economy_from_balance_export_area(area_name: str) -> str:
+    """Return the APEC economy code a LEAP area name identifies, or "" if unclear.
+
+    The name a modeller gives an area is free text, but in practice it opens
+    with the economy's short code ("aus clean slate 29_07"). A leading alias
+    therefore wins outright, and only when no alias leads the name are
+    whole-word matches elsewhere considered — so a short alias such as "pe" or
+    "ct" cannot claim an unrelated name. Either tier must produce exactly one
+    economy, so an ambiguous name is reported as unknown rather than guessed at.
+    """
+    text = " ".join(str(area_name or "").strip().lower().split())
+    if not text:
+        return ""
+
+    leading: set[str] = set()
+    contained: set[str] = set()
+    for economy, aliases in _ECONOMY_AREA_ALIASES.items():
+        for alias in aliases:
+            if re.match(rf"{re.escape(alias)}(?:[^a-z]|$)", text):
+                leading.add(economy)
+            if re.search(rf"(?:^|[^a-z]){re.escape(alias)}(?:[^a-z]|$)", text):
+                contained.add(economy)
+
+    candidates = leading or contained
+    return next(iter(candidates)) if len(candidates) == 1 else ""
+
+
+def infer_balance_export_identity(
+    workbook_path: Path | str,
+) -> BalanceExportIdentity:
+    """Read the economy, scenario, and years a LEAP export declares.
+
+    LEAP writes its area name and the scenario/year/units of each sheet into
+    the sheet headers, so a caller does not need to be told any of them. A
+    workbook covering more than one scenario is rejected rather than resolved
+    arbitrarily: nothing in the export says which one a review should use.
+    """
+    path = _resolve_path(workbook_path)
+    sheets = list_balance_export_sheets(path)
+
+    scenario_codes = sorted({sheet.scenario_code for sheet in sheets})
+    if len(scenario_codes) > 1:
+        scenarios = ", ".join(
+            "Reference" if code == "REF" else "Target" if code == "TGT" else code
+            for code in scenario_codes
+        )
+        raise ValueError(
+            f"This export covers more than one scenario ({scenarios}). "
+            "Export one scenario at a time so the review knows which to use."
+        )
+    scenario_code = scenario_codes[0]
+    if scenario_code not in {"REF", "TGT"}:
+        raise ValueError(
+            f"This export declares the scenario {scenario_code!r}. A balance "
+            "review compares a Reference or Target export."
+        )
+
+    area_name = read_balance_export_area_name(path)
+    economy = economy_from_balance_export_area(area_name)
+
+    return BalanceExportIdentity(
+        path=path,
+        economy=economy,
+        area_name=area_name,
+        scenario="Reference" if scenario_code == "REF" else "Target",
+        scenario_code=scenario_code,
+        years=tuple(sorted({sheet.year for sheet in sheets})),
+        units=sheets[0].units,
+    )
 
 
 def select_balance_export_sheets(

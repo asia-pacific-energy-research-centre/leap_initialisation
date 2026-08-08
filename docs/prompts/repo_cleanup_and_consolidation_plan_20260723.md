@@ -96,7 +96,7 @@ chat transcript). Highlights, highest confidence first:
 5. **Superseded-not-removed**: 3 specific transformation-analysis functions
    in `transformation_analysis_utils.py`, replaced by a generic dispatch
    function but never deleted.
-6. **Dead config constants**: a handful in `supply_reconciliation_config.py`
+6. **Dead config constants**: a handful in `supply_reconciliation/config.py`
    (verified against sibling constants that *are* read, ruling out "whole
    block is unused by convention") and one in `workflow_config.py`.
 7. **Medium confidence**: a known/documented duplicate
@@ -128,7 +128,7 @@ pass's full report is authoritative; summary:
 
 ### The single highest-leverage finding: cross-economy merge is only built for F2
 
-`codebase/functions/parallel_economy_merge.py` merges baseline-seed
+`codebase/supply_reconciliation/parallel_merge.py` merges baseline-seed
 findings/issue-groups (F2) across a parallel run's per-economy workers — its
 own docstring says this is deliberately scoped, not an oversight for other
 checks. But **every other diagnostic already carries an `economy` column and
@@ -138,7 +138,7 @@ separate, unmerged copies of `source_diagnostics`, `template_matching_summary`,
 and both F5 conservation-check triplets, one per economy directory, with no
 combined view anywhere.
 
-**Priority 1 (do this first): extend `parallel_economy_merge.py`** to also
+**Priority 1 (do this first): extend `supply_reconciliation/parallel_merge.py`** to also
 merge `source_diagnostics`, `template_matching_summary`, and the F5
 conservation summaries across economies. **Risk: low** — reuses an
 already-proven pattern, doesn't touch any column semantics, purely additive.
@@ -148,9 +148,9 @@ already-proven pattern, doesn't touch any column semantics, purely additive.
 The repo built the F1-F3 "unresolved row" consolidation **twice**, in two
 different modules, with two incompatible schemas that don't absorb each
 other's inputs:
-- `build_template_matching_summary` (`supply_results_saver.py:1267`) — feeds
+- `build_template_matching_summary` (`supply_reconciliation/results_saver.py:1267`) — feeds
   from `unmatched_id_rows`, `metadata_mismatch_rows`, `mapping_config_mismatch_rows`.
-- `_build_source_diagnostics` (`supply_preflight.py:832`) — feeds from
+- `_build_source_diagnostics` (`supply_reconciliation/preflight.py:832`) — feeds from
   `balance_demand_issues`, `nonzero_missing_id_rows`; its schema is actually
   the more general one (has `economy`, `year`, `suggested_fix`, generic
   `issue_type`) and could subsume the other's inputs too.
@@ -173,7 +173,7 @@ ones.
 `prepare_seed_rows_for_write` has 3 call sites (full-run combiner, results
 verification, the patcher), each emitting the identical 3-file schema
 (`_rule_findings.csv`/`_duplicate_groups.csv`/`_issue_groups.csv`) under a
-different stem. `parallel_economy_merge.py` already merges across economies
+different stem. `supply_reconciliation/parallel_merge.py` already merges across economies
 but not across these three call-site stages. **Proposal**: add a `run_stage`
 column, widen the merge function's input glob to catch all stems present,
 not just the economy dimension. **Risk: low** — small, additive extension of
@@ -238,7 +238,7 @@ pipeline shape from scratch for future work on this plan.
 1. Delete the ~4.6GB safe `outputs/` bucket (mechanical, zero risk).
 2. Remove the dead-code items 1-4 from §2 (whole modules/subpackage/
    mini-subsystems, all verified zero references).
-3. Extend `parallel_economy_merge.py` per §3 priority 1 (low risk, high
+3. Extend `supply_reconciliation/parallel_merge.py` per §3 priority 1 (low risk, high
    value, reuses a proven pattern).
 4. Decide the ~14.4GB uncertain `outputs/` bucket (needs you).
 5. Everything else (dead-code item 5-6, diagnostics priorities 2-4, the

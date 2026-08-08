@@ -32,7 +32,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_preflight_compressed_projection_has_no_missing_name_bugs() -> None:
-    from codebase.functions.supply_preflight import run_preflight_compressed_projection
+    from codebase.supply_reconciliation.preflight import run_preflight_compressed_projection
 
     try:
         result = run_preflight_compressed_projection()

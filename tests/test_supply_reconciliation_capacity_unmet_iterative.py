@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from codebase import supply_reconciliation_workflow as workflow
-from codebase import supply_reconciliation_allocation as allocation
+from codebase.supply_reconciliation import allocation
 from codebase.configuration import workflow_config as workflow_cfg
 
 
@@ -186,6 +186,33 @@ def test_build_supply_overrides_capacity_unmet_iterative_balanced(monkeypatch: p
     assert payload["imports"][2030] == pytest.approx(0.0)
     assert payload["exports"][2030] == pytest.approx(4.75)
     assert payload["max_production"][2030] == pytest.approx(20.0)
+
+
+def test_build_supply_overrides_does_not_zero_an_unconstrained_producer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An absent cap is not an instruction to write Maximum Production = 0."""
+    monkeypatch.setattr(workflow, "CAPACITY_UNMET_PASS_MODE", "baseline_seed", raising=False)
+    reconciliation = pd.DataFrame(
+        [
+            {
+                "economy": "20_USA",
+                "scenario": "Reference",
+                "esto_product": "17 Electricity",
+                "year": 2030,
+                "projected_exports": 0.0,
+                "constrained_production": 0.0,
+                "max_production": pd.NA,
+            }
+        ]
+    )
+
+    overrides = workflow.build_supply_overrides(reconciliation)
+    payload = overrides["20_USA"]["Reference"]["17 Electricity"]
+
+    assert payload["imports"][2030] == pytest.approx(0.0)
+    assert payload["exports"][2030] == pytest.approx(0.0)
+    assert "max_production" not in payload
 
 
 def test_balanced_supply_link_requires_workbook_mode(
@@ -496,7 +523,7 @@ def test_generated_balance_workbook_names_keep_requested_scenarios(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    import codebase.supply_reconciliation_balance_tables as balance_tables
+    import codebase.supply_reconciliation.balance_tables as balance_tables
 
     monkeypatch.setattr(
         balance_tables,
@@ -522,7 +549,7 @@ def test_generated_balance_workbook_names_keep_requested_scenarios(
 def test_generated_balance_workbook_names_allow_lazy_default_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import codebase.supply_reconciliation_balance_tables as balance_tables
+    import codebase.supply_reconciliation.balance_tables as balance_tables
 
     monkeypatch.setattr(balance_tables, "BALANCE_DEMAND_REF_WORKBOOK_PATH", None)
     monkeypatch.setattr(balance_tables, "BALANCE_DEMAND_TGT_WORKBOOK_PATH", None)

@@ -12,6 +12,78 @@ def _coal_config() -> dict[str, object]:
     return workflow.PROXY_CONFIG[0]
 
 
+def _lng_config() -> dict[str, object]:
+    return next(
+        item
+        for item in workflow.PROXY_CONFIG
+        if item["process_key"] == "liquefaction_regasification_plants"
+    )
+
+
+def test_lng_proxy_keeps_ninth_own_use_without_esto_history() -> None:
+    """10.01.03 is Demand-owned even when ESTO has no historical fuel row."""
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "20USA",
+                "economy_key": "20_USA",
+                "flows": "09.06.02 Liquefaction/regasification plants",
+                "products": "08.02 LNG",
+                2022: 90.0,
+            }
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy_key": "20_USA",
+                "sectors": "09_total_transformation_sector",
+                "sub1sectors": "09_06_gas_processing_plants",
+                "sub2sectors": "09_06_02_liquefaction_regasification_plants",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "08_gas",
+                "subfuels": "08_02_lng",
+                2023: 100.0,
+            },
+            {
+                "economy_key": "20_USA",
+                "sectors": "10_losses_and_own_use",
+                "sub1sectors": "10_01_own_use",
+                "sub2sectors": "10_01_03_liquefaction_regasification_plants",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "17_electricity",
+                "subfuels": "x",
+                2023: -5.0,
+            },
+        ]
+    )
+
+    detail = workflow.build_proxy_detail_table(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="20_USA",
+        configs=[_lng_config()],
+        base_year=2022,
+        final_year=2023,
+    )
+    log_rows = workflow.build_proxy_log_rows(detail, scenario="Target")
+
+    projected = detail[detail["year"].eq(2023)].iloc[0]
+    assert projected["target_energy"] == pytest.approx(5.0)
+    assert projected["proxy_activity"] == pytest.approx(100.0)
+    assert projected["intensity"] == pytest.approx(0.05)
+    assert any(
+        row["Branch_Path"]
+        == (
+            "Demand\\Other loss and own use\\Liquefaction and "
+            "regasification plants\\Electricity"
+        )
+        for row in log_rows
+    )
+
+
 def test_load_esto_data_preserves_filters_without_mutating_cached_source(tmp_path) -> None:
     clear_csv_cache()
     source = tmp_path / "esto.csv"
@@ -1468,6 +1540,31 @@ def test_leap_balance_activity_mode_uses_explicit_fuel_set() -> None:
     assert series == {2022: 30.0, 2023: 5.0}
 
 
+def test_total_transformation_sector_alias_reads_exported_total_transformation(
+    tmp_path,
+) -> None:
+    workbook = tmp_path / "balance_total_transformation.xlsx"
+    sheet = pd.DataFrame(
+        [
+            ["Scenario: Reference, Year: 2022, Units: Petajoule", None, None],
+            [None, "Electricity", "Natural gas"],
+            ["Total Transformation", 25.0, -75.0],
+        ]
+    )
+    with pd.ExcelWriter(workbook, engine="openpyxl") as writer:
+        sheet.to_excel(writer, sheet_name="2022", index=False, header=False)
+
+    out = workflow.load_leap_balance_activity_table(
+        workbook,
+        balance_rows=["Total transformation sector"],
+        fuels=["Electricity", "Natural gas"],
+    )
+
+    assert len(out) == 2
+    assert set(out["balance_row"]) == {"Total Transformation"}
+    assert out["value"].abs().sum() == 100.0
+
+
 def test_leap_balance_activity_value_mode_positive_only() -> None:
     cfg = workflow.make_proxy_config(
         process_key="test",
@@ -1817,7 +1914,7 @@ def test_nonspecified_own_use_uses_total_transformation_throughput() -> None:
     assert "Electricity" in workflow.LEAP_BALANCE_FUEL_SETS[fuel_set]
 
 
-def test_transmission_distribution_losses_uses_production_including_electricity() -> None:
+def test_transmission_distribution_losses_includes_electricity() -> None:
     cfg = next(item for item in workflow.PROXY_CONFIG if item["process_key"] == "transmission_and_distribution_losses")
     fuel_set = cfg["activity_sources"]["leap_balance"]["fuel_set"]
 

@@ -33,7 +33,7 @@ reimplementation that calls `build_transformation_log_rows` +
 `build_aux_fuel_zero_rows` + `build_export_from_log_rows` directly. This is
 **not** the same code path as the real transformation-export producer,
 `save_transformation_exports_with_split_targets`
-(`codebase/functions/supply_leap_io.py:575-759`), which additionally applies
+(`codebase/supply_reconciliation/leap_io.py:575-759`), which additionally applies
 split-target logic, single-output selection, and other rules `_collect_auto_regen`
 never runs. The two diverge, and `_collect_auto_regen`'s output is what gets
 written into patched seeds.
@@ -69,7 +69,7 @@ Before touching code, read both paths side by side:
 
 - `_collect_auto_regen` (`patch_baseline_seeds.py:641-728`)
 - `save_transformation_exports_with_split_targets`
-  (`codebase/functions/supply_leap_io.py:575-759`) and whatever it calls that
+  (`codebase/supply_reconciliation/leap_io.py:575-759`) and whatever it calls that
   `_collect_auto_regen` skips (split-target application, single-output
   selection, etc. — trace the call chain, don't guess)
 

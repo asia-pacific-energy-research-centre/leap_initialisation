@@ -30,6 +30,12 @@ OPTIONAL_ZERO_ONLY_TEMPLATE_BRANCH_PREFIXES: tuple[str, ...] = (
     "resources\\",
     "stock changes\\",
     "statistical differences\\",
+    "transformation\\chp interim\\processes\\chp interim\\feedstock fuels\\petroleum coke",
+    "transformation\\chp interim\\processes\\chp interim\\feedstock fuels\\sub bituminous coal",
+    "transformation\\electricity interim\\processes\\electricity interim\\feedstock fuels\\petroleum coke",
+    "transformation\\electricity interim\\processes\\electricity interim\\feedstock fuels\\sub bituminous coal",
+    "transformation\\heat plant interim\\processes\\heat plant interim\\feedstock fuels\\petroleum coke",
+    "transformation\\heat plant interim\\processes\\heat plant interim\\feedstock fuels\\sub bituminous coal",
 )
 SOURCE_WORKFLOW_COLUMN = "source_workflow"
 SOURCE_FILE_COLUMN = "source_file"
@@ -789,7 +795,7 @@ def drop_zero_only_optional_unmatched_rows(
     data: pd.DataFrame,
     tolerance: float = 1e-12,
 ) -> pd.DataFrame:
-    """Omit all-zero unmatched Resources, Stock, and Statistical rows."""
+    """Omit all-zero unmatched optional resource and transformation rows."""
     required_columns = {"BranchID", "Branch Path"}
     if data.empty or not required_columns.issubset(data.columns):
         return data.copy()
@@ -1283,10 +1289,69 @@ def complete_canonical_share_groups(
                     **group_context,
                 ))
         else:
-            capacity_status, capacity_evidence = _zero_capacity_is_explicit(
-                result, template, group_path=group_path, variable=variable, scenario=scenario,
-                region=region, years=years, tolerance=tolerance,
-            )
+            # A valid base-year profile can be the only nonzero profile left
+            # after canonical-template filtering.  This is common for an
+            # inactive transformation whose projection rows are explicit
+            # zeros: the projection years still need a valid 100-percent
+            # sibling profile, and the nearest available year is the safest
+            # source rather than treating the group as an unsupported
+            # nonzero-capacity/all-zero conflict.
+            historical_profiles: dict[int, dict[str, float]] = {}
+            all_expression_years = sorted({
+                int(year)
+                for _, row in all_rows.iterrows()
+                for year in (
+                    parse_expression(row.get("Expression"))[1].keys()
+                    if parse_expression(row.get("Expression"))[0] == "series"
+                    and isinstance(parse_expression(row.get("Expression"))[1], dict)
+                    else []
+                )
+            })
+            for source_year in all_expression_years:
+                raw = {
+                    path: max(
+                        values.get(source_year, 0.0),
+                        0.0,
+                    )
+                    for path, values in (
+                        (path, _expression_values(row.get("Expression"), [source_year]) or {})
+                        for path, row in (
+                            (_text(row["Branch Path"]), row)
+                            for _, row in all_rows.iterrows()
+                        )
+                    )
+                }
+                total = sum(raw.values())
+                if total <= tolerance:
+                    continue
+                profile = {path: value * 100.0 / total for path, value in raw.items()}
+                anchor = sorted(profile, key=lambda path: (-profile[path], path.lower()))[0]
+                profile[anchor] += 100.0 - sum(profile.values())
+                historical_profiles[source_year] = profile
+            if historical_profiles:
+                for year in years:
+                    nearest = min(
+                        historical_profiles,
+                        key=lambda candidate: (
+                            abs(candidate - year),
+                            0 if candidate >= year else 1,
+                        ),
+                    )
+                    profiles[year] = dict(historical_profiles[nearest])
+                    diagnostics.append(_finding(
+                        SHARE_VARIABLE_RULE_IDS[variable], "info",
+                        "Carried nearest valid share profile from an available year "
+                        "after canonical filtering.",
+                        evidence=f"year={year}; source_year={nearest}",
+                        **group_context,
+                    ))
+            if profiles:
+                capacity_status = "historical"
+            else:
+                capacity_status, capacity_evidence = _zero_capacity_is_explicit(
+                    result, template, group_path=group_path, variable=variable, scenario=scenario,
+                    region=region, years=years, tolerance=tolerance,
+                )
             # A group with no genuine share activity falls back deterministically
             # whenever capacity is proven zero *or* simply unavailable (no owning
             # Exogenous Capacity row exists to check): in both cases nothing in the
@@ -1294,7 +1359,9 @@ def complete_canonical_share_groups(
             # importable 100%/0% share. Only an *explicitly nonzero* capacity
             # paired with zero share activity is a genuine data conflict, so that
             # case keeps blocking instead of silently fabricating a profile.
-            if capacity_status in ("zero", "unavailable"):
+            if capacity_status == "historical":
+                pass
+            elif capacity_status in ("zero", "unavailable"):
                 # Prefer a genuine profile from another scenario over the synthetic
                 # anchor: with zero capacity the shares are inert, and a borrowed
                 # real profile is more useful if the module is later activated.
@@ -1859,11 +1926,17 @@ def validate_seed_rows(
     required_scenarios: Iterable[str] | None = None,
     required_scenarios_by_source: Mapping[str, Iterable[str]] | None = None,
     share_tolerance: float = 1e-6,
+    validate_share_groups: bool = True,
     zero_tolerance: float = 1e-12,
     exceptions: Iterable[dict[str, object]] | None = None,
     allow_exact_duplicate_resolution: bool = False,
 ) -> ValidationResult:
-    """Run focused baseline-seed rules without requiring a reference workbook."""
+    """Run focused baseline-seed rules without requiring a reference workbook.
+
+    Share-group rules require the complete assembled producer set.  Callers
+    validating one standalone producer artifact can disable them and leave
+    the cross-producer share check to the assembled seed validation.
+    """
     resolved, duplicate_groups = resolve_logical_duplicates(data)
     findings: list[dict[str, object]] = []
 
@@ -1916,7 +1989,8 @@ def validate_seed_rows(
                     evidence=f"{detail}; ids={'|'.join(invalid_columns)}", **context,
                 ))
 
-    findings.extend(_validate_shares(resolved, tolerance=share_tolerance))
+    if validate_share_groups:
+        findings.extend(_validate_shares(resolved, tolerance=share_tolerance))
     findings.extend(
         _validate_process_efficiency_for_capacity(
             resolved,
@@ -2000,7 +2074,8 @@ def validate_seed_rows(
     if template_path is not None:
         path = Path(template_path)
         template_rows = load_template_rows(path)
-        findings.extend(_validate_canonical_share_completeness(resolved, template_rows))
+        if validate_share_groups:
+            findings.extend(_validate_canonical_share_completeness(resolved, template_rows))
         valid_paths = _load_template_paths(path)
         for _, row in resolved.iterrows():
             branch_path = _text(row.get("Branch Path"))

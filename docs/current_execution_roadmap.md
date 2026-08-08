@@ -17,7 +17,7 @@ older handoff describes a prior state, this document is the current authority.
   not routine iteration. Do it only after a sequence of two-year checks, for a
   representative validation set or to produce outputs that will be used.
 - Run concurrent economies only through
-  `codebase/functions/parallel_economy_runner.py`, which supplies isolated
+  `codebase/supply_reconciliation/parallel_runner.py`, which supplies isolated
   per-process snapshots via `LEAP_WORKER_SNAPSHOT_JSON`. Do not edit
   `ECONOMIES` or `RUN_OUTPUT_LABEL` to launch a second bare workflow while the
   first is running. Sequential execution remains the default; the parallel
@@ -96,7 +96,7 @@ Execute the detailed briefs in this order, with their tests and decision gates:
    2026-07-23** (`9aab65b`). `supply_reconciliation_workflow._apply_worker_snapshot_overrides`
    reads an explicit per-process snapshot (economy, run label, test horizon)
    from `LEAP_WORKER_SNAPSHOT_JSON`, applied before the preset broadcast; a
-   no-op when unset. `codebase/functions/parallel_economy_runner.py` launches
+   no-op when unset. `codebase/supply_reconciliation/parallel_runner.py` launches
    one OS process per economy (never threads), bounded by `max_workers`
    (default 1), each with its own `run_output_label` — which reuses the
    existing `ReconciliationRunContext` path resolution to isolate every
@@ -112,7 +112,7 @@ Execute the detailed briefs in this order, with their tests and decision gates:
    concurrent output identical (0 diffs) to its sequential run. A
    deterministic parent merge across more than one economy's outputs into a
    single consolidated artifact is **partly built, 2026-07-23** (`5064325`):
-   `codebase/functions/parallel_economy_merge.py` merges the consolidated
+   `codebase/supply_reconciliation/parallel_merge.py` merges the consolidated
    baseline-seed validation findings/issue-groups CSVs across workers
    (deterministic order, failed workers skipped rather than read as clean).
    **Deliberately not covered**: merging the single-file combined workbook

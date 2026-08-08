@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from codebase.functions import transformation_record_builder as builder
+from codebase.functions.leap_excel_io import finalise_export_df
 from codebase.functions.patch_baseline_seeds import _deduplicate_rows_safely
 
 
@@ -111,6 +112,40 @@ def test_all_zero_multi_output_share_group_is_anchored_at_100():
         sum(values[year] for values in shares.values()) == pytest.approx(100.0)
         for year in range(2022, 2024)
     )
+
+
+def test_final_export_carries_valid_share_profile_over_explicit_zero_year():
+    rows = []
+    for fuel, base_value, projection_value in [
+        ("Other hydrocarbons", 100.0, 0.0),
+        ("Ethane", 0.0, 0.0),
+    ]:
+        for year, value in [(2022, base_value), (2023, projection_value)]:
+            rows.append({
+                "Branch_Path": f"Transformation\\Non specified transformation\\Output Fuels\\{fuel}",
+                "Scenario": "Target",
+                "Measure": "Output Share",
+                "Units": "Share",
+                "Scale": "%",
+                "Per...": "",
+                "Date": year,
+                "Value": value,
+            })
+
+    export_df = finalise_export_df(
+        pd.DataFrame(rows),
+        "Target",
+        "United States",
+        2022,
+        2023,
+    )
+
+    assert export_df.loc[
+        export_df["Branch Path"].str.endswith("\\Other hydrocarbons"), 2023
+    ].iloc[0] == pytest.approx(100.0)
+    assert export_df.loc[
+        export_df["Branch Path"].str.endswith("\\Ethane"), 2023
+    ].iloc[0] == pytest.approx(0.0)
 
 
 def test_patch_deduplicates_identical_rows_but_rejects_zero_vs_100_conflict():

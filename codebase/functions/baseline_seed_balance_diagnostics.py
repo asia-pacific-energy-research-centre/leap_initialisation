@@ -26,6 +26,10 @@ from codebase.utilities.leap_balance_export_resolver import (
     resolve_balance_export_workbook,
     select_balance_export_sheets,
 )
+from codebase.utilities.leap_results_dashboard_utils import (
+    _expand_esto_flow_code_selector,
+    pull_base_year_value,
+)
 from codebase.functions.transformation_analysis_utils import MAJOR_SECTOR_CONFIG
 
 
@@ -61,6 +65,7 @@ DEFAULT_KNOWN_ISSUES_PATH = REPO_ROOT / "config" / "leap_results_balance_known_i
 DEFAULT_TEMPLATE_SHEET = "EBal|2060"
 DEFAULT_BASE_YEAR = 2022
 DEFAULT_TOLERANCE_PJ = 1e-6
+DEFAULT_ROUNDING_TOLERANCE_PERCENT = 0.01
 DEFAULT_MAPPING_PAIRS_PATH: ConfigTableRef = (
     OUTLOOK_MAPPINGS_MASTER_PATH,
     "ninth_pairs_to_esto_pairs",
@@ -80,6 +85,9 @@ DEFAULT_BALANCE_VARIABLE_RULES_PATH = (
 )
 DEFAULT_BASE_TABLE_PATH = workflow_cfg.get_energy_source_config().esto_base_table_path
 DEFAULT_PROJECTION_TABLE_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
+OTHER_SECTOR_WITH_NONENERGY_COMPARATOR_FLOW = (
+    "16.03-16.05,17 Other sector including non-energy (all demand aggregate)"
+)
 
 DIFFERENCE_OUTPUT_COLUMNS = [
     "economy",
@@ -89,6 +97,7 @@ DIFFERENCE_OUTPUT_COLUMNS = [
     "esto_product",
     "leap_sector_names",
     "leap_fuel_names",
+    "comparison_branch_path",
     "ninth_sector_codes",
     "ninth_fuel_codes",
     "reference_source",
@@ -151,8 +160,7 @@ BALANCE_VARIABLE_RULE_COLUMNS = [
 ]
 
 PLACEHOLDER_SECTOR_PATTERN = re.compile(
-    r"(?:^|\|)(?:Electricity interim/|CHP interim/|Heat plant interim/|"
-    r"All demand aggregated(?:/|$))",
+    r"(?:^|\|)(?:Electricity interim/|CHP interim/|Heat plant interim/)",
     flags=re.IGNORECASE,
 )
 
@@ -167,9 +175,9 @@ IGNORED_BALANCE_DIAGNOSTIC_ROWS = frozenset(
 )
 
 # These processes write 10.01 own-use/loss energy as Auxiliary Fuel Use inside
-# the LEAP Transformation module. Coal mines is deliberately absent: despite a
-# legacy loss_flow_codes entry, the active proxy workflow owns 10.01.06 under
-# Demand\Other loss and own use because coal mining is supply-related.
+# the LEAP Transformation module. Coal mines and LNG are deliberately absent:
+# their active proxy workflows own 10.01.06 and 10.01.03 respectively under
+# Demand\Other loss and own use.
 TRANSFORMATION_AUXILIARY_CONFIG_KEYS = (
     "gas_works",
     "coal_coke_ovens",
@@ -184,6 +192,13 @@ TRANSFORMATION_AUXILIARY_CONFIG_KEYS = (
 SEED_OR_CARRY_FORWARD_TRANSFORMATION_FLOW_PREFIXES = (
     "09.08.01 Coke ovens",
     "09.08.02 Blast furnaces",
+    "09.08.03 Patent fuel plants",
+    "09.08.04 BKB/PB plants",
+    "09.08.05 Liquefaction (coal to oil)",
+    "09.06.01 Gas works plants",
+    "09.06.02 Liquefaction/regasification plants",
+    "09.06.03 Natural gas blending plants",
+    "09.06.04 Gas-to-liquids plants",
 )
 
 
@@ -246,6 +261,15 @@ def _ignored_mapping_issue_reason(row: pd.Series) -> str:
             "leap_sector_name_full_path",
         ),
     )
+    if (
+        _normalize_diagnostic_label(sector_label).replace("\\", "/")
+        == "transmission and distribution/electricity"
+        and _normalize_diagnostic_label(fuel_label) == "electricity"
+    ):
+        return (
+            "structural Electricity child mirrors the Transmission and "
+            "Distribution parent and must not be mapped separately"
+        )
     sector_root = re.split(r"[/\\]", sector_label, maxsplit=1)[0]
     if _normalize_diagnostic_label(sector_root) in IGNORED_BALANCE_DIAGNOSTIC_ROWS:
         return f"{sector_root} is an excluded aggregate or diagnostic-only balance row"
@@ -290,11 +314,7 @@ def _partition_comparison_rows(
         ),
         axis=1,
     )
-    normalized = row_labels.map(
-        lambda value: _normalize_diagnostic_label(
-            re.split(r"[/\\]", _clean_token(value), maxsplit=1)[0]
-        )
-    )
+    normalized = row_labels.map(_normalize_diagnostic_label)
     ignored_mask = normalized.isin(IGNORED_BALANCE_DIAGNOSTIC_ROWS)
     active = work.loc[~ignored_mask].reset_index(drop=True)
     ignored = work.loc[ignored_mask].copy()
@@ -308,6 +328,70 @@ def _partition_comparison_rows(
         ],
     )
     return active, ignored.reset_index(drop=True)
+
+
+def _all_demand_subtotal_comparator_flows(
+    mapping_status: pd.DataFrame,
+) -> set[str]:
+    """Return mapped ESTO flows beneath the export-only demand parent row."""
+    if mapping_status is None or mapping_status.empty:
+        return set()
+    path_columns = [
+        column
+        for column in [
+            "leap_sector_name_full_path",
+            "mapped_leap_sector_name",
+            "mapping_key_sector",
+            "leap_sector_name",
+        ]
+        if column in mapping_status.columns
+    ]
+    if not path_columns or "esto_flow" not in mapping_status.columns:
+        return set()
+    child_mask = pd.Series(False, index=mapping_status.index)
+    for path_column in path_columns:
+        paths = (
+            mapping_status[path_column]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.replace("\\", "/", regex=False)
+        )
+        child_mask |= paths.str.lower().str.startswith("all demand aggregated/")
+    child_rows = mapping_status.loc[child_mask]
+    return {
+        _clean_token(flow)
+        for flow in child_rows["esto_flow"]
+        if _clean_token(flow)
+    }
+
+
+def _include_nonenergy_in_other_sector_comparator_mapping(
+    esto_mapping: pd.DataFrame,
+) -> pd.DataFrame:
+    r"""Align the diagnostic's Other-sector comparator with the seed branch.
+
+    ``Demand\All demand aggregated\Other sector`` deliberately contains ESTO
+    flows 16.03-16.05 plus flow 17 non-energy use. The maintained canonical
+    mapping retains the ordinary Other-sector selector because it serves wider
+    mapping purposes; this diagnostic-only copy needs the combined selector so
+    its Full Expected Source compares the same scope written to LEAP.
+    """
+    out = esto_mapping.copy()
+    path_column = "leap_sector_name_full_path"
+    if path_column not in out.columns or "esto_flow" not in out.columns:
+        return out
+    normalized_paths = (
+        out[path_column]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.replace("\\", "/", regex=False)
+        .map(_normalize_diagnostic_label)
+    )
+    other_sector = normalized_paths.eq("all demand aggregated/other sector")
+    out.loc[other_sector, "esto_flow"] = OTHER_SECTOR_WITH_NONENERGY_COMPARATOR_FLOW
+    return out
 
 
 def load_balance_variable_rules(
@@ -529,15 +613,18 @@ def _temporary_balance_runtime_paths(
     exports_root: Path,
 ):
     """Route shared loader globals for a worktree run and restore them."""
+    from codebase.mappings import canonical_loaders
     from codebase.utilities import master_config
 
     master_snapshot = {
         "OUTLOOK_MAPPINGS_MASTER_PATH": master_config.OUTLOOK_MAPPINGS_MASTER_PATH,
         "RUNTIME_TABLE_DIR": master_config.RUNTIME_TABLE_DIR,
     }
+    canonical_workbook_snapshot = canonical_loaders.CANONICAL_WORKBOOK_PATH
     resolver_defaults = dict(resolve_balance_export_workbook.__kwdefaults__ or {})
     master_config.OUTLOOK_MAPPINGS_MASTER_PATH = codebook_path
     master_config.RUNTIME_TABLE_DIR = sheet_map_path.parent
+    canonical_loaders.CANONICAL_WORKBOOK_PATH = codebook_path
     if resolve_balance_export_workbook.__kwdefaults__ is not None:
         resolve_balance_export_workbook.__kwdefaults__["exports_root"] = exports_root
 
@@ -572,6 +659,7 @@ def _temporary_balance_runtime_paths(
             "OUTLOOK_MAPPINGS_MASTER_PATH"
         ]
         master_config.RUNTIME_TABLE_DIR = master_snapshot["RUNTIME_TABLE_DIR"]
+        canonical_loaders.CANONICAL_WORKBOOK_PATH = canonical_workbook_snapshot
         if resolve_balance_export_workbook.__kwdefaults__ is not None:
             resolve_balance_export_workbook.__kwdefaults__.clear()
             resolve_balance_export_workbook.__kwdefaults__.update(resolver_defaults)
@@ -956,6 +1044,9 @@ def _write_esto_axis_extraction_mapping_workbook(
         sheet_name="leap_combined_esto",
         dtype=str,
     )
+    esto_mapping = _include_nonenergy_in_other_sector_comparator_mapping(
+        esto_mapping
+    )
     rollup_rules = read_config_table(
         codebook_path,
         sheet_name="leap_rollup_rules",
@@ -1083,9 +1174,13 @@ def _write_esto_axis_extraction_mapping_workbook(
 def _build_mapping_metadata(
     mapping_status: pd.DataFrame,
     leap_long: pd.DataFrame | None,
+    *,
+    include_comparison_branch_path: bool,
 ) -> pd.DataFrame:
     """Return one mapping/cardinality record per displayed comparison row."""
     key_columns = ["sheet", "measure", "fuel_label"]
+    if include_comparison_branch_path:
+        key_columns.append("comparison_branch_path")
     metadata_columns = [
         *key_columns,
         "esto_flow",
@@ -1102,6 +1197,11 @@ def _build_mapping_metadata(
         return pd.DataFrame(columns=metadata_columns)
 
     status = mapping_status.copy()
+    if include_comparison_branch_path and "comparison_branch_path" not in status.columns:
+        status["comparison_branch_path"] = status.get(
+            "leap_sector_name_full_path",
+            pd.Series("", index=status.index),
+        )
     for column in [
         *key_columns,
         "esto_flow",
@@ -1135,6 +1235,11 @@ def _build_mapping_metadata(
                 "sheet": key[0],
                 "measure": key[1],
                 "fuel_label": key[2],
+                **(
+                    {"comparison_branch_path": key[3]}
+                    if include_comparison_branch_path
+                    else {}
+                ),
                 "esto_flow": _unique_pipe(group["esto_flow"]),
                 "esto_product": _unique_pipe(group["esto_product"]),
                 "ninth_sector_codes": _unique_pipe(group["sector_code_9th"]),
@@ -1164,6 +1269,11 @@ def _build_mapping_metadata(
     leap = leap_long.copy()
     if "sheet" not in leap.columns and "sheet_name" in leap.columns:
         leap["sheet"] = leap["sheet_name"]
+    if include_comparison_branch_path and "comparison_branch_path" not in leap.columns:
+        leap["comparison_branch_path"] = leap.get(
+            "leap_sector_name_full_path",
+            pd.Series("", index=leap.index),
+        )
     for column in [*key_columns, "leap_sector_name", "leap_fuel_name", "leap_sector", "leap_fuel"]:
         if column not in leap.columns:
             leap[column] = ""
@@ -1178,6 +1288,11 @@ def _build_mapping_metadata(
                 "sheet": key[0],
                 "measure": key[1],
                 "fuel_label": key[2],
+                **(
+                    {"comparison_branch_path": key[3]}
+                    if include_comparison_branch_path
+                    else {}
+                ),
                 "leap_sector_names": _unique_pipe(group[sector_column]),
                 "leap_fuel_names": _unique_pipe(group[fuel_column]),
                 "leap_component_count": _count_mapping_pairs(
@@ -1324,6 +1439,73 @@ def apply_canonical_projection_comparators(
         )["_allocated_projection_value"]
         .sum(min_count=1)
     )
+    # Canonical projection allocation is stored at detailed ESTO flows, while
+    # a visible LEAP balance row may map to an honest parent/range selector
+    # such as ``14 Industry sector`` or ``16.01-16.02 Buildings``. Materialize
+    # only the requested rollup aliases so each detailed ESTO product receives
+    # its allocated share instead of comparing one leaf with the entire 9th
+    # fuel aggregate.
+    requested_pairs = expanded[["esto_flow", "esto_product"]].drop_duplicates()
+    existing_pairs = set(
+        projection_long[["esto_flow", "esto_product"]].itertuples(
+            index=False,
+            name=None,
+        )
+    )
+    projection_flow_codes = (
+        projection_long["esto_flow"]
+        .astype(str)
+        .str.extract(r"^(\d+(?:\.\d+)*)", expand=False)
+        .fillna("")
+    )
+    rollup_aliases: list[pd.DataFrame] = []
+    for requested_flow, requested_product in requested_pairs.itertuples(
+        index=False,
+        name=None,
+    ):
+        pair = (_clean_token(requested_flow), _clean_token(requested_product))
+        if not all(pair) or pair in existing_pairs:
+            continue
+        component_codes = _expand_esto_flow_code_selector(pair[0])
+        if not component_codes:
+            continue
+        product_mask = projection_long["esto_product"].eq(pair[1])
+        component_masks: list[pd.Series] = []
+        for component_code in component_codes:
+            exact_mask = product_mask & projection_flow_codes.eq(component_code)
+            descendant_mask = product_mask & projection_flow_codes.str.startswith(
+                component_code + "."
+            )
+            component_masks.append(
+                exact_mask
+                if bool(exact_mask.any())
+                else descendant_mask
+            )
+        if not component_masks:
+            continue
+        rollup_mask = component_masks[0].copy()
+        for component_mask in component_masks[1:]:
+            rollup_mask |= component_mask
+        components = projection_long.loc[rollup_mask]
+        if components.empty:
+            continue
+        alias = (
+            components.groupby(
+                ["scenario", "year"],
+                as_index=False,
+                dropna=False,
+            )["_allocated_projection_value"]
+            .sum(min_count=1)
+        )
+        alias["esto_flow"] = pair[0]
+        alias["esto_product"] = pair[1]
+        rollup_aliases.append(alias)
+    if rollup_aliases:
+        projection_long = pd.concat(
+            [projection_long, *rollup_aliases],
+            ignore_index=True,
+            sort=False,
+        )
 
     expanded = expanded.merge(
         projection_long,
@@ -1719,19 +1901,6 @@ def _transformation_auxiliary_rules() -> list[dict[str, object]]:
             }
         )
 
-    lng_config = MAJOR_SECTOR_CONFIG["lng"]
-    rules.append(
-        {
-            "config_key": "lng",
-            "transformation_flows": [
-                _clean_token(lng_config.get("esto_flow_code_liquefaction", "")),
-                _clean_token(lng_config.get("esto_flow_code_regasification", "")),
-            ],
-            "auxiliary_flows": [
-                "10.01.03 Liquefaction/regasification plants",
-            ],
-        }
-    )
     return [
         rule
         for rule in rules
@@ -1974,11 +2143,13 @@ def build_leap_source_difference_table(
     mapping_status: pd.DataFrame,
     leap_long: pd.DataFrame | None = None,
     projection_allocation_status: pd.DataFrame | None = None,
+    reassignment_status: pd.DataFrame | None = None,
     base_df: pd.DataFrame | None = None,
     projection_tables: pd.DataFrame | None = None,
     economy: str,
     years: Sequence[int],
     scenarios: Sequence[str],
+    base_year: int = DEFAULT_BASE_YEAR,
     tolerance_pj: float = DEFAULT_TOLERANCE_PJ,
 ) -> pd.DataFrame:
     """Build the narrow Step 1 LEAP-versus-source diagnostic table."""
@@ -2002,7 +2173,20 @@ def build_leap_source_difference_table(
     if working.empty:
         return pd.DataFrame(columns=DIFFERENCE_OUTPUT_COLUMNS)
 
-    key_columns = ["scenario", "sheet", "measure", "fuel_label", "year"]
+    include_comparison_branch_path = "comparison_branch_path" in working.columns
+    if not include_comparison_branch_path:
+        working["comparison_branch_path"] = ""
+    working["comparison_branch_path"] = (
+        working["comparison_branch_path"].fillna("").astype(str).str.strip()
+    )
+    key_columns = [
+        "scenario",
+        "sheet",
+        "measure",
+        "fuel_label",
+        "comparison_branch_path",
+        "year",
+    ]
     grouped = (
         working.groupby([*key_columns, "source"], dropna=False, as_index=False)["value"]
         .sum(min_count=1)
@@ -2019,8 +2203,139 @@ def build_leap_source_difference_table(
             wide[column] = pd.NA
         wide[column] = pd.to_numeric(wide[column], errors="coerce")
 
-    metadata = _build_mapping_metadata(mapping_status, leap_long)
-    wide = wide.merge(metadata, on=["sheet", "measure", "fuel_label"], how="left")
+    metadata = _build_mapping_metadata(
+        mapping_status,
+        leap_long,
+        include_comparison_branch_path=include_comparison_branch_path,
+    )
+    metadata_join_columns = ["sheet", "measure", "fuel_label"]
+    if include_comparison_branch_path:
+        metadata_join_columns.append("comparison_branch_path")
+    wide = wide.merge(
+        metadata,
+        on=metadata_join_columns,
+        how="left",
+    )
+    def _distinct_esto_pair_count(group: pd.DataFrame) -> int:
+        return len(
+            {
+                pair
+                for row in group[["esto_flow", "esto_product"]].itertuples(
+                    index=False,
+                    name=None,
+                )
+                for pair in _iter_paired_tokens(row[0], row[1])
+            }
+        )
+
+    comparison_pair_counts = (
+        wide.groupby(
+            ["scenario", "sheet", "measure", "fuel_label", "year"],
+            dropna=False,
+        )
+        .apply(_distinct_esto_pair_count)
+    )
+    comparison_keys = pd.MultiIndex.from_frame(
+        wide[["scenario", "sheet", "measure", "fuel_label", "year"]]
+    )
+    single_diagnostic_target = pd.Series(
+        comparison_keys.map(comparison_pair_counts).to_numpy() == 1,
+        index=wide.index,
+    )
+    wide["_visible_cell_key"] = [
+        (
+            f"leap::{_clean_token(row.leap_sector_names)}::"
+            f"{_clean_token(row.leap_fuel_names)}"
+            if _clean_token(row.leap_sector_names)
+            or _clean_token(row.leap_fuel_names)
+            else (
+                f"diagnostic::{_clean_token(row.sheet)}::"
+                f"{_clean_token(row.measure)}::{_clean_token(row.fuel_label)}"
+            )
+        )
+        for row in wide[
+            [
+                "leap_sector_names",
+                "leap_fuel_names",
+                "sheet",
+                "measure",
+                "fuel_label",
+            ]
+        ].itertuples(index=False)
+    ]
+    visible_pair_counts = (
+        wide.groupby(
+            ["scenario", "_visible_cell_key", "year"],
+            dropna=False,
+        )
+        .apply(_distinct_esto_pair_count)
+    )
+    visible_keys = pd.MultiIndex.from_frame(
+        wide[["scenario", "_visible_cell_key", "year"]]
+    )
+    single_visible_target = pd.Series(
+        visible_keys.map(visible_pair_counts).to_numpy() == 1,
+        index=wide.index,
+    )
+    single_target = single_diagnostic_target & single_visible_target
+    if base_df is not None and not base_df.empty:
+        missing_base = (
+            wide["base"].isna()
+            & wide["year"].eq(int(base_year))
+            & single_target
+            & wide["esto_flow"].fillna("").astype(str).str.strip().ne("")
+            & wide["esto_product"].fillna("").astype(str).str.strip().ne("")
+        )
+        if bool(missing_base.any()):
+            wide.loc[missing_base, "base"] = [
+                pull_base_year_value(
+                    base_df,
+                    base_year=int(base_year),
+                    economy_code=_compact_economy_code(economy),
+                    esto_flow=_clean_token(row.esto_flow),
+                    esto_product=_clean_token(row.esto_product),
+                )
+                for row in wide.loc[
+                    missing_base,
+                    ["esto_flow", "esto_product"],
+                ].itertuples(index=False)
+            ]
+    if reassignment_status is not None and not reassignment_status.empty:
+        reassigned = reassignment_status.copy()
+        for column in [
+            "dataset",
+            "source_esto_flow",
+            "source_esto_product",
+        ]:
+            if column not in reassigned.columns:
+                reassigned[column] = ""
+            reassigned[column] = (
+                reassigned[column].fillna("").astype(str).str.strip()
+            )
+        if "matched_rows" not in reassigned.columns:
+            reassigned["matched_rows"] = 0
+        reassigned["matched_rows"] = pd.to_numeric(
+            reassigned["matched_rows"], errors="coerce"
+        ).fillna(0)
+        reassigned_zero_pairs = set(
+            reassigned.loc[
+                reassigned["dataset"].eq("base_df")
+                & reassigned["matched_rows"].gt(0)
+                & reassigned["source_esto_flow"].ne("")
+                & reassigned["source_esto_product"].ne(""),
+                ["source_esto_flow", "source_esto_product"],
+            ].itertuples(index=False, name=None)
+        )
+        reassigned_zero = (
+            wide["base"].isna()
+            & wide["year"].eq(int(base_year))
+            & single_target
+            & wide[["esto_flow", "esto_product"]].apply(
+                lambda row: tuple(row) in reassigned_zero_pairs,
+                axis=1,
+            )
+        )
+        wide.loc[reassigned_zero, "base"] = 0.0
     wide = _add_transformation_auxiliary_own_use_to_references(
         wide=wide,
         base_df=base_df,
@@ -2037,6 +2352,53 @@ def build_leap_source_difference_table(
     wide.loc[has_base & has_projection, "reference_source"] = "ambiguous"
     wide["source_value_pj"] = wide["base"].combine_first(wide["projection"])
     wide["leap_value_pj"] = wide["leap"]
+    # Aggregated demand is written to LEAP as positive energy demand. ESTO and
+    # 9th balance tables retain international bunkers as negative withdrawals.
+    # Compare magnitudes at this demand boundary so an exact match is not
+    # reported as an artificial two-times-value error.
+    comparison_branch_path = (
+        wide["comparison_branch_path"].fillna("").astype(str).str.strip().str.casefold()
+    )
+    international_demand = (
+        (
+            wide["sheet"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+            .eq("international transport")
+            | wide["leap_sector_names"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+            .eq("international transport")
+            | comparison_branch_path.str.endswith("international transport")
+        )
+        & wide["esto_flow"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.startswith(("04", "05"))
+    )
+    wide.loc[international_demand, "source_value_pj"] = wide.loc[
+        international_demand, "source_value_pj"
+    ].abs()
+
+    # LEAP's Statistical Differences control uses the opposite sign from the
+    # ESTO/9th statistical-discrepancy balance row. Match the supply-export
+    # convention here so a correct LEAP balance is not reported as a
+    # two-times-value preview mismatch.
+    statistical_differences = (
+        wide["esto_flow"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.startswith("11 Statistical discrepancy")
+    )
+    wide.loc[statistical_differences, "source_value_pj"] = -wide.loc[
+        statistical_differences, "source_value_pj"
+    ]
 
     both_present = wide["leap_value_pj"].notna() & wide["source_value_pj"].notna()
     wide["difference_pj"] = wide["leap_value_pj"] - wide["source_value_pj"]
@@ -2053,11 +2415,21 @@ def build_leap_source_difference_table(
     wide["status"] = "reference_unavailable"
     wide.loc[wide["leap_value_pj"].isna() & wide["source_value_pj"].notna(), "status"] = "missing_in_leap"
     wide.loc[
-        both_present & wide["absolute_difference_pj"].le(float(tolerance_pj)),
+        both_present
+        & (
+            wide["absolute_difference_pj"].le(float(tolerance_pj))
+            | wide["difference_percent"].abs().le(
+                DEFAULT_ROUNDING_TOLERANCE_PERCENT
+            )
+        ),
         "status",
     ] = "match"
     wide.loc[
-        both_present & wide["absolute_difference_pj"].gt(float(tolerance_pj)),
+        both_present
+        & wide["absolute_difference_pj"].gt(float(tolerance_pj))
+        & ~wide["difference_percent"].abs().le(
+            DEFAULT_ROUNDING_TOLERANCE_PERCENT
+        ),
         "status",
     ] = "value_mismatch"
     wide.loc[has_base & has_projection, "status"] = "ambiguous_reference"
@@ -2143,6 +2515,281 @@ def build_leap_source_difference_table(
         kind="mergesort",
     ).drop(columns=["_status_order", "leap", "base", "projection"])
     return wide[DIFFERENCE_OUTPUT_COLUMNS].reset_index(drop=True)
+
+
+def _override_direct_demand_sources(
+    difference_table: pd.DataFrame,
+    ninth_df: pd.DataFrame,
+    economy: str,
+    base_year: int,
+    tolerance_pj: float,
+    mapping_pairs_path: ConfigTableRef,
+) -> pd.DataFrame:
+    """Override two aggregate-demand comparators with direct mapped 9th detail."""
+    if difference_table.empty or ninth_df is None or ninth_df.empty:
+        return difference_table
+    out = difference_table.copy()
+    out["_direct_group"] = out["comparison_branch_path"].fillna("").astype(str).str.casefold().map(
+        {
+            "all demand aggregated/industry": "industry",
+            "all demand aggregated/transport non road": "transport_non_road",
+        }
+    )
+    targets = out.loc[
+        out["_direct_group"].notna()
+        & out["scenario"].astype(str).str.casefold().eq("target")
+        & pd.to_numeric(out["year"], errors="coerce").gt(int(base_year))
+    ].copy()
+    if targets.empty:
+        return difference_table
+    scoped = ninth_df.loc[
+        ninth_df["economy"].fillna("").astype(str).map(_compact_economy_code).eq(_compact_economy_code(economy))
+        & ninth_df["scenarios"].fillna("").astype(str).str.casefold().eq("target")
+    ].copy()
+    if scoped.empty:
+        return difference_table
+    from codebase.functions.ninth_projection_mapping import add_ninth_pair_columns
+
+    scoped = add_ninth_pair_columns(scoped)
+    year_columns = [column for column in scoped.columns if str(column).isdigit()]
+    if not year_columns:
+        return difference_table
+    from codebase.utilities.master_config import read_config_table
+
+    mapping_ref = _resolve_config_table_ref(mapping_pairs_path)
+    rollup_rules = read_config_table(
+        mapping_ref[0], sheet_name="ninth_rollup_rules", dtype=str
+    ).fillna("")
+    active_non_road_rules = rollup_rules.loc[
+        rollup_rules["rolled_ninth_sector"].eq(
+            "15_01,15_03-15_06 Transport non-road"
+        )
+        & rollup_rules["rollup_context"].eq(
+            "transport_non_road_comparison"
+        )
+        & rollup_rules["include"].astype(str).str.strip().str.lower().isin(
+            {"1", "true", "yes", "y", "t"}
+        ),
+        "input_ninth_sector",
+    ]
+    non_road_component_sectors = set(
+        active_non_road_rules.astype(str).str.strip().loc[
+            active_non_road_rules.astype(str).str.strip().ne("")
+        ]
+    )
+    sector_masks = {
+        "industry": scoped["ninth_sector"].eq("14_industry_sector"),
+        # The component rules are at the 9th ``sub1sectors`` level.  The
+        # derived ``ninth_sector`` is deliberately more specific (for example
+        # 15_01_01_passenger), so it cannot be compared to these parents.
+        "transport_non_road": scoped["sub1sectors"].isin(
+            non_road_component_sectors
+        )
+        # CSV-backed 9th inputs commonly carry this as the string "False".
+        # ``astype(bool)`` treats every non-empty string as true and would
+        # therefore discard all non-road component rows.
+        & ~scoped["subtotal_results"]
+        .fillna(False)
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .isin({"1", "true", "yes", "y", "t"}),
+    }
+    direct_source = pd.concat(
+        [
+            scoped.loc[mask, year_columns].assign(
+                _direct_group=group_name,
+                ninth_fuel_code=scoped.loc[mask, "ninth_fuel"],
+            )
+            for group_name, mask in sector_masks.items()
+            if bool(mask.any())
+        ],
+        ignore_index=True,
+    )
+    if direct_source.empty:
+        return difference_table
+    direct_values = direct_source.melt(
+        id_vars=["_direct_group", "ninth_fuel_code"],
+        value_vars=year_columns,
+        var_name="year",
+        value_name="source_value_pj",
+    )
+    direct_values["year"] = pd.to_numeric(direct_values["year"], errors="coerce").astype("Int64")
+    direct_values["source_value_pj"] = pd.to_numeric(direct_values["source_value_pj"], errors="coerce")
+    direct_values = direct_values.groupby(
+        ["_direct_group", "ninth_fuel_code", "year"], as_index=False, dropna=False
+    )["source_value_pj"].sum(min_count=1)
+
+    mapping = read_config_table(
+        mapping_ref[0], sheet_name=mapping_ref[1], dtype=str
+    ).fillna("")
+    mapping = mapping.loc[
+        mapping["ninth_sector"].eq("14_industry_sector")
+        | mapping["esto_flow"].eq("15.01,15.03-15.06 Transport non-road"),
+        ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"],
+    ].rename(columns={"ninth_fuel": "ninth_fuel_code"})
+    mapping["_direct_group"] = mapping["ninth_sector"].eq("14_industry_sector").map(
+        {True: "industry", False: "transport_non_road"}
+    )
+    candidates = targets.reset_index(names="_difference_row")[
+        [
+            "_difference_row",
+            "_direct_group",
+            "esto_flow",
+            "esto_product",
+            "year",
+            "source_value_pj",
+        ]
+    ].merge(
+        mapping, on=["_direct_group", "esto_flow", "esto_product"], how="left"
+    ).merge(direct_values, on=["_direct_group", "ninth_fuel_code", "year"], how="left")
+    candidates = candidates.rename(columns={"source_value_pj_x": "_share_weight", "source_value_pj_y": "_direct_total"})
+    allocation_keys = ["_direct_group", "ninth_fuel_code", "year"]
+    candidates["_weight_total"] = candidates.groupby(allocation_keys, dropna=False)["_share_weight"].transform("sum")
+    candidates["_target_count"] = candidates.groupby(allocation_keys, dropna=False)["_difference_row"].transform("count")
+    candidates["source_value_pj"] = candidates["_direct_total"] * (
+        candidates["_share_weight"] / candidates["_weight_total"]
+    )
+    fallback = candidates["_direct_total"].notna() & candidates["_weight_total"].le(float(tolerance_pj))
+    candidates.loc[fallback, "source_value_pj"] = (
+        candidates.loc[fallback, "_direct_total"]
+        / candidates.loc[fallback, "_target_count"]
+    )
+    replacements = candidates.groupby("_difference_row", as_index=False)["source_value_pj"].sum(min_count=1)
+    replacements = replacements.rename(columns={"source_value_pj": "_direct_source_value_pj"})
+    out = out.reset_index(names="_difference_row").merge(replacements, on="_difference_row", how="left")
+    replaced = out["_direct_source_value_pj"].notna() & out["_direct_group"].notna()
+    out.loc[replaced, "source_value_pj"] = out.loc[replaced, "_direct_source_value_pj"]
+    out.loc[replaced, "reference_source"] = "9th Outlook (direct demand detail)"
+    both = out["leap_value_pj"].notna() & out["source_value_pj"].notna()
+    out["difference_pj"] = out["leap_value_pj"] - out["source_value_pj"]
+    out["absolute_difference_pj"] = out["difference_pj"].abs()
+    out["correction_to_match_source_pj"] = -out["difference_pj"]
+    out["difference_percent"] = pd.NA
+    nonzero = both & out["source_value_pj"].abs().gt(float(tolerance_pj))
+    out.loc[nonzero, "difference_percent"] = (
+        out.loc[nonzero, "difference_pj"] / out.loc[nonzero, "source_value_pj"] * 100.0
+    )
+    match = both & (
+        out["absolute_difference_pj"].le(float(tolerance_pj))
+        | out["difference_percent"].abs().le(DEFAULT_ROUNDING_TOLERANCE_PERCENT)
+    )
+    out.loc[match, "status"] = "match"
+    out.loc[both & ~match, "status"] = "value_mismatch"
+    out["is_mismatch"] = out["status"].isin({"value_mismatch", "missing_in_leap"})
+    return out.drop(columns=["_difference_row", "_direct_group", "_direct_source_value_pj"])
+
+
+def _override_direct_base_demand_sources(
+    difference_table: pd.DataFrame,
+    base_df: pd.DataFrame,
+    economy: str,
+    base_year: int,
+    tolerance_pj: float,
+) -> pd.DataFrame:
+    """Resolve Road and non-road base-year comparators from declared ESTO flows.
+
+    The aggregate-demand branches are deliberately built from explicit ESTO
+    component selectors. Reading the same components here prevents the
+    comparison path from retaining an incomplete legacy alias (for example,
+    only domestic navigation under non-road transport).
+    """
+    if difference_table.empty or base_df is None or base_df.empty:
+        return difference_table
+    required_columns = {"economy", "flows", "products"}
+    if not required_columns.issubset(base_df.columns):
+        return difference_table
+
+    out = difference_table.copy().reset_index(names="_difference_row")
+    out["_direct_base_group"] = out["comparison_branch_path"].fillna("").astype(str).str.casefold().map(
+        {
+            "all demand aggregated/road": "road",
+            "all demand aggregated/transport non road": "transport_non_road",
+        }
+    )
+    targets = out.loc[
+        out["_direct_base_group"].notna()
+        & pd.to_numeric(out["year"], errors="coerce").le(int(base_year))
+    ].copy()
+    if targets.empty:
+        return difference_table
+
+    source = base_df.loc[
+        base_df["economy"].fillna("").astype(str).map(_compact_economy_code).eq(
+            _compact_economy_code(economy)
+        )
+    ].copy()
+    if "is_subtotal" in source.columns:
+        is_subtotal = (
+            source["is_subtotal"]
+            .fillna(False)
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .isin({"1", "true", "yes", "y", "t"})
+        )
+        source = source.loc[~is_subtotal].copy()
+    if source.empty:
+        return difference_table
+
+    source["_flow_code"] = source["flows"].fillna("").astype(str).str.extract(
+        r"^(\d+(?:\.\d+)*)", expand=False
+    ).fillna("")
+    year_columns = [column for column in source.columns if str(column).isdigit()]
+    replacements: list[dict[str, object]] = []
+    for _, row in targets.iterrows():
+        year = int(row["year"])
+        year_column = str(year)
+        if year_column not in year_columns:
+            continue
+        selector_codes = _expand_esto_flow_code_selector(str(row.get("esto_flow") or ""))
+        if not selector_codes:
+            continue
+        flow_mask = pd.Series(False, index=source.index)
+        for code in selector_codes:
+            flow_mask |= source["_flow_code"].eq(code)
+        value = pd.to_numeric(
+            source.loc[
+                flow_mask
+                & source["products"].fillna("").astype(str).eq(str(row.get("esto_product") or "")),
+                year_column,
+            ],
+            errors="coerce",
+        ).sum(min_count=1)
+        if pd.isna(value):
+            continue
+        replacements.append(
+            {
+                "_difference_row": row["_difference_row"],
+                "_direct_base_source_value_pj": float(value),
+            }
+        )
+    if not replacements:
+        return difference_table
+
+    out = out.merge(pd.DataFrame(replacements), on="_difference_row", how="left")
+    replaced = out["_direct_base_source_value_pj"].notna()
+    out.loc[replaced, "source_value_pj"] = out.loc[
+        replaced, "_direct_base_source_value_pj"
+    ]
+    out.loc[replaced, "reference_source"] = "ESTO (direct demand components)"
+    both = out["leap_value_pj"].notna() & out["source_value_pj"].notna()
+    out["difference_pj"] = out["leap_value_pj"] - out["source_value_pj"]
+    out["absolute_difference_pj"] = out["difference_pj"].abs()
+    out["correction_to_match_source_pj"] = -out["difference_pj"]
+    out["difference_percent"] = pd.NA
+    nonzero = both & out["source_value_pj"].abs().gt(float(tolerance_pj))
+    out.loc[nonzero, "difference_percent"] = (
+        out.loc[nonzero, "difference_pj"] / out.loc[nonzero, "source_value_pj"] * 100.0
+    )
+    match = both & (
+        out["absolute_difference_pj"].le(float(tolerance_pj))
+        | out["difference_percent"].abs().le(DEFAULT_ROUNDING_TOLERANCE_PERCENT)
+    )
+    out.loc[match, "status"] = "match"
+    out.loc[both & ~match, "status"] = "value_mismatch"
+    out["is_mismatch"] = out["status"].isin({"value_mismatch", "missing_in_leap"})
+    return out.drop(columns=["_difference_row", "_direct_base_group", "_direct_base_source_value_pj"])
 
 
 def run_economy_balance_diagnostic(
@@ -2297,6 +2944,9 @@ def run_economy_balance_diagnostic(
             chart_navigation_guide_path=None,
             balance_mapping_workbook_path=resolved_codebook_path,
             known_issues=known_issues,
+            base_subtotal_comparator_flows=_all_demand_subtotal_comparator_flows(
+                conversion["mapping_status"]
+            ),
         )
     canonical_projection, projection_allocation_diagnostics, allocation_provenance = (
         build_canonical_projection_inputs(
@@ -2343,11 +2993,28 @@ def run_economy_balance_diagnostic(
         mapping_status=comparison["mapping_status"],
         leap_long=conversion["leap_long"],
         projection_allocation_status=projection_allocation_status,
+        reassignment_status=comparison.get("reassignment_status"),
         base_df=comparison.get("base_df"),
         projection_tables=canonical_projection,
         economy=economy,
         years=selected_years,
         scenarios=selected_scenarios,
+        base_year=int(base_year),
+        tolerance_pj=tolerance_pj,
+    )
+    difference_table = _override_direct_demand_sources(
+        difference_table=difference_table,
+        ninth_df=comparison.get("ninth_df", pd.DataFrame()),
+        economy=economy,
+        base_year=int(base_year),
+        tolerance_pj=tolerance_pj,
+        mapping_pairs_path=mapping_pairs_path,
+    )
+    difference_table = _override_direct_base_demand_sources(
+        difference_table=difference_table,
+        base_df=comparison.get("base_df", pd.DataFrame()),
+        economy=economy,
+        base_year=int(base_year),
         tolerance_pj=tolerance_pj,
     )
     difference_table, ignored_comparison_rows = _partition_comparison_rows(
@@ -2408,6 +3075,7 @@ def run_baseline_seed_balance_diagnostics(
     workbook_paths_by_economy: dict[str, Path | str] | None = None,
     base_year: int = DEFAULT_BASE_YEAR,
     tolerance_pj: float = DEFAULT_TOLERANCE_PJ,
+    balance_variable_rules_path: Path | str = DEFAULT_BALANCE_VARIABLE_RULES_PATH,
     **diagnostic_paths: Any,
 ) -> dict[str, Any]:
     """Run Step 1 for several economies and write one combined CSV table."""
@@ -2421,6 +3089,7 @@ def run_baseline_seed_balance_diagnostics(
     difference_parts: list[pd.DataFrame] = []
     issue_parts: list[pd.DataFrame] = []
     ignored_parts: list[pd.DataFrame] = []
+    projection_diagnostic_parts: list[pd.DataFrame] = []
     for economy in economy_list:
         date_ids = (date_ids_by_economy or {}).get(economy, {})
         direct_workbook_path = (workbook_paths_by_economy or {}).get(economy)
@@ -2438,6 +3107,13 @@ def run_baseline_seed_balance_diagnostics(
         )
         results[economy] = result
         difference_parts.append(result["difference_table"])
+        projection_diagnostics = result.get(
+            "projection_allocation_diagnostics", pd.DataFrame()
+        ).copy()
+        if not projection_diagnostics.empty:
+            if "economy" not in projection_diagnostics.columns:
+                projection_diagnostics["economy"] = economy
+            projection_diagnostic_parts.append(projection_diagnostics)
         issues = result["mapping_issues"].copy()
         if not issues.empty:
             if "economy" not in issues.columns:
@@ -2473,7 +3149,22 @@ def run_baseline_seed_balance_diagnostics(
         ignored_rows_path = resolved_output_dir / "leap_balance_ignored_rows.csv"
         ignored_rows.to_csv(ignored_rows_path, index=False)
 
-    review = build_balance_review_table(differences)
+    projection_diagnostics_path = resolved_output_dir / (
+        "ninth_projection_allocation_diagnostics.csv"
+    )
+    projection_diagnostics = (
+        pd.concat(projection_diagnostic_parts, ignore_index=True, sort=False)
+        if projection_diagnostic_parts
+        else pd.DataFrame()
+    )
+    projection_diagnostics.to_csv(projection_diagnostics_path, index=False)
+
+    review = build_balance_review_table(
+        differences,
+        balance_variable_rules=load_balance_variable_rules(
+            balance_variable_rules_path
+        ),
+    )
     review_path = resolved_output_dir / "leap_balance_source_review.csv"
     review.to_csv(review_path, index=False)
     diagnostic_counts = build_balance_diagnostic_counts(differences, mapping_issues)

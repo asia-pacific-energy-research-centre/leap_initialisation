@@ -6,11 +6,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from codebase.functions.capacity_unmet_convergence_diagnostics import (
+from codebase.supply_reconciliation.convergence import (
     build_capacity_unmet_run_diagnostics,
     compare_capacity_unmet_runs,
 )
-from codebase.supply_reconciliation_history import CONVERGENCE_CSV_COLUMNS
+from codebase.supply_reconciliation.history import CONVERGENCE_CSV_COLUMNS
 
 
 def _write_state(path: Path) -> None:

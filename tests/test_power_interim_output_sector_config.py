@@ -96,6 +96,80 @@ def test_signed_09_rows_supply_outputs_and_inputs_without_forbidden_influence(
     assert "16_others" not in totals
 
 
+def test_target_interim_records_use_target_9th_projection_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Target exports must not reuse the Reference power projection series."""
+    rows = []
+    for scenario, electricity, heat in [
+        ("reference", 100.0, 40.0),
+        ("target", 125.0, 50.0),
+    ]:
+        rows.extend(
+            [
+                {
+                    "scenarios": scenario,
+                    "economy": "20_USA",
+                    "sub1sectors": "09_02_chp_plants",
+                    "fuels": "08_gas",
+                    "subfuels": "08_01_natural_gas",
+                    "subtotal_results": False,
+                    2022: 0.0,
+                    2023: -200.0,
+                },
+                {
+                    "scenarios": scenario,
+                    "economy": "20_USA",
+                    "sub1sectors": "09_02_chp_plants",
+                    "fuels": "17_electricity",
+                    "subfuels": "x",
+                    "subtotal_results": False,
+                    2022: 0.0,
+                    2023: electricity,
+                },
+                {
+                    "scenarios": scenario,
+                    "economy": "20_USA",
+                    "sub1sectors": "09_02_chp_plants",
+                    "fuels": "18_heat",
+                    "subfuels": "x",
+                    "subtotal_results": False,
+                    2022: 0.0,
+                    2023: heat,
+                },
+            ]
+        )
+    raw_ninth = pd.DataFrame(rows)
+    monkeypatch.setattr(
+        workflow.core,
+        "ninth_data",
+        raw_ninth[raw_ninth["scenarios"].eq("reference")].copy(),
+    )
+    monkeypatch.setattr(workflow.core, "ninth_data_raw", raw_ninth)
+    monkeypatch.setattr(workflow.core, "esto_data", pd.DataFrame(columns=["economy", "flows"]))
+    monkeypatch.setattr(workflow.core, "esto_year_cols", [2022, 2023])
+    monkeypatch.setattr(workflow.core, "ninth_year_cols", [2022, 2023])
+    monkeypatch.setattr(workflow.core, "EXPORT_BASE_YEAR", 2022)
+    monkeypatch.setattr(workflow.core, "EXPORT_FINAL_YEAR", 2023)
+    monkeypatch.setattr(
+        workflow.core,
+        "code_to_name_mapping",
+        {
+            "08_01_natural_gas": "Natural gas",
+            "17_electricity": "Electricity",
+            "18_heat": "Heat",
+        },
+    )
+
+    records = workflow.build_electricity_heat_interim_rows(
+        economies=["20_USA"], scenario="Target"
+    )
+    chp = next(record for record in records if record["sector_title"] == "CHP interim")
+
+    assert chp["output_values"]["17_electricity"][2023] == pytest.approx(125.0)
+    assert chp["output_values"]["18_heat"][2023] == pytest.approx(50.0)
+
+
 def test_power_interim_display_names_and_never_output_use_canonical_builder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -147,7 +221,7 @@ def test_esto_product_mapping_reads_only_canonical_sheet(monkeypatch: pytest.Mon
     assert mapping["12.99 Solar nonspecified"] == "12_solar_unallocated"
 
 
-def test_no_data_chp_skeleton_emits_output_and_capacity_rows(
+def test_no_data_chp_skeleton_anchors_shares_but_keeps_energy_rows_zero(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(workflow.core, "esto_data", pd.DataFrame(columns=["economy", "flows"]))
@@ -204,8 +278,33 @@ def test_no_data_chp_skeleton_emits_output_and_capacity_rows(
         "Transformation\\CHP interim\\Processes\\CHP interim",
         "Exogenous Capacity",
     ) in paths_by_measure
-    zero_measures = {
-        "Output Share",
+    output_share_rows = [
+        row for row in rows if row["Measure"] == "Output Share"
+    ]
+    output_share_values = {
+        (
+            row["Branch_Path"].rsplit("\\", 1)[-1],
+            int(row["Date"]),
+        ): float(row["Value"])
+        for row in output_share_rows
+    }
+    assert output_share_values == {
+        ("Electricity", 2022): 100.0,
+        ("Electricity", 2023): 100.0,
+        ("Heat", 2022): 0.0,
+        ("Heat", 2023): 0.0,
+    }
+    assert all(
+        sum(
+            value
+            for (_fuel, row_year), value in output_share_values.items()
+            if row_year == year
+        )
+        == pytest.approx(100.0)
+        for year in [2022, 2023]
+    )
+
+    zero_energy_measures = {
         "Import Target",
         "Export Target",
         "Historical Production",
@@ -214,7 +313,7 @@ def test_no_data_chp_skeleton_emits_output_and_capacity_rows(
     assert all(
         float(row["Value"]) == 0.0
         for row in rows
-        if row["Measure"] in zero_measures
+        if row["Measure"] in zero_energy_measures
     )
 
 

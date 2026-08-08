@@ -18,7 +18,7 @@ provision and let imports absorb only the residual. For other products or
 cycles, leaving the complete difference in imports may be the intended result.
 
 `run_results_update_allocation_preview()` in
-`codebase/functions/results_update_preview.py` now runs those same allocation
+`codebase/supply_reconciliation/results_update_preview.py` now runs those same allocation
 rules without:
 
 - updating the iterative state JSON;
@@ -169,7 +169,7 @@ state path as `_run_capacity_unmet_iterative_balanced_pass`.
 
 ```python
 #%%
-from codebase.functions.results_update_preview import (
+from codebase.supply_reconciliation.results_update_preview import (
     run_results_update_allocation_preview,
 )
 

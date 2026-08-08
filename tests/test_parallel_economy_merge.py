@@ -1,7 +1,7 @@
 """Deterministic parent merge for parallel-worker baseline-seed findings.
 
 Scope: only the consolidated findings/issue-groups CSVs (see the module
-docstring in codebase/functions/parallel_economy_merge.py for why the
+docstring in codebase/supply_reconciliation/parallel_merge.py for why the
 single-file combined workbook is deliberately NOT covered here). Isolated
 via a monkeypatched INTEGRATED_LEAP_EXPORTS_ROOT so nothing touches the real
 outputs/ tree; safe alongside a live run.
@@ -11,9 +11,9 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-import codebase.supply_reconciliation_config as config
-from codebase.functions import parallel_economy_merge as merge
-from codebase.functions.parallel_economy_runner import (
+import codebase.supply_reconciliation.config as config
+from codebase.supply_reconciliation import parallel_merge as merge
+from codebase.supply_reconciliation.parallel_runner import (
     EconomyWorkerResult,
     EconomyWorkerSnapshot,
 )

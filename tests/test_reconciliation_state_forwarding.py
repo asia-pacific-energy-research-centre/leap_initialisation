@@ -8,7 +8,7 @@ outward - three hand-maintained, one derived:
 * ``_sync_extracted_runtime_state()`` - 4 runtime accumulators onto ``_sra``,
   plus 5 config names onto ``_srt``/``_sra``/``_srh``/``_srs``;
 * ``_sync_results_saver_overrides()`` - a hand-maintained list of ~37 names
-  onto ``codebase/functions/supply_results_saver.py``;
+  onto ``codebase/supply_reconciliation/results_saver.py``;
 * ``_broadcast_preset_overrides()`` - every key of every ``_PRESET_*`` dict,
   minus ``_PRESET_BROADCAST_PINS``, onto every loaded ``codebase`` module that
   already defines the name.  Derived from the presets rather than listed, so
@@ -31,12 +31,12 @@ A name N is a forwardable setting for extracted module T when **all** hold:
    a. N is a key of any ``_PRESET_*`` dict (these are applied wholesale by
       ``globals().update(ACTIVE_PRESET)`` at wrapper module scope);
    b. N is assigned at wrapper module scope *and* also exists in
-      ``codebase/supply_reconciliation_config.py`` (i.e. the wrapper is
+      ``codebase/supply_reconciliation/config.py`` (i.e. the wrapper is
       shadowing a config default);
    c. N is assigned inside a wrapper function via ``globals()["N"] = ...``.
 2. **T reads N as a module global.**  N is loaded somewhere in T's AST and is
    never a store target anywhere in T - so it can only have arrived via
-   ``from codebase.supply_reconciliation_config import *``, i.e. it is T's own
+   ``from codebase.supply_reconciliation.config import *``, i.e. it is T's own
    private copy of a config default.
 3. **N is not in the allowlist** below.
 
@@ -67,12 +67,12 @@ from codebase.functions.analysis_input_write_dispatcher import (
     reset_is_effective as _reset_is_effective,
 )
 
-import codebase.supply_reconciliation_allocation as _sra
-import codebase.supply_reconciliation_config as _config
-import codebase.supply_reconciliation_history as _srh
+import codebase.supply_reconciliation.allocation as _sra
+import codebase.supply_reconciliation.config as _config
+import codebase.supply_reconciliation.history as _srh
 import codebase.supply_reconciliation_workflow as _wrapper
-import codebase.functions.supply_reconciliation_tables as _srt
-import codebase.functions.supply_results_saver as _srs
+import codebase.supply_reconciliation.tables as _srt
+import codebase.supply_reconciliation.results_saver as _srs
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -82,10 +82,10 @@ WRAPPER_PATH = REPO_ROOT / "codebase" / "supply_reconciliation_workflow.py"
 # the order the wrapper pushes them.  `_srs` additionally receives the larger
 # `_sync_results_saver_overrides` list.
 CONFIG_PUSH_TARGETS = {
-    "_srt": (_srt, REPO_ROOT / "codebase" / "functions" / "supply_reconciliation_tables.py"),
-    "_sra": (_sra, REPO_ROOT / "codebase" / "supply_reconciliation_allocation.py"),
-    "_srh": (_srh, REPO_ROOT / "codebase" / "supply_reconciliation_history.py"),
-    "_srs": (_srs, REPO_ROOT / "codebase" / "functions" / "supply_results_saver.py"),
+    "_srt": (_srt, REPO_ROOT / "codebase" / "supply_reconciliation" / "tables.py"),
+    "_sra": (_sra, REPO_ROOT / "codebase" / "supply_reconciliation" / "allocation.py"),
+    "_srh": (_srh, REPO_ROOT / "codebase" / "supply_reconciliation" / "history.py"),
+    "_srs": (_srs, REPO_ROOT / "codebase" / "supply_reconciliation" / "results_saver.py"),
 }
 
 RUNTIME_ACCUMULATORS = (
@@ -581,7 +581,7 @@ def test_toggles_line_and_reset_reminder_report_the_same_value():
     said the reset was on for every run in which it was off
     (``docs/work_queue.md`` [17]).  Both now resolve to the consumer value.
     """
-    import codebase.functions.supply_preflight as _spf
+    import codebase.supply_reconciliation.preflight as _spf
 
     name = "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT"
     assert _wrapper._effective_setting(name) == getattr(_spf, name), (
@@ -645,7 +645,7 @@ def test_explicit_ledger_readers_do_not_need_wrapper_reverse_mirror():
     callers, but the normal results-saver path no longer needs to copy a pass
     result back through the workflow wrapper.
     """
-    from codebase.supply_reconciliation_history import (
+    from codebase.supply_reconciliation.history import (
         _capacity_addition_state_key,
         _lookup_runtime_capacity_additions_for_record,
         _lookup_runtime_primary_addition,
@@ -746,7 +746,7 @@ def test_patch_baseline_seeds_preset_resolves_first_stage_activity_source_regard
     baseline-seed patch). With the fix, the preset's own explicit
     CAPACITY_UNMET_PASS_MODE overrides whatever is currently in effect.
     """
-    from codebase.functions.supply_leap_io import (
+    from codebase.supply_reconciliation.leap_io import (
         _resolve_other_loss_own_use_proxy_activity_source_mode,
     )
 

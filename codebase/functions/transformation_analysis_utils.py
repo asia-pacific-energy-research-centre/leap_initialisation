@@ -178,15 +178,21 @@ PRINT_GAS_PROCESSING_SUMMARY = False
 
 
 def _safe_print_line(text):
-    """Print debug text without aborting on console encoding quirks."""
-    try:
-        print(text)
-    except Exception:
-        safe_text = str(text).encode("ascii", "backslashreplace").decode("ascii")
-        try:
-            sys.stdout.write(safe_text + "\n")
-        except Exception:
-            sys.__stdout__.write(safe_text + "\n")
+    """Print debug text without depending on a hosted console stream."""
+    text_value = str(text)
+    escaped_value = text_value.encode("ascii", "backslashreplace").decode("ascii")
+    for stream in (getattr(sys, "stdout", None), getattr(sys, "__stdout__", None)):
+        if stream is None or not callable(getattr(stream, "write", None)):
+            continue
+        for value in (text_value, escaped_value):
+            try:
+                stream.write(value + "\n")
+                flush = getattr(stream, "flush", None)
+                if callable(flush):
+                    flush()
+                return
+            except Exception:
+                continue
 
 
 def _safe_map_code_label(value, code_to_name_mapping):
@@ -243,6 +249,9 @@ HYDROGEN_DISPLAY_NAME_OVERRIDES = {
     "16_x_hydrogen": "Hydrogen",
     "16_x_ammonia": "Ammonia",
     "16_x_efuel": "Efuel",
+    # Ninth green electricity is kept separate from ordinary electricity in
+    # LEAP so electrolysers can use an isolated supply pool.
+    "17_x_green_electricity": "Electricity for hydrogen",
     "electrolysers_non_green": "Electrolysers (non-green electricity)",
 }
 
@@ -255,7 +264,10 @@ MAJOR_SECTOR_CONFIG = {
         "additional_sector_titles": ["LNG regasification"],
         "transformation_sub1": "09_06_gas_processing_plants",
         "transformation_sub2": ["09_06_02_liquefaction_regasification_plants"],
-        "loss_sub2": ["10_01_03_liquefaction_regasification_plants"],
+        # 10.01.03 own use is owned by
+        # Demand\Other loss and own use\Liquefaction and regasification plants.
+        # Do not also export it as transformation Auxiliary Fuel Use.
+        "loss_sub2": [],
         "esto_flow_code_liquefaction": "09.06.02.01 Liquefaction",
         "esto_flow_code_regasification": "09.06.02.02 Regasification",
     },

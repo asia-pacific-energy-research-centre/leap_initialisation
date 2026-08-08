@@ -283,7 +283,7 @@ def test_losses_own_use_patch_scope_strips_managed_subtree() -> None:
 def test_aggregated_demand_patch_threads_reconciliation_config(monkeypatch, tmp_path: Path) -> None:
     import codebase.aggregated_demand_workflow as aggregated_demand_workflow
     import codebase.functions.transformation_analysis_utils as transformation_core
-    import codebase.supply_reconciliation_config as reconciliation_config
+    import codebase.supply_reconciliation.config as reconciliation_config
 
     captured: dict[str, object] = {}
 
@@ -341,7 +341,7 @@ def test_aggregated_demand_patch_threads_reconciliation_config(monkeypatch, tmp_
 def test_aggregated_demand_patch_excludes_active_detailed_branch_sectors(monkeypatch, tmp_path: Path) -> None:
     import codebase.aggregated_demand_workflow as aggregated_demand_workflow
     import codebase.functions.transformation_analysis_utils as transformation_core
-    import codebase.supply_reconciliation_config as reconciliation_config
+    import codebase.supply_reconciliation.config as reconciliation_config
 
     captured: dict[str, object] = {}
 
@@ -383,7 +383,7 @@ def test_aggregated_demand_patch_excludes_active_detailed_branch_sectors(monkeyp
 def test_losses_own_use_patch_generates_exact_fresh_workbook_paths(monkeypatch, tmp_path: Path) -> None:
     import codebase.other_loss_own_use_proxy_workflow as proxy_workflow
     import codebase.functions.transformation_analysis_utils as transformation_core
-    import codebase.supply_reconciliation_config as reconciliation_config
+    import codebase.supply_reconciliation.config as reconciliation_config
 
     captured: dict[str, object] = {}
 
@@ -421,9 +421,11 @@ def test_losses_own_use_patch_generates_exact_fresh_workbook_paths(monkeypatch, 
 
 
 @pytest.mark.parametrize("module", ["oil_refineries", "lng", "transformation"])
-def test_transformation_auto_regen_modules_are_gated(module: str) -> None:
-    with pytest.raises(NotImplementedError, match="not safely patchable"):
-        patch_baseline_seeds.run_patch(module, economies=["20_USA"], run_workflow=True)
+def test_transformation_modules_use_workbook_producer_path(module: str) -> None:
+    config = patch_baseline_seeds.MODULE_REGISTRY[module]
+
+    assert config.workbook_glob == "transformation_leap_imports_{econ}*.xlsx"
+    assert not config.auto_sector_keys
 
 
 def test_transfers_patch_scope_covers_every_transfer_process_title() -> None:

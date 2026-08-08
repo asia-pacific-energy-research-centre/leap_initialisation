@@ -172,7 +172,7 @@ actually involve here, which the parent compresses to one line.
 Steps 3–5 require a human in LEAP. No part of this loop is unattended today.
 
 **Concurrency.** Per-economy parallelism goes through
-`codebase/functions/parallel_economy_runner.py`, which launches one OS process
+`codebase/supply_reconciliation/parallel_runner.py`, which launches one OS process
 per economy with its own `LEAP_WORKER_SNAPSHOT_JSON` snapshot and
 `run_output_label`. Do **not** launch a second bare invocation of
 `supply_reconciliation_workflow.py` from the same working tree — `ECONOMIES` is

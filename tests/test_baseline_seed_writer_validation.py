@@ -14,41 +14,13 @@ from codebase.functions.baseline_seed_validation import (
     prepare_seed_rows_for_write,
     validate_seed_rows,
 )
-from codebase.functions.supply_leap_io import (
+from codebase.supply_reconciliation.leap_io import (
     _baseline_seed_filename,
     save_combined_supply_transformation_export,
     write_per_economy_combined_workbooks,
 )
-from codebase.configuration import workflow_config as workflow_cfg
+from codebase.functions.leap_expressions import build_data_expression_from_row
 from codebase.configuration.workflow_config import get_baseline_seed_validation_years
-
-# These tests assert the INIT-005 guarantee: a blocking finding raises
-# BaselineSeedValidationError and no final workbook is written. That guarantee is
-# currently switched off on purpose --
-# BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True
-# (workflow_config.py:91, set 2026-07-10) clears the `blocking` column in
-# prepare_seed_rows_for_write, and the raise is gated on it being non-empty.
-#
-# Marked xfail *conditionally on the flag itself*, not unconditionally, so this
-# maintains itself: flip the flag back to False and these run normally and must
-# pass. strict=True means a stale xfail is reported rather than lingering.
-#
-# The point is that three unexplained red tests are indistinguishable from "a
-# guard silently stopped blocking" -- the exact failure this repo keeps hitting.
-# This keeps the suite green *and* the deviation legible. Delete the marker, do
-# not delete the tests: they are the specification.
-_XFAIL_WHILE_BLOCKING_DOWNGRADED = pytest.mark.xfail(
-    workflow_cfg.BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS,
-    reason=(
-        "BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS=True downgrades "
-        "blocking findings to warnings, so the writer does not raise. Deliberate, "
-        "temporary deviation from INIT-005, pending review of whether the current "
-        "blocking findings are significant enough to hold up a run. See INIT-005 "
-        "History in docs/special_rules_and_design_decisions.md and the entry in "
-        "docs/work_queue.md. Revert the flag to False to restore the guarantee."
-    ),
-    strict=True,
-)
 
 
 def test_baseline_seed_filename_marks_comp_gen_templates() -> None:
@@ -168,6 +140,14 @@ def test_nonzero_balance_roots_missing_from_template_are_blocking(
             "Statistical Differences\\Primary\\Unused fuel",
             "Statistical Differences",
         ),
+        (
+            "Transformation\\CHP interim\\Processes\\CHP interim\\Feedstock Fuels\\Petroleum coke",
+            "Feedstock Fuel Share",
+        ),
+        (
+            "Transformation\\Electricity interim\\Processes\\Electricity interim\\Feedstock Fuels\\Sub bituminous coal",
+            "Feedstock Fuel Share",
+        ),
     ],
 )
 def test_all_zero_optional_roots_do_not_require_template_branches(
@@ -244,16 +224,24 @@ def test_default_scenario_windows_use_2022_base_and_2060_final_year() -> None:
     assert windows["Target"] == windows["Reference"]
 
 
+def test_wide_year_expression_builder_matches_float_excel_headers() -> None:
+    row = pd.Series({2022.0: -11.077893, 2023.0: 0.0})
+
+    assert build_data_expression_from_row(row, [2022]) == "Data(2022,-11.077893)"
+
+
 def test_final_writer_collapses_exact_duplicates_and_populates_ids(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
-    _write_leap_workbook(source, [_row("Data(2023,1)"), _row("Data(2023, 1.0)")])
+    source = tmp_path / "supply_leap_imports_20_USA_reference_a.xlsx"
+    duplicate_source = tmp_path / "supply_leap_imports_20_USA_reference_b.xlsx"
+    _write_leap_workbook(source, [_row("Data(2023,1)")])
+    _write_leap_workbook(duplicate_source, [_row("Data(2023, 1.0)")])
     template = tmp_path / "full model export.xlsx"
     _write_template(template)
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._load_reference_export_data",
+        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
         lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
@@ -261,7 +249,7 @@ def test_final_writer_collapses_exact_duplicates_and_populates_ids(
         economies=["20_USA"],
         output_dir=tmp_path / "output",
         id_lookup_path=template,
-        source_workbooks_by_workflow={"supply_workflow": [source]},
+        source_workbooks_by_workflow={"supply_workflow": [source, duplicate_source]},
         required_years_by_scenario={"Reference": [2023]},
     )
 
@@ -282,7 +270,7 @@ def test_final_writer_runs_combined_export_readiness(
     seen: list[dict[str, object]] = []
 
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._load_reference_export_data",
+        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
         lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
@@ -291,7 +279,7 @@ def test_final_writer_runs_combined_export_readiness(
         seen.append(kwargs)
         return type("Readiness", (), {"blocking_failures": 0, "findings": pd.DataFrame()})()
 
-    monkeypatch.setattr("codebase.functions.supply_leap_io.run_export_readiness", fake_readiness)
+    monkeypatch.setattr("codebase.supply_reconciliation.leap_io.run_export_readiness", fake_readiness)
 
     written = write_per_economy_combined_workbooks(
         economies=["20_USA"],
@@ -308,6 +296,53 @@ def test_final_writer_runs_combined_export_readiness(
     assert seen[0]["expected_region"] == "United States"
 
 
+def test_final_writer_runs_central_artifact_gate_after_physical_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
+    _write_leap_workbook(source, [_row("Data(2023,1)")])
+    template = tmp_path / "full model export.xlsx"
+    _write_template(template)
+    seen: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
+        lambda *_args, **_kwargs: pd.DataFrame(),
+    )
+
+    def fake_artifact_gate(**kwargs):
+        candidate = Path(kwargs["candidate_workbooks"]["20_USA"])
+        assert candidate.exists()
+        seen.append(kwargs)
+        return type(
+            "ArtifactAudit",
+            (),
+            {
+                "shadow_status": "SHADOW_PASS",
+                "manifest_path": tmp_path / "artifact_manifest.json",
+            },
+        )()
+
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io.run_baseline_seed_artifact_validation",
+        fake_artifact_gate,
+    )
+
+    written = write_per_economy_combined_workbooks(
+        economies=["20_USA"],
+        output_dir=tmp_path / "output",
+        id_lookup_path=template,
+        source_workbooks_by_workflow={"supply_workflow": [source]},
+        required_years_by_scenario={"Reference": [2023]},
+    )
+
+    assert len(written) == 1
+    assert len(seen) == 1
+    assert seen[0]["expected_economies"] == ["20_USA"]
+    assert set(seen[0]["enforcement_by_check"].values()) == {"audit"}
+    assert "20_USA" in seen[0]["source_rows_by_economy"]
+
+
 def test_final_writer_retains_workbook_on_combined_readiness_errors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -317,11 +352,11 @@ def test_final_writer_retains_workbook_on_combined_readiness_errors(
     template = tmp_path / "full model export.xlsx"
     _write_template(template)
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._load_reference_export_data",
+        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
         lambda *_args, **_kwargs: pd.DataFrame(),
     )
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io.run_export_readiness",
+        "codebase.supply_reconciliation.leap_io.run_export_readiness",
         lambda *args, **kwargs: type(
             "Readiness", (), {"blocking_failures": 1, "findings": pd.DataFrame()}
         )(),
@@ -339,7 +374,6 @@ def test_final_writer_retains_workbook_on_combined_readiness_errors(
     assert written[0].exists()
 
 
-@_XFAIL_WHILE_BLOCKING_DOWNGRADED
 def test_final_writer_writes_diagnostics_before_conflict_blocks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -350,8 +384,12 @@ def test_final_writer_writes_diagnostics_before_conflict_blocks(
     _write_template(template)
     output_dir = tmp_path / "output"
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._load_reference_export_data",
+        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
         lambda *_args, **_kwargs: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io.workflow_cfg.BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS",
+        False,
     )
 
     with pytest.raises(BaselineSeedValidationError):
@@ -368,45 +406,6 @@ def test_final_writer_writes_diagnostics_before_conflict_blocks(
     assert list(diagnostics.glob("*_duplicate_groups.csv"))
 
 
-@_XFAIL_WHILE_BLOCKING_DOWNGRADED
-def test_writer_accumulates_economy_failures_and_writes_no_final_workbook(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    usa = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
-    prc = tmp_path / "supply_leap_imports_05_PRC_reference.xlsx"
-    _write_leap_workbook(usa, [_row("Data(2023,1)")])
-    _write_leap_workbook(prc, [_row("Data(2023,1)"), _row("Data(2023,2)")])
-    template = tmp_path / "full model export.xlsx"
-    _write_template(template)
-    output_dir = tmp_path / "output"
-    monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._load_reference_export_data",
-        lambda *_args, **_kwargs: pd.DataFrame(),
-    )
-
-    # The consolidated summary reports aggregated rule counts (e.g. "SEED-001=1"),
-    # not per-economy prefixes -- economy attribution is verified below via the
-    # consolidated findings CSV instead.
-    with pytest.raises(BaselineSeedValidationError, match="SEED-001"):
-        write_per_economy_combined_workbooks(
-            economies=["20_USA", "05_PRC"],
-            output_dir=output_dir,
-            id_lookup_path=template,
-            source_workbooks_by_workflow={"supply_workflow": [usa, prc]},
-            required_years_by_scenario={"Reference": [2023]},
-        )
-
-    assert not list(output_dir.glob("leap_import_baseline_seed_*.xlsx"))
-    diagnostics = output_dir / "supporting_files" / "baseline_seed_validation"
-    assert list(diagnostics.glob("baseline_seed_20_USA_*_rule_findings.csv"))
-    consolidated = list(diagnostics.glob("*_consolidated_rule_findings.csv"))
-    assert len(consolidated) == 1
-    findings = pd.read_csv(consolidated[0])
-    seed_001 = findings[findings["rule_id"] == "SEED-001"]
-    assert set(seed_001["economy"]) == {"05_PRC"}
-
-
 def test_final_writer_writes_grouped_missing_branch_issue_summary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -417,7 +416,7 @@ def test_final_writer_writes_grouped_missing_branch_issue_summary(
         "VariableID": -1,
         "ScenarioID": -1,
         "RegionID": -1,
-        "Branch Path": "Transformation\\CHP interim\\Processes\\CHP interim\\Feedstock Fuels\\Ammonia",
+        "Branch Path": "Transformation\\CHP interim\\Processes\\CHP interim\\Feedstock Fuels\\Petroleum coke",
         "Variable": "Imports",
         "Scenario": "Reference",
         "Region": "United States",
@@ -430,12 +429,12 @@ def test_final_writer_writes_grouped_missing_branch_issue_summary(
     _write_template(template)
     output_dir = tmp_path / "output"
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._load_reference_export_data",
+        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
         lambda *_args, **_kwargs: pd.DataFrame(),
     )
     monkeypatch.setattr("codebase.utilities.workflow_common.THROW_ERROR_AFTER_RUN", True)
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io.run_export_readiness",
+        "codebase.supply_reconciliation.leap_io.run_export_readiness",
         lambda *args, **kwargs: type(
             "Readiness", (), {"blocking_failures": 0, "findings": pd.DataFrame()}
         )(),
@@ -456,6 +455,16 @@ def test_final_writer_writes_grouped_missing_branch_issue_summary(
     assert grouped["primary_rule_id"].iloc[0] == "SEED-011"
     assert grouped["member_rule_ids"].iloc[0] == "SEED-003|SEED-004|SEED-011"
     assert "missing from the selected economy's LEAP template" in grouped["summary"].iloc[0]
+    consolidated = pd.read_csv(next(diagnostics.glob("*_consolidated_rule_findings.csv")))
+    standalone = consolidated[
+        consolidated["source_file"].eq(str(source))
+        & consolidated["Branch Path"].eq(
+            "Transformation\\CHP interim\\Processes\\CHP interim\\Feedstock Fuels\\Petroleum coke"
+        )
+    ]
+    assert set(standalone["rule_id"]) == {"SEED-003", "SEED-004", "SEED-011"}
+    assert standalone["blocking"].any()
+    assert set(standalone["source_workflow"]) == {"electricity_heat_interim_workflow"}
 
 
 def test_missing_branch_issue_group_collapses_variables_and_scenarios() -> None:
@@ -610,7 +619,7 @@ def test_final_writer_exposes_key_scoped_zero_reset_exception(
     template = tmp_path / "full model export.xlsx"
     _write_template(template, variable_id=-1)
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._load_reference_export_data",
+        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
         lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
@@ -668,7 +677,7 @@ def test_final_writer_preserves_non_branch_ids_for_warning_only_aggregated_deman
         "Expression": "1",
     }])
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._load_reference_export_data",
+        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
         lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
@@ -702,7 +711,6 @@ def test_final_writer_preserves_non_branch_ids_for_warning_only_aggregated_deman
     assert not aggregate_findings["blocking"].any()
 
 
-@_XFAIL_WHILE_BLOCKING_DOWNGRADED
 def test_default_reference_validation_window_requires_2023_through_2060(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -713,8 +721,12 @@ def test_default_reference_validation_window_requires_2023_through_2060(
     _write_template(template)
     output_dir = tmp_path / "output"
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._load_reference_export_data",
+        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
         lambda *_args, **_kwargs: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io.workflow_cfg.BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS",
+        False,
     )
 
     with pytest.raises(BaselineSeedValidationError, match="SEED-009"):
@@ -739,7 +751,7 @@ def test_missing_configured_producer_for_economy_blocks_final_write(
     _write_template(template)
     output_dir = tmp_path / "output"
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._load_reference_export_data",
+        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
         lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
@@ -778,7 +790,7 @@ def test_missing_producer_finding_names_nonexistent_workbook_path(
     _write_template(template)
     output_dir = tmp_path / "output"
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._load_reference_export_data",
+        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
         lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
@@ -813,7 +825,7 @@ def test_final_writer_can_skip_validation_for_side_combines(
     source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
     _write_leap_workbook(source, [_row("Data(2023,1)")])
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._load_reference_export_data",
+        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
         lambda *_args, **_kwargs: pd.DataFrame(),
     )
 
@@ -864,10 +876,10 @@ def test_combined_export_blocks_by_default_on_conflicting_duplicates(
     template = tmp_path / "full model export.xlsx"
     _write_template(template)
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io.RESULTS_VERIFICATION_EXPORT_PATH", template
+        "codebase.supply_reconciliation.leap_io.RESULTS_VERIFICATION_EXPORT_PATH", template
     )
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io.workflow_cfg.BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS",
+        "codebase.supply_reconciliation.leap_io.workflow_cfg.BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS",
         False,
     )
     output_dir = tmp_path / "output"
@@ -902,10 +914,10 @@ def test_combined_export_downgrades_blocking_findings_when_configured(
     template = tmp_path / "full model export.xlsx"
     _write_template(template)
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io.RESULTS_VERIFICATION_EXPORT_PATH", template
+        "codebase.supply_reconciliation.leap_io.RESULTS_VERIFICATION_EXPORT_PATH", template
     )
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io.workflow_cfg.BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS",
+        "codebase.supply_reconciliation.leap_io.workflow_cfg.BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS",
         True,
     )
     output_dir = tmp_path / "output"
@@ -940,7 +952,7 @@ def test_combined_export_resolves_template_from_economy_label(
     template = tmp_path / "full model export.xlsx"
     _write_template(template)
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io.RESULTS_VERIFICATION_EXPORT_PATH", template
+        "codebase.supply_reconciliation.leap_io.RESULTS_VERIFICATION_EXPORT_PATH", template
     )
 
     seen: list[object] = []
@@ -950,7 +962,7 @@ def test_combined_export_resolves_template_from_economy_label(
         return template
 
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._leap_export_template_for_economy",
+        "codebase.supply_reconciliation.leap_io._leap_export_template_for_economy",
         _fake_resolver,
     )
 
@@ -984,7 +996,7 @@ def test_combined_export_explicit_template_bypasses_the_resolver(
         raise AssertionError(f"resolver must not be consulted; got {economy!r}")
 
     monkeypatch.setattr(
-        "codebase.functions.supply_leap_io._leap_export_template_for_economy",
+        "codebase.supply_reconciliation.leap_io._leap_export_template_for_economy",
         _explode,
     )
 

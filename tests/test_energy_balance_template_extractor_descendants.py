@@ -133,6 +133,109 @@ def test_from_stocks_balance_row_uses_stock_changes_explicit_pair() -> None:
     assert records[0]["esto_product"] == "01 Coal"
 
 
+def test_all_demand_sector_child_uses_explicit_leaf_mapping() -> None:
+    extractor = _make_extractor(explicit_pair_mappings_only=True)
+    road_key = extractor._canonicalize_path_key("Road")
+    fuel_key = extractor._canonicalize_label("Coal")
+    extractor._balance_full_path_pair_to_esto = {
+        (road_key, fuel_key): [
+            {
+                "esto_flow": "15.02 Road",
+                "esto_product": "01 Coal",
+                "candidate_leap_sector_name_full_path": "Road",
+                "candidate_leap_fuel_name": "Coal",
+                "candidate_rule": "explicit_demand_sector",
+                "pair_mapping_cardinality": "one_to_one",
+            }
+        ]
+    }
+    extractor._balance_full_path_pair_to_ninth = {
+        (road_key, fuel_key): [
+            {
+                "ninth_sector": "15_02_road",
+                "ninth_fuel": "01_coal",
+                "candidate_leap_sector_name_full_path": "Road",
+                "candidate_leap_fuel_name": "Coal",
+                "candidate_rule": "explicit_demand_sector",
+                "pair_mapping_cardinality": "one_to_one",
+            }
+        ]
+    }
+    row = pd.Series(
+        {
+            "source_sheet": "Balance",
+            "leap_sector_name": "Road",
+            "leap_sector_name_full_path": "All demand aggregated/Road",
+            "leap_sector_name_original": "Road",
+            "leap_fuel_name": "Coal",
+        }
+    )
+
+    records = extractor._map_row_records(row)
+
+    assert len(records) == 1
+    assert records[0]["mapping_status"] == "mapped"
+    assert records[0]["mapping_method"] == "all_demand_parent_alias_pair"
+    assert records[0]["match_resolution"] == "all_demand_parent_alias"
+    assert records[0]["esto_flow"] == "15.02 Road"
+    assert records[0]["esto_product"] == "01 Coal"
+
+
+def test_all_demand_sector_child_uses_esto_only_diagnostic_mapping() -> None:
+    extractor = _make_extractor(explicit_pair_mappings_only=True)
+    road_key = extractor._canonicalize_path_key("Road")
+    fuel_key = extractor._canonicalize_label("Coal")
+    extractor._balance_full_path_pair_to_esto = {
+        (road_key, fuel_key): [
+            {
+                "esto_flow": "15.02 Road",
+                "esto_product": "01 Coal",
+                "candidate_leap_sector_name_full_path": "Road",
+                "candidate_leap_fuel_name": "Coal",
+                "candidate_rule": "explicit_demand_sector",
+                "pair_mapping_cardinality": "one_to_one",
+            }
+        ]
+    }
+    extractor._balance_full_path_pair_to_ninth = {}
+    row = pd.Series(
+        {
+            "source_sheet": "Balance",
+            "leap_sector_name": "Road",
+            "leap_sector_name_full_path": "All demand aggregated/Road",
+            "leap_sector_name_original": "Road",
+            "leap_fuel_name": "Coal",
+        }
+    )
+
+    records = extractor._map_row_records(row)
+
+    assert len(records) == 1
+    assert records[0]["mapping_status"] == "partial_full_path_pair"
+    assert records[0]["mapping_method"] == "all_demand_parent_alias_pair"
+    assert records[0]["esto_flow"] == "15.02 Road"
+    assert records[0]["esto_product"] == "01 Coal"
+
+
+def test_all_demand_obsolete_fuel_child_stays_unmapped_without_leaf_pair() -> None:
+    extractor = _make_extractor(explicit_pair_mappings_only=True)
+    row = pd.Series(
+        {
+            "source_sheet": "Balance",
+            "leap_sector_name": "Coal",
+            "leap_sector_name_full_path": "All demand aggregated/Coal",
+            "leap_sector_name_original": "Coal",
+            "leap_fuel_name": "Coal",
+        }
+    )
+
+    records = extractor._map_row_records(row)
+
+    assert len(records) == 1
+    assert records[0]["mapping_status"] == "unmapped"
+    assert records[0]["esto_flow"] == ""
+
+
 def test_non_explicit_mode_uses_absent_child_descendant_mapping_by_default() -> None:
     extractor = _make_extractor(explicit_pair_mappings_only=False, present_child=False)
 

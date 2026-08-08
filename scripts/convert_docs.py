@@ -241,6 +241,12 @@ def convert_folder_individually(
 
     outputs = []
     for md_path in md_files:
+        if md_path.name in HAND_EDITED_DOCX:
+            print(
+                f"SKIPPED {md_path.name}: its .docx is hand-edited and would be "
+                "overwritten. Edit the .docx directly."
+            )
+            continue
         output_path = output_dir / f"{md_path.stem}.docx"
         ok = convert_md_to_docx(
             md_paths=[md_path],
@@ -287,6 +293,15 @@ MERMAID_IMAGE_DIR = OUTPUT_DIR / "mermaid"
 
 # Directories inside DOCS_DIR to skip (e.g. archive folders)
 EXCLUDE_DIRS = ["docx", "notes"]
+
+# Documents whose .docx is edited by hand and must never be regenerated.
+#
+# The user guide is the one deliverable a colleague actually reads, and it now
+# carries screenshots and wording added directly in Word. Regenerating it from
+# the Markdown would silently throw all of that away - the .docx is the source
+# of truth for this one, and the .md beside it is only its origin story.
+# See docs/leap_review_tools.md for how an edited guide is carried into a build.
+HAND_EDITED_DOCX = {"leap_review_tools_user_guide.md"}
 
 # Extra image search paths beyond DOCS_DIR itself
 EXTRA_IMAGE_DIRS: list[Path] = [

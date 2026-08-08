@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-import codebase.functions.supply_demand_mapping as sdm
+import codebase.supply_reconciliation.demand_mapping as sdm
 from codebase.configuration.known_leap_label_exceptions import KNOWN_LEAP_LABEL_EXCEPTIONS
 
 

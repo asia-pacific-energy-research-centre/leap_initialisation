@@ -6,6 +6,7 @@ from codebase.functions.ninth_projection_mapping import (
     build_esto_projection_table,
     build_economy_specific_child_flow_profiles,
     build_ninth_projection_series,
+    _build_parent_child_reconciliation_diagnostics,
 )
 from codebase.functions.esto_data_utils import add_all_economy_total
 
@@ -351,6 +352,123 @@ def test_parent_projection_preserves_mixed_signed_child_profile(tmp_path) -> Non
     assert diagnostics.empty
 
 
+def test_coal_parent_without_subtotal_uses_net_child_product_weights(tmp_path) -> None:
+    """Coke output and blast-furnace input must not inflate a parent share."""
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "01AUS",
+                "flows": "09.08.01 Coke ovens",
+                "products": "02.01 Coke oven coke",
+                "is_subtotal": False,
+                "2022": 300.0,
+            },
+            {
+                "economy": "01AUS",
+                "flows": "09.08.02 Blast furnaces",
+                "products": "02.01 Coke oven coke",
+                "is_subtotal": False,
+                "2022": -180.0,
+            },
+            {
+                "economy": "01AUS",
+                "flows": "09.08.01 Coke ovens",
+                "products": "02.03 Coke oven gas",
+                "is_subtotal": False,
+                "2022": 80.0,
+            },
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy": "01_AUS",
+                "scenarios": "reference",
+                "sectors": "09_total_transformation_sector",
+                "sub1sectors": "09_08_coal_transformation",
+                "sub2sectors": "x",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "02_coal_products",
+                "subfuels": "x",
+                "subtotal_results": False,
+                2023: 200.0,
+            }
+        ]
+    )
+    mapping_path = tmp_path / "mapping.xlsx"
+    pd.DataFrame(
+        [
+            {
+                "ninth_sector": "09_08_coal_transformation",
+                "ninth_fuel": "02_coal_products",
+                "esto_flow": "09.08 Coal transformation",
+                "esto_product": "02.01 Coke oven coke",
+            },
+            {
+                "ninth_sector": "09_08_coal_transformation",
+                "ninth_fuel": "02_coal_products",
+                "esto_flow": "09.08 Coal transformation",
+                "esto_product": "02.03 Coke oven gas",
+            },
+        ]
+    ).to_excel(mapping_path, index=False)
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth,
+        esto,
+        mapping_path,
+        base_year=2022,
+        projection_years=[2023],
+        sign_stable_flows="all",
+    )
+
+    values = projection.set_index(["esto_flow", "esto_product"])[2023].to_dict()
+    assert values[("09.08.01 Coke ovens", "02.01 Coke oven coke")] == pytest.approx(300.0)
+    assert values[("09.08.02 Blast furnaces", "02.01 Coke oven coke")] == pytest.approx(-180.0)
+    assert values[("09.08.01 Coke ovens", "02.03 Coke oven gas")] == pytest.approx(80.0)
+    assert sum(values.values()) == pytest.approx(200.0)
+    assert diagnostics.empty
+
+
+def test_parent_child_reconciliation_diagnostic_reports_mismatch() -> None:
+    source = pd.DataFrame(
+        [{
+            "economy_key": "01AUS",
+            "ninth_sector": "09_08_coal_transformation",
+            "ninth_fuel": "02_coal_products",
+            2023: 100.0,
+        }]
+    )
+    allocated = pd.DataFrame(
+        [
+            {
+                "economy_key": "01AUS",
+                "ninth_sector": "09_08_coal_transformation",
+                "ninth_fuel": "02_coal_products",
+                "esto_flow": "09.08.01 Coke ovens",
+                2023: 60.0,
+            },
+            {
+                "economy_key": "01AUS",
+                "ninth_sector": "09_08_coal_transformation",
+                "ninth_fuel": "02_coal_products",
+                "esto_flow": "09.08.02 Blast furnaces",
+                2023: 30.0,
+            },
+        ]
+    )
+    diagnostics = _build_parent_child_reconciliation_diagnostics(
+        source, allocated, [2023]
+    )
+    assert len(diagnostics) == 1
+    row = diagnostics.iloc[0]
+    assert row["diagnostic_type"] == "parent_child_reconciliation_mismatch"
+    assert row["parent_value"] == pytest.approx(100.0)
+    assert row["allocated_child_value"] == pytest.approx(90.0)
+    assert row["reconciliation_error"] == pytest.approx(-10.0)
+
+
 def test_net_zero_child_profile_is_explicitly_diagnosed(tmp_path) -> None:
     esto = pd.DataFrame(
         [
@@ -483,6 +601,73 @@ def test_gas_parent_residual_without_a_missing_base_year_active_child_raises(tmp
         )
 
 
+@pytest.mark.parametrize(
+    ("base_year", "projection_year"),
+    [(2021, 2022), (2022, 2023), (2023, 2024)],
+)
+def test_protected_single_target_with_zero_configured_base_year_is_kept(
+    tmp_path,
+    base_year: int,
+    projection_year: int,
+) -> None:
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "01AUS",
+                "flows": "09.06.02 Liquefaction/regasification plants",
+                "products": "08.01 Natural gas",
+                "is_subtotal": False,
+                str(base_year): 0.0,
+            }
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy": "01_AUS",
+                "scenarios": "reference",
+                "sectors": "09_total_transformation_sector",
+                "sub1sectors": "09_06_gas_processing_plants",
+                "sub2sectors": "09_06_02_liquefaction_regasification_plants",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "08_01_natural_gas",
+                "subfuels": "x",
+                "subtotal_results": False,
+                projection_year: -125.0,
+            }
+        ]
+    )
+    mapping_path = tmp_path / "mapping.xlsx"
+    pd.DataFrame(
+        [
+            {
+                "ninth_sector": "09_06_02_liquefaction_regasification_plants",
+                "ninth_fuel": "08_01_natural_gas",
+                "esto_flow": "09.06.02 Liquefaction/regasification plants",
+                "esto_product": "08.01 Natural gas",
+            }
+        ]
+    ).to_excel(mapping_path, index=False)
+
+    projection, diagnostics, provenance = build_esto_projection_table(
+        ninth,
+        esto,
+        mapping_path,
+        base_year=base_year,
+        projection_years=[projection_year],
+        sign_stable_flows="all",
+        return_allocation_provenance=True,
+    )
+
+    assert projection.iloc[0][projection_year] == pytest.approx(-125.0)
+    assert provenance.iloc[0]["share"] == pytest.approx(1.0)
+    assert provenance.iloc[0]["share_source"] == "single_target_no_base_year"
+    assert not diagnostics["diagnostic_type"].astype(str).eq(
+        "unallocated_no_economy_base_year"
+    ).any()
+
+
 def test_zero_gas_parent_does_not_reverse_direct_child_projection_by_default(tmp_path) -> None:
     esto = pd.DataFrame(
         [
@@ -511,7 +696,9 @@ def test_zero_gas_parent_does_not_reverse_direct_child_projection_by_default(tmp
 
     values = projection.set_index("esto_flow")[2023].to_dict()
     assert values == {"09.06.02 Liquefaction/regasification plants": pytest.approx(60.0)}
-    assert diagnostics.empty
+    assert "parent_child_reconciliation_mismatch" in set(
+        diagnostics["diagnostic_type"]
+    )
 
     filled, diagnostics = build_esto_projection_table(
         ninth,

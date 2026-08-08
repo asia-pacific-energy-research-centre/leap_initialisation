@@ -43,12 +43,26 @@ def build_data_expression(values_by_year: dict[int, float]) -> str:
 
 
 def build_data_expression_from_row(row: pd.Series, year_cols: Iterable[int]) -> str:
+    # Excel readers may represent year headers as floats (for example, 2022.0),
+    # while callers naturally pass integer years.  Resolve both forms through a
+    # normalised lookup so a valid historical value is not silently replaced by
+    # zero when constructing the LEAP expression.
+    year_values = {}
+    for column, value in row.items():
+        try:
+            year_values[int(float(column))] = value
+        except (TypeError, ValueError):
+            continue
     parts = []
     for year in year_cols:
-        value = row.get(year)
+        try:
+            normalized_year = int(float(year))
+        except (TypeError, ValueError):
+            normalized_year = year
+        value = year_values.get(normalized_year)
         if value is None or pd.isna(value):
             value = 0.0
-        parts.append(f"{int(year)},{float(value)}")
+        parts.append(f"{normalized_year},{float(value)}")
     return f"Data({', '.join(parts)})"
 
 

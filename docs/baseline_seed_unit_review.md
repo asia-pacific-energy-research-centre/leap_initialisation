@@ -12,7 +12,7 @@ configured as `Gigajoule` needs human review.
 
 The implementation is in:
 
-`codebase/functions/supply_results_saver.py`
+`codebase/supply_reconciliation/results_saver.py`
 
 The relevant parts are:
 

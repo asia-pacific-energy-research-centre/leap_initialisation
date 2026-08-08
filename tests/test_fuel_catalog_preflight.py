@@ -7,7 +7,11 @@ from codebase.utilities import fuel_catalog_preflight as preflight
 
 
 def _rows_for_source(source_path: Path):
-    fuel_name = "Natural gas" if source_path.stem.endswith(" nz") else "Natural Gas"
+    fuel_name = (
+        "Natural gas"
+        if "new zealand" in source_path.stem.lower()
+        else "Natural Gas"
+    )
     return [
         {
             "catalog_type": "transformation",
@@ -29,8 +33,8 @@ def test_incremental_catalog_reuses_unchanged_sources_and_preserves_exact_labels
 ):
     source_directory = tmp_path / "templates"
     source_directory.mkdir()
-    usa = source_directory / "leap_export_template usa.xlsx"
-    nz = source_directory / "leap_export_template nz.xlsx"
+    usa = source_directory / "USA clean slate 29_07.xlsx"
+    nz = source_directory / "New Zealand clean slate 29_07.xlsx"
     usa.write_bytes(b"usa")
     nz.write_bytes(b"nz")
     calls = []
@@ -66,8 +70,8 @@ def test_incremental_catalog_reuses_unchanged_sources_and_preserves_exact_labels
 def test_catalog_records_all_source_templates_for_deduplicated_rows(tmp_path, monkeypatch):
     source_directory = tmp_path / "templates"
     source_directory.mkdir()
-    usa = source_directory / "leap_export_template usa.xlsx"
-    nz = source_directory / "leap_export_template nz.xlsx"
+    usa = source_directory / "USA clean slate 29_07.xlsx"
+    nz = source_directory / "New Zealand clean slate 29_07.xlsx"
     usa.write_bytes(b"usa")
     nz.write_bytes(b"nz")
 
@@ -99,6 +103,30 @@ def test_catalog_records_all_source_templates_for_deduplicated_rows(tmp_path, mo
 
     assert len(catalog) == 1
     assert catalog.iloc[0]["source_templates"] == "; ".join(sorted([usa.name, nz.name]))
+
+
+def test_template_source_paths_discovers_arbitrary_names_and_skips_lock_files(tmp_path):
+    source_directory = tmp_path / "templates"
+    source_directory.mkdir()
+    (source_directory / "USA clean slate 29_07.xlsx").write_bytes(b"usa")
+    (source_directory / "~$USA clean slate 29_07.xlsx").write_bytes(b"lock")
+    (source_directory / "notes.txt").write_text("not a workbook")
+
+    paths = preflight._template_source_paths(template_directory=source_directory)
+
+    assert [path.name for path in paths] == ["USA clean slate 29_07.xlsx"]
+
+
+def test_empty_catalog_file_is_treated_as_unavailable(tmp_path):
+    catalog_path = tmp_path / "empty_catalog.csv"
+    catalog_path.write_bytes(b"")
+
+    result = preflight.load_fuel_catalog(
+        catalog_path=catalog_path,
+        allow_full_model_fallback=False,
+    )
+
+    assert result.empty
 
 
 def test_incremental_catalog_skips_template_renamed_after_directory_scan(

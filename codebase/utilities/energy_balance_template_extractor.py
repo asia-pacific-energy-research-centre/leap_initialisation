@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import builtins
 import re
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +30,28 @@ SECTOR_COLUMNS = {"sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4s
 FUEL_COLUMNS = {"fuels", "subfuels"}
 MAX_SCAN_COLS = 200
 MAX_SCAN_ROWS = 2000
+
+
+def _safe_console_print(*values: object, **kwargs: object) -> None:
+    """Best-effort console output for hosted and detached Windows runs.
+
+    A local Gradio process can outlive the terminal that launched it.  Windows
+    then raises ``OSError(22)`` when ordinary ``print`` writes to the inherited
+    invalid stdout handle; diagnostics must never turn that into a failed run.
+    """
+    for stream in (getattr(sys, "stdout", None), getattr(sys, "__stdout__", None)):
+        if stream is None or not callable(getattr(stream, "write", None)):
+            continue
+        try:
+            builtins.print(*values, file=stream, **kwargs)
+            return
+        except (AttributeError, OSError, ValueError):
+            continue
+
+
+# Keep the existing diagnostic calls concise while making every print in this
+# module safe when stdout is closed, detached, or otherwise invalid.
+print = _safe_console_print
 
 # Reviewed subtotal-mismatch exceptions maintained in the leap_mappings repo.
 SUBTOTAL_MISMATCH_EXCEPTIONS_PATH = (
@@ -1575,6 +1599,29 @@ class TemplateBalanceExtractor:
 
         full_path_esto = self._balance_full_path_pair_to_esto.get(full_path_key, [])
         full_path_ninth = self._balance_full_path_pair_to_ninth.get(full_path_key, [])
+        all_demand_parent_alias = False
+        full_path_parts = full_path_key[0].split("/")
+        all_demand_root_key = self._canonicalize_path_key("All demand aggregated")
+        if (
+            len(full_path_parts) == 2
+            and full_path_parts[0] == all_demand_root_key
+            and not full_path_esto
+            and not full_path_ninth
+        ):
+            # Current balance exports nest final-demand sector totals beneath an
+            # ``All demand aggregated`` presentation row. The canonical mapping
+            # workbook maps those sector totals by their real branch names
+            # (Road, Industry, Buildings, and so on), without the presentation
+            # prefix. Reuse only an explicit leaf pair that actually exists in
+            # the maintained mapping tables; obsolete fuel-placeholder children
+            # therefore remain unmapped and can still be ignored downstream.
+            leaf_path_key = (full_path_parts[-1], full_path_key[1])
+            leaf_esto = self._balance_full_path_pair_to_esto.get(leaf_path_key, [])
+            leaf_ninth = self._balance_full_path_pair_to_ninth.get(leaf_path_key, [])
+            if leaf_esto or leaf_ninth:
+                full_path_esto = leaf_esto
+                full_path_ninth = leaf_ninth
+                all_demand_parent_alias = True
 
         def _descendant_records(
             lookup: dict[tuple[str, str], list[dict[str, object]]],
@@ -1666,7 +1713,13 @@ class TemplateBalanceExtractor:
             target_pairs = [pair for idx, pair in enumerate(target_pairs) if pair != ("", "") and pair not in target_pairs[:idx]]
             esto_mapping_found = bool(target_pairs)
             mapping_status = "mapped" if full_path_ninth else "partial_full_path_pair"
-            if use_descendant_records:
+            if all_demand_parent_alias:
+                mapping_method = (
+                    "all_demand_parent_alias_pair"
+                    if len(target_pairs) == 1
+                    else "all_demand_parent_alias_pair_multiple"
+                )
+            elif use_descendant_records:
                 mapping_method = "module_full_path_pair" if len(target_pairs) == 1 else "module_full_path_pair_multiple"
             else:
                 mapping_method = "full_path_pair" if len(target_pairs) == 1 else "full_path_pair_multiple"
@@ -1726,7 +1779,14 @@ class TemplateBalanceExtractor:
                 allocation_shares = [share for _ in target_pairs]
                 allocation_method = "equal_split"
 
-        match_resolution = "module_only" if use_descendant_records or self._balance_detail_mode == "less_detail" else "detailed"
+        if all_demand_parent_alias:
+            match_resolution = "all_demand_parent_alias"
+        else:
+            match_resolution = (
+                "module_only"
+                if use_descendant_records or self._balance_detail_mode == "less_detail"
+                else "detailed"
+            )
 
         records: list[dict[str, str]] = []
         for (esto_flow, esto_product), allocation_share in zip(target_pairs, allocation_shares):

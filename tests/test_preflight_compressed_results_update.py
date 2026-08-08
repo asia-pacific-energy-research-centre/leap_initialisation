@@ -25,7 +25,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-import codebase.functions.supply_preflight as sp
+import codebase.supply_reconciliation.preflight as sp
 from codebase.configuration import workflow_config as workflow_cfg
 
 
@@ -197,7 +197,7 @@ def test_default_projection_compression_still_replicates_across_scenarios(tmp_pa
 def test_temporary_workbook_resolution_used_by_balance_loader(monkeypatch, tmp_path) -> None:
     # Fix 7: load_balance_demand_inputs(..., allow_projection_only=False) resolves
     # the temporary reduced REF/TGT workbooks via the explicit path overrides.
-    import codebase.functions.supply_demand_mapping as sdm
+    import codebase.supply_reconciliation.demand_mapping as sdm
 
     ref = tmp_path / "reduced_REF.xlsx"
     tgt = tmp_path / "reduced_TGT.xlsx"
@@ -211,7 +211,7 @@ def test_temporary_workbook_resolution_used_by_balance_loader(monkeypatch, tmp_p
 
 
 def test_direct_target_only_resolution_does_not_require_reference(monkeypatch, tmp_path) -> None:
-    import codebase.functions.supply_demand_mapping as sdm
+    import codebase.supply_reconciliation.demand_mapping as sdm
 
     tgt = tmp_path / "full_model_output_TGT.xlsx"
     monkeypatch.setattr(sdm, "DIRECT_DEMAND_PROJECTION_ECONOMY", "12_NZ")
@@ -227,25 +227,40 @@ def test_direct_target_only_resolution_does_not_require_reference(monkeypatch, t
     assert resolved_tgt == sdm._resolve(tgt)
 
 
-def test_direct_target_resolution_requires_configured_target_path(monkeypatch) -> None:
-    import codebase.functions.supply_demand_mapping as sdm
+def test_direct_resolution_falls_back_to_relaxed_export_filenames(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    import codebase.supply_reconciliation.demand_mapping as sdm
 
-    monkeypatch.setattr(sdm, "DIRECT_DEMAND_PROJECTION_ECONOMY", "12_NZ")
+    economy_dir = tmp_path / "20_USA"
+    economy_dir.mkdir()
+    ref = economy_dir / "REF 2907.xlsx"
+    tgt = economy_dir / "TGT 2907.xlsx"
+    ref.touch()
+    tgt.touch()
+
+    monkeypatch.setattr(sdm, "DIRECT_DEMAND_PROJECTION_ECONOMY", "20_USA")
     monkeypatch.setattr(sdm, "BALANCE_DEMAND_REF_WORKBOOK_PATH", None)
     monkeypatch.setattr(sdm, "BALANCE_DEMAND_TGT_WORKBOOK_PATH", None)
+    monkeypatch.setattr(sdm, "BALANCE_DEMAND_EXPORTS_ROOT", tmp_path)
+    monkeypatch.setattr(sdm, "BALANCE_DEMAND_REF_BALANCE_EXPORT_DATE_ID", None)
+    monkeypatch.setattr(sdm, "BALANCE_DEMAND_TGT_BALANCE_EXPORT_DATE_ID", None)
 
-    with pytest.raises(ValueError, match="BALANCE_DEMAND_TGT_WORKBOOK_PATH"):
-        sdm._resolve_balance_demand_workbooks_for_economy(
-            "12_NZ",
-            scenarios=["Target"],
-        )
+    resolved_ref, resolved_tgt = sdm._resolve_balance_demand_workbooks_for_economy(
+        "20_USA",
+        scenarios=["Reference", "Target"],
+    )
+
+    assert resolved_ref == ref.resolve()
+    assert resolved_tgt == tgt.resolve()
 
 
 def test_deferred_balance_failure_returns_schema_safe_empty_tables(
     monkeypatch,
     tmp_path,
 ) -> None:
-    import codebase.functions.supply_demand_mapping as sdm
+    import codebase.supply_reconciliation.demand_mapping as sdm
     from codebase.utilities import workflow_common
 
     monkeypatch.setattr(
@@ -433,8 +448,8 @@ def test_target_only_results_update_override_does_not_require_reference(tmp_path
 def test_config_broadcast_round_trips_across_modules() -> None:
     # Fixes 10/12 (mechanism): overrides reach every consuming module and are
     # restored exactly afterwards, so production state is untouched.
-    import codebase.functions.supply_results_saver as srs
-    import codebase.functions.supply_demand_mapping as sdm
+    import codebase.supply_reconciliation.results_saver as srs
+    import codebase.supply_reconciliation.demand_mapping as sdm
 
     before_srs = srs.CAPACITY_UNMET_PASS_MODE
     before_sdm_econ = sdm.DIRECT_DEMAND_PROJECTION_ECONOMY
@@ -579,7 +594,7 @@ _SMOKE_ENABLED = os.environ.get("RUN_PREFLIGHT_RU_SMOKE") == "1"
 @pytest.mark.skipif(not _SMOKE_ENABLED, reason="runs preflight orchestration; set RUN_PREFLIGHT_RU_SMOKE=1")
 def test_projection_preflight_routing_and_restoration(tmp_path, monkeypatch) -> None:
     import codebase.supply_reconciliation_workflow as workflow
-    import codebase.functions.supply_results_saver as srs
+    import codebase.supply_reconciliation.results_saver as srs
 
     monkeypatch.setattr(
         sp,
@@ -618,8 +633,8 @@ def test_results_update_preflight_routing_and_restoration(tmp_path, monkeypatch,
     # imports, routes to the temporary workbooks, isolates outputs, and restores
     # production state after both success and failure.
     import codebase.supply_reconciliation_workflow as workflow
-    import codebase.functions.supply_results_saver as srs
-    import codebase.functions.supply_demand_mapping as sdm
+    import codebase.supply_reconciliation.results_saver as srs
+    import codebase.supply_reconciliation.demand_mapping as sdm
 
     # Stub the heavy builders so the test does not read the real source workbooks.
     reduced_ref = tmp_path / "reduced_REF.xlsx"

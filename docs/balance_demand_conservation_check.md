@@ -138,7 +138,7 @@ and `21.1 - API`.
 - `codebase/functions/balance_demand_conservation.py` — builder functions. They
   accept prepared tables rather than re-reading mapping inputs, so the diagnostic
   does not depend on the rules it is checking.
-- `codebase/functions/supply_results_saver.py` — wires the produced-demand actual
+- `codebase/supply_reconciliation/results_saver.py` — wires the produced-demand actual
   side, the shared exclusions, and the compressed-year flag, then writes the
   three CSVs.
 - `tests/test_balance_demand_conservation.py` — proves the actual side is built

@@ -16,7 +16,7 @@ import pytest
 
 import codebase.aggregated_demand_workflow as aggregated_demand_workflow
 import codebase.other_loss_own_use_proxy_workflow as other_loss_own_use_proxy_workflow
-from codebase.functions import supply_leap_io
+from codebase.supply_reconciliation import leap_io as supply_leap_io
 
 EXPECTED_REGIONS = {
     "12_NZ": "New Zealand",

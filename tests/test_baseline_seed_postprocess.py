@@ -7,7 +7,7 @@ import json
 import pandas as pd
 import pytest
 
-from codebase.functions import supply_leap_io
+from codebase.supply_reconciliation import leap_io as supply_leap_io
 from codebase.functions.baseline_seed_postprocess import (
     apply_postprocess_rules,
     load_postprocess_excluded_branch_paths,

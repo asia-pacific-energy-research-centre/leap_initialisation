@@ -70,7 +70,7 @@ you intend to keep, set an explicit dated label, and restore `"auto"` afterwards
 ### Running more than one economy
 
 Bounded process-based economy parallelism is implemented and was verified on
-2026-07-23. Use `codebase/functions/parallel_economy_runner.py`; it launches one
+2026-07-23. Use `codebase/supply_reconciliation/parallel_runner.py`; it launches one
 OS process per economy and passes an isolated `LEAP_WORKER_SNAPSHOT_JSON`
 snapshot containing the economy, run label, and test horizon. Per-economy locks
 and run-specific output trees prevent two workers from writing the same scope.
@@ -339,10 +339,10 @@ been rewritten and should not be trusted without cross-checking
 the authoritative current-state documents:
 
 - **`supply_reconciliation_workflow.py` is 1,494 LOC, not 13,628.** The
-  Phase 4 monolith split already landed (`supply_reconciliation_config.py`,
-  `supply_reconciliation_allocation.py`, `supply_reconciliation_history.py`,
-  plus `codebase/functions/supply_results_saver.py` and
-  `codebase/functions/supply_preflight.py` also carry material chunks of the
+  Phase 4 monolith split already landed (`supply_reconciliation/config.py`,
+  `supply_reconciliation/allocation.py`, `supply_reconciliation/history.py`,
+  plus `codebase/supply_reconciliation/results_saver.py` and
+  `codebase/supply_reconciliation/preflight.py` also carry material chunks of the
   former monolith). Phase 4's remaining work is explicit state injection
   (B2/B3 — **done** 2026-07-22) and per-economy parallelism (**core safety
   boundary done** 2026-07-23) — see `docs/current_execution_roadmap.md`.
@@ -435,11 +435,11 @@ retiring the obsolete `unified_name_lookup` consolidation path — see T4 in
 #### Phase 4 — Break up the monoliths — ✅ split landed; state injection done; parallelism core boundary done
 
 **Stale as written.** The split already landed:
-`supply_reconciliation_config.py`, `supply_reconciliation_allocation.py`,
-`supply_reconciliation_history.py`, and `codebase/functions/supply_results_saver.py`
-/ `supply_preflight.py` exist and `supply_reconciliation_workflow.py` is down
+`supply_reconciliation/config.py`, `supply_reconciliation/allocation.py`,
+`supply_reconciliation/history.py`, and `codebase/supply_reconciliation/results_saver.py`
+/ `supply_reconciliation/preflight.py` exist and `supply_reconciliation_workflow.py` is down
 to 1,494 LOC. B2/B3 explicit state injection landed 2026-07-22. Bounded
-process-based per-economy parallelism (`codebase/functions/parallel_economy_runner.py`)
+process-based per-economy parallelism (`codebase/supply_reconciliation/parallel_runner.py`)
 landed and was verified 2026-07-23 — see `docs/current_execution_roadmap.md`
 item 2. The own-use proxy rewrite-from-scratch idea is retired (T8: the
 module is healthy, 1,770 LOC, coverage gap closed).
@@ -450,8 +450,8 @@ module is healthy, 1,770 LOC, coverage gap closed).
 
 - **Convergence diagnostics and run history** — ✅ done (additive manifests,
   explicit run-id comparison, opt-in dry-run pruning). Files:
-  `codebase/functions/capacity_unmet_convergence_diagnostics.py`,
-  `codebase/supply_reconciliation_history.py`,
+  `codebase/supply_reconciliation/convergence.py`,
+  `codebase/supply_reconciliation/history.py`,
   `outputs/leap_exports/supply_reconciliation/supporting_files/runtime/`.
 - **All demand aggregated output improvements** — per-sector filename IDs and
   any-order active-branch resolution are done; pre-generating every subset
@@ -464,7 +464,7 @@ module is healthy, 1,770 LOC, coverage gap closed).
   made naive threading unsafe, guarded by
   `supply_results_saver._resolve_parallel_economy_workers`. The safe
   boundary is now built as a bounded, process-based (not thread-based)
-  outer-loop orchestrator — `codebase/functions/parallel_economy_runner.py` —
+  outer-loop orchestrator — `codebase/supply_reconciliation/parallel_runner.py` —
   verified 2026-07-23 (sequential equivalence + a two-economy concurrent
   smoke test, zero cross-contamination). A deterministic parent merge across
   more than one economy's output into a single consolidated artifact is

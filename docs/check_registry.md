@@ -64,13 +64,13 @@ families already have a (better-fitting) mechanism:
 | Family | Policy shape | Mechanism | Status |
 |---|---|---|---|
 | F1 | *impose a default or not* (not block/warn — a fill doesn't "fail") | `FILL_MISSING_DEFAULTS` per measure | **proposed** |
-| F2 | rule-level exceptions (narrow, must name `rule_id` + an exact field) + global warnings flag | `validation_exceptions`; `BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS` (`supply_leap_io.py:997`) | **exists** — don't add a per-producer waiver on top; LEAP-validity invariants must not be waivable wholesale |
-| F3 | per-call tolerance | `raise_on_missing_branch=False` (`supply_leap_io.py:2282`) | **exists** |
+| F2 | rule-level exceptions (narrow, must name `rule_id` + an exact field) + global warnings flag | `validation_exceptions`; `BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS` (`supply_reconciliation/leap_io.py:997`) | **exists** — don't add a per-producer waiver on top; LEAP-validity invariants must not be waivable wholesale |
+| F3 | per-call tolerance | `raise_on_missing_branch=False` (`supply_reconciliation/leap_io.py:2282`) | **exists** |
 | F4 | always block (warn-and-proceed defeats preflight) | — | **n/a by design** |
 | F5 | warn by default, one switch to escalate to errors | `CONSERVATION_FAILURES_ARE_ERRORS` + `build_with_conservation_policy` (`functions/conservation_policy.py`) | **exists** (added 2026-07-16 — was the gap) |
 
 **Config placement rule (2026-07-16):** these policies must live in a *centrally
-accessible* surface — `supply_reconciliation_config.py` (with a
+accessible* surface — `supply_reconciliation/config.py` (with a
 `# PRESET-CONTROLLED DEFAULT` comment) and overridable per-run from the presets in
 `supply_reconciliation_workflow.py` — **not** as literals buried in the producer
 module that happens to use them. New policy config should follow this rule.
@@ -110,9 +110,9 @@ on); others are **optional** placeholders a researcher may prefer LEAP to inheri
 | ″ | ″ | gap-fill | Aux Fuel Use, Import/Export Target, Historical Production, Exogenous Capacity, **Process Efficiency** | optional | ❌ none | **✅ Process Efficiency: SEED-013 / SEED-C030**; others unverified |
 | `add_zero_rows_for_unset_values` | `other_loss_own_use_proxy_utils.py:2225` | gap-fill | Activity Level, Final Energy Intensity | optional | ❌ none | none |
 | `build_demand_zeroing_rows` / `save_demand_zeroing_workbook` | `aggregated_demand_workflow.py:1463` / `:1553` | **reset** | blanket-zero non-share `Demand\` | optional | ✅ `ZERO_OTHER_DEMAND_BRANCHES_FROM_EXPORT` + `..._INCLUDE_IN_LEAP_IMPORT` | excludes agg-demand + own-use prefixes (SEED-C023) |
-| `reset_supply_and_transformation_import_export_to_zero` | `supply_reconciliation_tables.py:1741` | **reset** | supply/transformation Import/Export Target | optional | ✅ `RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT` | — |
+| `reset_supply_and_transformation_import_export_to_zero` | `supply_reconciliation/tables.py:1741` | **reset** | supply/transformation Import/Export Target | optional | ✅ `RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT` | — |
 | `_zero_years_outside_range` | `electricity_heat_interim_workflow.py:230` | gap-fill (zero) | zero values outside scenario window | structural | always-on | SEED-C017 (year-window) |
-| `_zero_small_numeric_values` | `supply_reconciliation_balance_tables.py:481` | normalize | clamp near-zero to 0 | structural | always-on | — |
+| `_zero_small_numeric_values` | `supply_reconciliation/balance_tables.py:481` | normalize | clamp near-zero to 0 | structural | always-on | — |
 | `_backfill_base_year_activity_from_projection` | `other_loss_own_use_proxy_utils.py:1187` | gap-fill | base-year Activity from projection | optional | ❌ none | pre-base-year consistency notice (diagnostic) |
 | `_zero_data_expression_for_scenario` | `other_loss_own_use_proxy_utils.py:2210` | helper | build zero `Data()` series | n/a | n/a | — |
 
@@ -173,7 +173,7 @@ paths cross the boundary**:
 
 | Check / function | Location | Rule(s) | Crossed by |
 |---|---|---|---|
-| `prepare_seed_rows_for_write` | `baseline_seed_validation.py:1694` | orchestrates below | **verified 2026-07-16 — three callers:** full-run seed combiner (`supply_leap_io.py:1784`), results verification (`supply_leap_io.py:1000`), patcher (`patch_baseline_seeds.py:940`) |
+| `prepare_seed_rows_for_write` | `baseline_seed_validation.py:1694` | orchestrates below | **verified 2026-07-16 — three callers:** full-run seed combiner (`supply_reconciliation/leap_io.py:1784`), results verification (`supply_reconciliation/leap_io.py:1000`), patcher (`patch_baseline_seeds.py:940`) |
 | `resolve_logical_duplicates` | `baseline_seed_validation.py` | SEED-C001–C004 | ″ |
 | `enrich_seed_ids_from_template` | `baseline_seed_validation.py` | SEED-C005–C006, C020 | ″ |
 | `complete_canonical_share_groups` | `baseline_seed_validation.py:817` | SEED-C008–C014 | ″ |
@@ -184,6 +184,33 @@ paths cross the boundary**:
 | `check_producer_coverage` | `baseline_seed_validation.py:383` | SEED-C018 (SEED-012) | ″ |
 | `validate_exception_records` | `baseline_seed_validation.py:1473` | SEED-C007/C022 | ″ |
 | `validate_seed_files` | `patch_baseline_seeds.py:453` | post-write file check | patcher |
+
+### Central final-artifact gate (audit qualification)
+
+`codebase/functions/baseline_seed_artifact_validation.py` now owns the run-level
+post-write contract BSA-001–BSA-010. `write_per_economy_combined_workbooks`
+reopens the physical `LEAP` and `FOR_VIEWING` sheets after every economy workbook
+has been written, passes explicit expected economy/template/producer/value
+evidence, and writes the findings, summary, and manifest under
+`supporting_files/baseline_seed_artifact_validation/`.
+
+| Check / function | Rule(s) | Shared implementation / evidence | Current enforcement | Tests |
+|---|---|---|---|---|
+| `run_baseline_seed_artifact_validation` | orchestrates BSA-001–BSA-010 | explicit run inventory; catches check exceptions as `CHECK_ERROR` | audit only; no promotion dependency | `test_baseline_seed_artifact_validation.py`; writer integration test |
+| `check_workbook_structure` | BSA-002 | `read_leap_sheet`; physical sheet/preamble/header/column evidence | audit | missing/unreadable/damaged workbook tests |
+| `check_shared_seed_rules` | BSA-003/005/006/007 | `validate_seed_rows` (the same duplicate/share/coverage implementation as the local boundary) | audit | duplicate, unresolved, share, coverage, and parity tests |
+| `check_template_identity` | BSA-004 | `build_template_id_lookup` + `apply_template_ids` | audit | valid-but-wrong ID test |
+| `check_authorized_zero_scope` | BSA-008 | explicit producer zero-scope manifest; never infers authorization from a zero value | audit | unauthorized/missing-evidence tests |
+| `check_serialized_value_conservation` | BSA-009 | explicit post-assembly rows compared with reopened `LEAP` expressions and `FOR_VIEWING` years | audit | serialization-loss/post-write-corruption tests |
+| `check_diagnostics_and_manifests` | BSA-010 | explicit producer artifacts and required diagnostic paths | audit | missing diagnostic/check-error/manifest tests |
+
+Contract severity is independent of enforcement: every BSA rule is currently
+hard and audit mode records `would_block=true`, `run_was_blocked=false`. Missing
+evidence is `INCOMPLETE`, never pass. The detailed disposition and retained dual
+execution are in
+[baseline_seed_gate_consolidation_review.md](baseline_seed_gate_consolidation_review.md);
+the normative requirements are in
+[baseline_seed_final_artifact_contract.md](baseline_seed_final_artifact_contract.md).
 
 **Duplicated / divergent implementations of F2 (drift risk):**
 
@@ -209,10 +236,15 @@ shared implementation.
 |---|---|---|
 | region present in export | `leap_exports.validate_region` (`leap_exports.py:106`) | `validate_export_region` in transformation:562, transfers:999, hydrogen:555, workflow_common:733, supply_export_io:116 — **thin delegates, not duplication** |
 | region injected if missing | `ensure_region_in_export` | transformation:678, transfers:1195, hydrogen:661 |
-| Current Accounts scenario present | `_ensure_current_accounts_scenario` (`supply_reconciliation_balance_tables.py:516`) | |
+| Current Accounts scenario present | `_ensure_current_accounts_scenario` (`supply_reconciliation/balance_tables.py:516`) | |
 | manual-import workbook shape | `validate_workbook_for_manual_import` (`analysis_input_write_dispatcher.py:464`), `_validate_workbook_structure_against_canonical` (`:298`) | |
 | power-interim fuel/sector coverage | `validate_power_interim_fuel_coverage` (`electricity_heat_interim_workflow.py:582`), `validate_power_interim_sub1sectors` (`:133`) | |
 | shared export readiness runner | `utilities/leap_export_readiness.py` (`run_export_readiness`) | logical keys, LEAP IDs, Region consistency, shared fuel-catalog coverage, and legacy transfer paths; writes consolidated findings and summary outputs |
+
+The readiness runner remains a per-workbook repair report. It is not the BSA
+run-level authority: its simple duplicate/ID checks are deliberately retained
+for compatibility while the central gate routes those invariants through the
+shared baseline-seed validator.
 
 ---
 
@@ -223,15 +255,15 @@ Do not fold into F1/F2.
 
 | Check | Location | Guards |
 |---|---|---|
-| compressed-projection preflight | `supply_preflight.py:1278` (`run_preflight_compressed_projection`) | reduced/compressed source files build cleanly before a full run |
-| compressed results-update preflight | `supply_preflight.py:1852` (`run_preflight_compressed_results_update`) | results-update inputs before the update pass |
-| balance/demand issue report | `supply_preflight.py:1735` (`_finalize_balance_demand_issue_report`) | bridges preflight into F5 conservation reporting |
-| reset-scope resolution | `supply_preflight.py:570` (`_load_reset_scope_from_full_model_export`), `:657`, `:682`, `:713` | reset module/fuel scope is resolvable from the export |
-| capacity-priority coverage | `supply_reconciliation_allocation.py:581` (`_validate_capacity_priority_coverage`) | every capacitied process has a priority |
+| compressed-projection preflight | `supply_reconciliation/preflight.py:1278` (`run_preflight_compressed_projection`) | reduced/compressed source files build cleanly before a full run |
+| compressed results-update preflight | `supply_reconciliation/preflight.py:1852` (`run_preflight_compressed_results_update`) | results-update inputs before the update pass |
+| balance/demand issue report | `supply_reconciliation/preflight.py:1735` (`_finalize_balance_demand_issue_report`) | bridges preflight into F5 conservation reporting |
+| reset-scope resolution | `supply_reconciliation/preflight.py:570` (`_load_reset_scope_from_full_model_export`), `:657`, `:682`, `:713` | reset module/fuel scope is resolvable from the export |
+| capacity-priority coverage | `supply_reconciliation/allocation.py:581` (`_validate_capacity_priority_coverage`) | every capacitied process has a priority |
 | fuel-catalog currency | `fuel_catalog_preflight.py` (`ensure_fuel_catalog_current:486`, `_validate_probe_vs_full_model:300`) | LEAP probe vs full-model export |
 | projected base-year coverage | `industry_fuel_remap.py:371` (`_validate_projected_base_year_coverage`) | base-year data present after projection |
 | results-update readiness | `supply_reconciliation_workflow.py` (~1021–1029) | fresh LEAP balance workbooks exported before update pass |
-| level-2 export readiness | `utilities/leap_balance_export_resolver.py` (`inspect_balance_export_detail`, `require_level2_balance_export_detail`); called by `supply_demand_mapping.py`, `supply_reconciliation_workflow.py`, and `functions/baseline_seed_balance_diagnostics.py` | indented Level 2+ branches exported before results update or baseline-seed diagnostics |
+| level-2 export readiness | `utilities/leap_balance_export_resolver.py` (`inspect_balance_export_detail`, `require_level2_balance_export_detail`); called by `supply_reconciliation/demand_mapping.py`, `supply_reconciliation_workflow.py`, and `functions/baseline_seed_balance_diagnostics.py` | indented Level 2+ branches exported before results update or baseline-seed diagnostics |
 
 ---
 
@@ -332,10 +364,10 @@ pins no severity of its own.
    - **DORMANT, not live** (corrected 2026-07-16 — an earlier note in this file
      wrongly escalated this to "live by default"). There are two routes into LEAP:
      **Route A (seed)** — producers → assembled → `prepare_seed_rows_for_write`
-     (`supply_leap_io.py:1784`) → `leap_import_baseline_seed_*.xlsx`. Post-boundary.
+     (`supply_reconciliation/leap_io.py:1784`) → `leap_import_baseline_seed_*.xlsx`. Post-boundary.
      This is the **only working route**.
      **Route B (direct API)** — raw per-workflow workbooks →
-     `import_*_workbook_to_leap` (`supply_leap_io.py:1265/2274/2314`) → `leap_core`.
+     `import_*_workbook_to_leap` (`supply_reconciliation/leap_io.py:1265/2274/2314`) → `leap_core`.
      Pre-boundary. **The LEAP API is decommissioned**: `leap_api_guard.py`
      sets `LEAP_API_BLOCKED = True`, and `leap_core.py:202`
      (`ensure_leap_api_allowed` inside `connect_to_leap`) raises `RuntimeError` on
@@ -344,8 +376,8 @@ pins no severity of its own.
    - **RESOLVED 2026-07-16 — Route B is now structurally dead.** Three fixes:
      (a) `LEAP_IMPORT_SUPPLY_TO_LEAP` / `..._TRANSFORMATION_TO_LEAP` /
      `..._TRANSFERS_TO_LEAP` now default **`False`**
-     (`supply_reconciliation_config.py`), with the decommission rationale in-file;
-     (b) **the real leak**: all five API-import guards in `supply_leap_io.py`
+     (`supply_reconciliation/config.py`), with the decommission rationale in-file;
+     (b) **the real leak**: all five API-import guards in `supply_reconciliation/leap_io.py`
      (`run_other_loss_own_use_proxy_leap_import`,
      `RUN_ELECTRICITY_HEAT_INTERIM_leap_import`, `run_aggregated_demand_leap_import`,
      `run_other_demand_zeroing_leap_import`, `run_results_linked_leap_import`) read

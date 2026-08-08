@@ -77,7 +77,7 @@ Current measured sheet inventory of `outlook_mappings_master.xlsx`:
 | `ninth_pairs_to_esto_pairs` | 2474 | yes (7 cols) |
 | `leap_display_names` | 605 | yes (6 cols) |
 | `ninth fuel to esto product` | - | yes (electricity/heat interim) |
-| `leap_rollup_rules` / `esto_rollup_rules` / `ninth_rollup_rules` | - | **yes** - `supply_demand_mapping.py:587-589` |
+| `leap_rollup_rules` / `esto_rollup_rules` / `ninth_rollup_rules` | - | **yes** - `supply_reconciliation/demand_mapping.py:587-589` |
 | `rollup_label_overrides` | - | no (leap_mappings-side) |
 | `Guide`, `deleted rows - might regret`, `NINTH unique sectors and fuels`, `ESTO unique flows and products`, `leap transport non road mapping` | - | no |
 
@@ -183,7 +183,7 @@ Implementation consequences:
   implementation, so the test must include a rollup-of-rollup case explicitly.
 - The component expansion itself is authored in `leap_mappings`
   (`leap_rollup_rules` / `esto_rollup_rules` / `ninth_rollup_rules`, already
-  read by `supply_demand_mapping.py:587-589`). **Do not build a second,
+  read by `supply_reconciliation/demand_mapping.py:587-589`). **Do not build a second,
   initialisation-local notion of what a rollup expands to.**
 - This raises a question to put back to the mapping owner rather than answer
   here: is `IS_LEAP_ROLLUP_NAME` guaranteed set on *every* rollup label in
@@ -204,7 +204,7 @@ Each commit is independently revertible and adds its own focused test.
    surface. No behaviour change.
 
 2. **`codex: contract-test the rollup rule sheets`** *(safe during fleet run)*
-   `supply_demand_mapping.py:587-589` reads three sheets owned by another repo
+   `supply_reconciliation/demand_mapping.py:587-589` reads three sheets owned by another repo
    with no column assertion. Add the columns (`rollup_context`, input pair,
    rolled pair, `include`, `Note`) to the contract from commit 1 and a focused
    test that an unexpected schema fails fast with a named error rather than
@@ -253,7 +253,7 @@ Each commit is independently revertible and adds its own focused test.
   `LAST_FUEL_MAPPING_AMBIGUITY` reporting is the intended behaviour.
 - **One-to-many 9th->ESTO keys stay reported, not resolved** (224 measured).
 - **`outlook_mappings_master.xlsx` is read-only from this repo.** Enforced in
-  spirit by `supply_demand_mapping.py:574`'s comment about never using a reader
+  spirit by `supply_reconciliation/demand_mapping.py:574`'s comment about never using a reader
   that may save the workbook; keep that.
 - Do not touch `codebase/supply_reconciliation_workflow.py` while the fleet run
   holds it (the working tree carries a temporary `RUN_OUTPUT_LABEL`).
