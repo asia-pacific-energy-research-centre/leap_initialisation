@@ -26,8 +26,8 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-SAVER = REPO / "codebase" / "functions" / "supply_results_saver.py"
-TABLES = REPO / "codebase" / "functions" / "supply_reconciliation_tables.py"
+SAVER = REPO / "codebase" / "supply_reconciliation" / "results_saver.py"
+TABLES = REPO / "codebase" / "supply_reconciliation" / "tables.py"
 
 # Several codebase/*.py files carry a UTF-8 BOM; utf-8-sig or ast silently skips them.
 SAVER_SRC = SAVER.read_text(encoding="utf-8-sig")

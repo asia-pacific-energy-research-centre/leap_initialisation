@@ -320,7 +320,7 @@ A later structural or data update starts a new decision at the top.
 ## 4b. Module and production growth caps (upper limits)
 
 When the allocator adds output to close a positive import gap, two configuration
-dicts in `codebase/supply_reconciliation_config.py` cap how far each lever may
+dicts in `codebase/supply_reconciliation/config.py` cap how far each lever may
 grow:
 
 - `CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS` — the ceiling on transformation
@@ -384,12 +384,12 @@ Note: LEAP uses no hyphens in module names. Config keys must match exactly —
 `"Non specified transformation"` (no hyphen) is the correct key; a hyphenated
 variant will never match and silently acts as dead code.
 
-**Verified 2026-07-16:** `codebase/supply_reconciliation_config.py` contains
+**Verified 2026-07-16:** `codebase/supply_reconciliation/config.py` contains
 **only** the no-hyphen key `"Non specified transformation"` — a `grep` for both
 the hyphenated and non-hyphenated strings across the file finds zero matches
 for `"Non-specified transformation"`. It always appears in the locked
 (`KEEP_EXOGENOUS_CAP_SAME_AS_BASE_YEAR_ENERGY_OUTPUT`) group, both for
-`reference` and `target` (`supply_reconciliation_config.py:641`, `:669`), and
+`reference` and `target` (`supply_reconciliation/config.py:641`, `:669`), and
 also in the legacy fallback reset list (`:857`). There is **no** hyphenated
 duplicate entry anywhere in the file, so this is not a stray-typo/duplicate-key
 bug — it is a single, consistently-spelled, consistently-locked key. Any
@@ -510,7 +510,7 @@ The exact file names and paths should be checked against the current script. Con
    Energy-sector own-use and losses that affect upstream requirements.
 
 5. **Production and capacity caps**  
-   Optional per-module and per-product limits to prevent unrealistic production or transformation output. These are configured in `codebase/supply_reconciliation_config.py`.
+   Optional per-module and per-product limits to prevent unrealistic production or transformation output. These are configured in `codebase/supply_reconciliation/config.py`.
 
 6. **LEAP import workbook template or structure**  
    The workbook format needed to import updated expressions back into LEAP.
@@ -1030,7 +1030,7 @@ Main settings in supply_reconciliation_workflow.py
 - CAPACITY_UNMET_PIN_EXPORTS_TO_9TH_PROJECTIONS: True by default — negative import gaps
   are NOT routed to extra exports unless this is set to False.
 - CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS / CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS:
-  per-module/per-product caps (defined in codebase/supply_reconciliation_config.py),
+  per-module/per-product caps (defined in codebase/supply_reconciliation/config.py),
   expressed with sentinel helpers such as KEEP_EXOGENOUS_CAP_SAME_AS_BASE_YEAR_ENERGY_OUTPUT,
   INCREASE_BY_PCT(), DECREASE_BY_PCT(), SET_CAP_TO(), and UNLIMITED.
 - CAPACITY_UNMET_UNRESOLVED_POSITIVE_POLICY: "imports_fallback" by default (fail|imports_fallback|track_only)
@@ -1072,7 +1072,7 @@ Code improvements planned for this workflow and its supporting scripts. Mirrored
 
 ### ~~Move config into the workflow file; extract functions to a functions folder~~ COMPLETE
 
-Caps and override settings (`CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS`, `CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS`, and related sentinels) are now defined in `codebase/supply_reconciliation_config.py` (Python, not JSON). Supporting functions have been extracted to modules in `codebase/functions/` and `codebase/`, reducing `supply_reconciliation_workflow.py` from 13,794 LOC to 1,494 LOC as of 2026-07-23 (`wc -l`; grows commit to commit as Phase 4 B2/B3 state injection and per-economy parallelism work landed on top of the split — re-measure rather than trusting this number long-term). See Phase 4 of the refactor for details, and `docs/current_execution_roadmap.md`/`docs/work_queue.md` for current status.
+Caps and override settings (`CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS`, `CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS`, and related sentinels) are now defined in `codebase/supply_reconciliation/config.py` (Python, not JSON). Supporting functions have been extracted to modules in `codebase/functions/` and `codebase/`, reducing `supply_reconciliation_workflow.py` from 13,794 LOC to 1,494 LOC as of 2026-07-23 (`wc -l`; grows commit to commit as Phase 4 B2/B3 state injection and per-economy parallelism work landed on top of the split — re-measure rather than trusting this number long-term). See Phase 4 of the refactor for details, and `docs/current_execution_roadmap.md`/`docs/work_queue.md` for current status.
 
 ### Shared workflow utilities — partially complete
 
@@ -1102,7 +1102,7 @@ The convergence history now has modeller-facing diagnostics helpers:
 
 ```python
 # Print and write the latest run's per-fuel diagnostics CSV.
-from codebase.functions.capacity_unmet_convergence_diagnostics import (
+from codebase.supply_reconciliation.convergence import (
     build_capacity_unmet_run_diagnostics,
     compare_capacity_unmet_runs,
 )
@@ -1116,12 +1116,12 @@ comparison = compare_capacity_unmet_runs(
 )
 
 # Remove convergence-history rows for a deliberately reverted run.
-from codebase.supply_reconciliation_history import remove_convergence_run
+from codebase.supply_reconciliation.history import remove_convergence_run
 
 remove_convergence_run(run_id="capacity_unmet_20260710T010203456789Z")
 
 # Always preview retention before allowing it to remove named history runs.
-from codebase.supply_reconciliation_history import prune_convergence_history
+from codebase.supply_reconciliation.history import prune_convergence_history
 preview = prune_convergence_history(keep_runs=20)
 prune_convergence_history(keep_runs=20, dry_run=False)
 ```
@@ -1130,7 +1130,7 @@ prune_convergence_history(keep_runs=20, dry_run=False)
 
 `compare_capacity_unmet_runs()` reports side-by-side gap trajectories, closure and pass-count deltas, unresolved-set differences, and warns when the two runs used different `mode` / `iteration_run_mode` values. It also reports manifest provenance differences when both selected run ids have manifests. `prune_convergence_history()` is deliberately opt-in and dry-run by default: it retains legacy rows and never removes the latest named run.
 
-**Files:** `codebase/supply_reconciliation_allocation.py`, `codebase/functions/capacity_unmet_convergence_diagnostics.py`, `codebase/supply_reconciliation_history.py`, `outputs/leap_exports/supply_reconciliation/<pass_mode>/supporting_files/runtime/capacity_unmet_convergence.csv`
+**Files:** `codebase/supply_reconciliation/allocation.py`, `codebase/supply_reconciliation/convergence.py`, `codebase/supply_reconciliation/history.py`, `outputs/leap_exports/supply_reconciliation/<pass_mode>/supporting_files/runtime/capacity_unmet_convergence.csv`
 
 ### All demand aggregated output improvements
 

@@ -15,7 +15,7 @@ What is actually left is the part the split deferred: it was performed as a
 **textual extraction with a shared-mutable-global backchannel**, not as an
 interface split. Phase 4's real job is to retire that backchannel, and to deal
 with the module that quietly became the new largest orchestrator -
-`codebase/functions/supply_results_saver.py` (4,024 LOC). This is also the
+`codebase/supply_reconciliation/results_saver.py` (4,024 LOC). This is also the
 hard prerequisite for Phase 5 parallelism.
 
 ## Current-state evidence
@@ -27,13 +27,13 @@ Measured 2026-07-21 (`wc -l`):
 | Module | LOC | Notes |
 |---|---|---|
 | `codebase/supply_reconciliation_workflow.py` | 1,253 | orchestrator + notebook preset block |
-| `codebase/supply_reconciliation_config.py` | 1,121 | sentinels, caps, paths - the AGENTS.md target, delivered |
-| `codebase/supply_reconciliation_allocation.py` | 1,799 | capacity-unmet algorithm - delivered |
-| `codebase/supply_reconciliation_history.py` | 583 | run history / convergence - delivered |
-| `codebase/supply_reconciliation_balance_tables.py` | 1,670 | not in the AGENTS.md plan; exists |
-| `codebase/supply_reconciliation_results.py` | 417 | not in the plan; exists |
-| `codebase/supply_reconciliation_utils.py` | 188 | not in the plan; exists |
-| **`codebase/functions/supply_results_saver.py`** | **4,024** | **the actual remaining monolith** |
+| `codebase/supply_reconciliation/config.py` | 1,121 | sentinels, caps, paths - the AGENTS.md target, delivered |
+| `codebase/supply_reconciliation/allocation.py` | 1,799 | capacity-unmet algorithm - delivered |
+| `codebase/supply_reconciliation/history.py` | 583 | run history / convergence - delivered |
+| `codebase/supply_reconciliation/balance_tables.py` | 1,670 | not in the AGENTS.md plan; exists |
+| `codebase/supply_reconciliation/results.py` | 417 | not in the plan; exists |
+| `codebase/supply_reconciliation/utils.py` | 188 | not in the plan; exists |
+| **`codebase/supply_reconciliation/results_saver.py`** | **4,024** | **the actual remaining monolith** |
 
 `supply_reconciliation_workflow.py:340` labels its own compatibility shims
 "Backwards-compatible wrappers for names extracted during the Phase 4 split",
@@ -47,7 +47,7 @@ first characterization test - see mechanism 4, which is also the better model
 for the eventual fix):
 
 1. **Star re-export.** `supply_reconciliation_workflow.py:65` does
-   `from codebase.supply_reconciliation_config import *`, explicitly so that
+   `from codebase.supply_reconciliation.config import *`, explicitly so that
    "call sites in this file remain unchanged". The same star import appears in
    `allocation`, `history`, `results` and `balance_tables`. Every module
    therefore holds its *own copy* of every config constant.
@@ -66,7 +66,7 @@ for the eventual fix):
    rebound at runtime by `_refresh_output_paths_for_current_pass_mode()`
    (`:562`) and then re-mirrored.
 
-4. **`_broadcast_config_overrides()`** (`supply_preflight.py:1686`) walks
+4. **`_broadcast_config_overrides()`** (`supply_reconciliation/preflight.py:1686`) walks
    `sys.modules` and sets the named attribute on **every** loaded `codebase.*`
    module that already defines it, returning a restore snapshot. Called from
    `_refresh_output_paths_for_current_pass_mode()` (`:574`) and from preflight
@@ -149,7 +149,7 @@ entirely, and directly unblocks Phase 5.
 `RUN_OUTPUT_LABEL` and the pass mode form a second cohesive object: a run
 context. Same treatment, same payoff.
 
-**B4 - `supply_results_saver.py` (4,024 LOC).**
+**B4 - `supply_reconciliation/results_saver.py` (4,024 LOC).**
 It receives ~20 of the ~30 forwarded names, i.e. it is the module most tightly
 bound to workflow globals. Do not attempt to split it before B2 and B3 land -
 its size is a symptom of the injection style, and splitting it first would
@@ -163,7 +163,7 @@ multiply the number of modules needing mirrored state.
 |---|---|---|---|
 | D4.1 | Injection style for B2/B3 | (a) explicit parameter object passed down; (b) a single shared `RunContext` module-level singleton; (c) keep mirroring, add a test that the ~30-name list is complete | **DECIDED 2026-07-21: (a), staged behind (c).** (c) landed as `a279615`. See below |
 | D4.2 | Retire the star imports? | yes, per module, after B1 measurement / no | Yes, but **only after** the measurement, and one module per commit |
-| D4.3 | Is `supply_results_saver.py` split in this phase or deferred? | split now / defer to a follow-on | **Defer.** Land B2+B3 first, re-measure, then decide with real coupling numbers |
+| D4.3 | Is `supply_reconciliation/results_saver.py` split in this phase or deferred? | split now / defer to a follow-on | **Defer.** Land B2+B3 first, re-measure, then decide with real coupling numbers |
 | D4.4 | Own-use proxy: incremental or rewrite? | see framework below | **DECIDED 2026-07-21: neither — no structural work is warranted.** The file was inspected; see the assessment below |
 | D4.5 | Target LOC for the orchestrator | keep AGENTS.md's <500 / drop the target | **Drop the numeric target.** 1,253 LOC is mostly the preset block and the log/preflight orchestration, both of which are contracts. LOC is not the defect; shared mutable state is |
 
@@ -176,13 +176,13 @@ independently of runtime: the class of defect is real, it survived weeks
 unnoticed, and no amount of list maintenance prevents the next one.
 
 A second, decisive input: `PARALLEL_ECONOMY_WORKERS` already exists and already
-drives a `ThreadPoolExecutor` over economies (`supply_results_saver.py:3526`),
+drives a `ThreadPoolExecutor` over economies (`supply_reconciliation/results_saver.py:3526`),
 sharing exactly the mirrored globals. Today it is safe only because the default
 is 0. Explicit injection is what makes that switch usable rather than a
 foot-gun, so B2/B3 have value even if wall-clock never mattered.
 
 Scope confirmation: B2 (allocation ledger) and B3 (run context) are in.
-D4.3 (`supply_results_saver.py`) stays deferred until they land and coupling is
+D4.3 (`supply_reconciliation/results_saver.py`) stays deferred until they land and coupling is
 re-measured.
 
 ### D4.4 decision framework (own-use proxy: incremental vs rewrite)
@@ -324,7 +324,7 @@ end.)*
    B3, same two-step pattern (introduce, then thread, then delete the mirror).
 7. **`codex: replace star imports in <module>`** - one commit per module,
    guided by the commit-2 measurement.
-8. **Re-measure and re-decide D4.3** before touching `supply_results_saver.py`.
+8. **Re-measure and re-decide D4.3** before touching `supply_reconciliation/results_saver.py`.
 
 ## Safety boundaries - what must not change
 

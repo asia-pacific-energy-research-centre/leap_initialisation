@@ -7,9 +7,9 @@ import copy
 import pandas as pd
 import pytest
 
-from codebase.functions import supply_leap_io
-from codebase.functions import supply_preflight
-from codebase.functions import supply_results_saver
+from codebase.supply_reconciliation import leap_io as supply_leap_io
+from codebase.supply_reconciliation import preflight as supply_preflight
+from codebase.supply_reconciliation import results_saver as supply_results_saver
 from codebase.functions import transformation_record_builder
 
 

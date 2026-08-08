@@ -1,7 +1,7 @@
 """[19] docs/work_queue.md: consolidated, filtered template-matching diagnostics.
 
 Pure-function tests for
-``codebase.functions.supply_results_saver.filter_actionable_mapping_config_mismatches``
+``codebase.supply_reconciliation.results_saver.filter_actionable_mapping_config_mismatches``
 and ``build_template_matching_summary``. Neither reads production ESTO/9th
 data or acquires an economy run lock; safe alongside a live run.
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from codebase.functions.supply_results_saver import (
+from codebase.supply_reconciliation.results_saver import (
     build_template_matching_summary,
     filter_actionable_mapping_config_mismatches,
 )

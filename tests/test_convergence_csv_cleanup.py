@@ -8,7 +8,7 @@ import pytest
 
 import json
 
-from codebase.supply_reconciliation_history import (
+from codebase.supply_reconciliation.history import (
     CONVERGENCE_CSV_COLUMNS,
     clear_convergence_csv,
     load_convergence_csv,

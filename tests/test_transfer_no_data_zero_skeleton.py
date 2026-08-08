@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from codebase.functions import supply_leap_io
+from codebase.supply_reconciliation import leap_io as supply_leap_io
 from codebase.functions import transformation_record_builder as record_builder
 from codebase import transfers_workflow
 

@@ -17,7 +17,7 @@ can run an aggregate workflow using the ordinary configured source tables.
 ## Minimal production fix
 
 At the single projection-preflight call site in
-`codebase/functions/supply_preflight.py`, add:
+`codebase/supply_reconciliation/preflight.py`, add:
 
 ```python
 economy_filter=["00_APEC"],

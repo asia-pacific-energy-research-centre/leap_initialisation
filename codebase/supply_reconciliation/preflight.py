@@ -17,8 +17,8 @@ from typing import Iterable, Literal
 import pandas as pd
 from openpyxl.styles import Font, PatternFill
 
-from codebase.supply_reconciliation_config import *  # noqa: F401,F403
-from codebase.supply_reconciliation_config import (
+from codebase.supply_reconciliation.config import *  # noqa: F401,F403
+from codebase.supply_reconciliation.config import (
     _ModuleCapRule,
     _resolve_module_cap_rule,
     _use_legacy_trade_split_mode,
@@ -89,7 +89,7 @@ from codebase.utilities.leap_results_dashboard_utils import (
 )
 from codebase.scrapbook.utilities import load_augmented_reference_tables
 from codebase.utilities.workflow_common import archive_config_dir_once_per_day
-from codebase.supply_reconciliation_utils import (
+from codebase.supply_reconciliation.utils import (
     _canonical_transformation_fuel_label,
     _load_code_to_name_table,
     _normalize_label_for_lookup,
@@ -99,7 +99,7 @@ from codebase.supply_reconciliation_utils import (
     _sort_output_frame_for_csv,
     _normalize_template_header_value,
 )
-from codebase.supply_reconciliation_history import (
+from codebase.supply_reconciliation.history import (
     _state_token,
     _capacity_addition_state_key,
     _output_addition_state_key,
@@ -114,7 +114,7 @@ from codebase.supply_reconciliation_history import (
     _lookup_runtime_primary_addition,
     _lookup_runtime_export_adjustment,
 )
-from codebase.supply_reconciliation_results import (
+from codebase.supply_reconciliation.results import (
     _parse_year_column_token,
     _find_supply_results_header_row,
     _read_supply_results_trade_sheet,
@@ -128,7 +128,7 @@ from codebase.supply_reconciliation_results import (
     _resolve_refinery_results_workbook,
     _resolve_transformation_results_workbook,
 )
-from codebase.supply_reconciliation_balance_tables import (
+from codebase.supply_reconciliation.balance_tables import (
     build_year_balance_table,
     save_year_balance_tables,
     build_conventional_balance_matrix,
@@ -144,7 +144,7 @@ from codebase.supply_reconciliation_balance_tables import (
     _ensure_current_accounts_scenario,
     _zero_small_numeric_values,
 )
-import codebase.supply_reconciliation_allocation as _sra
+import codebase.supply_reconciliation.allocation as _sra
 
 # NOTE: _load_reset_scope_from_full_model_export uses a late import of
 #       _extract_catalog_rows_from_full_model_export to avoid circular imports.
@@ -490,7 +490,7 @@ those results to correct remaining gaps.
                                issues, timing -- written to RESULTS_CHECKS_DIR
 """
 
-# Runtime mutable globals have moved to supply_reconciliation_allocation.py.
+# Runtime mutable globals live in supply_reconciliation/allocation.py.
 # Access them as _sra._CAPACITY_UNMET_RUNTIME_* from this module.
 
 
@@ -578,7 +578,7 @@ def _load_reset_scope_from_full_model_export(
     template_path: Path | str | None = None,
 ) -> tuple[list[str], list[str]]:
     """Return transformation module/fuel reset scope derived from full-model export."""
-    from codebase.functions.supply_results_saver import _extract_catalog_rows_from_full_model_export  # late import — avoids circular
+    from codebase.supply_reconciliation.results_saver import _extract_catalog_rows_from_full_model_export  # late import — avoids circular
     global _RESET_SCOPE_FROM_EXPORT_CACHE
     source_path = _resolve(template_path or RESULTS_VERIFICATION_EXPORT_PATH).resolve()
     source_key = str(source_path)

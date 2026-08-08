@@ -13,11 +13,11 @@ from pathlib import Path
 
 import pytest
 
-import codebase.supply_reconciliation_allocation as allocation
-import codebase.supply_reconciliation_balance_tables as balance_tables
-import codebase.supply_reconciliation_config as config
-import codebase.supply_reconciliation_history as history
-import codebase.supply_reconciliation_results as results
+import codebase.supply_reconciliation.allocation as allocation
+import codebase.supply_reconciliation.balance_tables as balance_tables
+import codebase.supply_reconciliation.config as config
+import codebase.supply_reconciliation.history as history
+import codebase.supply_reconciliation.results as results
 import codebase.supply_reconciliation_workflow as workflow
 from codebase.functions import patch_baseline_seeds
 
@@ -56,7 +56,7 @@ EXPECTED_PRESET_RUN_CONTEXTS = (
 # B1 interface measurement.  These are the five modules produced by the Phase
 # 4 split; the larger supply helper modules are deliberately outside this seam.
 EXPECTED_CONFIG_SURFACES = {
-    "supply_reconciliation_allocation.py": {
+    "supply_reconciliation/allocation.py": {
         "BASE_YEAR", "CAPACITY_UNMET_ALLOW_SAME_RESULTS_REUSE", "ENERGY_SOURCE_CONFIG",
         "CAPACITY_UNMET_IMPORT_SHEETS", "CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS",
         "CAPACITY_UNMET_PIN_EXPORTS_TO_9TH_PROJECTIONS",
@@ -66,26 +66,26 @@ EXPECTED_CONFIG_SURFACES = {
         "RESULTS_CHECKS_DIR", "RESULTS_RUNTIME_DIR", "_ModuleCapRule",
         "_resolve_module_cap_rule",
     },
-    "supply_reconciliation_balance_tables.py": {
+    "supply_reconciliation/balance_tables.py": {
         "BALANCE_DEMAND_REF_WORKBOOK_PATH", "BALANCE_DEMAND_TGT_WORKBOOK_PATH",
         "BASE_YEAR", "CONVENTIONAL_BALANCE_DIR", "DROP_DISAGGREGATED_DEMAND_SECTORS",
         "DROP_PARENT_DEMAND_ROWS_WHEN_CHILDREN_PRESENT",
         "INCLUDE_TOP_LEVEL_DEMAND_CATEGORY_ROWS", "REFINERY_FUEL_LABEL_ALIASES",
         "REFINERY_RESULTS_SHEET_NAME", "REFINERY_SECTOR_NAME", "YEARLY_BALANCE_DIR",
     },
-    "supply_reconciliation_history.py": {
+    "supply_reconciliation/history.py": {
         "BASE_YEAR", "CAPACITY_UNMET_FIRST_CLEAN_ARCHIVE_EXISTING_STATE",
         "CAPACITY_UNMET_PASS_MODE", "CAPACITY_UNMET_STATE_PATH", "FINAL_YEAR",
         "RESULTS_RUNTIME_DIR", "RESULTS_SINGLE_FILE_ARCHIVE_DIR",
     },
-    "supply_reconciliation_results.py": {
+    "supply_reconciliation/results.py": {
         "BASE_YEAR", "CAPACITY_UNMET_RESULTS_DIR", "FINAL_YEAR",
         "LEAP_RESULTS_TABLES_DIR", "REFINERY_RESULTS_FILENAME_TEMPLATE",
         "TRANSFORMATION_RESULTS_FILENAME_TEMPLATE",
     },
     "supply_reconciliation_workflow.py": {
-        "ACTIVE_SUPPLY_LINK_METHOD", "BALANCE_DEMAND_EXPORTS_ROOT",
-        "BALANCE_DEMAND_FAIL_ON_MAPPING_ISSUES", "CAPACITY_UNMET_PASS_MODE",
+        "ACTIVE_SUPPLY_LINK_METHOD", "BALANCE_DEMAND_FAIL_ON_MAPPING_ISSUES",
+        "CAPACITY_UNMET_PASS_MODE",
         "COMPLETION_BEEP_ON_ERROR", "ENABLE_COMPLETION_BEEP", "ENABLE_WORKFLOW_TIMING",
         "EXPORT_DATASET_KEY", "FINAL_YEAR", "KEEP_ALL_ZERO_SUPPLY_ROWS",
         "LEAP_IMPORT_INCLUDE_CURRENT_ACCOUNTS", "LEAP_IMPORT_LOG_LEVEL",
@@ -102,7 +102,7 @@ EXPECTED_CONFIG_SURFACES = {
 
 def _module_config_surface(filename: str) -> set[str]:
     """Return config names loaded by a split module's source AST."""
-    config_path = REPO_ROOT / "codebase" / "supply_reconciliation_config.py"
+    config_path = REPO_ROOT / "codebase" / "supply_reconciliation" / "config.py"
     config_tree = ast.parse(config_path.read_text(encoding="utf-8-sig"))
     config_names = {
         node.target.id

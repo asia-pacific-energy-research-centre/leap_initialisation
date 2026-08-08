@@ -35,10 +35,10 @@ normalization is implemented and verified for oil refining.
 - The only Python import outside that file is
   `tests/test_refining_capacity_policy.py`, which tests one private helper.
 - The strings returned as `"refining_workflow"` by
-  `baseline_seed_comparison_workflow.py` and `supply_leap_io.py` are diagnostic
+  `baseline_seed_comparison_workflow.py` and `supply_reconciliation/leap_io.py` are diagnostic
   ownership labels. They do not import or run the module.
 - The baseline-seed producer map in
-  `codebase/functions/supply_results_saver.py:4233-4241` has no refining
+  `codebase/supply_reconciliation/results_saver.py:4233-4241` has no refining
   producer. Oil refining arrives in the `transformation_workflow` workbook.
 - Repository history shows no change to the standalone workflow after
   `e5335fb` on 2026-07-03. The active reconciliation work has continued through
@@ -77,7 +77,7 @@ does not remove that reusable helper.
   (`transformation_record_builder.py:1644-2025,2745+`).
 - Baseline-seed runs call
   `save_transformation_exports_with_split_targets()` for the per-economy
-  process records (`supply_results_saver.py:3859-3876`).
+  process records (`supply_reconciliation/results_saver.py:3859-3876`).
 - Direct notebook export/import is already provided by
   `transformation_entry.run_transformation_workflow()` and
   `run_leap_import()` (`transformation_entry.py:35-87`).

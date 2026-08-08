@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pandas as pd
 
-import codebase.supply_reconciliation_config as config
+import codebase.supply_reconciliation.config as config
 import codebase.supply_reconciliation_workflow as workflow
-from codebase.functions import supply_results_saver as saver
+from codebase.supply_reconciliation import results_saver as saver
 
 
 def test_economy_catalog_uses_target_template_spelling_and_one_structural_row(

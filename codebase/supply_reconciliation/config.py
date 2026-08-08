@@ -1,5 +1,5 @@
 """
-supply_reconciliation_config.py — user-facing configuration for the supply reconciliation workflow.
+config.py — user-facing configuration for the supply reconciliation workflow.
 
 Edit this file to change:
   - Sentinel constants (UNLIMITED, DECREASE_TO_ZERO, INCREASE_BY_PCT, etc.)
@@ -26,7 +26,7 @@ import re
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 

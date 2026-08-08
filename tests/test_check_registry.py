@@ -33,7 +33,7 @@ REGISTERED_CHECKS: dict[str, str] = {
     "build_demand_zeroing_rows": "codebase/aggregated_demand_workflow.py",
     "save_demand_zeroing_workbook": "codebase/aggregated_demand_workflow.py",
     "reset_supply_and_transformation_import_export_to_zero": (
-        "codebase/functions/supply_reconciliation_tables.py"
+        "codebase/supply_reconciliation/tables.py"
     ),
     # F2 - artifact invariants (the emit boundary)
     "prepare_seed_rows_for_write": "codebase/functions/baseline_seed_validation.py",
@@ -59,8 +59,8 @@ REGISTERED_CHECKS: dict[str, str] = {
     "validate_region": "codebase/functions/leap_exports.py",
     "run_export_readiness": "codebase/utilities/leap_export_readiness.py",
     # F4 - preflight
-    "run_preflight_compressed_projection": "codebase/functions/supply_preflight.py",
-    "_validate_capacity_priority_coverage": "codebase/supply_reconciliation_allocation.py",
+    "run_preflight_compressed_projection": "codebase/supply_reconciliation/preflight.py",
+    "_validate_capacity_priority_coverage": "codebase/supply_reconciliation/allocation.py",
     "ensure_fuel_catalog_current": "codebase/utilities/fuel_catalog_preflight.py",
     # F5 - conservation / numeric
     "build_with_conservation_policy": "codebase/functions/conservation_policy.py",

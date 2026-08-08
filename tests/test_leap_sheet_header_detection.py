@@ -128,7 +128,9 @@ def test_routed_callers_use_the_shared_detector():
     """Regression guard: routed standard-sheet callers import the detector."""
     from codebase import aggregated_demand_workflow
     from codebase.functions import analysis_input_write_dispatcher
-    from codebase.functions import patch_baseline_seeds, supply_leap_io, supply_results_saver
+    from codebase.functions import patch_baseline_seeds
+    from codebase.supply_reconciliation import leap_io as supply_leap_io
+    from codebase.supply_reconciliation import results_saver as supply_results_saver
 
     assert hasattr(aggregated_demand_workflow, "find_leap_header_row")
     assert hasattr(analysis_input_write_dispatcher, "find_leap_header_row")
@@ -147,7 +149,7 @@ def test_patcher_keeps_blank_spacer_removal_and_uses_unlimited_scan():
 
 
 def test_supply_workbook_reader_uses_shared_unlimited_scan(tmp_path: Path):
-    from codebase.functions.supply_leap_io import _read_workbook_sheet_with_header_detection
+    from codebase.supply_reconciliation.leap_io import _read_workbook_sheet_with_header_detection
 
     path = _write(tmp_path, _sheet(9, blank_col=True))
     preamble, data, columns = _read_workbook_sheet_with_header_detection(path, "LEAP")
@@ -189,7 +191,7 @@ def test_export_key_loader_detects_moved_export_header(tmp_path: Path):
 
 
 def test_results_saver_filter_detects_header_below_long_preamble(tmp_path: Path):
-    from codebase.functions.supply_results_saver import _filter_transformation_workbook_to_trade_targets
+    from codebase.supply_reconciliation.results_saver import _filter_transformation_workbook_to_trade_targets
 
     raw = _sheet(9)
     raw.iloc[10, 1] = "Import Target"

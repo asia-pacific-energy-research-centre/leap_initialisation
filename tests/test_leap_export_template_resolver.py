@@ -21,7 +21,7 @@ from codebase.utilities.leap_export_template_resolver import (
 
 
 def test_supply_reconciliation_reference_template_uses_current_usa_resolver() -> None:
-    from codebase import supply_reconciliation_config
+    from codebase.supply_reconciliation import config as supply_reconciliation_config
 
     assert supply_reconciliation_config.RESULTS_VERIFICATION_EXPORT_PATH == (
         resolve_leap_export_template("20_USA")

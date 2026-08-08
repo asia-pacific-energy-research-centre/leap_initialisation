@@ -14,8 +14,8 @@ says why it was there.  See ``docs/work_queue.md`` [17], thread T7 in
 
 import pytest
 
-from codebase.functions.supply_results_saver import _resolve_parallel_economy_workers
-from codebase import supply_reconciliation_config
+from codebase.supply_reconciliation.results_saver import _resolve_parallel_economy_workers
+from codebase.supply_reconciliation import config as supply_reconciliation_config
 
 
 @pytest.mark.parametrize("value", [0, 1])

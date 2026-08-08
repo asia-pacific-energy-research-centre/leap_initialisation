@@ -59,11 +59,11 @@ except Exception as exc:
     print(f"Failed to add repo root to sys.path: {exc}")
 
 # Sentinel types, _resolve_module_cap_rule, and all workflow config constants
-# are defined in supply_reconciliation_config.py.  Import everything from there
+# are defined in supply_reconciliation/config.py. Import everything from there
 # so call sites in this file remain unchanged.
-import codebase.supply_reconciliation_config as _supply_reconciliation_config
-from codebase.supply_reconciliation_config import *  # noqa: F401,F403
-from codebase.supply_reconciliation_config import (  # private names excluded by *
+import codebase.supply_reconciliation.config as _supply_reconciliation_config
+from codebase.supply_reconciliation.config import *  # noqa: F401,F403
+from codebase.supply_reconciliation.config import (  # private names excluded by *
     _ModuleCapRule,
     _resolve_module_cap_rule,
 )
@@ -128,7 +128,7 @@ from codebase.utilities import workflow_common
 from codebase.utilities.output_paths import BALANCE_TABLES_ROOT, INTEGRATED_LEAP_EXPORTS_ROOT
 from codebase.utilities.workflow_utils import _resolve
 from codebase.utilities.economy_run_lock import economy_run_locks
-from codebase.supply_reconciliation_utils import (
+from codebase.supply_reconciliation.utils import (
     _canonical_transformation_fuel_label,
     _load_code_to_name_table,
     _normalize_label_for_lookup,
@@ -137,7 +137,7 @@ from codebase.supply_reconciliation_utils import (
     _iter_year_value_items,
     _sort_output_frame_for_csv,
 )
-from codebase.supply_reconciliation_config import (  # noqa: F401
+from codebase.supply_reconciliation.config import (  # noqa: F401
     _use_legacy_trade_split_mode,
     _use_output_share_supply_exports_mode,
     _use_capacity_unmet_iterative_mode,
@@ -146,7 +146,7 @@ from codebase.supply_reconciliation_config import (  # noqa: F401
     _use_capacity_constrained_mode,
     _use_capacity_like_mode,
 )
-from codebase.supply_reconciliation_history import (
+from codebase.supply_reconciliation.history import (
     _state_token,
     _capacity_addition_state_key,
     _output_addition_state_key,
@@ -161,7 +161,7 @@ from codebase.supply_reconciliation_history import (
     _lookup_runtime_primary_addition,
     _lookup_runtime_export_adjustment,
 )
-from codebase.supply_reconciliation_results import (
+from codebase.supply_reconciliation.results import (
     _parse_year_column_token,
     _find_supply_results_header_row,
     _read_supply_results_trade_sheet,
@@ -175,8 +175,8 @@ from codebase.supply_reconciliation_results import (
     _resolve_refinery_results_workbook,
     _resolve_transformation_results_workbook,
 )
-from codebase.supply_reconciliation_utils import _normalize_template_header_value  # noqa: F401
-from codebase.supply_reconciliation_balance_tables import (
+from codebase.supply_reconciliation.utils import _normalize_template_header_value  # noqa: F401
+from codebase.supply_reconciliation.balance_tables import (
     build_year_balance_table,
     save_year_balance_tables,
     build_conventional_balance_matrix,
@@ -192,18 +192,18 @@ from codebase.supply_reconciliation_balance_tables import (
     _ensure_current_accounts_scenario,
     _zero_small_numeric_values,
 )
-import codebase.supply_reconciliation_allocation as _sra
-import codebase.functions.supply_reconciliation_tables as _srt
-import codebase.functions.supply_demand_mapping as _sdm
-import codebase.functions.supply_results_saver as _srs
-import codebase.supply_reconciliation_history as _srh
+import codebase.supply_reconciliation.allocation as _sra
+import codebase.supply_reconciliation.tables as _srt
+import codebase.supply_reconciliation.demand_mapping as _sdm
+import codebase.supply_reconciliation.results_saver as _srs
+import codebase.supply_reconciliation.history as _srh
 
 
 
 # ---------------------------------------------------------------------------
 # Extracted function modules (moved from this file)
 # ---------------------------------------------------------------------------
-from codebase.functions.supply_preflight import (  # noqa: F401
+from codebase.supply_reconciliation.preflight import (  # noqa: F401
     _broadcast_config_overrides,
     _keep_windows_pc_awake,
     _emit_completion_beep,
@@ -226,7 +226,7 @@ from codebase.functions.supply_preflight import (  # noqa: F401
     run_preflight_compressed_projection,
     run_preflight_compressed_results_update,
 )
-from codebase.functions.supply_demand_mapping import (  # noqa: F401
+from codebase.supply_reconciliation.demand_mapping import (  # noqa: F401
     _normalize_sector_match_key,
     _sector_match_keys,
     _load_transformation_template_variable_sets,
@@ -261,7 +261,7 @@ from codebase.functions.supply_demand_mapping import (  # noqa: F401
     load_balance_demand_inputs,
     load_direct_leap_demand_inputs,
 )
-from codebase.functions.supply_reconciliation_tables import (  # noqa: F401
+from codebase.supply_reconciliation.tables import (  # noqa: F401
     _collect_transformation_and_transfer_rows,
     _query_leap_value_series_for_fuels,
     _refresh_transformation_measures_from_leap_results,
@@ -285,7 +285,7 @@ from codebase.functions.supply_reconciliation_tables import (  # noqa: F401
     build_supply_overrides,
     reset_supply_and_transformation_import_export_to_zero,
 )
-from codebase.functions.supply_leap_io import (  # noqa: F401
+from codebase.supply_reconciliation.leap_io import (  # noqa: F401
     _build_supply_measures_for_trade_mode,
     _build_transformation_target_multiplier_table,
     _resolve_reconciliation_scenario_key,
@@ -317,7 +317,7 @@ from codebase.functions.supply_leap_io import (  # noqa: F401
     run_other_demand_zeroing_leap_import,
     run_results_linked_leap_import,
 )
-from codebase.functions.supply_results_saver import (  # noqa: F401
+from codebase.supply_reconciliation.results_saver import (  # noqa: F401
     _resolve_existing_results_supply_export_paths,
     resume_results_linked_leap_import_from_existing_exports,
     _filter_transformation_workbook_to_trade_targets,
@@ -724,7 +724,7 @@ def _apply_worker_snapshot_overrides() -> None:
     This is the *only* supported way to give a subprocess worker its own
     economy — never edit ``ECONOMIES``/``RUN_OUTPUT_LABEL`` in the source file
     while other workers may still be running against it. Each worker is a
-    separate OS process (see ``codebase/functions/parallel_economy_runner.py``),
+    separate OS process (see ``codebase/supply_reconciliation/parallel_runner.py``),
     so this only ever rebinds this process's own globals; it cannot race with
     another worker's snapshot.
     """
@@ -842,7 +842,7 @@ SCENARIOS = ["Target", "Reference", "Current Accounts"]
 # change every run; the preset only needs to change when the pass type changes.
 # Every key in the active preset is unpacked into module scope by
 # globals().update(ACTIVE_PRESET) below, so it replaces any existing global of
-# the same name imported from supply_reconciliation_config.py. Entries marked
+# the same name imported from supply_reconciliation/config.py. Entries marked
 # "overrides config default" do exactly that; unmarked entries are workflow-only.
 # Edit a preset for a run-specific setting, and edit config only for its fallback.
 #
