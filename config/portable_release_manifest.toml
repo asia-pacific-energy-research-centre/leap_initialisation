@@ -1,0 +1,565 @@
+# Release contract for the portable LEAP review tools.
+#
+# This file is the single declaration of what a release contains. The builder
+# reads every source file out of Git at the commit pinned below - never out of a
+# working tree - so a release is reproducible from this manifest alone and
+# uncommitted work-in-progress can never reach a colleague's copy.
+#
+# Validated by codebase/portable_release/manifest.py before any staging happens.
+# See docs/leap_review_tools.md for the release and rollback procedure.
+
+schema_version = 1
+
+[release]
+name = "leap-review-tools"
+version = "0.3.0"
+description = """\
+Portable Windows build of two LEAP review tools: the Common ESTO dashboard \
+renderer, and the balance-review workbook builder. Runs without Python, Conda, \
+Git, or a repository checkout."""
+
+[runtime]
+# The interpreter the release is built and tested against. The frozen package
+# carries its own interpreter; this records what a rebuild needs.
+python = ">=3.11,<3.14"
+packages = [
+    "pandas>=2.0",
+    "numpy>=1.26",
+    "openpyxl>=3.1",
+    "plotly>=5.20",
+    "pyinstaller>=6.0",
+]
+
+# ---------------------------------------------------------------------------
+# Participating repositories
+# ---------------------------------------------------------------------------
+#
+# `paths` allowlists whole Python modules only. Configuration, templates, and
+# other assets go in [[config_assets]] so they can be replaced without a
+# rebuild.
+#
+# Note on package __init__ files: `codebase/__init__.py` in leap_initialisation
+# is a re-export hub that imports the LEAP COM API, Excel I/O, and the
+# comparison stack. None of that is needed by the supported commands, and much
+# of it cannot run off a modelling workstation. It is deliberately NOT
+# allowlisted, which makes `codebase` an implicit namespace package (PEP 420) in
+# the package. The empty sub-package __init__ files below are allowlisted as
+# complete files so the regular sub-packages keep their normal import
+# behaviour.
+
+[repositories.leap_initialisation]
+commit = "270aff59b66400dc45506c77a9a629f4ccb67eab"
+stage_dir = "leap_initialisation"
+on_sys_path = true
+paths = [
+    "codebase/balance_update_workflow.py",
+    "codebase/configuration/__init__.py",
+    "codebase/configuration/all_products_and_flows.py",
+    "codebase/configuration/config.py",
+    "codebase/configuration/known_leap_label_exceptions.py",
+    "codebase/configuration/workflow_config.py",
+    "codebase/functions/__init__.py",
+    "codebase/functions/analysis_input_write_dispatcher.py",
+    "codebase/functions/balance_review_workbook_builder.py",
+    "codebase/functions/balance_review_workbooks.py",
+    "codebase/functions/baseline_seed_balance_diagnostics.py",
+    "codebase/functions/baseline_seed_validation.py",
+    "codebase/functions/conservation_policy.py",
+    "codebase/functions/esto_data_utils.py",
+    "codebase/functions/leap_api_guard.py",
+    "codebase/functions/leap_core.py",
+    "codebase/functions/leap_excel_io.py",
+    "codebase/functions/leap_expressions.py",
+    "codebase/functions/leap_session.py",
+    "codebase/functions/ninth_projection_mapping.py",
+    "codebase/functions/transformation_analysis_utils.py",
+    "codebase/functions/transformation_fuel_utils.py",
+    "codebase/functions/transformation_record_builder.py",
+    "codebase/functions/transformation_sector_analysis.py",
+    "codebase/functions/transformation_series_utils.py",
+    "codebase/mappings/__init__.py",
+    "codebase/mappings/canonical_loaders.py",
+    "codebase/mappings/canonical_mapping.py",
+    "codebase/utilities/__init__.py",
+    "codebase/utilities/energy_balance_template_extractor.py",
+    "codebase/utilities/esto_reference_loader.py",
+    "codebase/utilities/fuel_catalog_preflight.py",
+    "codebase/utilities/leap_balance_export_resolver.py",
+    "codebase/utilities/leap_results_dashboard_balance.py",
+    "codebase/utilities/leap_results_dashboard_utils.py",
+    "codebase/utilities/leap_results_dashboard_v2/__init__.py",
+    "codebase/utilities/leap_results_dashboard_v2/atomic_engine.py",
+    "codebase/utilities/leap_results_dashboard_v2/comparison_engine.py",
+    "codebase/utilities/leap_results_dashboard_v2/config_loader.py",
+    "codebase/utilities/leap_results_dashboard_v2/mapping_engine.py",
+    "codebase/utilities/leap_results_dashboard_v2/models.py",
+    "codebase/utilities/leap_results_dashboard_v2/pathing.py",
+    "codebase/utilities/leap_results_dashboard_v2/reference_loader.py",
+    "codebase/utilities/leap_results_dashboard_v2/shadow_compare.py",
+    "codebase/utilities/master_config.py",
+    "codebase/utilities/output_paths.py",
+    "codebase/utilities/workflow_common.py",
+    "codebase/utilities/workflow_outputs.py",
+    "codebase/portable_release/__init__.py",
+    "codebase/portable_release/commands.py",
+    "codebase/portable_release/esto_vintage.py",
+    "codebase/portable_release/mapping_chain_client.py",
+    "codebase/portable_release/portable_main.py",
+    "codebase/portable_release/progress.py",
+    "codebase/portable_release/provenance.py",
+    "codebase/portable_release/runtime.py",
+    "codebase/portable_release/validation.py",
+    "codebase/portable_release/workspace.py",
+]
+# manifest.py, settings.py, build_release.py, and developer_launcher.py are
+# maintainer-side only: nothing on a portable run's import path reaches them,
+# and a colleague's copy has no repositories to configure or release to build.
+
+# Some legacy diagnostics modules import this helper flat as
+# ``import LEAP_API_helpers``. Stage only that reviewed metadata module from
+# config/ on its own sys.path root; do not expose the rest of config/ as code.
+[repositories.leap_initialisation_config]
+commit = "270aff59b66400dc45506c77a9a629f4ccb67eab"
+source_key = "leap_initialisation"
+stage_dir = "leap_initialisation_config"
+strip_prefix = "config"
+on_sys_path = true
+paths = ["config/LEAP_API_helpers.py"]
+
+# The dashboard modules are imported flat (``import common_esto_dashboard_data``),
+# so `codebase/` is stripped when staging. That also keeps this repository's
+# `codebase` package name from colliding with leap_initialisation's.
+[repositories.leap_dashboard]
+commit = "4792086eaa91b0512f9b789eb08bad6d9720ef64"
+stage_dir = "leap_dashboard"
+strip_prefix = "codebase"
+on_sys_path = true
+paths = [
+    "codebase/common_esto_dashboard_data.py",
+    "codebase/common_esto_dashboard_output_layout.py",
+    "codebase/common_esto_dashboard_portable.py",
+    "codebase/common_esto_dashboard_renderer.py",
+]
+
+# `mapping_tools` has no __init__.py in its own repository either; it works as
+# an implicit namespace package here exactly as it does there.
+[repositories.leap_mappings]
+commit = "1f4861bc31e3b1e12400936c92d0a4d3550139eb"
+stage_dir = "leap_mappings"
+strip_prefix = "codebase"
+on_sys_path = true
+target = "main"
+paths = [
+    "codebase/mapping_tools/source_branch_preflight.py",
+]
+
+# The mapping-chain worker's own bundle (handover §1/§3.3): a second entry for
+# the SAME checkout (source_key), staged as the real `codebase` package (no
+# strip_prefix) under its own directory so `codebase.mapping_tools.x` absolute
+# imports resolve inside the isolated worker executable. This is the 20ish
+# module closure of parse_leap_balance_export / convert_leap_results_to_esto /
+# apply_common_esto_structure / portable_mapping_chain, computed by walking
+# their absolute `codebase.*` imports (ast-based, not hand-maintained by
+# inspection - re-run that walk if the mapping chain's imports change).
+# Package __init__ files are deliberately omitted here: leap_results_dashboard_v2's
+# init eagerly imports comparison_engine/atomic_engine/shadow_compare, and
+# mappings' init imports canonical_mapping, so allowlisting them would pull whole
+# packages into the worker to reach one module. Omitted, each becomes an implicit
+# namespace package (PEP 420) and the submodule imports on its own - verified.
+[repositories.leap_mappings_worker]
+commit = "1f4861bc31e3b1e12400936c92d0a4d3550139eb"
+stage_dir = "leap_mappings_worker"
+source_key = "leap_mappings"
+on_sys_path = true
+target = "worker"
+paths = [
+    "codebase/__init__.py",
+    "codebase/mapping_issue_exceptions.py",
+    "codebase/portable_mapping_chain.py",
+    "codebase/mapping_tools/apply_common_esto_structure.py",
+    "codebase/mapping_tools/build_dataset_tree_structure.py",
+    "codebase/mapping_tools/common_esto_output_contract.py",
+    "codebase/mapping_tools/convert_leap_results_to_esto.py",
+    "codebase/functions/ninth_projection_mapping.py",
+    "codebase/mappings/canonical_mapping.py",
+    "codebase/mapping_tools/dataset_registry.py",
+    "codebase/mapping_tools/esto_exact_rows.py",
+    "codebase/mapping_tools/diagnostic_adapter_registry.py",
+    "codebase/mapping_tools/hierarchy_subtotal_adapters.py",
+    "codebase/mapping_tools/hierarchy_subtotal_contract.py",
+    "codebase/mapping_tools/mapping_candidate_generation.py",
+    "codebase/mapping_tools/mapping_sheet_registry.py",
+    "codebase/mapping_tools/non_expanding_rollups.py",
+    "codebase/mapping_tools/parse_leap_balance_export.py",
+    "codebase/mapping_tools/result_storage.py",
+    "codebase/mapping_tools/rollup_sheet_registry.py",
+    "codebase/mapping_tools/source_branch_preflight.py",
+    "codebase/mapping_tools/source_rollups.py",
+    "codebase/mapping_tools/target_share_allocation.py",
+    "codebase/mapping_tools/value_adapter_registry.py",
+    "codebase/utilities/__init__.py",
+    "codebase/utilities/leap_balance_export_resolver.py",
+    "codebase/utilities/leap_results_dashboard_utils.py",
+    "codebase/utilities/leap_results_dashboard_v2/reference_loader.py",
+    "codebase/utilities/master_config.py",
+]
+
+# ---------------------------------------------------------------------------
+# External configuration assets
+# ---------------------------------------------------------------------------
+#
+# Copied into the package's config/ directory, not embedded in the executable.
+# Their SHA-256 values are recorded in the release report and re-hashed into
+# every run manifest, so replacing one with an approved newer version changes
+# the next run and is visible in that run's record.
+
+[[config_assets]]
+repository = "leap_dashboard"
+path = "config/common_esto_dashboard/common_esto_dashboard_template.json"
+dest = "dashboard/common_esto_dashboard_template.json"
+role = "dashboard_template"
+description = "Page rules, chart generation settings, and sign semantics."
+
+[[config_assets]]
+repository = "leap_dashboard"
+path = "config/common_esto_dashboard/series_config.json"
+dest = "dashboard/series_config.json"
+role = "dashboard_series_config"
+description = "Series labels, visible-series rules, and the economy list."
+
+[[config_assets]]
+repository = "leap_dashboard"
+path = "config/common_esto_dashboard/code_colors.json"
+dest = "dashboard/code_colors.json"
+role = "dashboard_code_colors"
+description = "Per-axis ESTO code colour map."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/all_demand_aggregated_components.json"
+dest = "mappings/all_demand_aggregated_components.json"
+role = "all_demand_aggregated_components"
+description = """\
+Which demand sectors have no separately modelled LEAP detail per economy. \
+Owned by leap_mappings; decides which sector pages are hidden."""
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/outlook_mappings_master.xlsx"
+dest = "mappings/outlook_mappings_master.xlsx"
+role = "outlook_mappings_master"
+description = "The canonical LEAP-to-ESTO mapping workbook the mapping chain applies."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/source_branch_fallback_rules.csv"
+dest = "mappings/source_branch_fallback_rules.csv"
+role = "source_branch_fallback_rules"
+description = "Interim-branch fallback zeroing rules applied before mapping-chain conversion."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/mapping_issue_exception_sets.xlsx"
+dest = "mappings/mapping_issue_exception_sets.xlsx"
+role = "mapping_issue_exception_sets"
+description = "Reviewed mapping and subtotal exception decisions used by mapping QA."
+
+# The HF bundle runs the mapping-chain worker from a staged copy of
+# leap_mappings.  These assets retain the worker's expected repository-relative
+# paths; the portable executable keeps them external under config/ as well.
+[[config_assets]]
+repository = "leap_mappings"
+path = "AGENTS.md"
+dest = "mapping_worker/AGENTS.md"
+role = "mapping_worker_root_marker"
+description = "Root marker required by the mapping-chain worker's source-path resolver."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/outlook_mappings_master.xlsx"
+dest = "mapping_worker/config/outlook_mappings_master.xlsx"
+role = "mapping_worker_outlook_mappings_master"
+description = "Worker-local copy of the canonical mapping workbook."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/datasets/comparison_scopes.csv"
+dest = "mapping_worker/config/datasets/comparison_scopes.csv"
+role = "mapping_worker_comparison_scopes"
+description = "Worker-local comparison-scope registry."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/datasets/dataset_registry.csv"
+dest = "mapping_worker/config/datasets/dataset_registry.csv"
+role = "mapping_worker_dataset_registry"
+description = "Worker-local dataset registry."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/datasets/diagnostic_adapter_registry.csv"
+dest = "mapping_worker/config/datasets/diagnostic_adapter_registry.csv"
+role = "mapping_worker_diagnostic_adapter_registry"
+description = "Worker-local diagnostic-adapter registry."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/datasets/mapping_sheet_registry.csv"
+dest = "mapping_worker/config/datasets/mapping_sheet_registry.csv"
+role = "mapping_worker_mapping_sheet_registry"
+description = "Worker-local mapping-sheet registry."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/datasets/rollup_sheet_registry.csv"
+dest = "mapping_worker/config/datasets/rollup_sheet_registry.csv"
+role = "mapping_worker_rollup_sheet_registry"
+description = "Worker-local rollup-sheet registry."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/datasets/value_adapter_registry.csv"
+dest = "mapping_worker/config/datasets/value_adapter_registry.csv"
+role = "mapping_worker_value_adapter_registry"
+description = "Worker-local value-adapter registry."
+
+[[config_assets]]
+repository = "leap_initialisation"
+path = "config/runtime_tables/synthetic_reference_rows.csv"
+dest = "balance_review/synthetic_reference_rows.csv"
+role = "synthetic_reference_rows"
+description = "Synthetic zero-row rules used to align ESTO vintages for review."
+
+[[config_assets]]
+repository = "leap_initialisation"
+path = "config/runtime_tables/leap_results_sheet_map.csv"
+dest = "balance_review/leap_results_sheet_map.csv"
+role = "leap_results_sheet_map"
+description = "LEAP balance-export sheet and scenario resolution rules."
+
+[[config_assets]]
+repository = "leap_initialisation"
+path = "config/runtime_tables/leap_explicit_reassignments.csv"
+dest = "balance_review/leap_explicit_reassignments.csv"
+role = "leap_explicit_reassignments"
+description = "Reviewed explicit LEAP balance-row reassignment rules."
+
+[[config_assets]]
+repository = "leap_initialisation"
+path = "config/runtime_tables/balance_error_signal_rules.csv"
+dest = "balance_review/balance_error_signal_rules.csv"
+role = "balance_error_signal_rules"
+description = "Balance variable roles and error-signal eligibility rules."
+
+# ---------------------------------------------------------------------------
+# Large read-only source data tables
+# ---------------------------------------------------------------------------
+#
+# These are regenerated outputs of the mapping workbook and source tables, not
+# of any model run (handover section 2), so they are pinned as data_assets
+# rather than recomputed per run. `allow_untracked = true` because they are
+# gitignored in leap_mappings; the release still records their SHA-256, so a
+# rebuild is required whenever the mapping workbook changes (see release
+# notes).
+
+[[data_assets]]
+repository = "leap_mappings"
+path = "results/mapping_relationships/energy_balance_relationships.csv"
+dest = "mapping_chain/energy_balance_relationships.csv"
+role = "mapping_chain_relationships"
+sha256 = "779566c358c621386e1d88df2e16f27c6c2385e7bdab391bedcb515466b213d8"
+description = "LEAP-to-ESTO conversion relationships, a function of the mapping workbook."
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_mappings"
+path = "results/mapping_relationships/esto_results_exact_rows.csv.gz"
+dest = "mapping_chain/esto_results_exact_rows.csv.gz"
+role = "mapping_chain_esto_exact_rows"
+sha256 = "8597658eede6af178976791cf8e8577175b63fc403b41163a5e8021449884f82"
+description = "ESTO exact-row extract the mapping chain converts LEAP output against."
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_mappings"
+path = "results/mapping_relationships/ninth_results_converted_to_esto.csv.gz"
+dest = "mapping_chain/ninth_results_converted_to_esto.csv.gz"
+role = "mapping_chain_ninth_converted"
+sha256 = "ada1deb8ef5a5a1b506cbd4c36d9a10c718504fbe66df4e5930829cab446abc9"
+description = "9th-edition results converted to ESTO structure, a mapping-chain source table."
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_mappings"
+path = "results/common_esto/common_esto_rows.csv"
+dest = "mapping_chain/common_esto_rows.csv"
+role = "mapping_chain_common_esto_rows"
+sha256 = "d143ad25d67ed5b926cc8d9ecc8a11171edcf9a82644e069050f4b5fc402f8f6"
+description = "Common ESTO row definitions the mapping-chain fast path applies."
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_initialisation"
+path = "data/00APEC_2024_low_with_subtotals.csv"
+dest = "balance_review/00APEC_2024_low_with_subtotals.csv"
+role = "esto_base_table"
+sha256 = "5a5787914491008c562b0398bf6ee14cd5eedcaa13e2d11d6de1a5ebf1d6ae1d"
+description = "Configured 2024 ESTO base table used by balance diagnostics."
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_initialisation"
+path = "data/merged_file_energy_ALL_20251106.csv"
+dest = "balance_review/merged_file_energy_ALL_20251106.csv"
+role = "ninth_projection_table"
+sha256 = "b99869ad28edf8ea8d08ec0738d6eeb007eb0fd7527c2b27f6948589c818cc8d"
+description = "All-economy 9th-edition projection table used by balance diagnostics."
+allow_untracked = true
+
+# ---------------------------------------------------------------------------
+# Supported commands
+# ---------------------------------------------------------------------------
+
+[[commands]]
+name = "balance-review"
+summary = "Build the five-sheet balance-review workbook for one economy, scenario, and year."
+input_mode = "existing_diagnostic_artifacts"
+outputs = """\
+One balance_review_<economy>_<scenario>_<year>.xlsx workbook, plus a run \
+manifest and an input validation report, in a dated folder under output/."""
+
+  [[commands.inputs]]
+  key = "economy"
+  kind = "value"
+  description = "Economy code, for example 20_USA."
+
+  [[commands.inputs]]
+  key = "scenario"
+  kind = "value"
+  description = "Scenario name or code, for example Target or TGT."
+
+  [[commands.inputs]]
+  key = "year"
+  kind = "value"
+  description = "Four-digit review year, for example 2022."
+
+  [[commands.inputs]]
+  key = "balance_export_workbook"
+  kind = "file"
+  description = """\
+The LEAP Energy Balance export workbook (.xlsx) these diagnostics were \
+computed against. Export at Level 2 detail or deeper."""
+
+  [[commands.inputs]]
+  key = "diagnostics_directory"
+  kind = "directory"
+  description = """\
+Folder holding leap_balance_source_review.csv and \
+leap_balance_source_differences.csv (both required) and \
+leap_balance_mapping_issues.csv (optional), produced by the balance-diagnostics \
+step. That step reads a LEAP balance export against the ESTO and 9th-edition \
+source tables (314 MB), so it runs in developer mode rather than in a release. \
+A results update / supply reconciliation run is not involved."""
+
+[[commands]]
+name = "balance-review-from-export"
+summary = "Build a balance-review workbook directly from a LEAP Energy Balance export."
+input_mode = "leap_balance_export"
+outputs = """\
+One balance_review_<economy>_<scenario>_<year>.xlsx workbook, the generated \
+diagnostic CSVs, a run manifest, and an input validation report under \
+output/<ECONOMY>/balance_review/."""
+
+  [[commands.inputs]]
+  key = "economy"
+  kind = "value"
+  description = "Economy code, for example 20_USA."
+
+  [[commands.inputs]]
+  key = "scenario"
+  kind = "value"
+  description = "Scenario name or code, for example Target or TGT."
+
+  [[commands.inputs]]
+  key = "year"
+  kind = "value"
+  description = "Four-digit review year, for example 2022."
+
+  [[commands.inputs]]
+  key = "balance_export_workbook"
+  kind = "file"
+  required = false
+  description = """\
+Optional explicit LEAP Energy Balance export workbook. When omitted, the \
+newest matching workbook is resolved from input/leap balances \
+exports/<ECONOMY>/."""
+
+  [[commands.inputs]]
+  key = "esto_table_path"
+  kind = "file"
+  required = false
+  description = "Optional ESTO base-table override; the bundled table is used by default."
+
+[[commands]]
+name = "dashboard"
+summary = "Render the Common ESTO comparison dashboard for one economy."
+input_mode = "existing_common_esto_comparison_data"
+outputs = """\
+A dashboard folder with index.html, per-sector pages, Plotly chart bundles, \
+chart_manifest.csv, and a run manifest, in a dated folder under output/."""
+
+  [[commands.inputs]]
+  key = "economy"
+  kind = "value"
+  description = "Economy code, for example 20_USA."
+
+  [[commands.inputs]]
+  key = "comparison_data_path"
+  kind = "file"
+  description = """\
+common_esto_comparison_data.csv from the leap_mappings pipeline. This file is \
+close to a gigabyte for the full economy set, so it is a run input rather than \
+part of the package."""
+
+  [[commands.inputs]]
+  key = "common_rows_path"
+  kind = "file"
+  description = "common_esto_rows.csv from the same leap_mappings run."
+
+[[commands]]
+name = "dashboard-from-export"
+summary = "Render the Common ESTO comparison dashboard for one economy from a LEAP balance export."
+input_mode = "leap_balance_export"
+outputs = """\
+A dashboard folder with index.html, per-sector pages, Plotly chart bundles, \
+chart_manifest.csv, and a run manifest, in a dated folder under output/."""
+
+  [[commands.inputs]]
+  key = "economy"
+  kind = "value"
+  description = "Economy code, for example 20_USA."
+
+  [[commands.inputs]]
+  key = "export_dir"
+  kind = "directory"
+  description = """\
+Folder of LEAP Energy Balance export workbooks (.xlsx) for this economy. \
+Defaults to input/leap balances exports/<ECONOMY>/ when not given. Runs the \
+leap_mappings mapping chain (a separate bundled executable, see the handover's \
+architecture decision) to produce Common ESTO comparison data before \
+rendering."""
+
+  [[commands.inputs]]
+  key = "comparison_data_path"
+  kind = "file"
+  required = false
+  description = """\
+Escape hatch: supply an existing common_esto_comparison_data.csv (with \
+common_rows_path) to skip the mapping chain entirely and behave like the \
+`dashboard` command."""
+
+  [[commands.inputs]]
+  key = "common_rows_path"
+  kind = "file"
+  required = false
+  description = "Paired with comparison_data_path for the escape hatch."

@@ -236,8 +236,9 @@ OUTPUT_FUEL_VALIDATION_SCOPE = "economy"
 # DEFAULT_MEASURE_UNITS, LEAP_BALANCE_FUEL_SETS, LEAP_BALANCE_ACTIVITY_FALLBACKS
 # imported from other_loss_own_use_proxy_utils
 
-# Keep electricity inside transmission/distribution losses for now.
-# Flip this to False if the branch should go back to excluding electricity.
+# The baseline-seed workflow does not initialise a transformation-side T&D
+# loss expression. Keep electricity in this proxy so the maintained
+# Demand\Other loss and own use branch receives the source loss series.
 INCLUDE_ELECTRICITY_IN_TD_LOSSES = True
 TD_LOSSES_EXCLUDED_ELECTRICITY_PRODUCTS = [] if INCLUDE_ELECTRICITY_IN_TD_LOSSES else ["17 Electricity"]
 TD_LOSSES_EXCLUDED_ELECTRICITY_FUELS = [] if INCLUDE_ELECTRICITY_IN_TD_LOSSES else ["17_electricity"]
@@ -276,6 +277,7 @@ def make_proxy_config(
     ninth_activity_exclude_subfuels: Sequence[str] | None = None,
     ninth_target_exclude_fuels: Sequence[str] | None = None,
     ninth_target_exclude_subfuels: Sequence[str] | None = None,
+    allow_ninth_target_without_esto_history: bool = False,
     leap_balance_rows: Sequence[str] | None = None,
     leap_balance_fuel_set: str = "",
     activity_value_mode: str = "signed_sum",
@@ -319,6 +321,9 @@ def make_proxy_config(
                 "sector_codes": list(ninth_target_sectors),
                 "exclude_fuels": list(ninth_target_exclude_fuels or []),
                 "exclude_subfuels": list(ninth_target_exclude_subfuels or []),
+                "allow_without_esto_history": bool(
+                    allow_ninth_target_without_esto_history
+                ),
             },
         },
         "notes": notes,
@@ -413,6 +418,11 @@ PROXY_CONFIG = [
         activity_value_mode="positive_only",
         esto_target_flows=["10.01.03 Liquefaction/regasification plants"],
         ninth_target_sectors=["10_01_03_liquefaction_regasification_plants"],
+        # Some economies have projected 10.01.03 own use even though the ESTO
+        # history contains no non-zero 10.01.03 fuel rows. This proxy is the
+        # sole LEAP owner, so retain those ninth rows instead of requiring an
+        # ESTO fuel-history gate.
+        allow_ninth_target_without_esto_history=True,
         notes=(
             "Starter proxy: positive output of natural gas and LNG from "
             "liquefaction/regasification. Economies that leave 09.06.02 empty "

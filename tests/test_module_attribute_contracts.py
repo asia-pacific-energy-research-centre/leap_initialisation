@@ -288,17 +288,17 @@ def test_no_cross_module_attribute_misattribution() -> None:
 # Modules to scan.  Kept explicit (rather than walking the whole tree) so the
 # test stays fast and free of import side effects from script-style modules.
 _BARE_NAME_SCAN_MODULES = [
-    "codebase.functions.supply_preflight",
-    "codebase.functions.supply_leap_io",
-    "codebase.functions.supply_results_saver",
+    "codebase.supply_reconciliation.preflight",
+    "codebase.supply_reconciliation.leap_io",
+    "codebase.supply_reconciliation.results_saver",
     "codebase.functions.supply_data_pipeline",
-    "codebase.functions.supply_reconciliation_tables",
-    "codebase.functions.supply_demand_mapping",
+    "codebase.supply_reconciliation.tables",
+    "codebase.supply_reconciliation.demand_mapping",
     "codebase.functions.transformation_record_builder",
     "codebase.functions.transformation_analysis_utils",
-    "codebase.supply_reconciliation_balance_tables",
-    "codebase.supply_reconciliation_utils",
-    "codebase.supply_reconciliation_allocation",
+    "codebase.supply_reconciliation.balance_tables",
+    "codebase.supply_reconciliation.utils",
+    "codebase.supply_reconciliation.allocation",
     "codebase.utilities.leap_results_dashboard_balance",
 ]
 

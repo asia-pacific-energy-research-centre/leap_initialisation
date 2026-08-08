@@ -7,6 +7,40 @@ from codebase import hydrogen_transformation_workflow as hw
 
 
 class TestHydrogenTransformationWorkflow(unittest.TestCase):
+    def test_green_electricity_uses_hydrogen_only_leap_label(self) -> None:
+        self.assertEqual(
+            core.HYDROGEN_DISPLAY_NAME_OVERRIDES["17_x_green_electricity"],
+            "Electricity for hydrogen",
+        )
+        self.assertEqual(
+            core.code_to_name_mapping.get("17_electricity", "Electricity"),
+            "Electricity",
+        )
+
+    def test_electrolyser_feedstock_path_uses_hydrogen_fuel_branch(self) -> None:
+        record = {
+            "economy": "20_USA",
+            "sector_title": "Hydrogen transformation",
+            "process_name": "Electrolysers",
+            "output_values": {},
+            "feedstock_shares": {"17_x_green_electricity": {2023: 1.0}},
+            "feedstock_values": {"17_x_green_electricity": {2023: 10.0}},
+            "auxiliary_ratios": {},
+            "process_share_by_year": {2023: 1.0},
+        }
+        rows = core.build_transformation_log_rows(
+            [record],
+            "Reference",
+            "United States",
+            2023,
+            2023,
+            dict(core.HYDROGEN_DISPLAY_NAME_OVERRIDES),
+        )
+        self.assertIn(
+            r"Transformation\Hydrogen transformation\Processes\Electrolysers\Feedstock Fuels\Electricity for hydrogen",
+            {row["Branch_Path"] for row in rows},
+        )
+
     def test_modeled_outputs_match_ninth_source(self) -> None:
         checks, summary = hw.verify_hydrogen_output_reproduction(
             economies=list(core.ECONOMIES_TO_ANALYZE),
@@ -78,4 +112,3 @@ class TestHydrogenTransformationWorkflow(unittest.TestCase):
         )
         economies = sorted({str(record.get("economy")) for record in rows})
         self.assertEqual(economies, ["ALL_ECONOMIES"])
-

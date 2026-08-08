@@ -30,7 +30,7 @@ Use `master`. Before starting:
    Never clear a lock until its recorded PID is confirmed dead.
 5. Resolve every batch economy through
    `find_leap_export_template()` and require `is_provisional == False`.
-6. Confirm `codebase/supply_reconciliation_config.py` still has
+6. Confirm `codebase/supply_reconciliation/config.py` still has
    `PARALLEL_ECONOMY_WORKERS = 0`. Do not change it above zero.
 7. Use `C:\Users\Work\miniconda3\python.exe`.
 
@@ -86,7 +86,7 @@ pinned interpreter, correct script, and only one active batch workflow process.
 Then clear the parent shell's `LEAP_WORKER_SNAPSHOT_JSON`; the child retains its
 inherited copy.
 
-Do not use `parallel_economy_runner.py`, `ThreadPoolExecutor`, multiple
+Do not use `supply_reconciliation/parallel_runner.py`, `ThreadPoolExecutor`, multiple
 terminals, or overlapping batch processes.
 
 ## Scheduled 30-minute monitoring

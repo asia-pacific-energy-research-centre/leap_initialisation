@@ -23,8 +23,12 @@ This plan follows the transfer-specific improvement:
   manifests.
 - Validate the combined workbook as well as producer-specific workbooks where
   the producer boundary matters.
-- Treat `BranchID`, `VariableID`, `ScenarioID`, and `RegionID` as import identity
-  checks, not fuel-catalog checks.
+- Treat `(Branch Path, Variable, Scenario, Region)` as the authoritative import
+  identity. These fields must match the selected template exactly.
+- Do not use `BranchID`, `VariableID`, `ScenarioID`, or `RegionID` to match or
+  validate imports: LEAP assigns them per PC/installation, so their values are
+  not portable. Existing ID-related code is deferred for separately scoped
+  review; this documentation change does not alter it.
 - Treat the fuel catalog as a shared union of exact LEAP branch structures.
 - Preserve exact fuel labels. Report inconsistent labels across templates rather
   than merging them.
@@ -126,7 +130,6 @@ severity logic in every producer.
 Migrate these checks first:
 
 - catalog branch coverage;
-- missing or nonzero `BranchID=-1` rows;
 - duplicate logical keys;
 - Region/economy consistency;
 - legacy transfer path detection;
@@ -157,7 +160,8 @@ The combined gate should verify:
 
 - no duplicate logical keys;
 - no producer ownership collisions;
-- all nonzero rows resolve to the target economy template;
+- all nonzero rows resolve to exactly one row in the target economy template
+  using `(Branch Path, Variable, Scenario, Region)`;
 - branch paths exist in the shared catalog and target template;
 - all blocking checks pass before LEAP import.
 
@@ -197,4 +201,3 @@ The work is complete when:
 - blocking failures prevent import;
 - warning-only findings remain visible and attributable;
 - focused producer tests and the NZ end-to-end validation run pass.
-

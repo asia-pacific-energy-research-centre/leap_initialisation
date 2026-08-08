@@ -157,7 +157,7 @@ a curiosity.**
 
 #### Still open, owned elsewhere
 
-- Two `supply_reconciliation_tables.py` defects, pinned by tests written to fail
+- Two `supply_reconciliation/tables.py` defects, pinned by tests written to fail
   when fixed: `sector_set` never narrowing the reconciliation mask, and the
   strict template resolver on aggregate sentinels. The sentinel raise is
   **masked by the gate, not resolved** - it returns if the API does.
@@ -206,7 +206,7 @@ family injection, preflight context injection): `50ae012`, `d557dab`,
 plus a final G2 two-year AUS run. Star-import removal was **not** done as
 part of this — the modules still each hold their own `import *` copy of
 config; that remains the underlying reason `PARALLEL_ECONOMY_WORKERS > 1`
-stays rejected in-process (see T7). D4.3 (split `supply_results_saver.py`) is
+stays rejected in-process (see T7). D4.3 (split `supply_reconciliation/results_saver.py`) is
 still deferred per its own recommendation.
 
 **Unblocked T7 (parallelism) — see below, also done.**
@@ -317,9 +317,9 @@ roadmap's "completed 2026-07-22" line): `tests/test_convergence_csv_cleanup.py`
 has `test_manifest_round_trip_and_input_drift_are_additive` and
 `test_prune_convergence_history_defaults_to_dry_run_and_keeps_latest`, plus
 run-id-scoped trim/remove tests; `dry_run`/manifest logic lives in
-`codebase/functions/capacity_unmet_convergence_diagnostics.py`,
-`codebase/supply_reconciliation_allocation.py`, and
-`codebase/supply_reconciliation_history.py`. **D5A.1 resolved as recommended:
+`codebase/supply_reconciliation/convergence.py`,
+`codebase/supply_reconciliation/allocation.py`, and
+`codebase/supply_reconciliation/history.py`. **D5A.1 resolved as recommended:
 manifest, not a widened CSV.** D5A.2-4 not individually re-verified.
 
 ### T6 - Phase 5B aggregated demand. PARTLY BLOCKED
@@ -404,7 +404,7 @@ correctly rejects it** — the star-import sharing problem it protects against
 is still live (T3 did not remove star imports).
 
 Instead, a separate **outer-loop orchestrator** was built:
-`codebase/functions/parallel_economy_runner.py` launches one *entire*
+`codebase/supply_reconciliation/parallel_runner.py` launches one *entire*
 `supply_reconciliation_workflow.py` process per economy (each does its own
 full setup/data-load/preflight, not just export generation), driven by an
 explicit `LEAP_WORKER_SNAPSHOT_JSON` env-var snapshot
@@ -544,7 +544,7 @@ both are correct.
 5. **T4** commits 1-3, 5 (safe anytime; can interleave with anything above) -
    **still open**, not touched this session.
 6. ~~**T3** state injection~~ - **DONE** 2026-07-22; D4.3 (split
-   `supply_results_saver.py`) remains deferred.
+   `supply_reconciliation/results_saver.py`) remains deferred.
 7. ~~**T5**~~ - **DONE**, reconfirmed 2026-07-23 by direct test inspection
    (see T5 above). D5A.2-4 not individually re-verified.
 8. ~~**T8** fixtures~~ - **DONE**, reconfirmed 2026-07-23 by direct test
@@ -566,7 +566,7 @@ both are correct.
 | D3.3 | Retire `master_config.xlsx` / `leap_mappings.xlsx` from `config/`? | Move to `config/legacy/`, do not delete yet |
 | D3.4 | Who owns rollup-rule reading? | **Parked 2026-07-23** - decide alongside the similar `leap_mappings`-side question |
 | D3.5 | Equivalence tolerance | **Confirmed 2026-07-23**: key sets exactly equal; totals within 1e-6 relative |
-| D4.3 | Split `supply_results_saver.py`? | Defer until after B2/B3, then re-measure |
+| D4.3 | Split `supply_reconciliation/results_saver.py`? | Defer until after B2/B3, then re-measure |
 | D4.5 | Keep the <500 LOC orchestrator target? | Drop it - LOC was never the defect |
 | D5A.1 | Manifest vs wider convergence CSV | Manifest |
 | D5B.3 | Contributions: separate sheet or sidecar? | **Confirmed and implemented 2026-07-23**: separate sheet, same workbook |

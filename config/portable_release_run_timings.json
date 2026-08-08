@@ -1,0 +1,23 @@
+{
+  "balance-review-from-export": [
+    {
+      "steps": {
+        "review": 221.6,
+        "validate": 4.2
+      },
+      "total": 225.9
+    }
+  ],
+  "dashboard-from-export": [
+    {
+      "steps": {
+        "compare": 155.7,
+        "convert": 5.6,
+        "parse_export": 4.2,
+        "render": 391.9,
+        "validate": 1.5
+      },
+      "total": 558.9
+    }
+  ]
+}

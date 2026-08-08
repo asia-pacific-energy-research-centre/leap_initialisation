@@ -67,9 +67,9 @@ are not the default orchestration boundary.
 | `aggregated_demand_workflow.py` | temporary aggregate demand branches where detailed LEAP demand is unavailable |
 | `functions/patch_baseline_seeds.py` | reviewed module replacement in an existing seed |
 
-The orchestrator is split across `supply_reconciliation_config.py`,
-`supply_reconciliation_allocation.py`, `supply_reconciliation_history.py`,
-`supply_reconciliation_balance_tables.py`, `supply_reconciliation_results.py`,
+The orchestrator is split across `supply_reconciliation/config.py`,
+`supply_reconciliation/allocation.py`, `supply_reconciliation/history.py`,
+`supply_reconciliation/balance_tables.py`, `supply_reconciliation/results.py`,
 and supporting functions. Older descriptions of a 13,000-line monolith are
 stale.
 
@@ -220,8 +220,6 @@ paraphrase those rules into ad-hoc lists.
 - Aggregated-demand generation omits a branch when every selected modelled
   value is zero (`5544853`); absence of that branch is therefore different from
   an unresolved non-zero template path.
-- Malaysia results-update needs sufficient Level 2 transformation detail for
-  its hydrogen process checks.
 
 ## Manual LEAP cycle
 

@@ -84,6 +84,7 @@ SUPPLY_MEASURES = [
 SUPPLY_FUEL_MATCH_EXCEPTIONS = {
     "biomass",
     "green electricity",
+    "electricity for hydrogen",
 }
 _SUPPLY_FUEL_MATCH_ERRORS_REPORTED: set[tuple[str, str]] = set()
 
@@ -94,7 +95,8 @@ if not getattr(workflow_cfg, "SUPPLY_INCLUDE_UNMET_REQUIREMENTS", False):
 
 # Stock Changes and Statistical Differences are balancing items LEAP cannot
 # project: unlike Imports/Exports/Production they get real values only in
-# Current Accounts (straight from ESTO base-year actuals, sign preserved);
+# Current Accounts (straight from ESTO base-year actuals; Stock Changes keep
+# the ESTO sign and Statistical Differences use the opposite ESTO sign);
 # Reference/Target are left at 0 on purpose. They live outside SUPPLY_MEASURES
 # because their branch root ("Stock Changes" / "Statistical Differences")
 # replaces "Resources" rather than sitting under it, and they are not gated by
@@ -198,9 +200,10 @@ def _build_stock_and_statistical_rows_for_fuel(
 ):
     """Build Stock Change / Statistical Differences rows for one fuel.
 
-    Current Accounts carries the actual (signed) ESTO base-year total for
-    each flow; Reference/Target stay at 0 because LEAP has no basis for
-    projecting either balancing item forward.
+    Current Accounts carries the normalized ESTO base-year total for each
+    flow: Stock Changes keep the ESTO sign, while Statistical Differences use
+    the opposite ESTO sign. Reference/Target stay at 0 because LEAP has no
+    basis for projecting either balancing item forward.
     """
     try:
         stock_and_stat_totals = {

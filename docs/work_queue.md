@@ -1,5 +1,229 @@
 # Remaining work queue
 
+## [31] Build and adopt a dataset-agnostic rollup-aware series resolver
+
+**Status: planned; do not broaden rollout without a reviewed mapping contract.**
+
+**2026-08-06 narrow comparator follow-up:** the balance-review diagnostic now
+uses the declared ESTO component selectors directly for the base-year `Road`
+and `Transport non road` branches, and already uses the analogous direct Ninth
+component path for projected Industry and non-road transport.  This is a
+contained correction, not the general resolver described below.  The remaining
+Hydrogen-transformation comparator gap is deferred while templates migrate
+`17_x_green_electricity` into Electricity: the eventual resolver must retain a
+parent subtotal when it is the sole non-zero representation of that parent, or
+derive it from child rows without double counting.
+
+Create one shared resolver for LEAP, ESTO, 9th Outlook, and future datasets.
+It must preserve exact raw identities, and only derive a rolled identity when
+an active, context-appropriate rule explicitly declares its components. It
+must never infer component membership from a category label or code prefix.
+
+Required contract:
+
+1. accept a dataset identity schema (sector/flow column, fuel/product column,
+   aggregation dimensions, value/year columns) and the applicable rollup-rule
+   sheet;
+2. return raw rows plus rolled rows, with rule ID, context, component count,
+   source identity, and exact-versus-rolled provenance;
+3. support the reviewed `ROLLUP_MODE` semantics, including non-expanding and
+   detached rules; and
+4. emit an explicit unresolved-rollup finding rather than silently falling
+   back to a guessed lookup.
+
+Initial rollout sites: `ninth_projection_mapping.py`, the ESTO base-year
+comparator path, `supply_demand_mapping.py`, `aggregated_demand_workflow.py`,
+`electricity_heat_interim_workflow.py`, and direct projection lookups in the
+balance/dashboard utilities. Migrate each site behind focused equivalence and
+provenance tests; do not make a repository-wide behavioural change in one
+step.
+
+The immediate Mexico base-year issue is separate and already has a narrow
+rule: Target 2022 uses the normal ESTO component-selector comparator (including
+`15.03 Rail / 17 Electricity = 5.883007 PJ`) and must not be replaced by a
+9th projection value. This is a concrete regression example for this item:
+the existing ESTO selector is economy-generic, but only applies at the ESTO
+base year and only when a mapped ESTO flow label encodes explicit component
+codes (for example `15.01,15.03-15.06`). It is not a general 9th rollup
+resolver and does not establish target-year comparator behaviour. Reconfirm
+this with a fresh review-only diagnostic once the raw LEAP export is available.
+
+## [30] Verify the corrected Oil Refining gross process boundary
+
+**Status: code, focused regression coverage, and the USA refining-only patch
+completed 2026-08-04; fresh LEAP round trip pending.**
+
+The USA Target 2022 balance export proved that the refinery seed mixed gross
+Exogenous Capacity (`34,101.290 PJ`) with Output Shares and Auxiliary Fuel Use
+ratios based on net deliverable output (`33,055.857 PJ`). LEAP consequently
+inflated ordinary refinery products and most auxiliary inputs by the exact
+factor `34,101.290 / 33,055.857 = 1.031626`.
+
+Oil Refining now keeps `09.07` output, capacity, output shares, auxiliary-ratio
+denominators, and gross-output/feedstock efficiency on one gross basis. The
+combined regression reconstructs `09.07 + 10.01.11` fuel by fuel, rather than
+testing each seed variable independently. Patch the latest `20_USA` seed with
+the supported workbook-based `oil_refineries` patch route. The patch replaced
+249 Oil Refining rows in `leap_import_baseline_seed_20_USA_20260804.xlsx` and
+archived the prior workbook. Workbook verification found a 100% output-share
+sum, gross capacity and production of `34,101.290359 PJ`, and source-consistent
+2022 auxiliary use (`197.530716 PJ` electricity, `1,026.696370 PJ` natural gas,
+and `657.622623 PJ` refinery gas). Outside the refinery branch, the producer
+only reserialized ten Reference/Target feedstock-share projection rows at the
+11th-12th decimal place and removed an empty spacer column. Import/recalculate
+the patched seed in LEAP, export a fresh 2022 balance, and rerun the
+balance-review diagnostic to complete the end-to-end proof.
+
+The patcher's post-write validation is now scoped to the exact successfully
+patched workbook paths, and its economy-to-seed selection deterministically
+chooses the newest filename date. Missing economy templates are reported
+directly against the affected seed and are counted as skipped validation; they
+no longer fall through to the obsolete literal
+`leap_export_template 20_USA.xlsx` path or produce a false all-clear message.
+
+## [29] Qualify the central baseline-seed final-artifact gate on real runs
+
+**Status: audit implementation and existing-NZ-artifact requalification
+complete 2026-08-03; a fresh producer run and promotion coupling remain
+pending.**
+
+The final writer now runs BSA-001–BSA-010 after saving the physical economy
+workbooks and writes a deterministic shadow acceptance package. Every new check
+is configured `audit`; hard findings expose `would_block` without changing run
+completion or promotion. A repaired copy of the existing `12_NZ` final artifact
+qualified as `SHADOW_WARN`: BSA-001 through BSA-004 and BSA-006 through BSA-010
+passed, the twelve known aggregate-demand placeholder rows remained BSA-005
+warnings, and no finding would block. That requalification proved the final
+writer/readback fix,
+but it reused already-produced LEAP rows and therefore does not qualify the
+upstream producer fixes.
+
+Before enabling `block` or making promotion read the manifest:
+
+1. **Deferred until the current higher-priority work is complete:** run a fresh
+   full `12_NZ` baseline-seed producer workflow with a unique run label. This
+   must natively exercise the per-economy fuel-catalog fix (`21d6489`), the
+   final `FOR_VIEWING` serialization fix (`3c33fbc`), and the central artifact
+   gate. Accept only if BSA-003 reports no LNG duplicate conflict, BSA-009
+   passes, the twelve aggregate-demand placeholders remain non-blocking
+   BSA-005 warnings, and the package has zero `would_block` findings;
+2. review one fresh real-template `20_USA` package and resolve every
+   `SHADOW_INCOMPLETE` evidence gap;
+3. run the intended all-economy set and confirm hashes, template routing,
+   producer evidence, and diagnostic requirements;
+4. integrate the same run-level gate after the active parallel parent merge;
+5. make promotion consume the manifest in a separate, explicitly reviewed
+   behaviour-change commit.
+
+See `baseline_seed_final_artifact_contract.md` and
+`baseline_seed_gate_consolidation_review.md`.
+
+
+## [28] Remove the balance-review artifact-tool dependency
+
+**Status: completed 2026-08-03.**
+
+The three-sheet balance-review workbook is now authored by
+`codebase/functions/balance_review_workbook_builder.py` with Python and
+`openpyxl`. The former Node.js
+`codebase/balance_structure_review_workbook_workflow.mjs` builder and its
+`@oai/artifact-tool` runtime dependency were removed. The maintained review
+path still preserves the selected LEAP balance layout, PJ normalization,
+LEAP-minus-source diagnostics, unavailable-comparator styling, and the missing
+combinations audit. An active-code search found no other
+`@oai/artifact-tool` imports in `leap_initialisation`. A wider audit found two
+remaining Python-migration candidates in the sibling `leap_mappings` repo:
+`codebase/separate_axis_mapping_gap_review_artifact_builder.mjs` and
+`codebase/separate_axis_mapping_workbooks_artifact_builder.mjs`, both launched
+through `codebase/separate_axis_mapping_refresh_workflow.py`. They were not
+changed from this repository because the mapping worktree already contains
+unrelated active edits. One local scrapbook docstring that described a JSON
+file as an artifact-tool payload was corrected because that exploration does
+not invoke an artifact-tool builder.
+
+## [27] Restore electricity T&D losses to Other loss and own use
+
+**Status: completed 2026-08-03.**
+
+The July 30 exclusion of electricity from the other-loss/own-use T&D proxy was
+based on the assumption that the active baseline-seed transformation producer
+initialised the same loss elsewhere. It does not: the transformation-side T&D
+loss code found in this repository is legacy/result-reporting code, while the
+maintained seed branch is
+`Demand\Other loss and own use\Transmission and distribution loss\Electricity`.
+The exclusion therefore replaced real ESTO/Ninth source values with zero-fill.
+
+Electricity is again included in both the proxy activity and target-energy
+scopes. For `20_USA`, the maintained inputs produce Current Accounts 2022
+activity of `97071.286303` PJ and final-energy intensity of
+`0.007602252180902575`, with projected Reference/Target values sourced from the
+Ninth dataset. Refresh affected seeds with the focused `losses_own_use` patch;
+a full initialisation run is not required.
+
+## [26] Decide whether consolidated baseline-seed results workbooks are required
+
+**Status: investigation requested 2026-08-03.**
+
+The `supply_recon_run_*.xlsx` files are currently produced as consolidated
+intermediate results alongside the economy-specific
+`leap_import_baseline_seed_<economy>_*.xlsx` deliverables. Confirm whether
+downstream workflows, diagnostics, dashboards, or human review consume the
+consolidated workbooks after the final seed is written. If they are not
+required, reduce them to an explicitly marked intermediate artifact or make
+their creation opt-in, while preserving the final seed, diagnostics, and
+provenance needed for reproducibility. Do not remove them until consumers and
+the validation/monitoring chain have been audited.
+
+## [25] Add a Non energy branch to All demand aggregated
+
+**Status: cancelled 2026-08-01. Non-energy use remains in Other sector.**
+
+The reviewed model decision is to keep ESTO `17.*` and Ninth
+`17_nonenergy_use` inside `Demand\All demand aggregated\Other sector`; no
+separate LEAP Non energy branch should be created. The misleading AUS preview
+was caused by the diagnostic's expected-source selector using only ESTO
+`16.03-16.05`. The diagnostic now compares the same scope written to LEAP:
+`16.03-16.05,17`.
+
+**Cardinality warning:** this is an aggregation rule, not a clean canonical
+one-to-one mapping. One LEAP `Other sector` cell can combine several ESTO flow
+families, including non-energy use, while the Ninth-to-ESTO fuel/sector bridge
+can contribute several source pairs to the same displayed cell. That can become
+many-to-many when projections are allocated. Keep component provenance and the
+existing cardinality/allocation-completeness gates; do not reuse the combined
+`16.03-16.05,17` selector for detailed-demand ownership, correction allocation,
+or canonical mapping generation without a separate mapping review.
+
+`codebase/scrapbook/non_energy_aggregated_demand_rows_exploration.py` applies
+the maintained single-axis fuel mappings and a strict three-source rule:
+
+- non-zero in ESTO 2025 final year 2023 under non-energy;
+- non-zero in ESTO 2024 final year 2022 under non-energy; and
+- non-zero in at least one Ninth reference or target year from 2023 onward
+  under `17_nonenergy_use`.
+
+The resulting structural handoff contains 25
+`Demand\All demand aggregated\Non energy\{fuel}` leaves. Seven of those are
+currently non-zero for Australia in all three evidence sources; the shared
+template retains all 25 so structure is not economy- or vintage-specific.
+Eight near misses remain visible in the review workbook and are excluded from
+the branch handoff.
+
+The earlier 25-leaf structural handoff remains historical evidence only. Do
+not apply it to LEAP templates or mapping authority unless this modelling
+decision is explicitly revisited.
+
+## [24] Subtotal mapping mismatches warn without stopping updates
+
+**Status: completed 2026-07-29.**
+
+Unapproved LEAP-to-ESTO or LEAP-to-9th subtotal-flag mismatches remain visible
+as console warnings and in
+`subtotal_flag_mismatch_warnings_<mapping-sheet>.csv`, but no longer raise from
+the mapping loader. A mapping-workbook review issue must not cause the entire
+economy's balance-demand input to be skipped. The maintained exception sheet
+still distinguishes reviewed intentional mismatches from unresolved warnings.
+
 > **This is the engineering log, not the handover schedule.** For dated
 > status, priorities, owners, dependencies and the four-week plan, start at
 > [handover_work_queue_20260728.md](handover_work_queue_20260728.md). This
@@ -51,6 +275,43 @@ Complete when repository-wide call searches find no initialisation workflow
 declaring structural parenthood, mapping-workbook writers are gone from this
 repo, and the full initialisation suite plus selected golden-economy comparisons
 pass.
+## [24] Merge and verify the supply reconciliation package migration
+
+**Status: implementation complete in a worktree; master integration and
+workflow verification pending.**
+
+The reconciliation implementation modules and reconciliation-specific support
+files have been moved into `codebase/supply_reconciliation/` on branch
+`codex/reconciliation-package-migration`, while
+`codebase/supply_reconciliation_workflow.py` remains the notebook-facing root
+entry point. The implementation checkpoint is commit `bee2b98`; the worktree is
+`C:\Users\Work\github\worktrees\leap_initialisation_reconciliation_package`.
+
+Bounded verification completed without launching the full workflow: all modules
+compiled and imported, 1,121 tests collected, the 241-test core gate passed,
+and preset forwarding passed. Before merging, reconcile the branch with current
+master changes and run the established one-economy/test-horizon smoke against a
+known-good post-boundary workbook. Keep the full-horizon multi-economy run for a
+later useful production-output boundary.
+
+## [23] Opt-in final baseline-seed expression overrides
+
+**Status: completed 2026-07-29.**
+
+The final seed writer can now insert or replace narrowly selected variables
+that normal producers do not own. The baseline-seed preset points to
+`config/baseline_seed_postprocess_rules.json` and keeps the feature disabled
+unless explicitly activated. Rules can constrain economy, exact branch path,
+branch-path substrings, variable and scenario; optionally trigger only when a
+populated canonical-template value differs from an expected value; and write an
+explicit LEAP expression. Every change is template-backed, passes through final
+seed validation, and is recorded in a per-economy CSV audit. Results-update and
+patch presets explicitly disable the feature to prevent notebook state leakage.
+Maintained branch paths in
+`../leap_mappings/data/temp/new leap rows.xlsx` are globally excluded from
+automatic post-processing so intentionally configured new-template rows retain
+their expressions.
+See [baseline_seed_postprocess_rules.md](baseline_seed_postprocess_rules.md).
 
 ## [22] Three-batch real-template baseline-seed run
 
@@ -68,7 +329,8 @@ batch verification gates in
 `codex/baseline-seed-export-diagnostics` worktree. AUS Reference 2022 direct
 workbook investigation completed code-side. The feedstock-only transformation
 efficiency fix is implemented; a fresh LEAP cycle is required to verify it and
-the already-landed thermal-coal producer fix.**
+the already-landed thermal-coal producer fix. Review/update orchestration and
+production all-years sheet selection completed and verified 2026-07-29.**
 
 Build a limited-year feedback loop that generates a baseline seed, imports and
 recalculates it in LEAP, reads REF/TGT Energy Balance exports back, diagnoses
@@ -76,7 +338,7 @@ source differences, previews the existing results-update changes, and repeats
 until differences converge or are classified.
 
 The corrected AUS Reference 2022 cycle now also has a reusable, balance-shaped
-review surface. `codebase/balance_structure_review_workbook_workflow.mjs`
+review surface. `codebase/functions/balance_review_workbook_builder.py`
 preserves the original 39-column by 138-row Energy Balance layout and produces
 side-by-side sheets for the unchanged LEAP values, red `LEAP - source` errors,
 blue source values, a full expected-source sheet that distinguishes
@@ -86,6 +348,33 @@ the configured `10.01.11 Oil refineries` auxiliary-own-use flow to the
 `09.07 Oil refineries` source boundary and signs non-specified own use as
 consumption. The corrected 195-row run has 93 mismatches, 65 matches, 37
 unavailable rows, and 58 material differences.
+
+The direct-workbook diagnostic and review builder also accept
+`Thousand Petajoule` metadata. Extraction and every displayed review sheet are
+normalized to PJ, while the source workbook remains unchanged.
+
+`codebase/balance_update_workflow.py` now provides review-only, update-only,
+and review-plus-update notebook presets. Review years are an exact sheet
+selection from `data/leap balances exports`; they do not alter the independent
+results-update horizon. The update stage calls the existing results-update
+preset through `run_results_update_with_config()`, with `full` as the notebook
+default and `base_year_plus_one` retained as an explicit smoke option. A real
+AUS 2022 REF/TGT review against the current production all-years exports
+completed with 428 comparison rows and 144 mismatches; both comparison
+workbooks passed the programmatic formula-error scan.
+
+The 2026-07-29 AUS review identified two canonical mapping gaps. The mapping
+workbook now maps LEAP `Stock Changes` to ESTO `06 Stock changes` and LEAP
+`Statistical Differences` to ESTO `11 Statistical discrepancy`; direct Energy
+Balance extraction treats the visible `From Stocks` row as the `Stock Changes`
+alias. The diagnostic excludes the derived `Total`
+fuel column plus `Total Transformation`, `Total Final Energy Demand` /
+`Total final energy consumption`, and `Unmet Requirements`, retaining those
+rows in `leap_balance_ignored_rows.csv` rather than presenting them as missing
+mappings. Transfer components use the maintained expanding `Transfers` rollup
+for comparison. A later write/update stage must distribute a rolled transfer
+difference through the same economy-specific shares and policies used by
+`transfers_workflow.py`; it must not use an equal or ad hoc split.
 
 Before the next AUS rerun, the supply exporter now emits native
 `Stock Changes\Primary|Secondary\...` and
@@ -183,6 +472,20 @@ Two additional findings were confirmed:
   to blank. The AUS template and seed already show blank `Scale`, and the final
   seed validator does not compare `Scale`, `Units`, or `Per...`; this is a
   live-area metadata validation gap, not a seed-row value defect.
+
+Transformation ownership and update routing were tightened on 2026-07-29:
+
+- `10.01.03 Liquefaction/regasification plants` is now owned exclusively by
+  `Demand\Other loss and own use\Liquefaction and regasification plants`.
+  LNG transformation records no longer read that flow as Auxiliary Fuel Use,
+  and the Demand proxy retains nonzero 9th projection rows even when ESTO has
+  no historical `10.01.03` fuel row. The balance preview therefore no longer
+  folds `10.01.03` into the LNG transformation comparator.
+- Electricity interim, CHP interim, and Heat plant interim records now
+  participate in the normal capacity-unmet process catalog. Scenario-specific
+  capacity additions are applied to their Exogenous Capacity and Historical
+  Production before the power-interim workbook is written, using the same
+  runtime capacity ledger as other transformation modules.
 
 A Current Accounts-only seed is structurally supported. When no Reference or
 Target scenario is requested, the baseline runner now uses Reference only for
@@ -286,7 +589,7 @@ Required design and implementation work:
 
 `filter_actionable_mapping_config_mismatches()` and
 `build_template_matching_summary()` in
-`codebase/functions/supply_results_saver.py`, wired into
+`codebase/supply_reconciliation/results_saver.py`, wired into
 `save_results_linked_single_workbook`, write
 `supply_reconciliation_template_matching_summary.csv` alongside the existing
 detailed CSVs (unchanged, still unfiltered). 8 new tests
@@ -350,7 +653,7 @@ Do not weaken seed validation or silently delete the detailed files.
 ### Priority follow-up — make template verification economy-specific — ✅ Implemented 2026-07-23 (`68de3f4`)
 
 `_resolve_ids_and_filter_unmatched_export_rows_per_economy`
-(`codebase/functions/supply_results_saver.py`) groups the combined export by
+(`codebase/supply_reconciliation/results_saver.py`) groups the combined export by
 `Region`, resolves each region's own economy's LEAP export template via
 `leap_export_template_resolver.resolve_leap_export_template_or_fallback`, and
 runs the existing single-reference ID-resolution logic per group instead of
@@ -439,7 +742,7 @@ Completed:
 - canonical `leap_fuel_branch_catalog.csv` name with legacy compatibility copy;
 - transfer export catalog preflight and legacy-root rejection.
 
-Next work may use `fuel_catalog_preflight.py`, `supply_leap_io.py`, readiness
+Next work may use `fuel_catalog_preflight.py`, `supply_reconciliation/leap_io.py`, readiness
 tests, and documentation, but must not modify Workpath A files. The remaining
 full-model dependency is tracked below as a cross-cutting follow-up and should
 be split by file ownership before implementation.
@@ -453,14 +756,14 @@ be split by file ownership before implementation.
   second resolver or key implementation.
 - Verification runs must use a clean tree or an isolated worktree.
 
-### Shared-helper handoff ✅ DONE 2026-07-17 — `supply_leap_io.py` released to Workpath B
+### Shared-helper handoff ✅ DONE 2026-07-17 — `supply_reconciliation/leap_io.py` released to Workpath B
 
 The aggregate-aware wrapper is now public API:
 `leap_export_template_resolver.resolve_leap_export_template_or_fallback(economy, *, fallback=...)`.
 `supply_leap_io._leap_export_template_for_economy` is a thin alias over it and is
 unchanged for every existing caller.
 
-**Workpath B is unblocked: `supply_leap_io.py` is released.** Workpath A will not
+**Workpath B is unblocked: `supply_reconciliation/leap_io.py` is released.** Workpath A will not
 touch it again for the standalone routing.
 
 Two design points worth keeping:
@@ -1019,7 +1322,7 @@ have passed it.
 
 The reset is the **wipe half of a wipe-then-fill pair whose fill half is the
 LEAP API import pass** — the `... or RUN_RESET_...` clauses at
-`supply_results_saver.py:3718-3766` and `supply_leap_io.py:2387`'s forced
+`supply_reconciliation/results_saver.py:3718-3766` and `supply_reconciliation/leap_io.py:2387`'s forced
 Current Accounts fill. The API is decommissioned and production runs in
 workbook mode, so the fill never executes. A wipe with no fill does not stage
 a refill; it deletes.
@@ -1072,7 +1375,7 @@ proves statically.
 
 **Finding 2 — the aggregate-sentinel raise is MASKED, not resolved.** With the
 reset enabled, `reset_..._to_zero` resolved a LEAP export template through the
-strict `resolve_leap_export_template` (`supply_reconciliation_tables.py:1807`,
+strict `resolve_leap_export_template` (`supply_reconciliation/tables.py:1807`,
 `:1815`), which raises on `00_APEC`, the aggregate sentinel the compressed
 projection preflight runs. Every run then ended in a deferred `RuntimeError`.
 `c5401a5` stops the reset being entered at all, so the raise no longer fires —
@@ -1098,7 +1401,7 @@ minus Demand\Other loss and own use   0
 Every non-aggregated `Demand\` branch in the template sits under
 `Demand\Other loss and own use`, which is excluded whenever
 `ZERO_OTHER_DEMAND_EXCLUDE_OWN_USE_PROXY_BRANCHES` is `True`
-(`supply_reconciliation_config.py:1092`) because the own-use proxy populates
+(`supply_reconciliation/config.py:1092`) because the own-use proxy populates
 those branches in the same pass. Zero rows is **correct**. Region is a red
 herring: `zero_fill_unset_rows` overwrites `Region` rather than filtering on
 it, returning 1,236 rows for every region value tested.
@@ -1115,13 +1418,13 @@ belongs to G2.
 #### Open items this work created or uncovered
 
 1. **`sector_set` is computed but never applied to the reconciliation mask**
-   (`supply_reconciliation_tables.py:1854`; the mask at `:1886-1905` uses
+   (`supply_reconciliation/tables.py:1854`; the mask at `:1886-1905` uses
    economy ∧ scenario ∧ product ∧ year only). It gates the *transformation
    records* half alone, so `RESET_SCOPE_SECTOR_TITLES` silently does nothing to
    the reconciliation half. Dormant while the reset is gated off, but it is the
    first knob anyone will reach for if the API returns.
 2. **Finding 2's strict resolver**, above.
-3. **A third dishonest log line.** `supply_preflight.py:526` reports reset state
+3. **A third dishonest log line.** `supply_reconciliation/preflight.py:526` reports reset state
    from the flag alone and never sees the gate, so after `c5401a5` it prints
    `reset is ENABLED` on runs where the reset is skipped. Being fixed via a
    shared `reset_is_effective()` predicate in
@@ -1189,7 +1492,7 @@ permanent import-only reproduction — it acquires no locks and writes nothing:
   `RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT` too — that copy is what
   the honest `[WARN] Reset reminder` line was reading.
 - The compressed **projection** preflight does not override the reset flag (only
-  the `results_update` preflight does, at `supply_preflight.py:1229`), so after
+  the `results_update` preflight does, at `supply_reconciliation/preflight.py:1229`), so after
   step 4 that preflight will exercise the reset as well. Its outputs are
   isolated under `preflight_compressed_projection/`.
 
@@ -1209,7 +1512,7 @@ Neither `_sync_results_saver_overrides()` nor `_broadcast_config_overrides()`
 delivers them (the broadcast at `supply_reconciliation_workflow.py:574` carries
 only `CAPACITY_UNMET_PASS_MODE` plus refreshed *paths*).
 
-**Intent is not ambiguous.** `supply_reconciliation_config.py:1096` is commented
+**Intent is not ambiguous.** `supply_reconciliation/config.py:1096` is commented
 `# PRESET-CONTROLLED DEFAULT: both active presets replace this value.` The
 mechanism meant to replace it does not.
 
@@ -1235,7 +1538,7 @@ routing, not reset — but no recent seed is a "clean reset" baseline.
 
 Live consequences today (workbook mode, LEAP import disabled):
 
-1. **`supply_results_saver.py:3223` — the zero-reset is skipped.**
+1. **`supply_reconciliation/results_saver.py:3223` — the zero-reset is skipped.**
    `reset_supply_and_transformation_import_export_to_zero(...)` never runs, so
    supply/transformation Import/Export/target values are not zeroed before
    filling. Stale values persist in the reconciliation table and process
@@ -1428,7 +1731,7 @@ not. Build it.
 The reset is the wipe half of a wipe-then-fill pair. In API mode the fill was
 the LEAP import pass. In workbook mode there is no second pass, so the wipe was
 applied to the **in-memory reconciliation table** at
-`supply_results_saver.py:3251` — before `save_year_balance_tables` and
+`supply_reconciliation/results_saver.py:3251` — before `save_year_balance_tables` and
 everything downstream — and nothing refilled it. The effect is not "LEAP is
 zeroed then filled"; it is **"the workbook ships with the values deleted"**:
 1,111,593 PJ of `01_AUS` exports, and +271,919 PJ on the REF 2022 energy
@@ -1436,7 +1739,7 @@ balance. Measured, not inferred — see [17].
 
 ### The demand side already does this correctly — copy it
 
-`build_other_demand_zeroing_workbooks` (`supply_leap_io.py:2256`) emits a
+`build_other_demand_zeroing_workbooks` (`supply_reconciliation/leap_io.py:2256`) emits a
 **separate** artifact, `demand_zeroing_{economy}.xlsx`, imported *before* the
 main workbook. Zeroing happens inside LEAP, through its own file, and the main
 workbook still carries real values. The supply/transformation side has no
@@ -1468,7 +1771,7 @@ defect.**
 - **Never bundle the mechanism with the behaviour change.** [17]'s flip passed
   every static check — clean forwarding report, 60 green tests, an AST-derived
   blast radius — and still deleted a million PJ. Only running it revealed that.
-- Two `supply_reconciliation_tables.py` defects are pinned by
+- Two `supply_reconciliation/tables.py` defects are pinned by
   fail-when-fixed tests and are in scope here: `sector_set` never narrowing the
   reconciliation mask (so the reset's blast radius cannot be scoped by module),
   and the strict template resolver raising on aggregate sentinels like
@@ -1644,14 +1947,14 @@ cache and zero-argument helpers; `23aac52` had already routed both. Re-verified
 against the tree 2026-07-17 before starting work — nothing to implement:
 
 - `_RESET_SCOPE_FROM_EXPORT_CACHE` **is** keyed, by resolved source path
-  (`supply_preflight.py:580`), so entries cannot cross templates.
+  (`supply_reconciliation/preflight.py:580`), so entries cannot cross templates.
 - `_load_reset_scope_from_full_model_export`, `_configured_reset_module_names`,
   `_configured_reset_fuel_labels` and
   `_configured_reset_output_fuel_labels_by_module` all take `template_path`.
 - **No call site anywhere relies on the `None` default** (which would fall back
   to `RESULTS_VERIFICATION_EXPORT_PATH`, i.e. USA). Verified by grep.
 - `reset_supply_and_transformation_import_export_to_zero`
-  (`supply_reconciliation_tables.py:1741`) **self-partitions**: >1 economy in the
+  (`supply_reconciliation/tables.py:1741`) **self-partitions**: >1 economy in the
   reconciliation table → it recurses per economy with
   `template_path=resolve_leap_export_template(economy)` (`:1807`); exactly 1 →
   same resolver (`:1815`). Its `supply_results_saver:3159` caller therefore
@@ -1774,42 +2077,19 @@ carry the same distortion.
 
 ## Known pre-existing failures — not regressions, do not chase
 
-- `tests/test_baseline_seed_writer_validation.py` — **3 failures**, and they are
-  **an intentional open deviation, not stale tests and not a regressed guard**
-  (diagnosed 2026-07-17; an earlier revision of this entry guessed "stale or
-  regressed" and was wrong on both):
-  `test_final_writer_writes_diagnostics_before_conflict_blocks`,
-  `test_writer_accumulates_economy_failures_and_writes_no_final_workbook`,
-  `test_default_reference_validation_window_requires_2023_through_2060`.
+- `tests/test_baseline_seed_writer_validation.py` — **resolved 2026-08-03**.
+  `test_final_writer_writes_diagnostics_before_conflict_blocks` and
+  `test_default_reference_validation_window_requires_2023_through_2060` now set
+  `BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS=False` locally. They
+  test the strict blocking contract and pass without changing the production
+  warning policy. A separate test continues to verify the configured warning
+  behavior. The production flag decision remains open and must be settled from
+  real consolidated findings, not by coupling contract tests to that setting.
 
-  **Sole cause:** `workflow_config.py:91`
-  `BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True`, set at the
-  user's instruction on 2026-07-10. The comment at `workflow_config.py:79-91`
-  names these three tests. Monkeypatching the flag to `False` turns all 16 green.
-  Mechanism: `prepare_seed_rows_for_write` (`baseline_seed_validation.py:1835`)
-  clears the `blocking` column, and the raise at `supply_leap_io.py:1977-1984` is
-  gated on `blocking` being non-empty. (SEED-012 tests still pass because their
-  findings are appended at `supply_leap_io.py:1960-1961`, after that path.)
-  Test 3 is the same cause, not a config move: `BASE_YEAR=2022`/`FINAL_YEAR=2060`
-  are intact and the sibling window test passes; SEED-009 simply no longer blocks.
-
-  **Do not touch the tests** — they assert the confirmed INIT-005 behaviour and
-  go green the moment the guard is restored. The recorded sequence is: complete
-  the findings-clearing run, then revert the flag to `False`. See INIT-005
-  History in `docs/special_rules_and_design_decisions.md:265-292`. The flag has
-  only ever been *committed* as `True`; the 2026-07-10 `False` period was
-  working-tree only.
-
-  **The real open question is a judgement call, pending since 2026-07-10:**
-  whether the current blocking findings are genuinely insignificant enough to
-  leave the flag `True`. Read the latest `*_consolidated_rule_findings.csv` to
-  settle it.
-
-  **Gap worth closing meanwhile:** nothing pins this deviation as intentional —
-  three unexplained reds are the same shape as "a guard stopped blocking and
-  nobody noticed", which is why it was misdiagnosed above. If the flag stays
-  `True` for any length of time, mark them `xfail(reason=...)` naming the flag,
-  so the suite is green *and* the deviation stays visible.
+  The former cross-economy all-or-none test
+  `test_writer_accumulates_economy_failures_and_writes_no_final_workbook` was
+  removed on 2026-08-03 by user decision. A finding in one economy no longer has
+  any reason to suppress a valid final workbook for another economy.
 
 - `tests/test_supply_assets.py::test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup`
   — **stale test**. It monkeypatches `apply_matt_subtotal_mapping`, which now
@@ -1832,7 +2112,7 @@ carry the same distortion.
   ledger), the fixture doesn't accept it, and the call raises `TypeError`.
   Not diagnosed further; fixture needs an `allocation_ledger=None` parameter
   to match.
-- ~~`tests/test_module_attribute_contracts.py::test_no_bare_name_misattribution[codebase.functions.supply_leap_io]`~~
+- ~~`tests/test_module_attribute_contracts.py::test_no_bare_name_misattribution[codebase.supply_reconciliation.leap_io]`~~
   — **cleared.** Was failing mid-flight while the export-template work was
   uncommitted; passes at `6bda122` (39/39). Left here only to stop it being
   re-reported. This is what a verification run against a dirty tree looks like

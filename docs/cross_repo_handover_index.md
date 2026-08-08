@@ -42,16 +42,16 @@ This is a **runtime, code-level** dependency, not a reference one.
 |---|---|---|
 | `leap_mappings/config/outlook_mappings_master.xlsx` | `codebase/mappings/canonical_loaders.py` (`load_canonical_sheet`, `filter_leap_rollup_names`, `resolve_rollup_components`) | **Hard runtime dependency.** The loader raises with "Expected leap_mappings/config/outlook_mappings_master.xlsx" if absent. Every reconciliation run reads it. |
 | the same workbook | `codebase/utilities/leap_results_dashboard_balance.py`, `codebase/mapping_tools/build_energy_balance_relationships.py`, `codebase/mapping_tools/update_mapping_cardinality.py` | Additional readers of the same canonical workbook. |
-| `leap_mappings/config/mapping_issue_exception_sets.xlsx` (`subtotal_mismatch_allowed` sheet) | the canonical ninth mapping validation | **Gate.** An unapproved subtotal-to-non-subtotal mismatch **stops the run**. |
+| `leap_mappings/config/mapping_issue_exception_sets.xlsx` (`subtotal_mismatch_allowed` sheet) | the canonical ninth mapping validation | **Review metadata.** An unapproved subtotal-to-non-subtotal mismatch is written as a warning and does not stop the run. |
 | `leap_mappings/codebase/mapping_tools/convert_leap_results_to_esto.py` | referenced by `codebase/utilities/leap_balance_export_resolver.py` | Conversion reference for LEAP balance → ESTO axis. |
 
 Three properties of this coupling matter at handover:
 
-1. **It is a blocking gate, not a soft input.** On 2026-07-28 the `12_NZ` Target
-   results-update run failed after 122 seconds on exactly two unapproved
-   mismatch rows. Neither repository could resolve it alone: the code is correct
-   to refuse, and the decision belongs to the mapping owner. See INITQ-014 in
-   [`handover_work_queue_20260728.md`](handover_work_queue_20260728.md).
+1. **It is review metadata, not a blocking gate.** On 2026-07-28 the `12_NZ`
+   Target results-update run failed after 122 seconds on exactly two unapproved
+   mismatch rows. The 2026-07-29 policy change keeps those rows visible in a
+   warning CSV while allowing the economy's balance-demand input to load. The
+   mapping owner still decides whether to correct or approve each relationship.
 2. **The workbook is a live Excel file on one machine.** `leap_mappings` carried
    an open-workbook lock (`config/~$outlook_mappings_master.xlsx`) at this
    snapshot. The parent index records that an open workbook forces `_rebuilt`
@@ -172,7 +172,7 @@ actually involve here, which the parent compresses to one line.
 Steps 3–5 require a human in LEAP. No part of this loop is unattended today.
 
 **Concurrency.** Per-economy parallelism goes through
-`codebase/functions/parallel_economy_runner.py`, which launches one OS process
+`codebase/supply_reconciliation/parallel_runner.py`, which launches one OS process
 per economy with its own `LEAP_WORKER_SNAPSHOT_JSON` snapshot and
 `run_output_label`. Do **not** launch a second bare invocation of
 `supply_reconciliation_workflow.py` from the same working tree — `ECONOMIES` is
@@ -188,7 +188,7 @@ repository's.
 
 | Symptom | Owner | First check |
 |---|---|---|
-| Run stops on a subtotal-to-non-subtotal mismatch | **joint** — mapping owner decides | `outputs/.../checks/subtotal_flag_blocking_mismatches_leap_combined_ninth.csv`. Either an authored mapping defect (fix in `leap_mappings`) or an intentional mismatch (approve in `mapping_issue_exception_sets.xlsx`). Never auto-approve. |
+| Run warns on a subtotal-to-non-subtotal mismatch | **joint** — mapping owner decides | `outputs/.../checks/subtotal_flag_mismatch_warnings_leap_combined_ninth.csv`. Either an authored mapping defect (fix in `leap_mappings`) or an intentional mismatch (approve in `mapping_issue_exception_sets.xlsx`). The warning does not skip the economy's demand input. |
 | Canonical workbook read fails or returns stale sheets | `leap_mappings` | Excel lock `config/~$outlook_mappings_master.xlsx`; then whether the sibling checkout is present at `../leap_mappings`. |
 | Seed rows carry another economy's BranchIDs | `leap_initialisation` | The template resolver. Confirm the economy resolves to its own template and not to a `_COMP_GEN` or USA fallback. |
 | Seed contains `BranchID = -1` rows with non-zero values | `leap_initialisation` | Unresolved branches. The recorded migration-lag class is `Demand\Other loss and own use\Non specified own uses\*`; anything else is new. |

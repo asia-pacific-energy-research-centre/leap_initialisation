@@ -10,6 +10,7 @@ node_modules/
 #######################################
 # original_preparation_code/*
 *.png
+!web_app/assets/leap_energy_wallpaper.png
 *.7z
 *.zip
 *.gz
@@ -226,3 +227,7 @@ tmp/
 !results/.gitkeep
 !intermediate_data/.gitkeep
 !tmp/.gitkeep
+
+# Generated portable-release staging, PyInstaller work, and packages.
+# Safe to delete by hand; the builder never creates links inside it.
+release_build/

@@ -6,9 +6,9 @@ import pytest
 
 from codebase.configuration import workflow_config
 from codebase.functions import supply_data_pipeline
-from codebase.functions import supply_demand_mapping
-from codebase.functions import supply_preflight
-from codebase.functions import supply_results_saver
+from codebase.supply_reconciliation import demand_mapping as supply_demand_mapping
+from codebase.supply_reconciliation import preflight as supply_preflight
+from codebase.supply_reconciliation import results_saver as supply_results_saver
 from codebase import aggregated_demand_workflow, other_loss_own_use_proxy_workflow
 from codebase import transformation_workflow
 

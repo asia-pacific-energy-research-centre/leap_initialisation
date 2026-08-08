@@ -308,6 +308,19 @@ def append_synthetic_reference_rows(
     ]
     esto_key_cols = [col for col in ["economy", "flows", "products"] if col in esto_out.columns]
 
+    # These tables are large and synthetic-row rules are few.  Cache the
+    # normalised key columns once; repeatedly doing fillna/astype/strip for
+    # every rule and duplicate check can dominate the reference-table load.
+    def _normalised_columns(df: pd.DataFrame, columns: list[str]) -> dict[str, pd.Series]:
+        return {
+            col: df[col].fillna("").astype(str).str.strip()
+            for col in columns
+            if col in df.columns
+        }
+
+    esto_normalised = _normalised_columns(esto_out, esto_key_cols)
+    ninth_normalised = _normalised_columns(ninth_out, ninth_key_cols)
+
     scenario_templates = (
         ninth_out[
             [col for col in ninth_out.columns if col in {"economy", "scenarios", "subtotal_layout", "subtotal_results"}]
@@ -342,11 +355,14 @@ def append_synthetic_reference_rows(
         source_esto_matches = esto_df.copy()
         if source_flow and "flows" in source_esto_matches.columns:
             source_esto_matches = source_esto_matches[
-                source_esto_matches["flows"].fillna("").astype(str).str.strip().eq(source_flow)
+                esto_normalised["flows"].eq(source_flow)
             ]
         if source_product and "products" in source_esto_matches.columns:
+            product_mask = esto_normalised["products"].eq(source_product)
+            if source_flow:
+                product_mask &= esto_normalised["flows"].eq(source_flow)
             source_esto_matches = source_esto_matches[
-                source_esto_matches["products"].fillna("").astype(str).str.strip().eq(source_product)
+                product_mask
             ]
         source_esto_match_count = int(len(source_esto_matches))
 
@@ -373,7 +389,7 @@ def append_synthetic_reference_rows(
                     if esto_key_cols:
                         duplicate_mask = pd.Series(True, index=esto_out.index)
                         for key in esto_key_cols:
-                            duplicate_mask &= esto_out[key].fillna("").astype(str).str.strip().eq(
+                            duplicate_mask &= esto_normalised[key].eq(
                                 str(candidate.get(key) or "").strip()
                             )
                         if bool(duplicate_mask.any()):
@@ -416,7 +432,7 @@ def append_synthetic_reference_rows(
                     if ninth_key_cols:
                         duplicate_mask = pd.Series(True, index=ninth_out.index)
                         for key in ninth_key_cols:
-                            duplicate_mask &= ninth_out[key].fillna("").astype(str).str.strip().eq(str(candidate.get(key) or "").strip())
+                            duplicate_mask &= ninth_normalised[key].eq(str(candidate.get(key) or "").strip())
                         if bool(duplicate_mask.any()):
                             continue
                         duplicate_new = any(

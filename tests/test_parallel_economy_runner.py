@@ -12,7 +12,7 @@ import textwrap
 
 import pytest
 
-from codebase.functions import parallel_economy_runner as runner
+from codebase.supply_reconciliation import parallel_runner as runner
 
 
 def test_build_worker_snapshots_gives_each_economy_a_distinct_label() -> None:
@@ -226,7 +226,7 @@ def test_resource_diagnostics_headroom_is_judged_against_pre_run_available_ram(
     """Headroom must reflect what else was already running on the machine,
     not total RAM - that's the whole point of measuring pre-run available RAM
     rather than total capacity."""
-    import codebase.functions.parallel_economy_runner as runner_module
+    import codebase.supply_reconciliation.parallel_runner as runner_module
     from codebase.utilities.system_resources import SystemResourceSnapshot
 
     fake_script = tmp_path / "slow_fake_worker.py"

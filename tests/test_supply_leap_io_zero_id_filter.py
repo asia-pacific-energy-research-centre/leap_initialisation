@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from codebase.functions.supply_leap_io import _drop_zero_only_unmatched_transformation_rows
+from codebase.supply_reconciliation.leap_io import _drop_zero_only_unmatched_transformation_rows
 
 
 def test_final_writer_drops_zero_only_unmatched_transformation_rows() -> None:

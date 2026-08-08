@@ -46,13 +46,14 @@ ECONOMIES = None            # None = all economies, or e.g. ["20_USA", "01_AUS"]
 # ═══════════════════════════════════════════════════════════════════════════
 
 import argparse
+from functools import lru_cache
 import re
 import shutil
 import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
 import pandas as pd
 
@@ -368,6 +369,64 @@ VALIDATION_IGNORE_FUEL_NAMES: frozenset[str] = frozenset({
     # are remapped to "Solar nonspecified" at source in _safe_power_interim_display_label.
 })
 
+# Economy-independent branch exceptions are maintained in this workbook rather
+# than in code so they remain easy to review and update:
+# config/baseline_seed_validation_exception_sets.xlsx
+VALIDATION_EXCEPTION_WORKBOOK_PATH = (
+    REPO_ROOT / "config" / "baseline_seed_validation_exception_sets.xlsx"
+)
+VALIDATION_EXCEPTION_SHEET = "branch_exceptions"
+
+
+def _validation_truthy(value: object) -> bool:
+    """Interpret the enabled flag used by the validation exception workbook."""
+    return str(value or "").strip().lower() in {"1", "true", "t", "yes", "y", "on"}
+
+
+@lru_cache(maxsize=None)
+def load_validation_exception_branch_notes(
+    workbook_path: Path = VALIDATION_EXCEPTION_WORKBOOK_PATH,
+) -> dict[str, str]:
+    """Load enabled branch-path exceptions and their review notes from Excel."""
+    if not workbook_path.exists():
+        return {}
+    try:
+        exceptions = pd.read_excel(
+            workbook_path,
+            sheet_name=VALIDATION_EXCEPTION_SHEET,
+            dtype=object,
+        ).fillna("")
+    except (FileNotFoundError, ValueError):
+        return {}
+
+    required_columns = {"enabled", "branch_path", "notes"}
+    missing_columns = required_columns.difference(exceptions.columns)
+    if missing_columns:
+        raise ValueError(
+            f"{VALIDATION_EXCEPTION_WORKBOOK_PATH.name} is missing columns: "
+            f"{sorted(missing_columns)}"
+        )
+
+    notes_by_path: dict[str, str] = {}
+    for row in exceptions.itertuples(index=False):
+        values = row._asdict()
+        if not _validation_truthy(values["enabled"]):
+            continue
+        branch_path = str(values["branch_path"] or "").strip()
+        note = str(values["notes"] or "").strip()
+        if branch_path and note:
+            notes_by_path[branch_path] = note
+    return notes_by_path
+
+
+def _validation_exception_note(branch_path: str) -> str | None:
+    """Return the documented exception note for a branch path, if configured."""
+    normalized_path = normalize_template_key(branch_path)
+    for exception_path, note in load_validation_exception_branch_notes().items():
+        if normalize_template_key(exception_path) == normalized_path:
+            return note
+    return None
+
 def split_documented_exclusions(
     df: pd.DataFrame,
     branch_path_col: str = "Branch Path",
@@ -397,11 +456,7 @@ def _template_for_economy(economy: object | None) -> Path:
     """Return the LEAP export template whose IDs apply to this economy."""
     if economy is None or leap_export_template_resolver.is_aggregate_economy(economy):
         return FULL_MODEL_EXPORT_PATH
-    try:
-        return leap_export_template_resolver.resolve_leap_export_template(economy)
-    except (FileNotFoundError, ValueError) as exc:
-        print(f"[WARN] {exc}")
-        return FULL_MODEL_EXPORT_PATH
+    return leap_export_template_resolver.resolve_leap_export_template(economy)
 
 
 def _build_id_lookup(
@@ -516,14 +571,30 @@ def _economy_from_seed_filename(seed_path: Path) -> str | None:
     return match.group("economy") if match else None
 
 
+def _latest_seed_files_by_economy(seed_dir: Path) -> dict[str, Path]:
+    """Return the newest dated baseline seed for each economy."""
+    selected: dict[str, tuple[str, Path]] = {}
+    for path in seed_dir.glob("leap_import_baseline_seed_*.xlsx"):
+        match = SEED_FILENAME_PATTERN.match(path.name)
+        if match is None:
+            continue
+        economy = match.group("economy").upper()
+        stamp = match.group("stamp")
+        current = selected.get(economy)
+        if current is None or (stamp, path.name) > (current[0], current[1].name):
+            selected[economy] = (stamp, path)
+    return {economy: item[1] for economy, item in selected.items()}
+
+
 def validate_seed_files(
     seed_dir: Path = BASELINE_SEED_DIR,
     template_path: Path | None = None,
     ignore_prefixes: frozenset[str] = VALIDATION_IGNORE_PREFIXES,
     ignore_fuel_names: frozenset[str] = VALIDATION_IGNORE_FUEL_NAMES,
     allow_unresolved_prefixes: tuple[str, ...] = (),
+    seed_paths: Iterable[Path] | None = None,
 ) -> int:
-    """Check all seed files against the template; return number of invalid rows found.
+    """Check selected seed files against their templates; return invalid-row count.
 
     Expected IDs come from the same canonical template lookup the baseline-seed
     validator uses (``build_template_id_lookup``), so this printed report and
@@ -532,20 +603,51 @@ def validate_seed_files(
 
     Each seed file belongs to one economy and is checked against that economy's
     LEAP export template, since branch paths and IDs differ between areas. Pass
-    ``template_path`` to check every seed against one template instead.
+    ``seed_paths`` to validate only exact files (the patcher uses this for the
+    files successfully changed in the current invocation). When omitted, every
+    seed in ``seed_dir`` is checked for backwards-compatible audit use. Pass
+    ``template_path`` to check every selected seed against one template instead.
     """
-    seed_files = sorted(seed_dir.glob("leap_import_baseline_seed_*.xlsx"))
+    seed_files = (
+        sorted(Path(path) for path in seed_paths)
+        if seed_paths is not None
+        else sorted(seed_dir.glob("leap_import_baseline_seed_*.xlsx"))
+    )
     if not seed_files:
         return 0
 
     total_bad = 0
+    total_documented_exceptions = 0
+    validated_files = 0
+    skipped_files = 0
     for seed_path in seed_files:
         if template_path is not None:
             seed_template = template_path
         else:
-            seed_template = _template_for_economy(_economy_from_seed_filename(seed_path))
+            economy = _economy_from_seed_filename(seed_path)
+            if economy is None:
+                print(
+                    f"[SKIP] {seed_path.name}: cannot infer an economy from the "
+                    "seed filename; validation skipped."
+                )
+                skipped_files += 1
+                continue
+            try:
+                seed_template = _template_for_economy(economy)
+            except (FileNotFoundError, ValueError) as exc:
+                print(
+                    f"[SKIP] {seed_path.name}: no usable LEAP export template "
+                    f"for economy {economy}; validation skipped."
+                )
+                print(f"       {exc}")
+                skipped_files += 1
+                continue
         if not seed_template.exists():
-            print(f"[WARN] Template not found, skipping validation: {seed_template}")
+            print(
+                f"[SKIP] {seed_path.name}: resolved template does not exist: "
+                f"{seed_template}"
+            )
+            skipped_files += 1
             continue
 
         lookup = _canonical_template_lookup(seed_template)
@@ -555,9 +657,11 @@ def validate_seed_files(
             _, data = _find_header_row(raw)
         except Exception as exc:
             print(f"  [WARN] Could not read {seed_path.name}: {exc}")
+            skipped_files += 1
             continue
 
         bad_rows: list[str] = []
+        documented_exception_counts: dict[str, int] = {}
         for _, row in data.iterrows():
             bp = str(row.get("Branch Path", "") or "")
             if not bp or bp.lower() in ("nan", "area:", ""):
@@ -565,6 +669,12 @@ def validate_seed_files(
             if any(bp.startswith(p) for p in ignore_prefixes):
                 continue
             if bp.split("\\")[-1] in ignore_fuel_names:
+                continue
+
+            exception_note = _validation_exception_note(bp)
+            if exception_note is not None:
+                documented_exception_counts.setdefault(bp, 0)
+                documented_exception_counts[bp] += 1
                 continue
 
             # Case-insensitive match: resolve to canonical template path if found.
@@ -623,11 +733,30 @@ def validate_seed_files(
             if len(bad_rows) > 20:
                 print(f"  ... and {len(bad_rows) - 20} more")
             total_bad += len(bad_rows)
+        if documented_exception_counts:
+            exception_count = sum(documented_exception_counts.values())
+            total_documented_exceptions += exception_count
+            print(
+                f"\n[EXCEPTION] {seed_path.name} — {exception_count} "
+                "documented missing branch row(s):"
+            )
+            for exception_path, count in documented_exception_counts.items():
+                note = _validation_exception_note(exception_path)
+                print(f"  {count} row(s): {exception_path}")
+                print(f"    note: {note}")
+        validated_files += 1
 
-    if total_bad == 0:
-        print("[OK] All seed file rows match the template.")
-    else:
+    if total_bad == 0 and validated_files:
+        if total_documented_exceptions:
+            print("[OK] All non-excepted seed file rows match the template.")
+        else:
+            print("[OK] All seed file rows match the template.")
+    elif total_bad:
         print(f"\n[WARN] {total_bad} invalid row(s) found across seed files.")
+    else:
+        print("[WARN] No seed files were validated.")
+    if skipped_files:
+        print(f"[WARN] Skipped validation for {skipped_files} seed file(s).")
     return total_bad
 
 
@@ -819,10 +948,10 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
     elif module == "transfers":
         from codebase import transfers_workflow as _w
         from codebase.functions import transformation_analysis_utils as _core
-        from codebase.functions.supply_leap_io import (
+        from codebase.supply_reconciliation.leap_io import (
             save_transfer_exports_with_supply_overrides,
         )
-        from codebase.functions.supply_results_saver import (
+        from codebase.supply_reconciliation.results_saver import (
             _build_transformation_supply_fuel_catalog_df,
         )
         _core.prepare_transformation_assets()
@@ -856,10 +985,10 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
     }:
         from codebase import transformation_workflow as _w
         from codebase.functions import transformation_analysis_utils as _core
-        from codebase.functions.supply_leap_io import (
+        from codebase.supply_reconciliation.leap_io import (
             save_transformation_exports_with_split_targets,
         )
-        from codebase.functions.supply_results_saver import (
+        from codebase.supply_reconciliation.results_saver import (
             _build_transformation_supply_fuel_catalog_df,
             _catalog_for_economy,
         )
@@ -912,7 +1041,7 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
             BASE_YEAR,
             PROJECTION_END_YEAR,
         )
-        from codebase.supply_reconciliation_config import (
+        from codebase.supply_reconciliation.config import (
             AGGREGATED_DEMAND_EXCLUDE_OWN_USE_TD_LOSSES,
             AGGREGATED_DEMAND_EXCLUDED_SECTORS,
             AGGREGATED_DEMAND_USE_SECTOR_BRANCHES,
@@ -954,10 +1083,10 @@ def _run_source_workflow(module: str, economies: list[str] | None) -> list[Path]
     elif module == "losses_own_use":
         from codebase import other_loss_own_use_proxy_workflow as proxy_workflow
         from codebase.functions import transformation_analysis_utils as _core
-        from codebase.functions.supply_leap_io import (
+        from codebase.supply_reconciliation.leap_io import (
             _resolve_other_loss_own_use_proxy_activity_source_mode,
         )
-        from codebase.supply_reconciliation_config import (
+        from codebase.supply_reconciliation.config import (
             CAPACITY_UNMET_PASS_MODE,
             OTHER_LOSS_OWN_USE_LEAP_BALANCE_DATE_ID,
             OTHER_LOSS_OWN_USE_LEAP_BALANCE_SCENARIO,
@@ -1158,9 +1287,9 @@ def run_patch(
     ValueError
         If `module` is not in MODULE_REGISTRY.
     NotImplementedError
-        If the module is a transformation auto-regen sector (any module with
-        `auto_sector_keys`, e.g. "oil_refineries", "transformation"). These are
-        not safely patchable and must be refreshed via the full workflow.
+        If a legacy inline auto-regeneration module with `auto_sector_keys` is
+        registered. Current transformation modules use their workbook producer
+        and are patchable through this entry point.
     RuntimeError
         If no source rows were collected, or if patching failed for one or
         more economies (raised after all economies were attempted, with a
@@ -1224,15 +1353,12 @@ def _run_patch_locked(
 
     strip_prefixes = cfg.resolve_strip_prefixes()
 
-    seed_files = {
-        _econ_token(p.stem): p
-        for p in BASELINE_SEED_DIR.glob("leap_import_baseline_seed_*.xlsx")
-        if _econ_token(p.stem)
-    }
+    seed_files = _latest_seed_files_by_economy(BASELINE_SEED_DIR)
 
     from codebase.functions.supply_data_pipeline import get_region_for_economy
 
     failures: dict[str, str] = {}
+    patched_seed_paths: list[Path] = []
     for tok, new_df in sorted(source_by_econ.items()):
         seed_path = seed_files.get(tok)
         if not seed_path:
@@ -1251,6 +1377,7 @@ def _run_patch_locked(
                 source_workflow=module,
                 economy=tok,
             )
+            patched_seed_paths.append(seed_path)
         except PermissionError:
             msg = "file is locked (close it in Excel and re-run for this economy)"
             print(f"  [{tok}] FAILED — {msg}")
@@ -1262,8 +1389,14 @@ def _run_patch_locked(
             failures[tok] = str(exc)
 
     print("Done.")
-    print("\nValidating seed files against template...")
-    validate_seed_files()
+    if patched_seed_paths:
+        print(
+            f"\nValidating {len(patched_seed_paths)} seed file(s) patched in "
+            "this invocation against their economy templates..."
+        )
+        validate_seed_files(seed_paths=patched_seed_paths)
+    else:
+        print("\nNo successfully patched seed files to validate.")
 
     if failures:
         summary = "; ".join(f"{tok}: {msg}" for tok, msg in sorted(failures.items()))

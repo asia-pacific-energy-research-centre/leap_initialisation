@@ -589,6 +589,57 @@ def _route_transfer_projection_to_historical_flow(
     return working
 
 
+def _build_transfer_projection_profile_history(
+    historical_transfer_data: pd.DataFrame,
+    base_year: int,
+) -> pd.DataFrame:
+    """Roll active transfer subflows up before allocating 9th fuel projections.
+
+    The maintained 9th crosswalk targets the parent ``08 Transfers`` flow, while
+    ESTO commonly stores the economy's product profile under a child such as
+    ``08.99 Transfers nonspecified``.  The projection allocator must see that
+    child profile at the parent flow before it allocates one 9th fuel across
+    several possible ESTO products.  Otherwise it has no base-year evidence and
+    falls back to equal shares.
+    """
+    if historical_transfer_data.empty:
+        return historical_transfer_data.copy()
+    year_col = (
+        base_year
+        if base_year in historical_transfer_data.columns
+        else str(base_year)
+    )
+    if year_col not in historical_transfer_data.columns:
+        return historical_transfer_data.copy()
+
+    working = historical_transfer_data.copy()
+    working["economy_key"] = working["economy"].apply(normalize_economy_key)
+    working[year_col] = pd.to_numeric(
+        working[year_col], errors="coerce"
+    ).fillna(0.0)
+    flow_names = working["flows"].astype(str).str.strip()
+    subflow_mask = flow_names.isin(TRANSFER_SUBFLOWS)
+    active_subflow_economies = set(
+        working.loc[subflow_mask]
+        .groupby("economy_key", dropna=False)[year_col]
+        .apply(lambda values: values.abs().sum())
+        .loc[lambda totals: totals > 0]
+        .index
+    )
+    if not active_subflow_economies:
+        return working.drop(columns=["economy_key"])
+
+    active_economy_mask = working["economy_key"].isin(active_subflow_economies)
+    parent_mask = flow_names.eq("08 Transfers")
+    working = working.loc[~(active_economy_mask & parent_mask)].copy()
+    rolled_subflow_mask = (
+        working["economy_key"].isin(active_subflow_economies)
+        & working["flows"].astype(str).str.strip().isin(TRANSFER_SUBFLOWS)
+    )
+    working.loc[rolled_subflow_mask, "flows"] = "08 Transfers"
+    return working.drop(columns=["economy_key"])
+
+
 def build_transfer_data_for_scenario(scenario: str) -> tuple[pd.DataFrame, list[int]]:
     """Build transfer-only data with ESTO history and scenario-specific 9th projections."""
     if core.esto_data_raw is None or core.ninth_data_raw is None:
@@ -607,11 +658,15 @@ def build_transfer_data_for_scenario(scenario: str) -> tuple[pd.DataFrame, list[
     # (warn by default). If transfers legitimately cannot conserve by
     # construction, this will warn on every projection -- say so and exempt it
     # rather than reverting the whole policy.
+    projection_profile_history = _build_transfer_projection_profile_history(
+        historical,
+        core.BASE_YEAR,
+    )
     projection_df, _ = build_with_conservation_policy(
         f"transfers projection (scenario={scenario!r})",
         lambda strict_conservation: core.build_esto_projection_table(
             ninth_data=ninth_transfer_data,
-            esto_data=historical,
+            esto_data=projection_profile_history,
             mapping_path=core.NINTH_TO_ESTO_MAPPING_PATH,
             base_year=core.BASE_YEAR,
             projection_years=core.PROJECTION_YEAR_RANGE,

@@ -60,6 +60,12 @@ DEFAULT_FEEDSTOCK_SCALE = "%"
 DEFAULT_AUXILIARY_UNITS = "Petajoule"
 DEFAULT_AUXILIARY_PER = "Petajoule"
 
+# Temporary migration behavior: retain the existing LEAP variable rows while
+# clearing values that were previously populated in the LEAP areas. Remove this
+# after the transition period once old Historical Production values no longer
+# need to be explicitly cleared by imports.
+EMIT_ZERO_HISTORICAL_PRODUCTION = True
+
 APEC_ECONOMY_TO_LEAP_REGION = {
     "01_AUS": "Australia",
     "02_BD": "Brunei Darussalam",
@@ -407,20 +413,21 @@ def format_value(value):
 
 
 def _safe_print_line(text):
-    """Print debug text without aborting on console encoding quirks.
-
-    The LNG/LPG debug structure is informational only. If the platform console
-    rejects a label, fall back to an ASCII-escaped write so the analysis can
-    continue.
-    """
-    try:
-        print(text)
-    except Exception:
-        safe_text = str(text).encode("ascii", "backslashreplace").decode("ascii")
-        try:
-            sys.stdout.write(safe_text + "\n")
-        except Exception:
-            sys.__stdout__.write(safe_text + "\n")
+    """Print optional debug text without depending on a hosted console stream."""
+    text_value = str(text)
+    escaped_value = text_value.encode("ascii", "backslashreplace").decode("ascii")
+    for stream in (getattr(sys, "stdout", None), getattr(sys, "__stdout__", None)):
+        if stream is None or not callable(getattr(stream, "write", None)):
+            continue
+        for value in (text_value, escaped_value):
+            try:
+                stream.write(value + "\n")
+                flush = getattr(stream, "flush", None)
+                if callable(flush):
+                    flush()
+                return
+            except Exception:
+                continue
 
 
 def build_year_rows(branch_path, measure, scenario, value_by_year, units, scale, per_value):
@@ -913,13 +920,16 @@ def _normalize_process_boundary_for_leap(
     output_values,
     auxiliary_ratios,
     value_tolerance=1e-9,
+    preserve_gross_output_basis=False,
 ):
     """Return LEAP-facing net outputs and rebased auxiliary ratios.
 
     ESTO transformation output is gross. When a module also consumes one of
-    its output fuels as auxiliary energy, LEAP-facing capacity and output
-    shares must use the remaining deliverable output. Efficiency continues to
-    use the untouched gross output and feedstock values.
+    its output fuels as auxiliary energy, LEAP must retain one gross basis for
+    capacity, output shares, auxiliary ratios, and efficiency; LEAP then
+    records the auxiliary consumption separately in the module balance. This
+    applies to every transformation module, not only Oil Refining: coke ovens,
+    blast furnaces, and LNG regasification can have the same overlap.
 
     A fully self-consuming process has no valid auxiliary-per-net-output
     denominator. Preserve its gross representation until that edge case has a
@@ -953,6 +963,7 @@ def _normalize_process_boundary_for_leap(
         }
         empty_result = {
             "output_values": gross_output_values,
+            "deliverable_output_values": gross_output_values,
             "auxiliary_ratios": raw_auxiliary_ratios,
             "gross_output_values": gross_output_values,
             "auxiliary_energy_values": {},
@@ -1082,8 +1093,20 @@ def _normalize_process_boundary_for_leap(
             }
             for label in normalized_auxiliary_ratios
         }
+        if preserve_gross_output_basis:
+            return {
+                "output_values": gross_output_values,
+                "deliverable_output_values": net_output_values,
+                "auxiliary_ratios": raw_auxiliary_ratios,
+                "gross_output_values": gross_output_values,
+                "auxiliary_energy_values": auxiliary_energy_values,
+                "same_module_auxiliary_values": same_module_auxiliary_values,
+                "external_auxiliary_energy_values": external_auxiliary_energy_values,
+                "status": "gross_output_with_separate_auxiliary_use",
+            }
         return {
             "output_values": net_output_values,
+            "deliverable_output_values": net_output_values,
             "auxiliary_ratios": rebased_auxiliary_ratios,
             "gross_output_values": gross_output_values,
             "auxiliary_energy_values": auxiliary_energy_values,
@@ -1137,12 +1160,16 @@ def build_process_record(
         leap_boundary = _normalize_process_boundary_for_leap(
             output_values,
             auxiliary_ratios,
+            preserve_gross_output_basis=True,
         )
         return {
             "economy": economy,
             "sector_title": sector_title,
             "process_name": process_name,
             "output_values": leap_boundary["output_values"],
+            "deliverable_output_values": leap_boundary[
+                "deliverable_output_values"
+            ],
             "gross_output_values": leap_boundary["gross_output_values"],
             "feedstock_values": feedstock_values,
             "feedstock_shares": dict(feedstock_shares or {}),
@@ -1223,7 +1250,6 @@ def build_zero_skeleton_record(
         output_import_targets=zero_targets,
         output_export_targets=dict(zero_targets),
     )
-    record["historical_production_by_year"] = dict(zero_by_year)
     record["exogenous_capacity_by_year"] = dict(zero_by_year)
     record["capacity_units"] = "Gigajoules/Year"
     record["is_zero_skeleton"] = True
@@ -1926,6 +1952,21 @@ def build_transformation_log_rows(
             process_branch_path = build_branch_path(
                 ["Transformation", sector_title, "Processes", str(process_name)]
             )
+            if EMIT_ZERO_HISTORICAL_PRODUCTION:
+                rows.extend(
+                    build_year_rows(
+                        process_branch_path,
+                        "Historical Production",
+                        scenario,
+                        {
+                            year: 0.0
+                            for year in range(scenario_base_year, scenario_final_year + 1)
+                        },
+                        "Petajoule",
+                        "",
+                        "",
+                    )
+                )
             rows.extend(
                 build_year_rows(
                     process_branch_path,
@@ -1940,25 +1981,6 @@ def build_transformation_log_rows(
 
             capacity_units = str(record.get("capacity_units") or "Gigajoules/Year")
             capacity_scale = str(record.get("capacity_scale") or "")
-            historical_production_by_year = record.get("historical_production_by_year")
-            if isinstance(historical_production_by_year, dict) and historical_production_by_year:
-                historical_values = clip_value_by_year_range(
-                    historical_production_by_year,
-                    scenario_base_year,
-                    scenario_final_year,
-                )
-                rows.extend(
-                    build_year_rows(
-                        process_branch_path,
-                        "Historical Production",
-                        scenario,
-                        historical_values,
-                        "Petajoule",
-                        "",
-                        "",
-                    )
-                )
-
             exogenous_capacity_by_year = record.get("exogenous_capacity_by_year")
             if isinstance(exogenous_capacity_by_year, dict) and exogenous_capacity_by_year:
                 exogenous_values = clip_value_by_year_range(
@@ -2707,10 +2729,9 @@ def build_aux_fuel_zero_rows(
         # Process-level zero rows: Historical Production and Exogenous Capacity.
         # Explicit zeros tell LEAP this module had no output/capacity rather than
         # inheriting stale values from a prior import.
-        process_level_spec = [
-            ("Historical Production", "Petajoule", "", ""),
-            ("Exogenous Capacity", "Gigajoules/Year", "", ""),
-        ]
+        process_level_spec = [("Exogenous Capacity", "Gigajoules/Year", "", "")]
+        if EMIT_ZERO_HISTORICAL_PRODUCTION:
+            process_level_spec.insert(0, ("Historical Production", "Petajoule", "", ""))
         for process_prefix in sorted(tier2_ext_process_prefixes):
             for scenario in scenarios:
                 years = _years_for_scenario(scenario)
@@ -2956,19 +2977,28 @@ def save_transformation_export(
     id_lookup_path: Path | str | None = None,
     full_branch_catalog_df=None,
     in_scope_sector_titles: set[str] | None = None,
+    process_records_by_scenario: dict[str, list[dict]] | None = None,
 ):
     """Save a LEAP import file built from process records across scenarios."""
     try:
-        region = resolve_export_region_from_process_economies(process_records, region)
+        region_records = process_records
+        if process_records_by_scenario:
+            region_records = [
+                record
+                for scenario_records in process_records_by_scenario.values()
+                for record in (scenario_records or [])
+            ]
+        region = resolve_export_region_from_process_economies(region_records, region)
+        has_process_records = bool(region_records)
         can_build_catalog_zero_skeleton = (
             full_branch_catalog_df is not None
             and not full_branch_catalog_df.empty
             and bool(in_scope_sector_titles)
         )
-        if not process_records and not can_build_catalog_zero_skeleton:
+        if not has_process_records and not can_build_catalog_zero_skeleton:
             print("No process records available for LEAP export.")
             return None
-        if not process_records:
+        if not has_process_records:
             print(
                 "No process records available; building a canonical zero skeleton "
                 "from the full-model branch catalog."
@@ -2987,9 +3017,14 @@ def save_transformation_export(
         combined_rows = []
         for scenario in scenarios:
             scenario_config = scenario_configs.get(scenario, {})
+            scenario_records = (
+                process_records_by_scenario.get(str(scenario), process_records)
+                if process_records_by_scenario
+                else process_records
+            )
             combined_rows.extend(
                 build_transformation_log_rows(
-                    process_records,
+                    scenario_records,
                     scenario,
                     region,
                     combined_base_year,

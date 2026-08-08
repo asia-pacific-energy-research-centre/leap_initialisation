@@ -46,7 +46,7 @@ def test_connect_to_leap_raises_rather_than_touching_com():
 )
 def test_leap_import_toggles_default_off(flag):
     """These defaulted True, so every run attempted an API import and warned."""
-    from codebase import supply_reconciliation_config
+    from codebase.supply_reconciliation import config as supply_reconciliation_config
 
     assert getattr(supply_reconciliation_config, flag) is False, (
         f"{flag} must stay False while the LEAP API is decommissioned; "
@@ -64,7 +64,7 @@ def test_api_import_guards_are_not_coupled_to_write_mode():
     """
     import inspect
 
-    from codebase.functions import supply_leap_io
+    from codebase.supply_reconciliation import leap_io as supply_leap_io
 
     source = inspect.getsource(supply_leap_io)
     assert 'get_analysis_input_write_mode() == "api" and not leap_api.is_available()' not in source
@@ -73,7 +73,7 @@ def test_api_import_guards_are_not_coupled_to_write_mode():
 
 def test_api_import_entry_points_short_circuit():
     """Every API import entry point returns empty without touching the API."""
-    from codebase.functions import supply_leap_io
+    from codebase.supply_reconciliation import leap_io as supply_leap_io
 
     result = supply_leap_io.run_results_linked_leap_import(
         supply_export_paths=[],

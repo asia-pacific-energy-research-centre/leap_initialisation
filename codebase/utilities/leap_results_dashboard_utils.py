@@ -569,16 +569,53 @@ def apply_explicit_sector_reassignments(
     ninth_out = ninth_df.copy()
     status_rows: list[dict[str, object]] = []
 
-    def _exact_mask(df: pd.DataFrame, criteria: dict[str, str]) -> pd.Series:
+    # The reference tables can contain millions of rows, while the explicit
+    # reassignment table is deliberately small.  Normalising a whole column
+    # inside every rule repeatedly made this stage needlessly expensive.  Keep
+    # the normalised views beside the output frames and update them whenever a
+    # rule changes a matched value so sequential rule semantics are preserved.
+    def _normalised_columns(df: pd.DataFrame) -> dict[str, pd.Series]:
+        return {
+            col: df[col].fillna("").astype(str).str.strip().str.lower()
+            for col in df.columns
+            if col in {
+                "flows",
+                "products",
+                "sectors",
+                "sub1sectors",
+                "sub2sectors",
+                "sub3sectors",
+                "sub4sectors",
+                "fuels",
+                "subfuels",
+            }
+        }
+
+    base_normalised = _normalised_columns(base_out)
+    ninth_normalised = _normalised_columns(ninth_out)
+
+    def _exact_mask(
+        df: pd.DataFrame,
+        normalised: dict[str, pd.Series],
+        criteria: dict[str, str],
+    ) -> pd.Series:
         if df.empty:
             return pd.Series(False, index=df.index)
         mask = pd.Series(True, index=df.index)
         for col, expected in criteria.items():
             if col not in df.columns or expected == "":
                 continue
-            values = df[col].fillna("").astype(str).str.strip().str.lower()
-            mask &= values.eq(expected.lower())
+            mask &= normalised[col].eq(expected.lower())
         return mask
+
+    def _set_normalised_value(
+        normalised: dict[str, pd.Series],
+        column: str,
+        mask: pd.Series,
+        value: str,
+    ) -> None:
+        if column in normalised:
+            normalised[column].loc[mask] = value.strip().lower()
 
     for _, rule in rules.iterrows():
         rule_name = _clean_token(rule.get("rule_name")) or "unnamed_rule"
@@ -586,6 +623,7 @@ def apply_explicit_sector_reassignments(
 
         base_mask = _exact_mask(
             base_out,
+            base_normalised,
             {
                 "flows": _clean_token(rule.get("source_esto_flow")),
                 "products": _clean_token(rule.get("source_esto_product")),
@@ -594,14 +632,20 @@ def apply_explicit_sector_reassignments(
         base_match_count = int(base_mask.sum())
         if base_match_count:
             if "flows" in base_out.columns and _clean_token(rule.get("target_esto_flow")):
-                base_out.loc[base_mask, "flows"] = _clean_token(rule.get("target_esto_flow"))
+                target = _clean_token(rule.get("target_esto_flow"))
+                base_out.loc[base_mask, "flows"] = target
+                _set_normalised_value(base_normalised, "flows", base_mask, target)
             if "products" in base_out.columns and _clean_token(rule.get("target_esto_product")):
-                base_out.loc[base_mask, "products"] = _clean_token(rule.get("target_esto_product"))
+                target = _clean_token(rule.get("target_esto_product"))
+                base_out.loc[base_mask, "products"] = target
+                _set_normalised_value(base_normalised, "products", base_mask, target)
         status_rows.append(
             {
                 "rule_name": rule_name,
                 "dataset": "base_df",
                 "matched_rows": base_match_count,
+                "source_esto_flow": _clean_token(rule.get("source_esto_flow")),
+                "source_esto_product": _clean_token(rule.get("source_esto_product")),
                 "target_esto_flow": _clean_token(rule.get("target_esto_flow")),
                 "target_esto_product": _clean_token(rule.get("target_esto_product")),
                 "notes": notes,
@@ -610,6 +654,7 @@ def apply_explicit_sector_reassignments(
 
         ninth_mask = _exact_mask(
             ninth_out,
+            ninth_normalised,
             {
                 "sectors": _clean_token(rule.get("source_sectors")),
                 "sub1sectors": _clean_token(rule.get("source_sub1sectors")),
@@ -625,16 +670,22 @@ def apply_explicit_sector_reassignments(
             for col in ["sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"]:
                 target_key = f"target_{col}"
                 if col in ninth_out.columns and _clean_token(rule.get(target_key)):
-                    ninth_out.loc[ninth_mask, col] = _clean_token(rule.get(target_key))
+                    target = _clean_token(rule.get(target_key))
+                    ninth_out.loc[ninth_mask, col] = target
+                    _set_normalised_value(ninth_normalised, col, ninth_mask, target)
             for col in ["fuels", "subfuels"]:
                 target_key = f"target_{col}"
                 if col in ninth_out.columns and _clean_token(rule.get(target_key)):
-                    ninth_out.loc[ninth_mask, col] = _clean_token(rule.get(target_key))
+                    target = _clean_token(rule.get(target_key))
+                    ninth_out.loc[ninth_mask, col] = target
+                    _set_normalised_value(ninth_normalised, col, ninth_mask, target)
         status_rows.append(
             {
                 "rule_name": rule_name,
                 "dataset": "ninth_df",
                 "matched_rows": ninth_match_count,
+                "source_esto_flow": _clean_token(rule.get("source_esto_flow")),
+                "source_esto_product": _clean_token(rule.get("source_esto_product")),
                 "target_esto_flow": _clean_token(rule.get("target_esto_flow")),
                 "target_esto_product": _clean_token(rule.get("target_esto_product")),
                 "notes": notes,
@@ -1443,6 +1494,45 @@ def pull_projection_series_from_descendants(
     return pd.concat(parts, axis=1).sum(axis=1, min_count=1), selected_codes
 
 
+def _expand_esto_flow_code_selector(esto_flow: object) -> list[str]:
+    """Expand a maintained ESTO rollup label into its encoded component codes."""
+    selector_match = re.match(
+        r"^(\d+(?:\.\d+)*(?:-\d+(?:\.\d+)*)?(?:,\d+(?:\.\d+)*(?:-\d+(?:\.\d+)*)?)*)",
+        str(esto_flow or "").strip(),
+    )
+    if not selector_match:
+        return []
+
+    expanded: list[str] = []
+    for token in selector_match.group(1).split(","):
+        if "-" not in token:
+            expanded.append(token)
+            continue
+        start, end = token.split("-", maxsplit=1)
+        start_parts = start.split(".")
+        end_parts = end.split(".")
+        if len(start_parts) != len(end_parts) or start_parts[:-1] != end_parts[:-1]:
+            return []
+        try:
+            start_number = int(start_parts[-1])
+            end_number = int(end_parts[-1])
+        except ValueError:
+            return []
+        if end_number < start_number:
+            return []
+        width = max(len(start_parts[-1]), len(end_parts[-1]))
+        prefix = ".".join(start_parts[:-1])
+        expanded.extend(
+            (
+                f"{prefix}.{number:0{width}d}"
+                if prefix
+                else f"{number:0{width}d}"
+            )
+            for number in range(start_number, end_number + 1)
+        )
+    return list(dict.fromkeys(expanded))
+
+
 def pull_base_year_value(
     esto_df: pd.DataFrame,
     base_year: int,
@@ -1467,11 +1557,10 @@ def pull_base_year_value(
             working = working[working["__product_norm"] == eso_product.lower()]
         else:
             working = working[working["products"].astype(str).str.lower() == eso_product.lower()]
-    # If parent-flow exact match is unavailable, fallback to summing child flows under that parent code (e.g., 14.03.*).
+    # If an exact match is unavailable, use the component codes encoded by a
+    # maintained rollup label (for example 16.01-16.02 Buildings). Prefer an
+    # exact component row over its descendants to avoid double counting.
     if working.empty and esto_flow and eso_product:
-        parent = str(esto_flow).strip().lower()
-        parent_code_match = re.match(r"^(\d+(?:\.\d+)*)", parent)
-        parent_code = parent_code_match.group(1) if parent_code_match else ""
         fallback = esto_df
         if prepared and "__economy_norm" in fallback.columns:
             fallback = fallback[fallback["__economy_norm"] == str(economy_code or "").strip()]
@@ -1481,17 +1570,75 @@ def pull_base_year_value(
             fallback = fallback[fallback["__product_norm"] == eso_product.lower()]
         else:
             fallback = fallback[fallback["products"].astype(str).str.lower() == eso_product.lower()]
-        if parent_code:
+        component_codes = _expand_esto_flow_code_selector(esto_flow)
+        if len(component_codes) > 1:
             if prepared and "__flow_code" in fallback.columns:
                 flow_codes = fallback["__flow_code"].fillna("")
             else:
-                flow_codes = fallback["flows"].astype(str).str.extract(r"^(\d+(?:\.\d+)*)", expand=False).fillna("")
-            fallback = fallback[flow_codes.str.startswith(parent_code + ".")]
+                flow_codes = (
+                    fallback["flows"]
+                    .astype(str)
+                    .str.extract(r"^(\d+(?:\.\d+)*)", expand=False)
+                    .fillna("")
+                )
+            # Resolve each component independently. If the exact component
+            # row exists, prefer it over descendants. If an explicit source
+            # reassignment has moved that row to a child code, prefer the
+            # remaining subtotal child over a duplicate non-subtotal leaf.
+            # This prevents 16.01.02 + 16.01.99 from being counted twice after
+            # the CPS-to-unallocated reassignment.
+            selected_parts: list[pd.DataFrame] = []
+            for component_code in component_codes:
+                exact_mask = flow_codes.eq(component_code)
+                if bool(exact_mask.any()):
+                    selected = fallback.loc[exact_mask].copy()
+                    selected["__rollup_component_code"] = component_code
+                    selected = selected.drop_duplicates(
+                        subset=["__rollup_component_code"],
+                        keep="first",
+                    ).drop(columns="__rollup_component_code")
+                else:
+                    descendant_mask = flow_codes.str.startswith(component_code + ".")
+                    selected = fallback.loc[descendant_mask].copy()
+                    if "is_subtotal" in selected.columns and not selected.empty:
+                        subtotal_mask = selected["is_subtotal"].fillna(False).astype(str).str.strip().str.lower().isin(
+                            {"true", "1", "yes", "y", "t"}
+                        )
+                        if bool(subtotal_mask.any()):
+                            selected = selected.loc[subtotal_mask]
+                if not selected.empty:
+                    selected_parts.append(selected)
+            fallback = (
+                pd.concat(selected_parts, axis=0).sort_index()
+                if selected_parts
+                else fallback.iloc[0:0].copy()
+            )
         else:
-            if prepared and "__flow_norm" in fallback.columns:
-                fallback = fallback[fallback["__flow_norm"].str.startswith(parent + ".")]
+            parent_code = component_codes[0] if component_codes else ""
+            if parent_code:
+                if prepared and "__flow_code" in fallback.columns:
+                    flow_codes = fallback["__flow_code"].fillna("")
+                else:
+                    flow_codes = (
+                        fallback["flows"]
+                        .astype(str)
+                        .str.extract(r"^(\d+(?:\.\d+)*)", expand=False)
+                        .fillna("")
+                    )
+                fallback = fallback[flow_codes.str.startswith(parent_code + ".")]
             else:
-                fallback = fallback[fallback["flows"].astype(str).str.lower().str.startswith(parent + ".")]
+                parent = str(esto_flow).strip().lower()
+                if prepared and "__flow_norm" in fallback.columns:
+                    fallback = fallback[
+                        fallback["__flow_norm"].str.startswith(parent + ".")
+                    ]
+                else:
+                    fallback = fallback[
+                        fallback["flows"]
+                        .astype(str)
+                        .str.lower()
+                        .str.startswith(parent + ".")
+                    ]
         working = fallback
     if working.empty:
         return float("nan")
@@ -7101,10 +7248,18 @@ def build_dashboards(
                     f'<div style="margin-top:4px;color:{palette["text"]};font-size:12px;font-weight:600;">'
                     f'{issue["label"]}</div>'
                 )
+            # Built outside the f-string: a replacement field cannot contain a
+            # backslash before Python 3.12, and the Space runs an older one.
+            measure_heading = (
+                "<div style='margin-bottom:4px;color:#4b5563;font-size:12px;"
+                "font-weight:600;'>" + str(measure) + "</div>"
+                if str(measure).strip()
+                else ""
+            )
             cards.append(
                 f"""
 <figure style="{card_style}">
-  {"<div style=\"margin-bottom:4px;color:#4b5563;font-size:12px;font-weight:600;\">" + str(measure) + "</div>" if str(measure).strip() else ""}
+  {measure_heading}
   {issue_badge}
   {chart_markup}
 </figure>
@@ -7268,8 +7423,8 @@ def build_dashboards(
     def _dashboard_filename(path: tuple[str, ...]) -> str:
         if path in node_to_sheet:
             sheet = node_to_sheet[path]
-            return f"{_safe_token(sheet.replace('\\', '_'))}.html"
-        slug = "__".join(_safe_token(part.replace("\\", "_")) for part in path)
+            return f"{_safe_token(sheet.replace(chr(92), '_'))}.html"
+        slug = "__".join(_safe_token(part.replace(chr(92), "_")) for part in path)
         return f"node__{slug}.html"
 
     path_to_file = {path: dashboards_dir / _dashboard_filename(path) for path in ordered_node_paths}
@@ -7879,7 +8034,7 @@ def build_dashboards(
                             charts_dir,
                             backend="plotly",
                             display_sheet=f"{title} - {_compact_measure_name(_infer_page_measure(('Supply', child_sheet), child_sheet))}",
-                            file_sheet=f"node__{'__'.join(_safe_token(part.replace('\\', '_')) for part in path)}__overview__{child_sheet}",
+                            file_sheet=f"node__{'__'.join(_safe_token(part.replace(chr(92), '_')) for part in path)}__overview__{child_sheet}",
                         )
                         if total_chart_path:
                             overview_entries.append((child_sheet, "Total", total_chart_path))
@@ -7923,7 +8078,7 @@ def build_dashboards(
                             charts_dir,
                             backend="plotly",
                             display_sheet=f"{title} - {_compact_measure_name(str(measure_value).strip())}",
-                            file_sheet=f"node__{'__'.join(_safe_token(part.replace('\\', '_')) for part in path)}__{measure_value}",
+                            file_sheet=f"node__{'__'.join(_safe_token(part.replace(chr(92), '_')) for part in path)}__{measure_value}",
                         )
                         if node_chart:
                             normalized_measure = str(measure_value).strip()
@@ -8007,7 +8162,7 @@ def build_dashboards(
                     charts_dir,
                     backend="plotly",
                     display_sheet=f"{title} - {_compact_measure_name(_infer_page_measure(('Supply', child_sheet), child_sheet))}",
-                    file_sheet=f"node__{'__'.join(_safe_token(part.replace('\\', '_')) for part in path)}__overview__{child_sheet}",
+                    file_sheet=f"node__{'__'.join(_safe_token(part.replace(chr(92), '_')) for part in path)}__overview__{child_sheet}",
                 )
                 if total_chart_path:
                     overview_entries.append((child_sheet, "Total", total_chart_path))

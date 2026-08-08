@@ -2,8 +2,8 @@
 
 #%%
 
-from codebase.functions import supply_results_saver
-from codebase.supply_reconciliation_balance_tables import (
+from codebase.supply_reconciliation import results_saver as supply_results_saver
+from codebase.supply_reconciliation.balance_tables import (
     _balance_export_filename_parts,
     _balance_export_parts_for_scenario,
 )
@@ -80,7 +80,7 @@ def test_projection_only_balance_filename_does_not_require_a_workbook(
 ) -> None:
     """Projection-only baseline tables have no LEAP-export filename provenance."""
     monkeypatch.setattr(
-        "codebase.supply_reconciliation_balance_tables.BALANCE_DEMAND_REF_WORKBOOK_PATH",
+        "codebase.supply_reconciliation.balance_tables.BALANCE_DEMAND_REF_WORKBOOK_PATH",
         None,
     )
 
