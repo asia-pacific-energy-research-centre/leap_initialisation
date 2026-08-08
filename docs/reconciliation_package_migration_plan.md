@@ -2,7 +2,7 @@
 
 **Status:** package migration implemented and bounded verification completed;
 production workflow verification intentionally deferred.
-**Worktree:** `C:\Users\Work\github\worktrees\leap_initialisation_reconciliation_package`  
+**Worktree:** `C:\Users\Work\github\worktrees\leap_initialisation_reconciliation_package`
 **Branch:** `codex/reconciliation-package-migration`
 
 ## Decision
