@@ -234,6 +234,47 @@ still distinguishes reviewed intentional mismatches from unresolved warnings.
 > (`D-04` full-model-export retirement, `D-05` template census, `D-06`
 > Phase 2). Verify against code before acting on a number here.
 
+## Cross-repository hierarchy/subtotal migration
+
+The controlling architecture audit is
+[`leap_mappings/docs/cross_repo_hierarchy_subtotal_modularisation_plan.md`](../../leap_mappings/docs/cross_repo_hierarchy_subtotal_modularisation_plan.md).
+These items deliberately preserve source-period filtering while removing local
+structural authority.
+
+### INIT-HS-001 — Attach the canonical contract at mapping ingress
+
+**Status: not started. Owner: `leap_initialisation`. Depends on mappings
+MAPQ-033.**
+
+The strict loader and `attach_structural_pair_status()` exist and are tested,
+but no runtime workflow imports them. Integrate one boundary at a time:
+`TemplateBalanceExtractor`, then `leap_results_dashboard_balance`. Pin an
+explicit contract build/schema, preserve Ninth `subtotal_layout` /
+`subtotal_results` and ESTO `is_subtotal`, and dual-run representative ESTO,
+Ninth, and LEAP cases before changing a value filter.
+
+Complete when selected rows, totals, signs, export identities, and diagnostics
+match the old path except for separately reviewed corrections; unresolved pairs
+fail or enter a named review queue; and the run manifest records the contract
+build ID/schema.
+
+### INIT-HS-002 — Retire initialisation-owned mapping authority
+
+**Status: not started. Owner: `leap_initialisation`. Depends on INIT-HS-001 and
+mappings MAPQ-034.**
+
+Retire or move `outlook_mapping_maintenance_workflow.py`,
+`outlook_mapping_maintenance_utils.py`, `update_mapping_cardinality.py`, and
+the copied Stage 1 mapping QA after their unique tests/helpers are ported.
+Split `mapping_rollups.py`: keep only runtime resolution temporarily, then
+consume mappings-published effective mapping rows. Keep new-ESTO row completion
+and LNG allocation local, but delegate structural subtotal classification to
+the mappings producer.
+
+Complete when repository-wide call searches find no initialisation workflow
+declaring structural parenthood, mapping-workbook writers are gone from this
+repo, and the full initialisation suite plus selected golden-economy comparisons
+pass.
 ## [24] Merge and verify the supply reconciliation package migration
 
 **Status: implementation complete in a worktree; master integration and
