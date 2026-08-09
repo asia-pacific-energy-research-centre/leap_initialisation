@@ -307,7 +307,6 @@ def test_no_data_chp_skeleton_anchors_shares_but_keeps_energy_rows_zero(
     zero_energy_measures = {
         "Import Target",
         "Export Target",
-        "Historical Production",
         "Exogenous Capacity",
     }
     assert all(
@@ -315,6 +314,11 @@ def test_no_data_chp_skeleton_anchors_shares_but_keeps_energy_rows_zero(
         for row in rows
         if row["Measure"] in zero_energy_measures
     )
+    historical_rows = [
+        row for row in rows if row["Measure"] == "Historical Production"
+    ]
+    assert historical_rows
+    assert all(float(row["Value"]) == 0.0 for row in historical_rows)
 
 
 #%%

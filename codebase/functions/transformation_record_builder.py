@@ -61,10 +61,10 @@ DEFAULT_AUXILIARY_UNITS = "Petajoule"
 DEFAULT_AUXILIARY_PER = "Petajoule"
 
 # Temporary migration behavior: retain the existing LEAP variable rows while
-# clearing values that were previously populated in the LEAP areas. Remove this
-# after the transition period once old Historical Production values no longer
-# need to be explicitly cleared by imports.
-EMIT_ZERO_HISTORICAL_PRODUCTION = True
+# keeping only the base-year production value. Later years are explicitly zeroed
+# because old projected Historical Production values must be cleared by imports.
+# Remove this after the transition period once those old values are gone.
+EMIT_BASE_YEAR_HISTORICAL_PRODUCTION = True
 
 APEC_ECONOMY_TO_LEAP_REGION = {
     "01_AUS": "Australia",
@@ -1952,15 +1952,25 @@ def build_transformation_log_rows(
             process_branch_path = build_branch_path(
                 ["Transformation", sector_title, "Processes", str(process_name)]
             )
-            if EMIT_ZERO_HISTORICAL_PRODUCTION:
+            if EMIT_BASE_YEAR_HISTORICAL_PRODUCTION:
+                base_year_output = _sum_series_map_by_year(
+                    output_values,
+                    [scenario_base_year],
+                ).get(scenario_base_year, 0.0)
                 rows.extend(
                     build_year_rows(
                         process_branch_path,
                         "Historical Production",
                         scenario,
                         {
-                            year: 0.0
-                            for year in range(scenario_base_year, scenario_final_year + 1)
+                            scenario_base_year: base_year_output,
+                            **{
+                                year: 0.0
+                                for year in range(
+                                    scenario_base_year + 1,
+                                    scenario_final_year + 1,
+                                )
+                            },
                         },
                         "Petajoule",
                         "",
@@ -2730,7 +2740,7 @@ def build_aux_fuel_zero_rows(
         # Explicit zeros tell LEAP this module had no output/capacity rather than
         # inheriting stale values from a prior import.
         process_level_spec = [("Exogenous Capacity", "Gigajoules/Year", "", "")]
-        if EMIT_ZERO_HISTORICAL_PRODUCTION:
+        if EMIT_BASE_YEAR_HISTORICAL_PRODUCTION:
             process_level_spec.insert(0, ("Historical Production", "Petajoule", "", ""))
         for process_prefix in sorted(tier2_ext_process_prefixes):
             for scenario in scenarios:

@@ -26,6 +26,36 @@ def test_efficiency_series_uses_feedstock_without_auxiliary_energy() -> None:
     assert efficiency.loc[2022] == pytest.approx(16.775 / 41.930999)
 
 
+def test_historical_production_keeps_base_year_and_zeros_projection() -> None:
+    record = build_process_record(
+        economy="01_AUS",
+        sector_title="Coke ovens",
+        process_name="Coke ovens",
+        output_values={"Coke oven gas": {2022: 16.775, 2023: 18.0}},
+        feedstock_values={"Coking coal": {2022: 41.930999, 2023: 42.0}},
+        efficiency={2022: 0.4, 2023: 0.4},
+        auxiliary_ratios={},
+        loss_values={},
+        loss_total=0.0,
+    )
+
+    rows = build_transformation_log_rows(
+        [record],
+        scenario="Reference",
+        region="Australia",
+        base_year=2022,
+        final_year=2023,
+        code_to_name_mapping={"Coke ovens": "Coke ovens"},
+    )
+
+    historical = {
+        int(row["Date"]): float(row["Value"])
+        for row in rows
+        if row["Measure"] == "Historical Production"
+    }
+    assert historical == {2022: pytest.approx(16.775), 2023: pytest.approx(0.0)}
+
+
 def test_process_record_overrides_legacy_efficiency_with_exported_feedstocks() -> None:
     """The shared record boundary protects every transformation module."""
     record = build_process_record(
