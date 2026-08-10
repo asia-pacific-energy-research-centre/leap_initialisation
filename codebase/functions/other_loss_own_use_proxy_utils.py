@@ -372,9 +372,16 @@ POWER_BRANCH_INTERIM_FALLBACK_ROWS: dict[str, str] = {
 # circular) should add a fallback tier here using
 # balance_rows=[DEMAND_AGGREGATE_FALLBACK_ROW] and its own fuel_set, since
 # real balance exports do not break Demand out by branch -- only this one
-# aggregate row exists. No current process sources activity from a Demand
-# branch, so nothing uses this yet.
+# aggregate row exists. It is used only as a fuel-specific last-resort proxy;
+# it must never replace a populated, configured process proxy.
 DEMAND_AGGREGATE_FALLBACK_ROW = "All demand aggregated"
+
+SAME_FUEL_TOTAL_DEMAND_FALLBACK = {
+    "fallback_key": "same_fuel_total_final_consumption",
+    "esto_flows": ["12 Total final consumption"],
+    "ninth_sector_codes": ["12_total_final_consumption"],
+    "leap_balance_rows": [DEMAND_AGGREGATE_FALLBACK_ROW],
+}
 
 # Per-process ordered fallback chains for LEAP-balance activity. Values may be
 # a single fallback dict or a list of dicts tried in order; the first fallback
@@ -1300,6 +1307,96 @@ def build_activity_series_for_mode(
     raise AssertionError(f"Unexpected normalized activity source mode: {mode}")
 
 
+def build_same_fuel_total_demand_activity_series(
+    *,
+    esto_data: pd.DataFrame,
+    ninth_data: pd.DataFrame,
+    leap_balance_activity: pd.DataFrame | None,
+    economy: str,
+    fuel_branch_label: str,
+    base_year: int,
+    final_year: int,
+    activity_source_mode: str,
+    fuel_mapping_lookup: Mapping[str, Mapping[str, str]] | None = None,
+) -> dict[int, float]:
+    """Build the documented same-fuel total-demand fallback activity.
+
+    The fallback is fuel-specific (Heat uses total Heat demand, Natural gas
+    uses total Natural gas demand) and is only selected by the caller when the
+    configured process proxy is entirely unavailable.
+    """
+    wanted = _normalize_balance_label(fuel_branch_label)
+    mapping_lookup = fuel_mapping_lookup or {}
+    mode = _normalize_activity_source_mode(activity_source_mode)
+    if mode == "leap_balance":
+        if leap_balance_activity is None:
+            return {}
+        return build_leap_balance_activity_series(
+            leap_balance_activity,
+            balance_rows=SAME_FUEL_TOTAL_DEMAND_FALLBACK["leap_balance_rows"],
+            fuels=[fuel_branch_label],
+            value_mode="absolute",
+            base_year=base_year,
+            final_year=final_year,
+        )
+
+    economy_key = _normalize_economy(economy)
+    compact_economy = _compact_economy(economy)
+    esto_years = [year for year in _year_columns(esto_data) if int(year) <= int(base_year)]
+    esto_subset = esto_data[
+        (
+            esto_data["economy"].astype(str).str.upper().isin(
+                [compact_economy, economy_key.replace("_", "")]
+            )
+        )
+        | (esto_data["economy_key"] == economy_key)
+    ].copy()
+    esto_subset = esto_subset[
+        esto_subset["flows"].isin(SAME_FUEL_TOTAL_DEMAND_FALLBACK["esto_flows"])
+    ].copy()
+    esto_subset = esto_subset[
+        esto_subset["products"].map(
+            lambda value: _normalize_balance_label(
+                _format_fuel_branch_label(
+                    value,
+                    source_name="esto",
+                    fuel_mapping_lookup=mapping_lookup,
+                )
+            )
+        ).eq(wanted)
+    ].copy()
+    esto_subset = _apply_value_mode(esto_subset, esto_years, "absolute")
+    series = _series_from_group(esto_subset, esto_years)
+
+    projection_years = [
+        year
+        for year in range(int(base_year) + 1, int(final_year) + 1)
+        if year in ninth_data.columns
+    ]
+    ninth_subset = ninth_data[ninth_data["economy_key"] == economy_key].copy()
+    ninth_subset = _select_ninth_sector(
+        ninth_subset,
+        SAME_FUEL_TOTAL_DEMAND_FALLBACK["ninth_sector_codes"],
+    )
+    ninth_subset = _drop_ninth_parent_fuel_rows(ninth_subset)
+    if not ninth_subset.empty:
+        ninth_subset = ninth_subset[
+            ninth_subset.apply(
+                lambda row: _normalize_balance_label(
+                    _format_fuel_branch_label(
+                        _target_fuel_label_from_ninth(row),
+                        source_name="ninth",
+                        fuel_mapping_lookup=mapping_lookup,
+                    )
+                ) == wanted,
+                axis=1,
+            )
+        ].copy()
+        ninth_subset = _apply_value_mode(ninth_subset, projection_years, "absolute")
+        series.update(_series_from_group(ninth_subset, projection_years))
+    return {int(year): float(value) for year, value in series.items()}
+
+
 def build_activity_source_gap_warnings(
     *,
     esto_data: pd.DataFrame,
@@ -1556,7 +1653,7 @@ def build_target_energy_long(
         allow_without_esto_history = bool(
             ninth_cfg.get("allow_without_esto_history", False)
         )
-        if allowed_esto_fuel_keys:
+        if allowed_esto_fuel_keys and not allow_without_esto_history:
             ninth_subset = ninth_subset[
                 ninth_subset["fuel_branch_label_for_grouping"].map(_normalize_balance_label).isin(allowed_esto_fuel_keys)
             ].copy()

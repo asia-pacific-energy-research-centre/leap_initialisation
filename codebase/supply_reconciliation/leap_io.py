@@ -1925,6 +1925,7 @@ def write_per_economy_combined_workbooks(
     validation_results: list[tuple[str, object]] = []
     producer_validation_results: list[tuple[str, object]] = []
     producer_coverage_findings: list[dict[str, object]] = []
+    proxy_source_findings: list[pd.DataFrame] = []
     artifact_expected_rows: dict[str, pd.DataFrame] = {}
     artifact_zero_scope_manifests: dict[str, pd.DataFrame] = {}
     artifact_candidate_paths: dict[str, Path] = {}
@@ -2001,6 +2002,28 @@ def write_per_economy_combined_workbooks(
         branch_to_id, variable_to_id, scenario_to_id = _id_lookups_for_template(id_lookup_resolved)
         reference_df = _load_reference_export_data(id_lookup_resolved)
         frames, found_sources, source_probe = _current_source_frames(econ_token)
+        seen_proxy_findings_paths: set[Path] = set()
+        for source_workflow, configured_paths in (source_workbooks_by_workflow or {}).items():
+            if str(source_workflow) != "other_loss_own_use_proxy_workflow":
+                continue
+            for configured_path in configured_paths:
+                workbook_path = Path(configured_path)
+                if econ_token.lower() not in workbook_path.name.lower():
+                    continue
+                findings_path = workbook_path.parent / "proxy_seed_rule_findings.csv"
+                if findings_path in seen_proxy_findings_paths or not findings_path.exists():
+                    continue
+                seen_proxy_findings_paths.add(findings_path)
+                try:
+                    producer_findings = pd.read_csv(findings_path)
+                except Exception as exc:
+                    print(f"[WARN] Failed reading proxy SEED findings {findings_path}: {exc}")
+                    continue
+                if producer_findings.empty:
+                    continue
+                producer_findings = producer_findings.copy()
+                producer_findings["economy"] = econ_token
+                proxy_source_findings.append(producer_findings)
 
         # Validate each supplied producer artifact before combined assembly.
         # This keeps standalone rows visible in the same readiness diagnostics,
@@ -2390,6 +2413,7 @@ def write_per_economy_combined_workbooks(
         consolidated_frames: list[pd.DataFrame] = []
         if producer_coverage_findings:
             consolidated_frames.append(pd.DataFrame(producer_coverage_findings))
+        consolidated_frames.extend(proxy_source_findings)
         for econ_token, validation in validation_results:
             if validation.findings.empty:
                 continue
@@ -2409,6 +2433,17 @@ def write_per_economy_combined_workbooks(
         )
         consolidated_path = diagnostics_dir / f"baseline_seed_{run_stamp}_consolidated_rule_findings.csv"
         consolidated.to_csv(consolidated_path, index=False)
+        proxy_warnings = consolidated[
+            consolidated.get("rule_id", pd.Series(dtype=object)).eq("SEED-014")
+            & consolidated.get("status", pd.Series(dtype=object)).eq("warn")
+        ] if not consolidated.empty else pd.DataFrame()
+        if not proxy_warnings.empty:
+            warning_counts = proxy_warnings.groupby("economy").size().to_dict()
+            print(
+                "[WARN] Baseline-seed proxy fallback warnings: "
+                f"SEED-014={len(proxy_warnings)} by economy={warning_counts}. "
+                f"Diagnostics: {consolidated_path}"
+            )
         consolidated_issue_groups_path = diagnostics_dir / f"baseline_seed_{run_stamp}_consolidated_issue_groups.csv"
         build_validation_issue_groups(consolidated).to_csv(consolidated_issue_groups_path, index=False)
         consolidated_branch_summary_path = (

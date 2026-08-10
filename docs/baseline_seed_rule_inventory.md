@@ -94,6 +94,7 @@ not permanent API references.
 | SEED-C028 | Workbook metadata (`Units`, `Scale`, `Per...`) and LEAP preamble are preserved from templates. | All rows/scenarios. | Legacy Excel writers and `AGENTS_LEAP_EXPORT.md`. | Comparator metadata differences and existing workbook writers. | `confirmed_rule` |
 | SEED-C029 | Interim electricity, CHP, and heat calculations use only their corresponding `09_*` transformation sectors. Positive signed values are outputs and negative signed values are inputs. All `18_*` and `19_*` values are prohibited. | Electricity: `09_01_electricity_plants`; CHP: `09_02_chp_plants`; heat: `09_x_heat_plants`. | Confirmed modeller decision; INIT-004. | Approved/forbidden constants and selection validation in `electricity_heat_interim_workflow.py`; `test_power_interim_output_sector_config.py` | `confirmed_rule` |
 | SEED-C030 | A transformation process with nonzero Exogenous Capacity must have a usable Process Efficiency expression for the same scenario and region. | Any nonzero constant or series value triggers the requirement; zero capacity and non-process capacity rows do not. This validates presence and parseability, not efficiency-value plausibility. | `transformation_record_builder.build_aux_fuel_zero_rows` refuses a default efficiency for a capacitied process. | `baseline_seed_validation._validate_process_efficiency_for_capacity`; canonical-group tests | `confirmed_rule` |
+| SEED-C031 | Other-loss/own-use proxy source gaps must remain visible. A missing base-year target may retain direct Ninth projection values exactly; an unavailable configured proxy activity may use the same-fuel total-final-consumption activity fallback. | Per economy, process, fuel, and year. The activity fallback is used only when the configured proxy series is entirely zero. Applied fallbacks warn; positive target energy with no primary or fallback activity blocks. | Russia `10.02 / Heat` is zero in one ESTO snapshot but has direct Ninth values; historical snapshot disagreement is not a stable branch-selection rule. | `build_proxy_source_fallback_findings`; SEED-014; focused Russia-shaped proxy tests | `confirmed_rule` (INIT-014) |
 
 ## Duplicate handling
 
@@ -121,6 +122,10 @@ cover base year + 1 through the configurable final year (2023–2060). Rule
 `SEED-012` also requires every configured producer to supply a readable source
 workbook for every requested economy; a producer cannot silently disappear
 from one economy's final seed.
+
+`SEED-014` carries producer-side source provenance into the same consolidated
+end-of-run report. A successfully applied target or activity fallback is a
+review warning. An unresolved positive target with zero activity is blocking.
 
 Validation exceptions are disabled by default. `validation_exceptions` entries
 must include `rule_id` and at least one exact field among `Variable`, `Branch

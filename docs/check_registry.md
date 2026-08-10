@@ -114,6 +114,7 @@ on); others are **optional** placeholders a researcher may prefer LEAP to inheri
 | `_zero_years_outside_range` | `electricity_heat_interim_workflow.py:230` | gap-fill (zero) | zero values outside scenario window | structural | always-on | SEED-C017 (year-window) |
 | `_zero_small_numeric_values` | `supply_reconciliation/balance_tables.py:481` | normalize | clamp near-zero to 0 | structural | always-on | — |
 | `_backfill_base_year_activity_from_projection` | `other_loss_own_use_proxy_utils.py:1187` | gap-fill | base-year Activity from projection | optional | ❌ none | pre-base-year consistency notice (diagnostic) |
+| `build_same_fuel_total_demand_activity_series` | `other_loss_own_use_proxy_utils.py` | gap-fill | fuel-specific proxy Activity Level | optional, only when the configured process proxy is all-zero | configured per process | **✅ SEED-014 / SEED-C031** |
 | `_zero_data_expression_for_scenario` | `other_loss_own_use_proxy_utils.py:2210` | helper | build zero `Data()` series | n/a | n/a | — |
 
 **Header-parsing drift.** LEAP-style sheets carry a preamble above the real
@@ -203,6 +204,11 @@ evidence, and writes the findings, summary, and manifest under
 | `check_authorized_zero_scope` | BSA-008 | explicit producer zero-scope manifest; never infers authorization from a zero value | audit | unauthorized/missing-evidence tests |
 | `check_serialized_value_conservation` | BSA-009 | explicit post-assembly rows compared with reopened `LEAP` expressions and `FOR_VIEWING` years | audit | serialization-loss/post-write-corruption tests |
 | `check_diagnostics_and_manifests` | BSA-010 | explicit producer artifacts and required diagnostic paths | audit | missing diagnostic/check-error/manifest tests |
+
+The other-loss/own-use producer writes `proxy_seed_rule_findings.csv` and the
+final writer incorporates its actionable `SEED-014` rows into the consolidated
+rule findings. This is a producer-source check rather than a duplicate numeric
+implementation at the artifact boundary; BSA-010 owns evidence completeness.
 
 Contract severity is independent of enforcement: every BSA rule is currently
 hard and audit mode records `would_block=true`, `run_was_blocked=false`. Missing

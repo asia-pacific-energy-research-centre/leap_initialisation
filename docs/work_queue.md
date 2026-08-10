@@ -1,5 +1,18 @@
 # Remaining work queue
 
+## [32] Make other-loss/own-use proxy source gaps explicit
+
+**Status: completed 2026-08-10.**
+
+ESTO validation snapshots no longer suppress a valid configured proxy fuel.
+When the active base-year target is unavailable, direct Ninth projection values
+are retained exactly through target-matching intensity. When the configured
+process activity is entirely unavailable, opted-in processes can use the
+same-fuel total-final-consumption activity proxy. Transmission and distribution
+losses now opt into both behaviors. Applied fallbacks and unresolved gaps are
+written as `SEED-014` producer findings and included in the final consolidated
+baseline-seed warning report. See INIT-014 and SEED-C031.
+
 ## [31] Build and adopt a dataset-agnostic rollup-aware series resolver
 
 **Status: planned; do not broaden rollout without a reviewed mapping contract.**

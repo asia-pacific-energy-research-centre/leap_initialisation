@@ -1935,6 +1935,8 @@ def test_transmission_distribution_losses_includes_electricity() -> None:
     assert "Electricity" in workflow.LEAP_BALANCE_FUEL_SETS[fuel_set]
     assert "Peat" in workflow.LEAP_BALANCE_FUEL_SETS[fuel_set]
     assert "Tide wave ocean" in workflow.LEAP_BALANCE_FUEL_SETS[fuel_set]
+    assert cfg["target_sources"]["ninth"]["allow_without_esto_history"] is True
+    assert cfg["same_fuel_total_demand_activity_fallback"] is True
 
 
 def test_transmission_distribution_target_includes_electricity_and_heat() -> None:
@@ -1997,6 +1999,108 @@ def test_transmission_distribution_target_includes_electricity_and_heat() -> Non
     assert set(target["fuel_branch_label"]) == {"Electricity", "Heat"}
     assert set(target["source_dataset"]) == {"esto", "ninth"}
     assert set(target["leap_process_label"]) == {"Transmission and distribution loss"}
+
+
+def test_td_heat_keeps_direct_ninth_target_when_base_target_is_zero() -> None:
+    cfg = next(item for item in workflow.PROXY_CONFIG if item["process_key"] == "transmission_and_distribution_losses")
+    esto = pd.DataFrame([
+        {
+            "economy": "16RUS",
+            "economy_key": "16_RUS",
+            "flows": "10.02 Transmission and distribution losses",
+            "products": "18 Heat",
+            2022: 0.0,
+        },
+        {
+            "economy": "16RUS",
+            "economy_key": "16_RUS",
+            "flows": "01 Production",
+            "products": "08.01 Natural gas",
+            2022: 100.0,
+        },
+    ])
+    ninth = pd.DataFrame([
+        {
+            "economy_key": "16_RUS",
+            "sectors": "10_losses_and_own_use",
+            "sub1sectors": "10_02_transmission_and_distribution_losses",
+            "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x",
+            "fuels": "18_heat", "subfuels": "x", 2023: -5.0,
+        },
+        {
+            "economy_key": "16_RUS",
+            "sectors": "01_production",
+            "sub1sectors": "x", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x",
+            "fuels": "08_gas", "subfuels": "08_01_natural_gas", 2023: 80.0,
+        },
+    ])
+
+    detail = workflow.build_proxy_detail_table(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="16_RUS",
+        configs=[cfg],
+        base_year=2022,
+        final_year=2023,
+    )
+
+    heat = detail[detail["fuel_branch_label"].eq("Heat")].iloc[0]
+    assert heat["source_dataset"] == "ninth"
+    assert heat["target_energy"] == pytest.approx(5.0)
+    assert heat["proxy_activity"] == pytest.approx(80.0)
+    assert heat["intensity"] * heat["proxy_activity"] == pytest.approx(5.0)
+    assert heat["base_target_available"] == False
+    assert heat["target_fallback_reason"] == "ninth_exact_no_base_target"
+
+
+def test_td_uses_same_fuel_total_demand_only_when_primary_proxy_is_unavailable() -> None:
+    cfg = next(item for item in workflow.PROXY_CONFIG if item["process_key"] == "transmission_and_distribution_losses")
+    esto = pd.DataFrame([
+        {
+            "economy": "16RUS", "economy_key": "16_RUS",
+            "flows": "10.02 Transmission and distribution losses", "products": "18 Heat", 2022: 0.0,
+        },
+        {
+            "economy": "16RUS", "economy_key": "16_RUS",
+            "flows": "12 Total final consumption", "products": "18 Heat", 2022: 100.0,
+        },
+    ])
+    ninth = pd.DataFrame([
+        {
+            "economy_key": "16_RUS", "sectors": "10_losses_and_own_use",
+            "sub1sectors": "10_02_transmission_and_distribution_losses",
+            "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x",
+            "fuels": "18_heat", "subfuels": "x", 2023: -5.0,
+        },
+        {
+            "economy_key": "16_RUS", "sectors": "12_total_final_consumption",
+            "sub1sectors": "x", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x",
+            "fuels": "18_heat", "subfuels": "x", 2023: 50.0,
+        },
+    ])
+
+    detail = workflow.build_proxy_detail_table(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="16_RUS",
+        configs=[cfg],
+        base_year=2022,
+        final_year=2023,
+    )
+
+    heat = detail[detail["fuel_branch_label"].eq("Heat")].iloc[0]
+    assert heat["proxy_activity"] == pytest.approx(50.0)
+    assert heat["activity_fallback_key"] == "same_fuel_total_final_consumption"
+    assert heat["intensity"] * heat["proxy_activity"] == pytest.approx(5.0)
+
+    findings = workflow.build_proxy_source_fallback_findings(
+        detail,
+        base_year=2022,
+        source_file="proxy_activity_intensity_detail.csv",
+    )
+    assert set(findings["rule_id"]) == {"SEED-014"}
+    assert set(findings["status"]) == {"warn"}
+    assert len(findings) == 2
 
 
 @pytest.mark.parametrize(
