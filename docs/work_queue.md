@@ -1,5 +1,14 @@
 # Remaining work queue
 
+## [36] Refresh portable mapping-data pins for the merged TFC outputs
+
+**Status: completed 2026-08-10.**
+
+The four generated mapping-chain data assets in
+`config/portable_release_manifest.toml` now pin the SHA-256 values produced by
+the merged Russia TFC reconciliation mapping outputs. Portable release and web
+runtime preflight therefore validate the exact data that is bundled locally.
+
 ## [35] Keep the migrated supply-reconciliation test suite collectable
 
 **Status: completed 2026-08-10.**

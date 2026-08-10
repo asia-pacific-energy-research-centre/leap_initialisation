@@ -367,7 +367,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/energy_balance_relationships.csv"
 dest = "mapping_chain/energy_balance_relationships.csv"
 role = "mapping_chain_relationships"
-sha256 = "779566c358c621386e1d88df2e16f27c6c2385e7bdab391bedcb515466b213d8"
+sha256 = "7839a8352cdcedf389722d0f3ba60617fd6a8b6850505c7e3c4c94900e8a525e"
 description = "LEAP-to-ESTO conversion relationships, a function of the mapping workbook."
 allow_untracked = true
 
@@ -376,7 +376,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/esto_results_exact_rows.csv.gz"
 dest = "mapping_chain/esto_results_exact_rows.csv.gz"
 role = "mapping_chain_esto_exact_rows"
-sha256 = "8597658eede6af178976791cf8e8577175b63fc403b41163a5e8021449884f82"
+sha256 = "356cce72148abad0cc22fbd6f7c7c043d037f7ccba2d70b28388270877811ccd"
 description = "ESTO exact-row extract the mapping chain converts LEAP output against."
 allow_untracked = true
 
@@ -385,7 +385,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/ninth_results_converted_to_esto.csv.gz"
 dest = "mapping_chain/ninth_results_converted_to_esto.csv.gz"
 role = "mapping_chain_ninth_converted"
-sha256 = "ada1deb8ef5a5a1b506cbd4c36d9a10c718504fbe66df4e5930829cab446abc9"
+sha256 = "be4a24521a36a3295564379390dc0acc3ae15c5d199aa5a0fd3f3491a90bfcab"
 description = "9th-edition results converted to ESTO structure, a mapping-chain source table."
 allow_untracked = true
 
@@ -394,7 +394,7 @@ repository = "leap_mappings"
 path = "results/common_esto/common_esto_rows.csv"
 dest = "mapping_chain/common_esto_rows.csv"
 role = "mapping_chain_common_esto_rows"
-sha256 = "d143ad25d67ed5b926cc8d9ecc8a11171edcf9a82644e069050f4b5fc402f8f6"
+sha256 = "d0fe556148ed1bd328e1b622c476d1b9c6189eafb646993912d01b41f3a75e91"
 description = "Common ESTO row definitions the mapping-chain fast path applies."
 allow_untracked = true
 
