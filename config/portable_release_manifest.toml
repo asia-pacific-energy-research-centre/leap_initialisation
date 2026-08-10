@@ -130,12 +130,14 @@ paths = ["config/LEAP_API_helpers.py"]
 # so `codebase/` is stripped when staging. That also keeps this repository's
 # `codebase` package name from colliding with leap_initialisation's.
 [repositories.leap_dashboard]
-commit = "4792086eaa91b0512f9b789eb08bad6d9720ef64"
+commit = "951e667a3db3391ab9920854c3a6b6791023a1dd"
 stage_dir = "leap_dashboard"
 strip_prefix = "codebase"
 on_sys_path = true
 paths = [
     "codebase/common_esto_dashboard_data.py",
+    "codebase/common_esto_dashboard_emissions.py",
+    "codebase/common_esto_dashboard_guide.py",
     "codebase/common_esto_dashboard_output_layout.py",
     "codebase/common_esto_dashboard_portable.py",
     "codebase/common_esto_dashboard_renderer.py",
@@ -144,7 +146,7 @@ paths = [
 # `mapping_tools` has no __init__.py in its own repository either; it works as
 # an implicit namespace package here exactly as it does there.
 [repositories.leap_mappings]
-commit = "1f4861bc31e3b1e12400936c92d0a4d3550139eb"
+commit = "03edd2743cd941df5cf60c470854d8c4fdef85f3"
 stage_dir = "leap_mappings"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -167,7 +169,7 @@ paths = [
 # packages into the worker to reach one module. Omitted, each becomes an implicit
 # namespace package (PEP 420) and the submodule imports on its own - verified.
 [repositories.leap_mappings_worker]
-commit = "1f4861bc31e3b1e12400936c92d0a4d3550139eb"
+commit = "03edd2743cd941df5cf60c470854d8c4fdef85f3"
 stage_dir = "leap_mappings_worker"
 source_key = "leap_mappings"
 on_sys_path = true
@@ -233,6 +235,27 @@ path = "config/common_esto_dashboard/code_colors.json"
 dest = "dashboard/code_colors.json"
 role = "dashboard_code_colors"
 description = "Per-axis ESTO code colour map."
+
+[[config_assets]]
+repository = "leap_dashboard"
+path = "config/common_esto_dashboard/guide_config.json"
+dest = "dashboard/guide_config.json"
+role = "dashboard_guide_config"
+description = "Interactive dashboard guide steps and page-specific explanations."
+
+[[config_assets]]
+repository = "leap_dashboard"
+path = "config/common_esto_dashboard/emissions_factor_sets.json"
+dest = "dashboard/emissions_factor_sets.json"
+role = "dashboard_emissions_factor_sets"
+description = "Emissions factor-set selection and mapping-axis configuration."
+
+[[config_assets]]
+repository = "leap_dashboard"
+path = "config/9th_edition_co2_emissions_factors_by_fuel_energy_weighted_20250403_122429.csv"
+dest = "dashboard/9th_edition_co2_emissions_factors_by_fuel_energy_weighted_20250403_122429.csv"
+role = "dashboard_emissions_factors"
+description = "Energy-weighted CO2e factors used by the dashboard emissions page."
 
 [[config_assets]]
 repository = "leap_mappings"
@@ -367,7 +390,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/energy_balance_relationships.csv"
 dest = "mapping_chain/energy_balance_relationships.csv"
 role = "mapping_chain_relationships"
-sha256 = "7839a8352cdcedf389722d0f3ba60617fd6a8b6850505c7e3c4c94900e8a525e"
+sha256 = "3bfaa94f5050b52e68992a0e4e9712ff5beaad73398b0200fe4fc3e0886613ee"
 description = "LEAP-to-ESTO conversion relationships, a function of the mapping workbook."
 allow_untracked = true
 
@@ -376,7 +399,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/esto_results_exact_rows.csv.gz"
 dest = "mapping_chain/esto_results_exact_rows.csv.gz"
 role = "mapping_chain_esto_exact_rows"
-sha256 = "356cce72148abad0cc22fbd6f7c7c043d037f7ccba2d70b28388270877811ccd"
+sha256 = "5a0acc1cedb32669dcb9ce7bead43f6fa5c574d320ead01d5305044295f7aca5"
 description = "ESTO exact-row extract the mapping chain converts LEAP output against."
 allow_untracked = true
 
@@ -385,7 +408,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/ninth_results_converted_to_esto.csv.gz"
 dest = "mapping_chain/ninth_results_converted_to_esto.csv.gz"
 role = "mapping_chain_ninth_converted"
-sha256 = "be4a24521a36a3295564379390dc0acc3ae15c5d199aa5a0fd3f3491a90bfcab"
+sha256 = "1a1c77cb96197ca130342aef5c8e5a3db7ccf04407bac45b9f9484eac1db2208"
 description = "9th-edition results converted to ESTO structure, a mapping-chain source table."
 allow_untracked = true
 

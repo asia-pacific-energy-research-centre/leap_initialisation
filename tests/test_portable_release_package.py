@@ -236,6 +236,13 @@ def test_package_config_is_external_and_editable(staged_package: Path) -> None:
     assert (config_root / "dashboard" / "common_esto_dashboard_template.json").is_file()
     assert (config_root / "dashboard" / "series_config.json").is_file()
     assert (config_root / "dashboard" / "code_colors.json").is_file()
+    assert (config_root / "dashboard" / "guide_config.json").is_file()
+    assert (config_root / "dashboard" / "emissions_factor_sets.json").is_file()
+    assert (
+        config_root
+        / "dashboard"
+        / "9th_edition_co2_emissions_factors_by_fuel_energy_weighted_20250403_122429.csv"
+    ).is_file()
     assert (config_root / "mappings" / "all_demand_aggregated_components.json").is_file()
     assert (config_root / "balance_review" / "synthetic_reference_rows.csv").is_file()
     assert (config_root / "balance_review" / "leap_results_sheet_map.csv").is_file()
@@ -285,6 +292,7 @@ def test_entry_point_imports_nothing_from_the_live_repositories(
         "for name in reversed(stage_dirs):\n"
         "    sys.path.insert(0, str(here / name))\n"
         "from codebase.portable_release import commands, portable_main, runtime, validation\n"
+        "import common_esto_dashboard_guide\n"
         "import common_esto_dashboard_portable\n"
         "import mapping_tools.source_branch_preflight\n"
         "loaded = sorted(\n"
