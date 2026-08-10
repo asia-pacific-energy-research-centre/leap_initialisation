@@ -1,5 +1,19 @@
 # Remaining work queue
 
+## [34] Use the economy-template union as the APEC structural fallback
+
+**Status: completed 2026-08-10.**
+
+`leap_export_template_resolver.build_apec_template_branch_path_union()` now
+constructs an immutable structural catalog from the exact branch-path union of
+one active template per available economy. The standalone APEC workbook is not
+an input to this definition. `resolve_template_branch_paths_or_apec_union()`
+uses an economy's own template when present and the APEC union only when the
+template is absent (or for an aggregate sentinel). Invalid or ambiguous own
+templates still raise instead of being hidden by the broader fallback. This is
+a branch-existence catalog only: it must never be used as a source of BranchID,
+VariableID, ScenarioID, or RegionID for another LEAP area.
+
 ## [33] Separate non-energy use from aggregated Other sector
 
 **Status: implementation complete 2026-08-10; LEAP structure migration pending.**

@@ -8,15 +8,18 @@ import pytest
 from codebase.utilities.leap_export_template_resolver import (
     REQUIRED_TEMPLATE_COLUMNS,
     available_template_economies,
+    build_apec_template_branch_path_union,
     find_leap_export_template,
     find_shared_template_areas,
     is_aggregate_economy,
     is_provisional_template,
     provisional_template_economies,
     read_leap_export_template_area,
+    read_leap_export_template_branch_paths,
     reset_provisional_template_warnings,
     resolve_leap_export_template,
     resolve_leap_export_template_or_fallback,
+    resolve_template_branch_paths_or_apec_union,
 )
 
 
@@ -35,20 +38,30 @@ def _clear_warning_state():
     reset_provisional_template_warnings()
 
 
-def _write_template_named(root, filename, *, area="Some area", columns=None):
+def _write_template_named(
+    root,
+    filename,
+    *,
+    area="Some area",
+    columns=None,
+    branch_paths=None,
+):
     root.mkdir(parents=True, exist_ok=True)
     path = root / filename
     header_row = columns if columns is not None else [
         "BranchID", "VariableID", "ScenarioID", "RegionID",
         "Branch Path", "Variable", "Scenario", "Region",
     ]
-    preamble = pd.DataFrame(
-        [
-            [None, None, None, None, "Area:", area, "Ver:", 2],
-            [None] * 8,
-            header_row,
-        ]
-    )
+    rows = [
+        [None, None, None, None, "Area:", area, "Ver:", 2],
+        [None] * 8,
+        header_row,
+    ]
+    for branch_path in branch_paths or []:
+        row = [None] * len(header_row)
+        row[header_row.index("Branch Path")] = branch_path
+        rows.append(row)
+    preamble = pd.DataFrame(rows)
     with pd.ExcelWriter(path) as writer:
         preamble.to_excel(writer, sheet_name="Export", header=False, index=False)
     return path
@@ -161,6 +174,80 @@ def test_available_template_economies_ignores_unrelated_and_lock_files(tmp_path)
     (tmp_path / "notes.xlsx").write_text("unrelated")
 
     assert available_template_economies(tmp_path) == ["01_AUS", "20_USA"]
+
+
+def test_apec_branch_path_union_uses_one_active_template_per_economy(tmp_path):
+    _write_template_named(
+        tmp_path,
+        "AUS clean slate.xlsx",
+        branch_paths=[r"Demand\A", r"Demand\Shared"],
+    )
+    _write_template_named(
+        tmp_path,
+        "NZ clean slate.xlsx",
+        branch_paths=[r"Demand\Shared", r"Demand\NZ"],
+    )
+    # The standalone aggregate workbook is not an economy template and must
+    # not define the union.
+    _write_template_named(
+        tmp_path,
+        "APEC clean slate.xlsx",
+        branch_paths=[r"Demand\APEC workbook only"],
+    )
+
+    assert build_apec_template_branch_path_union(tmp_path) == frozenset(
+        {r"Demand\A", r"Demand\Shared", r"Demand\NZ"}
+    )
+
+
+def test_branch_path_resolver_prefers_own_template_then_uses_apec_union(tmp_path):
+    aus = _write_template_named(
+        tmp_path,
+        "AUS clean slate.xlsx",
+        branch_paths=[r"Demand\AUS only"],
+    )
+    _write_template_named(
+        tmp_path,
+        "NZ clean slate.xlsx",
+        branch_paths=[r"Demand\NZ only"],
+    )
+
+    assert read_leap_export_template_branch_paths(aus) == frozenset(
+        {r"Demand\AUS only"}
+    )
+    assert resolve_template_branch_paths_or_apec_union(
+        "01_AUS", templates_root=tmp_path
+    ) == frozenset({r"Demand\AUS only"})
+    assert resolve_template_branch_paths_or_apec_union(
+        "04_CHL", templates_root=tmp_path
+    ) == frozenset({r"Demand\AUS only", r"Demand\NZ only"})
+    assert resolve_template_branch_paths_or_apec_union(
+        "00_APEC", templates_root=tmp_path
+    ) == frozenset({r"Demand\AUS only", r"Demand\NZ only"})
+
+
+def test_branch_path_resolver_does_not_hide_an_invalid_own_template(tmp_path):
+    _write_template_named(
+        tmp_path,
+        "AUS clean slate.xlsx",
+        branch_paths=[r"Demand\AUS"],
+    )
+    _write_template_named(
+        tmp_path,
+        "NZ clean slate.xlsx",
+        columns=["BranchID", "Branch Path"],
+        branch_paths=[r"Demand\NZ"],
+    )
+
+    with pytest.raises(ValueError, match="missing required column"):
+        resolve_template_branch_paths_or_apec_union(
+            "12_NZ", templates_root=tmp_path
+        )
+
+
+def test_apec_branch_path_union_requires_an_economy_template(tmp_path):
+    with pytest.raises(FileNotFoundError, match="no economy-specific"):
+        build_apec_template_branch_path_union(tmp_path)
 
 
 def test_find_shared_template_areas_detects_copied_template(tmp_path):

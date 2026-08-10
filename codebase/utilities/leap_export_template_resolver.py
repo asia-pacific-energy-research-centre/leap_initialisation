@@ -186,6 +186,83 @@ def available_template_economies(
     )
 
 
+def read_leap_export_template_branch_paths(
+    path: Path | str,
+    *,
+    sheet_name: str = LEAP_EXPORT_TEMPLATE_SHEET,
+) -> frozenset[str]:
+    """Return the exact, nonblank branch paths in one validated template."""
+    resolved = _resolve_path(path)
+    _validate_template_columns(resolved, sheet_name=sheet_name)
+    branch_paths = pd.read_excel(
+        resolved,
+        sheet_name=sheet_name,
+        header=2,
+        usecols=["Branch Path"],
+    )["Branch Path"]
+    return frozenset(
+        text
+        for value in branch_paths.dropna()
+        if (text := str(value).strip())
+    )
+
+
+def build_apec_template_branch_path_union(
+    templates_root: Path | str = DEFAULT_LEAP_EXPORT_TEMPLATES_ROOT,
+    *,
+    include_provisional: bool = True,
+) -> frozenset[str]:
+    """Return the union of branch paths from every active economy template.
+
+    ``APEC`` is a structural fallback catalog, not a LEAP area and not an ID
+    source. One resolved template per available economy contributes paths; the
+    standalone APEC workbook is deliberately ignored because this set is
+    defined from the economy-template union.
+    """
+    economies = available_template_economies(
+        templates_root,
+        include_provisional=include_provisional,
+    )
+    if not economies:
+        raise FileNotFoundError(
+            "Cannot build the APEC branch-path union because no economy-specific "
+            f"LEAP export templates were found under {_resolve_path(templates_root)}."
+        )
+
+    branch_paths: set[str] = set()
+    for economy in economies:
+        template = find_leap_export_template(economy, templates_root=templates_root)
+        branch_paths.update(read_leap_export_template_branch_paths(template.path))
+    return frozenset(branch_paths)
+
+
+def resolve_template_branch_paths_or_apec_union(
+    economy: object,
+    *,
+    templates_root: Path | str = DEFAULT_LEAP_EXPORT_TEMPLATES_ROOT,
+    include_provisional_in_union: bool = True,
+) -> frozenset[str]:
+    """Return an economy's branch paths, or the APEC union when it has no template.
+
+    Aggregate sentinels always use the union. Only a genuinely missing template
+    falls back; an invalid or ambiguous existing template still raises so a
+    corrupt structural source cannot be hidden by the broader union.
+    """
+    if is_aggregate_economy(economy):
+        return build_apec_template_branch_path_union(
+            templates_root,
+            include_provisional=include_provisional_in_union,
+        )
+    try:
+        template = find_leap_export_template(economy, templates_root=templates_root)
+    except FileNotFoundError:
+        return build_apec_template_branch_path_union(
+            templates_root,
+            include_provisional=include_provisional_in_union,
+        )
+    return read_leap_export_template_branch_paths(template.path)
+
+
 def _validate_template_columns(
     path: Path,
     *,
