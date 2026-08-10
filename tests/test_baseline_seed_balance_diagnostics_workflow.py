@@ -6,7 +6,7 @@ import pytest
 from openpyxl import Workbook
 
 import codebase.functions.baseline_seed_balance_diagnostics as diagnostics
-import codebase.supply_reconciliation_balance_tables as balance_tables
+from codebase.supply_reconciliation import balance_tables
 
 
 def _comparison_rows(

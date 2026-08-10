@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from codebase.functions import supply_leap_io
+from codebase.supply_reconciliation import leap_io as supply_leap_io
 
 
 def test_unmapped_hydrogen_output_keeps_zero_smr_at_zero_share(monkeypatch) -> None:

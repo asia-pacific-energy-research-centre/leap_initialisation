@@ -1,5 +1,14 @@
 # Remaining work queue
 
+## [35] Keep the migrated supply-reconciliation test suite collectable
+
+**Status: completed 2026-08-10.**
+
+The two remaining tests that referenced pre-migration supply modules now import
+their package replacements under `codebase.supply_reconciliation`. Pytest is
+also scoped to `tests/`, so local full-suite runs do not traverse workflow
+scratch directories such as `tmp/pytest`.
+
 ## [34] Use the economy-template union as the APEC structural fallback
 
 **Status: completed 2026-08-10.**
