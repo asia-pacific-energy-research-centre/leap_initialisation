@@ -1725,7 +1725,7 @@ def test_aggregate_demand_comparator_splits_nonenergy_from_other_sector() -> Non
         "esto_flow",
     ].iloc[0]
     nonenergy_selector = adjusted.loc[
-        adjusted["leap_sector_name_full_path"].eq("All demand aggregated/Non-Energy Use"),
+        adjusted["leap_sector_name_full_path"].eq("All demand aggregated/Non Energy Use"),
         "esto_flow",
     ].iloc[0]
     source = pd.DataFrame(
@@ -1762,6 +1762,27 @@ def test_aggregate_demand_comparator_splits_nonenergy_from_other_sector() -> Non
         esto_flow=nonenergy_selector,
         esto_product="07.17 Other products",
     ) == pytest.approx(78.873358)
+
+
+def test_aggregate_demand_comparator_preserves_existing_nonenergy_mapping() -> None:
+    mapping = pd.DataFrame(
+        [
+            {
+                "leap_sector_name_full_path": "All demand aggregated/Other sector",
+                "esto_flow": diagnostics.OTHER_SECTOR_COMPARATOR_FLOW,
+                "esto_product": "07.17 Other products",
+            },
+            {
+                "leap_sector_name_full_path": "All demand aggregated/Non Energy Use",
+                "esto_flow": diagnostics.NONENERGY_COMPARATOR_FLOW,
+                "esto_product": "07.17 Other products",
+            },
+        ]
+    )
+
+    adjusted = diagnostics._split_nonenergy_from_other_sector_comparator_mapping(mapping)
+
+    pd.testing.assert_frame_equal(adjusted, mapping)
 
 
 def test_esto_extraction_mapping_expands_transfer_rollup_components(

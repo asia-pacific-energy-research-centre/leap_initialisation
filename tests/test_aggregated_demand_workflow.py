@@ -512,7 +512,7 @@ class TestLeapDemandGroupEstoSectorMapConfig:
             "International transport",
             "Industry",
             "Other sector",
-            "Non-Energy Use",
+            "Non Energy Use",
             "Buildings",
         }
         assert set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP.keys()) == expected_groups
@@ -539,7 +539,7 @@ class TestLeapDemandGroupEstoSectorMapConfig:
         assert "16_01_buildings" not in other_codes
 
     def test_nonenergy_use_has_its_own_group(self):
-        assert LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Non-Energy Use"] == ["17_nonenergy_use"]
+        assert LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Non Energy Use"] == ["17_nonenergy_use"]
 
     def test_international_transport_includes_bunkers(self):
         international = set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["International transport"])
@@ -815,7 +815,7 @@ class TestAggregatedDemandWorkbookModes:
             ("16.01 Commercial and public services", "Buildings"),
             ("16.02 Residential", "Buildings"),
             ("16.03 Agriculture", "Other sector"),
-            ("17 Non-energy use", "Non-Energy Use"),
+            ("17 Non-energy use", "Non Energy Use"),
         ],
     )
     def test_requested_sector_branches_classify_source_flows(self, flow, expected_branch):
@@ -850,21 +850,21 @@ class TestAggregatedDemandWorkbookModes:
         values = result.groupby("sector")["value"].sum().to_dict()
 
         assert values == pytest.approx(
-            {"Other sector": 0.000641, "Non-Energy Use": 78.873358}
+            {"Other sector": 0.000641, "Non Energy Use": 78.873358}
         )
 
     def test_nonenergy_fuel_coverage_finds_unmapped_and_missing_fuels(self):
         base_rows = pd.DataFrame(
             [
-                {"sector": "Non-Energy Use", "fuel_code": "mapped", "value": 2.0},
-                {"sector": "Non-Energy Use", "fuel_code": "unmapped", "value": 3.0},
+                {"sector": "Non Energy Use", "fuel_code": "mapped", "value": 2.0},
+                {"sector": "Non Energy Use", "fuel_code": "unmapped", "value": 3.0},
                 {"sector": "Other sector", "fuel_code": "other", "value": 4.0},
             ]
         )
         base_result = pd.DataFrame(
             [
                 {
-                    "sector": "Non-Energy Use",
+                    "sector": "Non Energy Use",
                     "leap_fuel_name": "Different fuel",
                     "value": 2.0,
                 }
@@ -885,19 +885,19 @@ class TestAggregatedDemandWorkbookModes:
             [
                 {
                     "scenario": "Reference",
-                    "sector": "Non-Energy Use",
+                    "sector": "Non Energy Use",
                     "leap_fuel_name": "Naphtha",
                     "value": 2.0,
                 },
                 {
                     "scenario": "Reference",
-                    "sector": "Non-Energy Use",
+                    "sector": "Non Energy Use",
                     "leap_fuel_name": "Biogas",
                     "value": 1.0,
                 },
                 {
                     "scenario": "Reference",
-                    "sector": "Non-Energy Use",
+                    "sector": "Non Energy Use",
                     "leap_fuel_name": "Unused",
                     "value": 0.0,
                 },
@@ -910,7 +910,7 @@ class TestAggregatedDemandWorkbookModes:
             ]
         )
         template_paths = {
-            r"Demand\All demand aggregated\Non-Energy Use\Naphtha",
+            r"Demand\All demand aggregated\Non Energy Use\Naphtha",
         }
 
         missing = _find_missing_nonenergy_template_fuels(

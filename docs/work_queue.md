@@ -5,7 +5,7 @@
 **Status: implementation complete 2026-08-10; LEAP structure migration pending.**
 
 Aggregated demand now writes ESTO flow `17 Non-energy use` to its own
-`Non-Energy Use` sector branch instead of combining it with `Other sector`.
+`Non Energy Use` sector branch instead of combining it with `Other sector`.
 The configured detailed-demand ownership map follows the same boundary. A
 build-time base-year coverage check now fails explicitly if any nonzero
 non-energy ESTO product has no active LEAP fuel mapping or if a mapped fuel is
@@ -20,11 +20,38 @@ products, Paraffin waxes, Petroleum coke, Refinery gas not liquefied, Sub
 bituminous coal, and White spirit SBP.
 
 The current `12_NZ` and `20_USA` templates contain zero branches below
-`Demand\All demand aggregated\Non-Energy Use`. Add the 26 fuel branches to the
+`Demand\All demand aggregated\Non Energy Use`. Add the 26 fuel branches to the
 LEAP areas and refresh every economy template before promoting a seed with this
 split. The LEAP API cannot create demand fuel branches automatically. Until the
 migration is complete, the aggregated-demand writer emits a precise warning
 listing every nonzero non-energy fuel absent from the resolved economy template.
+
+The canonical single-axis mapping follow-up belongs in `leap_mappings` after
+the current active workbook edits are coordinated. Required changes are:
+
+1. add `All demand aggregated/Non Energy Use -> 17 Non-energy use (BOTH)` to
+   `leap_sector_to_esto` and `All demand aggregated/Non Energy Use ->
+   17_nonenergy_use` to `leap_sector_to_ninth`;
+2. narrow the existing `All demand aggregated/Other sector` ESTO relation from
+   the combined `16.03-16.05,17` target to `16.03-16.05 Other sector (all
+   demand aggregate)`;
+3. replace the combined row in `ninth_sector_to_esto` with
+   `16_02-16_05 Other sector (all demand aggregate) -> 16.03-16.05 Other sector
+   (all demand aggregate) (BOTH)`; keep the existing `17_nonenergy_use -> 17
+   Non-energy use (BOTH)` row;
+4. remove flow 17 from the detached Other-sector groups in `esto_rollup_rules`
+   and `ninth_rollup_rules`, renaming their rolled labels and child lists to the
+   ordinary Other-sector-only boundary; and
+5. add `All demand aggregated/Non Energy Use` as the sixth child/input of the
+   `Total final consumption` group in `leap_rollup_rules`, updating the shared
+   child list and five-child note on every row in that group.
+
+All 26 LEAP fuels already exist in both LEAP fuel-axis sheets. The ESTO and
+Ninth sector/fuel target pairs are already eligible, including Biogas through
+reviewed ESTO extra-pair authority. Do not add 26 `extra_leap_key_pairs` after
+the real LEAP templates are refreshed; template structure should provide that
+authority. Those extras would only be a temporary substitute for compiling
+before the template refresh and are not the preferred sequence.
 
 ## [32] Make other-loss/own-use proxy source gaps explicit
 

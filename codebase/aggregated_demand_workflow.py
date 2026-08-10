@@ -279,7 +279,7 @@ _SECTOR_LEAP_LABELS: dict[str, str] = {
     "14_industry_sector":                          "Industry",
     "15_transport_sector":                         "Transport",
     "16_other_sector":                             "Other Sector",
-    "17_nonenergy_use":                            "Non-Energy Use",
+    "17_nonenergy_use":                            "Non Energy Use",
 }
 
 
@@ -300,7 +300,7 @@ def _demand_branch_from_esto_flow(flow: object) -> str:
     if flow_text.startswith("14"):
         return "Industry"
     if flow_text.startswith("17"):
-        return "Non-Energy Use"
+        return "Non Energy Use"
     # ESTO's flow numbering differs from the 9th Outlook sector numbering:
     # 16.01 is commercial/public services and 16.02 is residential. Together
     # they form the 9th ``16_01_buildings`` sector. Agriculture/fishing begins
@@ -323,7 +323,7 @@ def _find_nonenergy_base_year_fuel_gaps(
         return [], []
 
     nonenergy_rows = base_rows[
-        base_rows["sector"].eq("Non-Energy Use")
+        base_rows["sector"].eq("Non Energy Use")
         & pd.to_numeric(base_rows["value"], errors="coerce").abs().gt(tolerance)
     ].copy()
     source_products = {
@@ -339,7 +339,7 @@ def _find_nonenergy_base_year_fuel_gaps(
     }
 
     actual_rows = base_result[
-        base_result["sector"].eq("Non-Energy Use")
+        base_result["sector"].eq("Non Energy Use")
         & pd.to_numeric(base_result["value"], errors="coerce").abs().gt(tolerance)
     ]
     actual_fuels = {
@@ -1423,7 +1423,7 @@ def _find_missing_nonenergy_template_fuels(
         return []
     requested = demand[
         demand["scenario"].isin(scenarios)
-        & demand["sector"].eq("Non-Energy Use")
+        & demand["sector"].eq("Non Energy Use")
         & pd.to_numeric(demand["value"], errors="coerce").abs().gt(tolerance)
     ]
     fuels = {
@@ -1434,7 +1434,7 @@ def _find_missing_nonenergy_template_fuels(
     return sorted(
         fuel
         for fuel in fuels
-        if f"{DEMAND_BRANCH_ROOT}\\Non-Energy Use\\{fuel}" not in template_branch_paths
+        if f"{DEMAND_BRANCH_ROOT}\\Non Energy Use\\{fuel}" not in template_branch_paths
     )
 
 

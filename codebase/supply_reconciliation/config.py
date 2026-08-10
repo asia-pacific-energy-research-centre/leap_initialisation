@@ -1160,7 +1160,7 @@ LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP: dict[str, list[str]] = {
         "16_02_agriculture_and_fishing",
         "16_05_nonspecified_others",
     ],
-    "Non-Energy Use":     ["17_nonenergy_use"],
+    "Non Energy Use":     ["17_nonenergy_use"],
     "Buildings":          ["16_01_buildings"],
 }
 

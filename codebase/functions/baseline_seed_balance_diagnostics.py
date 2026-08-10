@@ -386,10 +386,12 @@ def _split_nonenergy_from_other_sector_comparator_mapping(
         .str.replace("\\", "/", regex=False)
         .map(_normalize_diagnostic_label)
     )
+    if normalized_paths.eq("all demand aggregated/non energy use").any():
+        return out
     other_sector = normalized_paths.eq("all demand aggregated/other sector")
     nonenergy = out.loc[other_sector].copy()
     out.loc[other_sector, "esto_flow"] = OTHER_SECTOR_COMPARATOR_FLOW
-    nonenergy[path_column] = "All demand aggregated/Non-Energy Use"
+    nonenergy[path_column] = "All demand aggregated/Non Energy Use"
     nonenergy["esto_flow"] = NONENERGY_COMPARATOR_FLOW
     return pd.concat([out, nonenergy], ignore_index=True, sort=False)
 
