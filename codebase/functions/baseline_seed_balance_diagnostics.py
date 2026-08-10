@@ -85,9 +85,8 @@ DEFAULT_BALANCE_VARIABLE_RULES_PATH = (
 )
 DEFAULT_BASE_TABLE_PATH = workflow_cfg.get_energy_source_config().esto_base_table_path
 DEFAULT_PROJECTION_TABLE_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
-OTHER_SECTOR_WITH_NONENERGY_COMPARATOR_FLOW = (
-    "16.03-16.05,17 Other sector including non-energy (all demand aggregate)"
-)
+OTHER_SECTOR_COMPARATOR_FLOW = "16.03-16.05 Other sector (all demand aggregate)"
+NONENERGY_COMPARATOR_FLOW = "17 Non-energy use"
 
 DIFFERENCE_OUTPUT_COLUMNS = [
     "economy",
@@ -366,16 +365,14 @@ def _all_demand_subtotal_comparator_flows(
     }
 
 
-def _include_nonenergy_in_other_sector_comparator_mapping(
+def _split_nonenergy_from_other_sector_comparator_mapping(
     esto_mapping: pd.DataFrame,
 ) -> pd.DataFrame:
-    r"""Align the diagnostic's Other-sector comparator with the seed branch.
+    r"""Align the diagnostic mapping with the split aggregate-demand branches.
 
-    ``Demand\All demand aggregated\Other sector`` deliberately contains ESTO
-    flows 16.03-16.05 plus flow 17 non-energy use. The maintained canonical
-    mapping retains the ordinary Other-sector selector because it serves wider
-    mapping purposes; this diagnostic-only copy needs the combined selector so
-    its Full Expected Source compares the same scope written to LEAP.
+    The compatibility mapping still has one historical Other-sector source row
+    covering ESTO flows 16.03-16.05 plus flow 17. This diagnostic-only copy
+    separates that row into the two branch scopes now written to LEAP.
     """
     out = esto_mapping.copy()
     path_column = "leap_sector_name_full_path"
@@ -390,8 +387,11 @@ def _include_nonenergy_in_other_sector_comparator_mapping(
         .map(_normalize_diagnostic_label)
     )
     other_sector = normalized_paths.eq("all demand aggregated/other sector")
-    out.loc[other_sector, "esto_flow"] = OTHER_SECTOR_WITH_NONENERGY_COMPARATOR_FLOW
-    return out
+    nonenergy = out.loc[other_sector].copy()
+    out.loc[other_sector, "esto_flow"] = OTHER_SECTOR_COMPARATOR_FLOW
+    nonenergy[path_column] = "All demand aggregated/Non-Energy Use"
+    nonenergy["esto_flow"] = NONENERGY_COMPARATOR_FLOW
+    return pd.concat([out, nonenergy], ignore_index=True, sort=False)
 
 
 def load_balance_variable_rules(
@@ -1044,7 +1044,7 @@ def _write_esto_axis_extraction_mapping_workbook(
         sheet_name="leap_combined_esto",
         dtype=str,
     )
-    esto_mapping = _include_nonenergy_in_other_sector_comparator_mapping(
+    esto_mapping = _split_nonenergy_from_other_sector_comparator_mapping(
         esto_mapping
     )
     rollup_rules = read_config_table(

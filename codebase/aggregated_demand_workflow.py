@@ -299,15 +299,55 @@ def _demand_branch_from_esto_flow(flow: object) -> str:
         return "Transport non road"
     if flow_text.startswith("14"):
         return "Industry"
+    if flow_text.startswith("17"):
+        return "Non-Energy Use"
     # ESTO's flow numbering differs from the 9th Outlook sector numbering:
     # 16.01 is commercial/public services and 16.02 is residential. Together
     # they form the 9th ``16_01_buildings`` sector. Agriculture/fishing begins
     # at ESTO 16.03, so 16.02 must not fall through to Other sector.
     if flow_text.startswith(("16.01", "16.02")):
         return "Buildings"
-    # This covers other-sector, non-energy-use, and any own-use/loss rows when
-    # the optional other-loss proxy exclusion is disabled.
+    # This covers other-sector and any own-use/loss rows when the optional
+    # other-loss proxy exclusion is disabled.
     return "Other sector"
+
+
+def _find_nonenergy_base_year_fuel_gaps(
+    base_rows: pd.DataFrame,
+    base_result: pd.DataFrame,
+    esto_fuel_map: dict[str, str],
+    tolerance: float = 1e-12,
+) -> tuple[list[str], list[str]]:
+    """Return unmapped source products and missing mapped fuels for non-energy use."""
+    if "sector" not in base_rows.columns or "sector" not in base_result.columns:
+        return [], []
+
+    nonenergy_rows = base_rows[
+        base_rows["sector"].eq("Non-Energy Use")
+        & pd.to_numeric(base_rows["value"], errors="coerce").abs().gt(tolerance)
+    ].copy()
+    source_products = {
+        str(value).strip()
+        for value in nonenergy_rows["fuel_code"].tolist()
+        if str(value).strip()
+    }
+    unmapped_products = sorted(source_products.difference(esto_fuel_map))
+    expected_fuels = {
+        esto_fuel_map[product]
+        for product in source_products
+        if product in esto_fuel_map
+    }
+
+    actual_rows = base_result[
+        base_result["sector"].eq("Non-Energy Use")
+        & pd.to_numeric(base_result["value"], errors="coerce").abs().gt(tolerance)
+    ]
+    actual_fuels = {
+        str(value).strip()
+        for value in actual_rows["leap_fuel_name"].tolist()
+        if str(value).strip()
+    }
+    return unmapped_products, sorted(expected_fuels.difference(actual_fuels))
 
 _SECTOR_SHORT_CODES: dict[str, str] = {
     # top-level sectors
@@ -1068,6 +1108,18 @@ def build_aggregated_demand(
             f"dropped: {unmapped_base[:15]}"
         )
     base_agg = base_agg[base_agg["leap_fuel_name"].notna()].copy()
+    if use_sector_branches:
+        unmapped_nonenergy, missing_nonenergy = _find_nonenergy_base_year_fuel_gaps(
+            base_rows=base_rows,
+            base_result=base_agg,
+            esto_fuel_map=esto_fuel_map,
+        )
+        if unmapped_nonenergy or missing_nonenergy:
+            raise RuntimeError(
+                "Non-energy base-year fuel coverage is incomplete: "
+                f"unmapped ESTO products={unmapped_nonenergy}; "
+                f"missing LEAP fuels={missing_nonenergy}."
+            )
     base_provenance = base_rows.copy()
     if "source_flow" not in base_provenance:
         base_provenance["source_flow"] = ""
@@ -1360,6 +1412,32 @@ CONTRIBUTIONS_RELATIVE_TOLERANCE = 1e-6
 AGGREGATED_DEMAND_ZERO_ABSOLUTE_TOLERANCE = 1e-12
 
 
+def _find_missing_nonenergy_template_fuels(
+    demand: pd.DataFrame,
+    scenarios: list[str],
+    template_branch_paths: set[str],
+    tolerance: float = AGGREGATED_DEMAND_ZERO_ABSOLUTE_TOLERANCE,
+) -> list[str]:
+    """Return nonzero non-energy fuels whose exact LEAP branch is absent."""
+    if "sector" not in demand.columns:
+        return []
+    requested = demand[
+        demand["scenario"].isin(scenarios)
+        & demand["sector"].eq("Non-Energy Use")
+        & pd.to_numeric(demand["value"], errors="coerce").abs().gt(tolerance)
+    ]
+    fuels = {
+        str(value).strip()
+        for value in requested["leap_fuel_name"].tolist()
+        if str(value).strip()
+    }
+    return sorted(
+        fuel
+        for fuel in fuels
+        if f"{DEMAND_BRANCH_ROOT}\\Non-Energy Use\\{fuel}" not in template_branch_paths
+    )
+
+
 def _filter_all_zero_demand_branches_for_export(
     demand: pd.DataFrame,
     scenarios: list[str],
@@ -1610,6 +1688,18 @@ def save_aggregated_demand_as_leap_workbook(
         branch_to_id, variable_to_id, scenario_to_id = _build_id_lookups(
             id_lookup_resolved
         )
+
+    if use_sector_branches and branch_to_id is not None:
+        missing_nonenergy_template_fuels = _find_missing_nonenergy_template_fuels(
+            demand=demand,
+            scenarios=use_scenarios,
+            template_branch_paths=set(branch_to_id),
+        )
+        if missing_nonenergy_template_fuels:
+            print(
+                "[WARN] Non-energy demand has nonzero fuels with no exact branch "
+                f"in {id_lookup_resolved.name}: {missing_nonenergy_template_fuels}"
+            )
 
     export_demand = _filter_all_zero_demand_branches_for_export(
         demand=demand,

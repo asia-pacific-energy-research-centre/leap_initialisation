@@ -20,6 +20,8 @@ from codebase.aggregated_demand_workflow import (
     _apply_first_projection_year_bridge,
     _extract_contextual_projection_years,
     _demand_branch_from_esto_flow,
+    _find_nonenergy_base_year_fuel_gaps,
+    _find_missing_nonenergy_template_fuels,
     _esto_flow_is_excluded,
     _sector_exclusion_suffix,
     build_aggregated_demand_as_dummy,
@@ -510,6 +512,7 @@ class TestLeapDemandGroupEstoSectorMapConfig:
             "International transport",
             "Industry",
             "Other sector",
+            "Non-Energy Use",
             "Buildings",
         }
         assert set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP.keys()) == expected_groups
@@ -531,9 +534,12 @@ class TestLeapDemandGroupEstoSectorMapConfig:
         other_codes = set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Other sector"])
         assert "16_02_agriculture_and_fishing" in other_codes
         assert "16_05_nonspecified_others" in other_codes
-        assert "17_nonenergy_use" in other_codes
+        assert "17_nonenergy_use" not in other_codes
         # Should not accidentally include buildings
         assert "16_01_buildings" not in other_codes
+
+    def test_nonenergy_use_has_its_own_group(self):
+        assert LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["Non-Energy Use"] == ["17_nonenergy_use"]
 
     def test_international_transport_includes_bunkers(self):
         international = set(LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP["International transport"])
@@ -809,13 +815,13 @@ class TestAggregatedDemandWorkbookModes:
             ("16.01 Commercial and public services", "Buildings"),
             ("16.02 Residential", "Buildings"),
             ("16.03 Agriculture", "Other sector"),
-            ("17 Non-energy use", "Other sector"),
+            ("17 Non-energy use", "Non-Energy Use"),
         ],
     )
     def test_requested_sector_branches_classify_source_flows(self, flow, expected_branch):
         assert _demand_branch_from_esto_flow(flow) == expected_branch
 
-    def test_base_year_includes_nonenergy_in_other_sector(self):
+    def test_base_year_separates_nonenergy_from_other_sector(self):
         source = pd.DataFrame(
             [
                 {
@@ -843,7 +849,77 @@ class TestAggregatedDemandWorkbookModes:
         )
         values = result.groupby("sector")["value"].sum().to_dict()
 
-        assert values == pytest.approx({"Other sector": 78.873999})
+        assert values == pytest.approx(
+            {"Other sector": 0.000641, "Non-Energy Use": 78.873358}
+        )
+
+    def test_nonenergy_fuel_coverage_finds_unmapped_and_missing_fuels(self):
+        base_rows = pd.DataFrame(
+            [
+                {"sector": "Non-Energy Use", "fuel_code": "mapped", "value": 2.0},
+                {"sector": "Non-Energy Use", "fuel_code": "unmapped", "value": 3.0},
+                {"sector": "Other sector", "fuel_code": "other", "value": 4.0},
+            ]
+        )
+        base_result = pd.DataFrame(
+            [
+                {
+                    "sector": "Non-Energy Use",
+                    "leap_fuel_name": "Different fuel",
+                    "value": 2.0,
+                }
+            ]
+        )
+
+        unmapped, missing = _find_nonenergy_base_year_fuel_gaps(
+            base_rows=base_rows,
+            base_result=base_result,
+            esto_fuel_map={"mapped": "Expected fuel"},
+        )
+
+        assert unmapped == ["unmapped"]
+        assert missing == ["Expected fuel"]
+
+    def test_nonenergy_template_coverage_reports_only_nonzero_missing_fuels(self):
+        demand = pd.DataFrame(
+            [
+                {
+                    "scenario": "Reference",
+                    "sector": "Non-Energy Use",
+                    "leap_fuel_name": "Naphtha",
+                    "value": 2.0,
+                },
+                {
+                    "scenario": "Reference",
+                    "sector": "Non-Energy Use",
+                    "leap_fuel_name": "Biogas",
+                    "value": 1.0,
+                },
+                {
+                    "scenario": "Reference",
+                    "sector": "Non-Energy Use",
+                    "leap_fuel_name": "Unused",
+                    "value": 0.0,
+                },
+                {
+                    "scenario": "Reference",
+                    "sector": "Other sector",
+                    "leap_fuel_name": "Coal",
+                    "value": 3.0,
+                },
+            ]
+        )
+        template_paths = {
+            r"Demand\All demand aggregated\Non-Energy Use\Naphtha",
+        }
+
+        missing = _find_missing_nonenergy_template_fuels(
+            demand=demand,
+            scenarios=["Reference"],
+            template_branch_paths=template_paths,
+        )
+
+        assert missing == ["Biogas"]
 
 
 class TestReconciliationDemandInference:

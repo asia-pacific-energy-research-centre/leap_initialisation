@@ -1142,7 +1142,6 @@ AGGREGATED_DEMAND_WRITE_CONTRIBUTIONS: bool = True
 # Commercial and public services, 16.01.02 Residential, etc.).
 # Other sector note: ESTO does not separate agriculture (16.02.03) and fishing
 # (16.02.04) at sub1sector level — both fall under 16_02_agriculture_and_fishing.
-# The aggregated Other sector branch also owns 17_nonenergy_use.
 LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP: dict[str, list[str]] = {
     "Road":               ["15_02_road"],
     "Transport non road": [
@@ -1160,8 +1159,8 @@ LEAP_DEMAND_GROUP_ESTO_SECTOR_MAP: dict[str, list[str]] = {
     "Other sector":       [
         "16_02_agriculture_and_fishing",
         "16_05_nonspecified_others",
-        "17_nonenergy_use",
     ],
+    "Non-Energy Use":     ["17_nonenergy_use"],
     "Buildings":          ["16_01_buildings"],
 }
 

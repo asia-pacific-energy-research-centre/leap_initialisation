@@ -1702,7 +1702,7 @@ def test_all_demand_subtotal_flows_come_from_mapped_child_rows() -> None:
     assert flows == {"15.02 Road", "16.01-16.02 Buildings"}
 
 
-def test_other_sector_comparator_includes_nonenergy_base_value() -> None:
+def test_aggregate_demand_comparator_splits_nonenergy_from_other_sector() -> None:
     mapping = pd.DataFrame(
         [
             {
@@ -1717,10 +1717,17 @@ def test_other_sector_comparator_includes_nonenergy_base_value() -> None:
             },
         ]
     )
-    adjusted = diagnostics._include_nonenergy_in_other_sector_comparator_mapping(
+    adjusted = diagnostics._split_nonenergy_from_other_sector_comparator_mapping(
         mapping
     )
-    selector = adjusted.loc[0, "esto_flow"]
+    other_selector = adjusted.loc[
+        adjusted["leap_sector_name_full_path"].eq("All demand aggregated/Other sector"),
+        "esto_flow",
+    ].iloc[0]
+    nonenergy_selector = adjusted.loc[
+        adjusted["leap_sector_name_full_path"].eq("All demand aggregated/Non-Energy Use"),
+        "esto_flow",
+    ].iloc[0]
     source = pd.DataFrame(
         [
             {
@@ -1738,15 +1745,23 @@ def test_other_sector_comparator_includes_nonenergy_base_value() -> None:
         ]
     )
 
-    assert selector == diagnostics.OTHER_SECTOR_WITH_NONENERGY_COMPARATOR_FLOW
+    assert other_selector == diagnostics.OTHER_SECTOR_COMPARATOR_FLOW
+    assert nonenergy_selector == diagnostics.NONENERGY_COMPARATOR_FLOW
     assert adjusted.loc[1, "esto_flow"] == "16.01-16.02 Buildings"
     assert diagnostics.pull_base_year_value(
         source,
         base_year=2022,
         economy_code="01AUS",
-        esto_flow=selector,
+        esto_flow=other_selector,
         esto_product="07.17 Other products",
-    ) == pytest.approx(78.873999)
+    ) == pytest.approx(0.000641)
+    assert diagnostics.pull_base_year_value(
+        source,
+        base_year=2022,
+        economy_code="01AUS",
+        esto_flow=nonenergy_selector,
+        esto_product="07.17 Other products",
+    ) == pytest.approx(78.873358)
 
 
 def test_esto_extraction_mapping_expands_transfer_rollup_components(

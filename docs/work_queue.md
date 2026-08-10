@@ -1,5 +1,31 @@
 # Remaining work queue
 
+## [33] Separate non-energy use from aggregated Other sector
+
+**Status: implementation complete 2026-08-10; LEAP structure migration pending.**
+
+Aggregated demand now writes ESTO flow `17 Non-energy use` to its own
+`Non-Energy Use` sector branch instead of combining it with `Other sector`.
+The configured detailed-demand ownership map follows the same boundary. A
+build-time base-year coverage check now fails explicitly if any nonzero
+non-energy ESTO product has no active LEAP fuel mapping or if a mapped fuel is
+missing from the generated non-energy result. The real 2022 source audit found
+25 nonzero ESTO products and 15 nonzero Ninth fuel codes; all currently have
+active canonical mappings. The first projection year adds Biogas, producing
+this 26-fuel nonzero union: Additives and oxygenates, Anthracite, BKB and PB,
+Biogas, Bitumen, Coal tar, Coke oven coke, Coke oven gas, Crude oil, Ethane,
+Fuel oil, Gas and diesel oil, Kerosene, LPG, Lubricants, Motor gasoline,
+Naphtha, Natural gas, Natural gas liquids, Other bituminous coal, Other
+products, Paraffin waxes, Petroleum coke, Refinery gas not liquefied, Sub
+bituminous coal, and White spirit SBP.
+
+The current `12_NZ` and `20_USA` templates contain zero branches below
+`Demand\All demand aggregated\Non-Energy Use`. Add the 26 fuel branches to the
+LEAP areas and refresh every economy template before promoting a seed with this
+split. The LEAP API cannot create demand fuel branches automatically. Until the
+migration is complete, the aggregated-demand writer emits a precise warning
+listing every nonzero non-energy fuel absent from the resolved economy template.
+
 ## [32] Make other-loss/own-use proxy source gaps explicit
 
 **Status: completed 2026-08-10.**

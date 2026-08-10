@@ -245,6 +245,7 @@ shared implementation.
 | Current Accounts scenario present | `_ensure_current_accounts_scenario` (`supply_reconciliation/balance_tables.py:516`) | |
 | manual-import workbook shape | `validate_workbook_for_manual_import` (`analysis_input_write_dispatcher.py:464`), `_validate_workbook_structure_against_canonical` (`:298`) | |
 | power-interim fuel/sector coverage | `validate_power_interim_fuel_coverage` (`electricity_heat_interim_workflow.py:582`), `validate_power_interim_sub1sectors` (`:133`) | |
+| non-energy template fuel coverage | `aggregated_demand_workflow._find_missing_nonenergy_template_fuels` | warns with every nonzero generated non-energy fuel whose exact branch is absent from the resolved economy template |
 | shared export readiness runner | `utilities/leap_export_readiness.py` (`run_export_readiness`) | logical keys, LEAP IDs, Region consistency, shared fuel-catalog coverage, and legacy transfer paths; writes consolidated findings and summary outputs |
 
 The readiness runner remains a per-workbook repair report. It is not the BSA
@@ -267,6 +268,7 @@ Do not fold into F1/F2.
 | reset-scope resolution | `supply_reconciliation/preflight.py:570` (`_load_reset_scope_from_full_model_export`), `:657`, `:682`, `:713` | reset module/fuel scope is resolvable from the export |
 | capacity-priority coverage | `supply_reconciliation/allocation.py:581` (`_validate_capacity_priority_coverage`) | every capacitied process has a priority |
 | fuel-catalog currency | `fuel_catalog_preflight.py` (`ensure_fuel_catalog_current:486`, `_validate_probe_vs_full_model:300`) | LEAP probe vs full-model export |
+| non-energy base-year fuel coverage | `aggregated_demand_workflow._find_nonenergy_base_year_fuel_gaps` | every nonzero ESTO flow-17 product maps to and survives as a generated LEAP fuel |
 | projected base-year coverage | `industry_fuel_remap.py:371` (`_validate_projected_base_year_coverage`) | base-year data present after projection |
 | results-update readiness | `supply_reconciliation_workflow.py` (~1021–1029) | fresh LEAP balance workbooks exported before update pass |
 | level-2 export readiness | `utilities/leap_balance_export_resolver.py` (`inspect_balance_export_detail`, `require_level2_balance_export_detail`); called by `supply_reconciliation/demand_mapping.py`, `supply_reconciliation_workflow.py`, and `functions/baseline_seed_balance_diagnostics.py` | indented Level 2+ branches exported before results update or baseline-seed diagnostics |
