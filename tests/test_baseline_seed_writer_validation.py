@@ -296,6 +296,60 @@ def test_final_writer_runs_combined_export_readiness(
     assert seen[0]["expected_region"] == "United States"
 
 
+def test_final_writer_consolidates_proxy_seed_fallback_warnings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "other_loss_own_use_proxy_20_USA_Reference.xlsx"
+    _write_leap_workbook(source, [_row("Data(2023,1)")])
+    pd.DataFrame([{
+        "rule_id": "SEED-014",
+        "status": "warn",
+        "severity": "warning",
+        "blocking": False,
+        "violated_rule_expectation": "Proxy fallbacks are explicit and usable.",
+        "scope": "other-loss and own-use proxy process/fuel series",
+        "message": "Base-year target is unavailable; direct Ninth values are retained.",
+        "evidence": "target_fallback_reason=ninth_exact_no_base_target",
+        "documentation_reference": "docs/special_rules_and_design_decisions.md#init-014-other-loss-and-own-use-proxy-source-fallbacks",
+        "economy": "20_USA",
+        "process_key": "transmission_and_distribution_losses",
+        "process_label": "Transmission and distribution losses",
+        "fuel_branch_label": "Heat",
+        "source_workflow": "other_loss_own_use_proxy_workflow",
+        "source_file": "proxy_activity_intensity_detail.csv",
+    }]).to_csv(tmp_path / "proxy_seed_rule_findings.csv", index=False)
+    template = tmp_path / "full model export.xlsx"
+    _write_template(template)
+    output_dir = tmp_path / "output"
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io._load_reference_export_data",
+        lambda *_args, **_kwargs: pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io.run_export_readiness",
+        lambda *args, **kwargs: type(
+            "Readiness", (), {"blocking_failures": 0, "findings": pd.DataFrame()}
+        )(),
+    )
+
+    written = write_per_economy_combined_workbooks(
+        economies=["20_USA"],
+        output_dir=output_dir,
+        id_lookup_path=template,
+        source_workbooks_by_workflow={"other_loss_own_use_proxy_workflow": [source]},
+        required_years_by_scenario={"Reference": [2023]},
+    )
+
+    assert len(written) == 1
+    diagnostics = output_dir / "supporting_files" / "baseline_seed_validation"
+    consolidated = pd.read_csv(next(diagnostics.glob("*_consolidated_rule_findings.csv")))
+    proxy = consolidated[consolidated["rule_id"].eq("SEED-014")]
+    assert len(proxy) == 1
+    assert proxy["status"].iloc[0] == "warn"
+    assert proxy["economy"].iloc[0] == "20_USA"
+
+
 def test_final_writer_runs_central_artifact_gate_after_physical_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -1,5 +1,42 @@
 # Special rules and design decisions
 
+## INIT-014: Other-loss and own-use proxy source fallbacks
+
+**Status:** Implemented
+**Owner:** leap_initialisation
+**Type:** Proxy target/activity fallback and validation
+**Affected areas:** `other_loss_own_use_proxy_workflow.py`;
+`other_loss_own_use_proxy_utils.py`; baseline-seed SEED reporting
+
+### Current rule
+
+ESTO release snapshots are audit evidence, not a branch-selection mechanism.
+The producer retains a configured fuel when its current target series contains
+any nonzero value. If the configured base-year target is zero or absent but a
+direct Ninth projection exists, target-matching initialisation keeps the direct
+Ninth value exactly by calculating a year-specific intensity. It records
+`target_fallback_reason=ninth_exact_no_base_target` and emits a `SEED-014`
+warning.
+
+If the configured process proxy activity is entirely zero, a process may opt
+into the same-fuel total-final-consumption fallback: Heat uses total Heat
+demand, Natural gas uses total Natural gas demand, and so on. ESTO flow
+`12 Total final consumption`, Ninth sector `12_total_final_consumption`, and
+LEAP balance row `All demand aggregated` are the corresponding source legs.
+This fallback is fuel-specific and must not replace a populated primary proxy.
+Applied activity fallbacks emit `SEED-014` warnings. A positive target that
+still has zero activity is a blocking `SEED-014` failure.
+
+Transmission and distribution losses currently opt into both provisions.
+This preserves Russia Heat projections without pinning behavior to a mutable
+ESTO snapshot and leaves explicit proxy structure for later researcher review.
+
+### History
+
+- 2026-08-10: Replaced snapshot-based fuel suppression with audit-only
+  validation; added exact Ninth no-base-target retention, same-fuel demand
+  activity fallback, provenance, and consolidated SEED-014 reporting.
+
 This is the decision log for `leap_initialisation`. Record rules whose correct behaviour cannot be derived from source data, canonical configuration, or the established model structure. Keep implementation details in code documentation. Update an existing entry and its history rather than creating a duplicate.
 
 Cross-repository decisions use a `CROSS-###` ID and have one authoritative entry in the repository that owns the implementation. Other affected repositories should link to that entry instead of copying it.

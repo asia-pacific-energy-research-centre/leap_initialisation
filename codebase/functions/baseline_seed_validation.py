@@ -64,6 +64,7 @@ BRANCH_ISSUE_FAMILY_BY_RULE_ID = {
     "SEED-011": "missing_branch_or_id",
     "SEED-012": "producer_coverage",
     "SEED-013": "process_efficiency",
+    "SEED-014": "proxy_source_fallback",
 }
 
 # When a share group is all-zero in one scenario, borrow the genuine profile from
@@ -163,6 +164,14 @@ RULE_SPECS = {
         "nonzero Exogenous Capacity rows on transformation processes", "error", True,
         "docs/baseline_seed_rule_inventory.md#process-efficiency-capacity-guard",
         applicable_variables=("Exogenous Capacity", "Process Efficiency"),
+    ),
+    "SEED-014": RuleSpec(
+        "SEED-014",
+        "Other-loss and own-use proxy target/activity fallbacks are explicit and usable.",
+        "other-loss and own-use proxy process/fuel series",
+        "warning",
+        True,
+        "docs/special_rules_and_design_decisions.md#init-014-other-loss-and-own-use-proxy-source-fallbacks",
     ),
 }
 
@@ -969,6 +978,84 @@ def filter_actionable_findings(findings: pd.DataFrame) -> pd.DataFrame:
         return findings.copy()
     statuses = findings["status"].astype(str).str.strip().str.lower()
     return findings.loc[statuses.isin(ACTIONABLE_FINDING_STATUSES)].copy()
+
+
+def build_proxy_source_fallback_findings(
+    detail_df: pd.DataFrame,
+    *,
+    base_year: int,
+    source_file: str = "",
+) -> pd.DataFrame:
+    """Return SEED-014 warnings/failures from proxy fallback provenance."""
+    columns = [
+        "rule_id", "status", "severity", "blocking",
+        "violated_rule_expectation", "scope", "message", "evidence",
+        "documentation_reference", "economy", "process_key", "process_label",
+        "fuel_branch_label", SOURCE_WORKFLOW_COLUMN, SOURCE_FILE_COLUMN,
+    ]
+    if detail_df.empty:
+        return pd.DataFrame(columns=columns)
+    findings: list[dict[str, object]] = []
+    group_cols = ["economy", "process_key", "process_label", "fuel_branch_label"]
+    for keys, group in detail_df.groupby(group_cols, dropna=False, sort=False):
+        economy, process_key, process_label, fuel_label = keys
+        context = {
+            "economy": economy,
+            "process_key": process_key,
+            "process_label": process_label,
+            "fuel_branch_label": fuel_label,
+            SOURCE_WORKFLOW_COLUMN: "other_loss_own_use_proxy_workflow",
+            SOURCE_FILE_COLUMN: source_file,
+        }
+        target_reason = next(
+            (
+                str(value)
+                for value in group.get("target_fallback_reason", pd.Series(dtype=object))
+                if str(value).strip()
+            ),
+            "",
+        )
+        if target_reason:
+            findings.append(_finding(
+                "SEED-014",
+                "warn",
+                "Base-year target is unavailable; direct Ninth projection values are retained exactly through year-specific intensity.",
+                evidence=f"target_fallback_reason={target_reason}; base_year={int(base_year)}",
+                **context,
+            ))
+        activity_key = next(
+            (
+                str(value)
+                for value in group.get("activity_fallback_key", pd.Series(dtype=object))
+                if str(value).strip()
+            ),
+            "",
+        )
+        if activity_key:
+            findings.append(_finding(
+                "SEED-014",
+                "warn",
+                "Configured process proxy activity is unavailable; the documented same-fuel total-demand proxy was used.",
+                evidence=f"activity_fallback_key={activity_key}",
+                **context,
+            ))
+        unresolved = group[
+            group["year"].astype(int).ge(int(base_year))
+            & group["target_energy"].astype(float).abs().gt(0.0)
+            & group["proxy_activity"].astype(float).abs().eq(0.0)
+        ]
+        if not unresolved.empty:
+            years = ",".join(str(int(year)) for year in sorted(unresolved["year"].unique()))
+            findings.append(_finding(
+                "SEED-014",
+                "fail",
+                "Positive proxy target remains without configured or fallback activity.",
+                evidence=f"unresolved_years={years}",
+                **context,
+            ))
+    if not findings:
+        return pd.DataFrame(columns=columns)
+    return pd.DataFrame(findings, columns=columns)
 
 
 def _row_context(row: pd.Series) -> dict[str, object]:
@@ -2220,6 +2307,7 @@ __all__ = [
     "OPTIONAL_ZERO_ONLY_TEMPLATE_BRANCH_PREFIXES",
     "LOGICAL_KEY_COLUMNS",
     "RULE_SPECS",
+    "build_proxy_source_fallback_findings",
     "RuleSpec",
     "ValidationResult",
     "BaselineSeedValidationError",

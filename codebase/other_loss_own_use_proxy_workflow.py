@@ -42,6 +42,7 @@ from codebase.mappings.canonical_loaders import (
 )
 from codebase.configuration.config import BASE_YEAR
 from codebase.functions.analysis_input_write_dispatcher import dispatch_analysis_input_write
+from codebase.functions.baseline_seed_validation import build_proxy_source_fallback_findings
 from codebase.functions.leap_core import (
     create_branches_from_export_file,
     fill_branches_from_export_file,
@@ -72,6 +73,8 @@ from codebase.functions.other_loss_own_use_proxy_utils import (
     ACTIVITY_VARIABLE,
     INTENSITY_VARIABLE,
     DEFAULT_MEASURE_UNITS,
+    DEMAND_AGGREGATE_FALLBACK_ROW,
+    SAME_FUEL_TOTAL_DEMAND_FALLBACK,
     LEAP_BALANCE_FUEL_SETS,
     LEAP_BALANCE_ACTIVITY_FALLBACKS,
     ESTO_NINTH_ACTIVITY_FALLBACKS,
@@ -105,6 +108,7 @@ from codebase.functions.other_loss_own_use_proxy_utils import (
     build_proxy_activity_series,
     build_proxy_activity_series_with_fallback,
     build_activity_series_for_mode,
+    build_same_fuel_total_demand_activity_series,
     build_activity_source_gap_warnings,
     build_activity_source_fallback_report,
     build_target_energy_long,
@@ -227,10 +231,12 @@ LEAP_BALANCE_DATE_ID = None
 LEAP_BALANCE_WORKBOOK_PATH = None
 
 # Output fuel scope:
-# - "economy": normal input-data mode. Keep only fuels that are non-zero for
-#   the selected economy in the final year of both ESTO validation snapshots.
-# - "all_economies": model-structure mode. Keep fuels that are non-zero in at
-#   least one economy in both ESTO validation snapshots.
+# - "economy": audit each candidate fuel against the selected economy in both
+#   ESTO validation snapshots.
+# - "all_economies": audit each candidate against any economy in both ESTO
+#   validation snapshots.
+# Snapshot results are diagnostic only; the active configured target series
+# determines whether a fuel is retained.
 OUTPUT_FUEL_VALIDATION_SCOPE = "economy"
 
 # DEFAULT_MEASURE_UNITS, LEAP_BALANCE_FUEL_SETS, LEAP_BALANCE_ACTIVITY_FALLBACKS
@@ -278,6 +284,7 @@ def make_proxy_config(
     ninth_target_exclude_fuels: Sequence[str] | None = None,
     ninth_target_exclude_subfuels: Sequence[str] | None = None,
     allow_ninth_target_without_esto_history: bool = False,
+    same_fuel_total_demand_activity_fallback: bool = False,
     leap_balance_rows: Sequence[str] | None = None,
     leap_balance_fuel_set: str = "",
     activity_value_mode: str = "signed_sum",
@@ -326,6 +333,9 @@ def make_proxy_config(
                 ),
             },
         },
+        "same_fuel_total_demand_activity_fallback": bool(
+            same_fuel_total_demand_activity_fallback
+        ),
         "notes": notes,
     }
 
@@ -731,6 +741,8 @@ PROXY_CONFIG = [
         ninth_target_sectors=["10_02_transmission_and_distribution_losses"],
         ninth_target_exclude_fuels=TD_LOSSES_EXCLUDED_ELECTRICITY_FUELS,
         ninth_target_exclude_subfuels=TD_LOSSES_EXCLUDED_ELECTRICITY_FUELS,
+        allow_ninth_target_without_esto_history=True,
+        same_fuel_total_demand_activity_fallback=True,
         notes=TD_LOSSES_NOTES,
     ),
     make_proxy_config(
@@ -1100,16 +1112,6 @@ def build_proxy_detail_table(
     for config in configs:
         if not bool(config.get("enabled", True)):
             continue
-        activity = build_activity_series_for_mode(
-            esto_data=esto_data,
-            ninth_data=ninth_data,
-            leap_balance_activity=leap_balance_activity,
-            economy=economy,
-            config=config,
-            base_year=base_year,
-            final_year=final_year,
-            activity_source_mode=activity_source_mode,
-        )
         target = build_target_energy_long(
             esto_data=esto_data,
             ninth_data=ninth_data,
@@ -1121,7 +1123,66 @@ def build_proxy_detail_table(
         )
         if target.empty:
             continue
+        activity = build_activity_series_for_mode(
+            esto_data=esto_data,
+            ninth_data=ninth_data,
+            leap_balance_activity=leap_balance_activity,
+            economy=economy,
+            config=config,
+            base_year=base_year,
+            final_year=final_year,
+            activity_source_mode=activity_source_mode,
+        )
         target["proxy_activity"] = target["year"].map(activity).fillna(0.0)
+        target["activity_fallback_key"] = ""
+        target["activity_fallback_reason"] = ""
+        if (
+            bool(config.get("same_fuel_total_demand_activity_fallback", False))
+            and not _series_has_nonzero_value(activity)
+        ):
+            for fuel_label, fuel_rows in target.groupby("fuel_branch_label", dropna=False):
+                fallback = build_same_fuel_total_demand_activity_series(
+                    esto_data=esto_data,
+                    ninth_data=ninth_data,
+                    leap_balance_activity=leap_balance_activity,
+                    economy=economy,
+                    fuel_branch_label=str(fuel_label),
+                    base_year=base_year,
+                    final_year=final_year,
+                    activity_source_mode=activity_source_mode,
+                    fuel_mapping_lookup=fuel_mapping_lookup,
+                )
+                if not _series_has_nonzero_value(fallback):
+                    continue
+                mask = target.index.isin(fuel_rows.index)
+                target.loc[mask, "proxy_activity"] = target.loc[mask, "year"].map(fallback).fillna(0.0)
+                target.loc[mask, "activity_fallback_key"] = str(
+                    SAME_FUEL_TOTAL_DEMAND_FALLBACK["fallback_key"]
+                )
+                target.loc[mask, "activity_fallback_reason"] = (
+                    "configured_process_proxy_all_zero"
+                )
+        coverage = target.groupby("fuel_branch_label", dropna=False)["target_energy"].transform(
+            lambda values: bool((values.abs() > 0.0).any())
+        )
+        target = target[coverage].copy()
+        target["base_target_available"] = target.groupby(
+            "fuel_branch_label", dropna=False
+        )["target_energy"].transform(
+            lambda values: bool(
+                (values[target.loc[values.index, "year"].astype(int) == int(base_year)].abs() > 0.0).any()
+            )
+        )
+        target["projection_target_available"] = target.groupby(
+            "fuel_branch_label", dropna=False
+        )["target_energy"].transform(
+            lambda values: bool(
+                (values[target.loc[values.index, "year"].astype(int) > int(base_year)].abs() > 0.0).any()
+            )
+        )
+        target["target_fallback_reason"] = ""
+        no_base_projection = (~target["base_target_available"]) & target["projection_target_available"]
+        target.loc[no_base_projection, "target_fallback_reason"] = "ninth_exact_no_base_target"
         if normalized_intensity_mode == "target_matching_initialisation":
             target["intensity"] = target.apply(_calculate_target_matching_intensity, axis=1)
             target["anchor_year"] = pd.NA
@@ -1153,6 +1214,11 @@ def build_proxy_detail_table(
                 "anchor_year",
                 "activity_label",
                 "activity_source_mode",
+                "activity_fallback_key",
+                "activity_fallback_reason",
+                "base_target_available",
+                "projection_target_available",
+                "target_fallback_reason",
                 "notes",
             ]
         )
@@ -1174,6 +1240,11 @@ def build_proxy_detail_table(
         "anchor_year",
         "activity_label",
         "activity_source_mode",
+        "activity_fallback_key",
+        "activity_fallback_reason",
+        "base_target_available",
+        "projection_target_available",
+        "target_fallback_reason",
         "notes",
     ]
     out = out[ordered].sort_values(["process_label", "fuel_branch_label", "year"], kind="mergesort")
@@ -1470,6 +1541,11 @@ def assemble_proxy_workbook(
                 requested_rows.update(str(row) for row in fallback_cfg.get("balance_rows", []) if str(row).strip())
                 fallback_fuel_set = str(fallback_cfg.get("fuel_set", "")).strip()
                 requested_fuels.update(LEAP_BALANCE_FUEL_SETS.get(fallback_fuel_set, []))
+            if bool(config.get("same_fuel_total_demand_activity_fallback", False)):
+                requested_rows.add(DEMAND_AGGREGATE_FALLBACK_ROW)
+                requested_fuels.update(
+                    LEAP_BALANCE_FUEL_SETS.get(TD_LOSSES_LEAP_BALANCE_FUEL_SET, [])
+                )
         leap_balance_activity = load_leap_balance_activity_table(
             balance_path,
             balance_rows=sorted(requested_rows),
@@ -1503,6 +1579,19 @@ def assemble_proxy_workbook(
     activity_source_warnings_path = output_dir / "proxy_activity_source_warnings.csv"
     activity_source_fallback_path = output_dir / "proxy_activity_source_fallbacks.csv"
     consistency_issues_path = output_dir / "proxy_activity_target_consistency_issues.csv"
+    seed_findings_path = output_dir / "proxy_seed_rule_findings.csv"
+    detail_df.to_csv(detail_path, index=False)
+    proxy_seed_findings = build_proxy_source_fallback_findings(
+        detail_df,
+        base_year=EXPORT_BASE_YEAR,
+        source_file=str(detail_path),
+    )
+    _write_csv_with_locked_file_fallback(proxy_seed_findings, seed_findings_path)
+    if not proxy_seed_findings.empty:
+        counts = proxy_seed_findings.groupby(["status", "rule_id"]).size().to_dict()
+        print(
+            f"[WARN] Proxy SEED findings: {counts}. Details: {seed_findings_path}"
+        )
     if write_proxy_activity_target_consistency_issues:
         validate_proxy_activity_target_consistency(
             detail_df,
@@ -1525,13 +1614,15 @@ def assemble_proxy_workbook(
         output_fuel_scope=output_scope,
     )
     output_fuel_candidate_validation.to_csv(output_fuel_candidate_validation_path, index=False)
-    detail_df = filter_detail_to_validated_output_fuels(detail_df, output_fuel_candidate_validation)
-    if detail_df.empty:
-        raise ValueError(
-            "No proxy detail rows remained after output fuel validation. "
-            f"See {output_fuel_candidate_validation_path}."
+    missing_snapshot_rows = output_fuel_candidate_validation[
+        output_fuel_candidate_validation["status"].eq("missing_from_validation_file")
+    ]
+    if not missing_snapshot_rows.empty:
+        print(
+            "[WARN] ESTO snapshot output-fuel audit found "
+            f"{len(missing_snapshot_rows)} mismatch(es); these are audit-only and no "
+            f"longer remove valid direct target series. See {output_fuel_candidate_validation_path}."
         )
-    detail_df.to_csv(detail_path, index=False)
     output_fuel_validation = build_output_fuel_esto_validation(
         esto_data=esto_data,
         detail_df=detail_df,
@@ -1543,17 +1634,6 @@ def assemble_proxy_workbook(
         output_fuel_scope=output_scope,
     )
     output_fuel_validation.to_csv(output_fuel_validation_path, index=False)
-    invalid_output_fuels = output_fuel_validation[
-        output_fuel_validation["status"].eq("missing_from_validation_file")
-    ]
-    if not invalid_output_fuels.empty:
-        preview = invalid_output_fuels[
-            ["process_key", "fuel_branch_label", "missing_validation_files"]
-        ].head(20).to_dict("records")
-        raise ValueError(
-            "Output contains fuel branches that are not non-zero in every ESTO validation snapshot for the matching target flow. "
-            f"See {output_fuel_validation_path}. First rows: {preview}"
-        )
     activity_source_warnings = pd.DataFrame()
     activity_source_fallbacks = pd.DataFrame()
     if _normalize_activity_source_mode(activity_source_mode) == "esto_ninth":
