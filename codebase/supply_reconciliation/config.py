@@ -295,8 +295,8 @@ KEEP_ALL_ZERO_SUPPLY_ROWS = True
 BALANCE_DEMAND_FAIL_ON_MAPPING_ISSUES = True
 SUPPLY_RECONCILIATION_FAIL_ON_SOURCE_DIAGNOSTICS = False
 
-# Completion beep — plays when run_with_config() exits (success or error).
-ENABLE_COMPLETION_BEEP = True
+# Compatibility settings retained for callers; completion sounds are disabled.
+ENABLE_COMPLETION_BEEP = False
 COMPLETION_BEEP_ON_ERROR = True
 COMPLETION_BEEP_COUNT = 1
 COMPLETION_BEEP_FREQUENCY_HZ = 880
