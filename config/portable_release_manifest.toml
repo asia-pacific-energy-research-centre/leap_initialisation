@@ -48,7 +48,7 @@ packages = [
 # behaviour.
 
 [repositories.leap_initialisation]
-commit = "270aff59b66400dc45506c77a9a629f4ccb67eab"
+commit = "7a33895ddd72bed7f263f70cd1adea535da1e845"
 stage_dir = "leap_initialisation"
 on_sys_path = true
 paths = [
@@ -119,7 +119,7 @@ paths = [
 # ``import LEAP_API_helpers``. Stage only that reviewed metadata module from
 # config/ on its own sys.path root; do not expose the rest of config/ as code.
 [repositories.leap_initialisation_config]
-commit = "270aff59b66400dc45506c77a9a629f4ccb67eab"
+commit = "7a33895ddd72bed7f263f70cd1adea535da1e845"
 source_key = "leap_initialisation"
 stage_dir = "leap_initialisation_config"
 strip_prefix = "config"
@@ -146,7 +146,7 @@ paths = [
 # `mapping_tools` has no __init__.py in its own repository either; it works as
 # an implicit namespace package here exactly as it does there.
 [repositories.leap_mappings]
-commit = "03edd2743cd941df5cf60c470854d8c4fdef85f3"
+commit = "3e3509167dff6dc202d3c3eadfc832fd0dbfa3d7"
 stage_dir = "leap_mappings"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -169,7 +169,7 @@ paths = [
 # packages into the worker to reach one module. Omitted, each becomes an implicit
 # namespace package (PEP 420) and the submodule imports on its own - verified.
 [repositories.leap_mappings_worker]
-commit = "03edd2743cd941df5cf60c470854d8c4fdef85f3"
+commit = "3e3509167dff6dc202d3c3eadfc832fd0dbfa3d7"
 stage_dir = "leap_mappings_worker"
 source_key = "leap_mappings"
 on_sys_path = true
@@ -390,7 +390,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/energy_balance_relationships.csv"
 dest = "mapping_chain/energy_balance_relationships.csv"
 role = "mapping_chain_relationships"
-sha256 = "3bfaa94f5050b52e68992a0e4e9712ff5beaad73398b0200fe4fc3e0886613ee"
+sha256 = "3666d02e083f68dafd68dac132b0907cf5bb6b6878535eab586703408aed5d45"
 description = "LEAP-to-ESTO conversion relationships, a function of the mapping workbook."
 allow_untracked = true
 
@@ -399,7 +399,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/esto_results_exact_rows.csv.gz"
 dest = "mapping_chain/esto_results_exact_rows.csv.gz"
 role = "mapping_chain_esto_exact_rows"
-sha256 = "5a0acc1cedb32669dcb9ce7bead43f6fa5c574d320ead01d5305044295f7aca5"
+sha256 = "b23780b9386837d3e7011c25ed1e736d26eb494d7f9ab6bb4bba12710a9cced1"
 description = "ESTO exact-row extract the mapping chain converts LEAP output against."
 allow_untracked = true
 
@@ -408,7 +408,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/ninth_results_converted_to_esto.csv.gz"
 dest = "mapping_chain/ninth_results_converted_to_esto.csv.gz"
 role = "mapping_chain_ninth_converted"
-sha256 = "1a1c77cb96197ca130342aef5c8e5a3db7ccf04407bac45b9f9484eac1db2208"
+sha256 = "bb99facb4bf3e7c110b490114f81de9a252bd8053a88698ffa4870e10639583f"
 description = "9th-edition results converted to ESTO structure, a mapping-chain source table."
 allow_untracked = true
 
