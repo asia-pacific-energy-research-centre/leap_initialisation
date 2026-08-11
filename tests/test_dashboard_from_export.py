@@ -24,6 +24,12 @@ LEAP_INITIALISATION_ROOT = Path(__file__).resolve().parents[1]
 EXPORT_DIR = LEAP_INITIALISATION_ROOT / "data" / "leap balances exports" / "12_NZ"
 COMPARISON_DATA = LEAP_MAPPINGS_ROOT / "results" / "common_esto" / "common_esto_comparison_data.csv"
 COMMON_ROWS = LEAP_MAPPINGS_ROOT / "results" / "common_esto" / "common_esto_rows.csv"
+POWER_INTERIM_AUDIT = (
+    LEAP_MAPPINGS_ROOT
+    / "results"
+    / "mapping_relationships"
+    / "leap_source_branch_fallback_audit.csv"
+)
 
 REQUIRED_PATHS = [
     EXPORT_DIR,
@@ -90,6 +96,7 @@ def test_run_dashboard_from_export_uses_mapping_chain_and_renders(tmp_path, monk
         return {
             "comparison_data_path": str(COMPARISON_DATA),
             "common_rows_path": str(COMMON_ROWS),
+            "power_interim_audit_path": str(POWER_INTERIM_AUDIT),
             "raw_leap_rows": 385_035,
             "converted_rows": 48_068,
             "comparison_rows": 194_694,
@@ -110,6 +117,10 @@ def test_run_dashboard_from_export_uses_mapping_chain_and_renders(tmp_path, monk
     assert result.ok, result.error
     assert Path(result.outputs["dashboard_index"]).is_file()
     assert result.outputs["mapping_chain"]["comparison_rows"] == 194_694
+    assert result.outputs["power_interim_placeholder_branches"] == [
+        "Electricity interim",
+        "CHP interim",
+    ]
 
 
 def test_run_dashboard_from_export_escape_hatch_skips_mapping_chain(tmp_path, monkeypatch):

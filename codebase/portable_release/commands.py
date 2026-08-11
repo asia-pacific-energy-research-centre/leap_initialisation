@@ -1083,6 +1083,9 @@ def run_dashboard_from_export(
             template_path=template_path,
             series_config_path=series_config_path,
             code_colors_path=context.config_asset("dashboard_code_colors"),
+            power_interim_audit_path=Path(
+                chain_result["power_interim_audit_path"]
+            ),
             output_root=run_dir,
             comparison_scope=comparison_scope,
             wide_file_scope=wide_file_scope,
