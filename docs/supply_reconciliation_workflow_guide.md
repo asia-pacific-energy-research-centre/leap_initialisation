@@ -928,6 +928,10 @@ The short `combined_st_...` stem is the per-economy combined seed workbook stem.
 - `*_rule_findings.csv` is the main file to inspect first. It lists every rule hit, with one row per finding.
 - `*_duplicate_groups.csv` groups logical duplicates that need attention together.
 - `*_issue_groups.csv` groups downstream symptoms that share the same missing canonical branch root cause. This is the clearest file when `SEED-011` and `SEED-003`/`SEED-004`/`SEED-005` all point at the same branch.
+- Console and deferred-error summaries use these grouped root causes too, so
+  `SEED-003`, `SEED-004`, and `SEED-011` are not presented as three separate
+  headline issues for one missing aggregate-demand branch. Their member rule
+  IDs remain in the detailed findings and issue-group CSVs.
 - `*_documented_exclusions.csv` records rows that were explicitly excluded from blocking because a documented exception or ignore rule applied.
 - `baseline_seed_*_consolidated_rule_findings.csv` combines the findings from all economies and producers into one run-level report.
 - `baseline_seed_*_consolidated_issue_groups.csv` is the run-level grouped summary for the same root-cause cases.

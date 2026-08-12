@@ -1791,6 +1791,54 @@ def _drop_zero_only_unmatched_transformation_rows(combined: pd.DataFrame) -> pd.
     return combined
 
 
+def _format_blocking_summary(*, blocking: pd.DataFrame, issue_groups: pd.DataFrame) -> str:
+    """Format blocking findings by root cause rather than repeated rule symptoms."""
+    grouped_bits: list[str] = []
+    grouped_rule_ids: set[str] = set()
+    if not issue_groups.empty and "issue_group_type" in issue_groups.columns:
+        issue_group_counts = (
+            issue_groups.groupby("issue_group_type", dropna=False)
+            .size()
+            .sort_index()
+        )
+        grouped_bits = [
+            f"{issue_type}={count}" for issue_type, count in issue_group_counts.items()
+        ]
+        if "member_rule_ids" in issue_groups.columns:
+            for _, issue_group in issue_groups.iterrows():
+                if issue_group.get("issue_group_type") != "missing_branch":
+                    continue
+                member_rule_ids = issue_group.get("member_rule_ids")
+                if pd.isna(member_rule_ids):
+                    continue
+                grouped_rule_ids.update(
+                    rule_id
+                    for rule_id in str(member_rule_ids).split("|")
+                    if rule_id
+                )
+
+    ungrouped_rule_bits: list[str] = []
+    if not blocking.empty and "rule_id" in blocking.columns:
+        rule_counts = blocking["rule_id"].value_counts().sort_index()
+        ungrouped_rule_counts = rule_counts[
+            ~rule_counts.index.isin(grouped_rule_ids)
+        ]
+        ungrouped_rule_bits = [
+            f"{rule_id}={count}" for rule_id, count in ungrouped_rule_counts.items()
+        ]
+
+    if grouped_bits and ungrouped_rule_bits:
+        return (
+            f"groups: {', '.join(grouped_bits)}; "
+            f"ungrouped rules: {', '.join(ungrouped_rule_bits)}"
+        )
+    if grouped_bits:
+        return f"groups: {', '.join(grouped_bits)}"
+    if ungrouped_rule_bits:
+        return f"ungrouped rules: {', '.join(ungrouped_rule_bits)}"
+    return "no grouped blocking findings"
+
+
 def write_per_economy_combined_workbooks(
     *,
     economies: Iterable[str],
@@ -1974,23 +2022,6 @@ def write_per_economy_combined_workbooks(
                 current_frames.append(data)
                 found_sources.add(str(source_workflow))
         return current_frames, found_sources, source_probe
-
-    def _format_blocking_summary(*, blocking: pd.DataFrame, issue_groups: pd.DataFrame) -> str:
-        grouped_bits: list[str] = []
-        if not issue_groups.empty and "issue_group_type" in issue_groups.columns:
-            issue_group_counts = issue_groups.groupby("issue_group_type", dropna=False).size().sort_index()
-            grouped_bits = [f"{issue_type}={count}" for issue_type, count in issue_group_counts.items()]
-        rule_bits: list[str] = []
-        if not blocking.empty and "rule_id" in blocking.columns:
-            rule_counts = blocking["rule_id"].value_counts().sort_index()
-            rule_bits = [f"{rule_id}={count}" for rule_id, count in rule_counts.items()]
-        if grouped_bits and rule_bits:
-            return f"groups: {', '.join(grouped_bits)}; raw rules: {', '.join(rule_bits)}"
-        if grouped_bits:
-            return f"groups: {', '.join(grouped_bits)}"
-        if rule_bits:
-            return f"raw rules: {', '.join(rule_bits)}"
-        return "no grouped blocking findings"
 
     for economy in economy_list:
         econ_token = workflow_common.format_filename_segment(economy) or economy

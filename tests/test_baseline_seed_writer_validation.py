@@ -16,6 +16,7 @@ from codebase.functions.baseline_seed_validation import (
 )
 from codebase.supply_reconciliation.leap_io import (
     _baseline_seed_filename,
+    _format_blocking_summary,
     save_combined_supply_transformation_export,
     write_per_economy_combined_workbooks,
 )
@@ -34,6 +35,31 @@ def test_baseline_seed_filename_marks_comp_gen_templates() -> None:
         "20260721",
         Path("leap_export_template 01_AUS.xlsx"),
     ) == "leap_import_baseline_seed_01_AUS_20260721.xlsx"
+
+
+def test_blocking_summary_uses_missing_branch_group_once() -> None:
+    blocking = pd.DataFrame(
+        [
+            {"rule_id": "SEED-003"},
+            {"rule_id": "SEED-004"},
+            {"rule_id": "SEED-011"},
+        ]
+    )
+    issue_groups = pd.DataFrame(
+        [
+            {
+                "issue_group_type": "missing_branch",
+                "member_rule_ids": "SEED-003|SEED-004|SEED-011",
+            }
+        ]
+    )
+
+    summary = _format_blocking_summary(
+        blocking=blocking,
+        issue_groups=issue_groups,
+    )
+
+    assert summary == "groups: missing_branch=1"
 
 
 def _row(expression: str) -> dict[str, object]:
