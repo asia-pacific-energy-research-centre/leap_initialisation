@@ -644,6 +644,7 @@ def save_transformation_exports_with_split_targets(
     full_branch_catalog_by_economy: dict[str, pd.DataFrame] | None = None,
     records_by_scenario_out: dict[str, list[dict]] | None = None,
     allocation_ledger=None,
+    green_electricity_display_name: str | None = None,
 ) -> list[Path]:
     """Save scenario-specific transformation LEAP workbooks with split import/export targets."""
     if not process_records:
@@ -802,12 +803,19 @@ def save_transformation_exports_with_split_targets(
                     economy,
                     full_branch_catalog_df,
                 )
+            export_code_to_name_mapping = dict(
+                transformation_workflow.core.code_to_name_mapping
+            )
+            if green_electricity_display_name is not None:
+                export_code_to_name_mapping["17_x_green_electricity"] = str(
+                    green_electricity_display_name
+                )
             export_path = transformation_workflow.core.save_transformation_export(
                 scenario_records,
                 transformation_workflow.core.EXPORT_REGION,
                 transformation_workflow.core.EXPORT_BASE_YEAR,
                 transformation_workflow.core.EXPORT_FINAL_YEAR,
-                transformation_workflow.core.code_to_name_mapping,
+                export_code_to_name_mapping,
                 str(output_path),
                 export_filename,
                 transformation_workflow.core.EXPORT_MODEL_NAME,
@@ -1426,6 +1434,7 @@ def build_aggregated_demand_workbooks_for_results_supply(
     region: str | None = None,
     excluded_sectors: list[str] | None = None,
     use_sector_branches: bool = False,
+    nonenergy_sector_by_economy: Mapping[str, str] | None = None,
 ) -> list[Path]:
     """
     Write Demand\\All demand aggregated\\{fuel} LEAP import workbooks for each economy.
@@ -1485,6 +1494,10 @@ def build_aggregated_demand_workbooks_for_results_supply(
             excluded_sectors=excluded_sectors,
             use_sector_branches=use_sector_branches,
             write_contributions=bool(AGGREGATED_DEMAND_WRITE_CONTRIBUTIONS),
+            nonenergy_sector_label=(nonenergy_sector_by_economy or {}).get(
+                economy,
+                "Non Energy Use",
+            ),
         )
         if result is not None:
             paths.append(result)

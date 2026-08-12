@@ -161,6 +161,7 @@ from codebase.supply_reconciliation.balance_tables import (
     _zero_small_numeric_values,
 )
 import codebase.supply_reconciliation.allocation as _sra
+from codebase.supply_reconciliation import template_compatibility
 
 from codebase.supply_reconciliation.preflight import (
     _keep_windows_pc_awake,
@@ -3320,6 +3321,12 @@ def run_results_linked_transformation_supply_workflow(
             "Current Accounts."
         )
     economy_list = workflow_common.normalize_economies(economies or ECONOMIES)
+    template_compatibility_by_economy, template_compatibility_audit_path = (
+        template_compatibility.write_template_compatibility_audit(
+            economy_list,
+            runtime_dir / "template_compatibility_audit.csv",
+        )
+    )
     timer.set_metadata(
         economies=economy_list,
         scenarios=export_scenario_list,
@@ -3864,6 +3871,7 @@ def run_results_linked_transformation_supply_workflow(
 
     def _run_one_economy(economy: str) -> dict:
         """Generate all export workbooks for one economy and return collected paths."""
+        compatibility = template_compatibility_by_economy[economy]
         if SKIP_ECONOMIES_WITH_EXISTING_EXPORTS:
             _skip_combined = next(iter(sorted(
                 export_dir.glob(
@@ -3931,6 +3939,9 @@ def run_results_linked_transformation_supply_workflow(
             ),
             records_by_scenario_out=transformation_records_by_scenario,
             allocation_ledger=allocation_ledger,
+            green_electricity_display_name=str(
+                compatibility["selected_green_electricity_label"]
+            ),
         )
         timer.lap(f"generate transformation export workbook ({economy})")
         econ_transfer_paths = save_transfer_exports_with_supply_overrides(
@@ -3998,6 +4009,9 @@ def run_results_linked_transformation_supply_workflow(
                     output_dir=export_dir,
                     excluded_sectors=_effective_agg_demand_excluded,
                     use_sector_branches=bool(AGGREGATED_DEMAND_USE_SECTOR_BRANCHES),
+                    nonenergy_sector_by_economy={
+                        economy: str(compatibility["selected_nonenergy_sector"])
+                    },
                 )
                 timer.lap(f"generate aggregated-demand workbook ({economy})")
             except Exception as _agg_exc:
@@ -4059,6 +4073,9 @@ def run_results_linked_transformation_supply_workflow(
                 _economy_export_errors.append((economy, _econ_exc))
 
     timer.lap("complete per-economy LEAP import workbook generation")
+    template_compatibility.warn_if_all_templates_support_preferred(
+        template_compatibility_audit_path
+    )
 
     if _economy_export_errors:
         _failed_labels = ", ".join(econ for econ, _ in _economy_export_errors)

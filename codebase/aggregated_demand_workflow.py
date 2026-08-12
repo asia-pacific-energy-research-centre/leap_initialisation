@@ -1438,6 +1438,30 @@ def _find_missing_nonenergy_template_fuels(
     )
 
 
+def _route_nonenergy_for_template_export(
+    demand: pd.DataFrame,
+    nonenergy_sector_label: str,
+) -> pd.DataFrame:
+    """Return export rows with non-energy routed to the selected template sector."""
+    if nonenergy_sector_label == "Non Energy Use":
+        return demand.copy()
+    if nonenergy_sector_label != "Other sector":
+        raise ValueError(
+            "nonenergy_sector_label must be 'Non Energy Use' or 'Other sector'."
+        )
+    routed = demand.copy()
+    routed.loc[routed["sector"].eq("Non Energy Use"), "sector"] = "Other sector"
+    group_columns = [
+        column
+        for column in ("economy", "sector", "leap_fuel_name", "scenario", "year")
+        if column in routed.columns
+    ]
+    routed = routed.groupby(group_columns, as_index=False, dropna=False)["value"].sum(
+        min_count=1
+    )
+    return routed
+
+
 def _filter_all_zero_demand_branches_for_export(
     demand: pd.DataFrame,
     scenarios: list[str],
@@ -1621,6 +1645,7 @@ def save_aggregated_demand_as_leap_workbook(
     demand: pd.DataFrame | None = None,
     apply_first_projection_year_bridge: bool = APPLY_FIRST_PROJECTION_YEAR_BRIDGE_DEFAULT,
     write_contributions: bool = False,
+    nonenergy_sector_label: str = "Non Energy Use",
 ) -> Path | None:
     """
     Build aggregated demand and save as a LEAP-importable workbook (LEAP + FOR_VIEWING sheets).
@@ -1654,6 +1679,10 @@ def save_aggregated_demand_as_leap_workbook(
     region defaults to the economy's own LEAP region so that the Region column
     always agrees with the economy whose IDs id_lookup_path resolves. Pass an
     explicit region only to override that.
+
+    nonenergy_sector_label is selected from the economy template by the
+    supply-reconciliation runner. ``Other sector`` restores the legacy export
+    destination while preserving the separate internal non-energy calculation.
     """
     use_scenarios = scenarios if scenarios is not None else list(LEAP_SCENARIOS)
     region = region or _resolve_export_region(economy)
@@ -1689,7 +1718,7 @@ def save_aggregated_demand_as_leap_workbook(
             id_lookup_resolved
         )
 
-    if use_sector_branches and branch_to_id is not None:
+    if use_sector_branches and branch_to_id is not None and nonenergy_sector_label == "Non Energy Use":
         missing_nonenergy_template_fuels = _find_missing_nonenergy_template_fuels(
             demand=demand,
             scenarios=use_scenarios,
@@ -1701,13 +1730,25 @@ def save_aggregated_demand_as_leap_workbook(
                 f"in {id_lookup_resolved.name}: {missing_nonenergy_template_fuels}"
             )
 
+    export_source_demand = demand.copy()
+    if use_sector_branches:
+        export_source_demand = _route_nonenergy_for_template_export(
+            demand,
+            nonenergy_sector_label,
+        )
+    if use_sector_branches and nonenergy_sector_label != "Non Energy Use":
+        print(
+            "[INFO] aggregated demand: template compatibility merged Non Energy Use "
+            "into Other sector for this LEAP export."
+        )
+
     export_demand = _filter_all_zero_demand_branches_for_export(
-        demand=demand,
+        demand=export_source_demand,
         scenarios=use_scenarios,
         use_sector_branches=use_sector_branches,
         template_branch_paths=(set(branch_to_id) if branch_to_id is not None else None),
     )
-    omitted_branch_rows = len(demand) - len(export_demand)
+    omitted_branch_rows = len(export_source_demand) - len(export_demand)
     if omitted_branch_rows:
         print(
             "[INFO] aggregated demand: omitted "
@@ -1722,7 +1763,7 @@ def save_aggregated_demand_as_leap_workbook(
         final_year=final_year,
     )
 
-    has_sector = use_sector_branches and "sector" in demand.columns
+    has_sector = use_sector_branches and "sector" in export_demand.columns
     group_keys = (["sector", "leap_fuel_name", "scenario"] if has_sector
                   else ["leap_fuel_name", "scenario"])
 

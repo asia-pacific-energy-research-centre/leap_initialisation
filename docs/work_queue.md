@@ -1,5 +1,24 @@
 # Remaining work queue
 
+## [39] Retain legacy template destinations until every LEAP area is migrated
+
+**Status: completed 2026-08-12; compatibility retirement pending template migration.**
+
+At run start, the supply-reconciliation workflow now checks every requested
+economy's exact template rows and writes
+`supporting_files/runtime/template_compatibility_audit.csv`. Non-energy demand
+is still calculated separately, but its export is merged into `Other sector`
+unless the template contains the complete 26-fuel `Non Energy Use` branch set.
+Likewise, `17_x_green_electricity` exports as ordinary `Electricity` unless the
+economy's Electrolysers feedstock branch contains `Electricity for hydrogen`.
+The two choices are independent; Russia already uses the preferred hydrogen
+label while all current templates still use legacy non-energy routing.
+
+After export generation, the workflow reads the audit and warns to retire the
+legacy compatibility behavior only if the audit covers every non-provisional
+economy template and every template supports both preferred structures. Confirm
+the mapping and LEAP-area migration before removing the fallback code.
+
 ## [38] Include native-source provenance in portable dashboards
 
 **Status: completed 2026-08-12.**
@@ -72,12 +91,12 @@ Naphtha, Natural gas, Natural gas liquids, Other bituminous coal, Other
 products, Paraffin waxes, Petroleum coke, Refinery gas not liquefied, Sub
 bituminous coal, and White spirit SBP.
 
-The current `12_NZ` and `20_USA` templates contain zero branches below
+The current templates contain zero branches below
 `Demand\All demand aggregated\Non Energy Use`. Add the 26 fuel branches to the
-LEAP areas and refresh every economy template before promoting a seed with this
-split. The LEAP API cannot create demand fuel branches automatically. Until the
-migration is complete, the aggregated-demand writer emits a precise warning
-listing every nonzero non-energy fuel absent from the resolved economy template.
+LEAP areas and refresh every economy template before retiring the compatibility
+behavior in item [39]. The LEAP API cannot create demand fuel branches
+automatically. Until the migration is complete, non-energy is calculated
+separately but merged back into `Other sector` at the LEAP export boundary.
 
 The canonical single-axis mapping follow-up belongs in `leap_mappings` after
 the current active workbook edits are coordinated. Required changes are:
