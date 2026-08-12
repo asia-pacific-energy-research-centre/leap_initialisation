@@ -112,6 +112,69 @@ BALANCE_LABEL_ALIASES = {
     "total transformation sector": "total transformation",
 }
 
+BALANCE_UNIT_PREFIX_TO_SCALE = {
+    "none": 1.0,
+    "thousand": 1e3,
+    "million": 1e6,
+    "billion": 1e9,
+    "trillion": 1e12,
+}
+
+BALANCE_JOULE_UNIT_TO_PETAJOULE = {
+    "joule": 1e-15,
+    "kilojoule": 1e-12,
+    "megajoule": 1e-9,
+    "gigajoule": 1e-6,
+    "terajoule": 1e-3,
+    "petajoule": 1.0,
+    "exajoule": 1e3,
+}
+
+
+def normalize_balance_export_unit(units: object) -> str:
+    """Return a normalized LEAP Energy Balance scale and Joule unit label."""
+    normalized = " ".join(str(units or "").strip().lower().rstrip(".").split())
+    if normalized.endswith("s"):
+        singular = normalized[:-1]
+        if singular in BALANCE_JOULE_UNIT_TO_PETAJOULE:
+            normalized = singular
+        elif " " in normalized:
+            prefix, base = normalized.split(" ", 1)
+            if base.endswith("s") and base[:-1] in BALANCE_JOULE_UNIT_TO_PETAJOULE:
+                normalized = f"{prefix} {base[:-1]}"
+    return normalized
+
+
+def balance_export_unit_to_petajoule_multiplier(units: object) -> float:
+    """Return a strict PJ multiplier for a scaled Joule-family LEAP unit.
+
+    Energy Balance uploads intentionally exclude BTU, watt-hour, oil/coal
+    equivalent, and other unit families. Those conversions can depend on
+    conventions that this review should not silently choose for a modeller.
+    """
+    normalized = normalize_balance_export_unit(units)
+    if not normalized:
+        raise ValueError(
+            "This export does not declare its units. Export it again with the "
+            "scale set to None and the unit set to Petajoule."
+        )
+
+    prefix = "none"
+    base = normalized
+    first, separator, remainder = normalized.partition(" ")
+    if separator and first in BALANCE_UNIT_PREFIX_TO_SCALE:
+        prefix = first
+        base = remainder
+
+    base_multiplier = BALANCE_JOULE_UNIT_TO_PETAJOULE.get(base)
+    if base_multiplier is None:
+        raise ValueError(
+            f"This export uses {str(units).strip()!r}, which is not a supported "
+            "Joule-family unit. Export it again with the scale set to None and "
+            "the unit set to Petajoule."
+        )
+    return BALANCE_UNIT_PREFIX_TO_SCALE[prefix] * base_multiplier
+
 
 def normalize_balance_scenario_code(scenario: str) -> str:
     """Return the balance-export filename scenario token."""
@@ -600,6 +663,17 @@ def infer_balance_export_identity(
             "review compares a Reference or Target export."
         )
 
+    declared_units = sorted(
+        {normalize_balance_export_unit(sheet.units) for sheet in sheets}
+    )
+    if len(declared_units) > 1:
+        raise ValueError(
+            "This export uses different units across its sheets "
+            f"({', '.join(declared_units)}). Export it again with every sheet "
+            "using the scale None and the unit Petajoule."
+        )
+    balance_export_unit_to_petajoule_multiplier(sheets[0].units)
+
     area_name = read_balance_export_area_name(path)
     economy = economy_from_balance_export_area(area_name)
 
@@ -671,21 +745,7 @@ def _leap_balance_sheet_unit_to_pj_multiplier(raw: pd.DataFrame) -> float:
                 break
         if unit_text:
             break
-    if not unit_text:
-        return 1.0
-
-    unit_text = unit_text.rstrip(".")
-    if unit_text.startswith("thousand petajoule"):
-        return 1000.0
-    if unit_text.startswith("petajoule"):
-        return 1.0
-    if unit_text.startswith("terajoule"):
-        return 0.001
-    if unit_text.startswith("gigajoule"):
-        return 0.000001
-    if unit_text.startswith("million gigajoule"):
-        return 1.0
-    return 1.0
+    return balance_export_unit_to_petajoule_multiplier(unit_text)
 
 
 SCENARIO_LABEL_ALIASES = {

@@ -17,6 +17,10 @@ from openpyxl.styles import Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from codebase.utilities.leap_balance_export_resolver import (
+    balance_export_unit_to_petajoule_multiplier,
+)
+
 
 LEAP_SHEET_NAME = "LEAP Values"
 ERROR_SHEET_NAME = "LEAP - Source Error"
@@ -94,15 +98,7 @@ def _parse_source_metadata(metadata: object) -> dict[str, object]:
 
 
 def _source_unit_to_pj_multiplier(units: object) -> float:
-    normalized = str(units).strip().lower()
-    if normalized == "petajoule":
-        return 1.0
-    if normalized == "thousand petajoule":
-        return 1000.0
-    raise ValueError(
-        "Balance review supports Petajoule or Thousand Petajoule source units; "
-        f"found {units}"
-    )
+    return balance_export_unit_to_petajoule_multiplier(units)
 
 
 def _convert_source_sheet_to_petajoule(

@@ -21,6 +21,7 @@ from codebase.configuration import workflow_config as workflow_cfg
 from codebase.mappings.canonical_mapping import ConfigTableRef
 from codebase.utilities.leap_balance_export_resolver import (
     BalanceExportSheet,
+    balance_export_unit_to_petajoule_multiplier,
     list_balance_export_sheets,
     require_level2_balance_export_detail,
     resolve_balance_export_workbook,
@@ -573,15 +574,8 @@ def _read_direct_workbook_scope(
         raise ValueError(
             f"No requested scenario/year balance sheets were found in {path}."
         )
-    units = sorted({sheet.units.lower() for sheet in selected})
-    supported_units = {"petajoule", "thousand petajoule"}
-    unsupported_units = sorted(set(units) - supported_units)
-    if unsupported_units:
-        raise ValueError(
-            "Direct LEAP balance diagnostics currently require Petajoule or "
-            "Thousand Petajoule workbook metadata; "
-            f"found unsupported units {unsupported_units} in {path}."
-        )
+    for sheet in selected:
+        balance_export_unit_to_petajoule_multiplier(sheet.units)
     actual_years = _validate_years(
         [sheet.year for sheet in selected],
         base_year=base_year,

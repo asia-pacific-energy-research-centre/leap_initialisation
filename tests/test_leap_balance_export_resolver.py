@@ -8,6 +8,7 @@ from openpyxl import Workbook
 import pytest
 
 from codebase.utilities.leap_balance_export_resolver import (
+    balance_export_unit_to_petajoule_multiplier,
     is_leap_balance_own_use_or_loss_row,
     inspect_balance_export_detail,
     load_leap_balance_activity_table,
@@ -15,6 +16,40 @@ from codebase.utilities.leap_balance_export_resolver import (
     resolve_balance_export_workbook,
     select_balance_export_sheets,
 )
+
+
+@pytest.mark.parametrize(
+    ("units", "expected"),
+    [
+        ("Joule", 1e-15),
+        ("Thousand Kilojoule", 1e-9),
+        ("Million Megajoule", 1e-3),
+        ("Billion Gigajoule", 1e3),
+        ("Trillion Terajoule", 1e9),
+        ("Petajoule", 1.0),
+        ("Exajoule", 1e3),
+        ("Million Gigajoules", 1.0),
+    ],
+)
+def test_balance_export_unit_to_petajoule_multiplier(
+    units: str,
+    expected: float,
+) -> None:
+    assert balance_export_unit_to_petajoule_multiplier(units) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "units",
+    [
+        "British Thermal Unit",
+        "Gigawatt-Hour",
+        "Barrel of Oil Equivalent",
+        "Tonnes of Coal Equivalent",
+    ],
+)
+def test_balance_export_unit_rejects_non_joule_units(units: str) -> None:
+    with pytest.raises(ValueError, match="None.*Petajoule"):
+        balance_export_unit_to_petajoule_multiplier(units)
 
 
 def test_non_specified_own_use_is_normalized_as_negative_consumption() -> None:
@@ -236,3 +271,22 @@ def test_load_leap_balance_activity_table_normalizes_thousand_petajoule_to_pj(tm
 
     assert pj.loc[0, "value"] == 1200.0
     assert thousand_pj.loc[0, "value"] == 1200.0
+
+
+def test_load_leap_balance_activity_table_normalizes_billion_gigajoule_to_pj(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "billion_gigajoule.xlsx"
+    _write_balance_workbook(
+        path,
+        units="Billion Gigajoule",
+        electricity_value=1.2,
+    )
+
+    result = load_leap_balance_activity_table(
+        path,
+        balance_rows=["Imports"],
+        fuels=["Electricity"],
+    )
+
+    assert result.loc[0, "value"] == pytest.approx(1200.0)

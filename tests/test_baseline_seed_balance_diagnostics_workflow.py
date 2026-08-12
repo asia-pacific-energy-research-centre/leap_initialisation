@@ -1312,9 +1312,9 @@ def test_direct_workbook_metadata_accepts_thousand_petajoule(
 
 def test_direct_workbook_metadata_rejects_unsupported_units(tmp_path: Path) -> None:
     direct_path = tmp_path / "2022.xlsx"
-    _write_balance_workbook(direct_path, units="Terajoule")
+    _write_balance_workbook(direct_path, units="British Thermal Unit")
 
-    with pytest.raises(ValueError, match="Petajoule"):
+    with pytest.raises(ValueError, match="Joule-family"):
         diagnostics.run_economy_balance_diagnostic(
             economy="01_AUS",
             years=None,
