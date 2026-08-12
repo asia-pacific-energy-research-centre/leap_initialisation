@@ -130,7 +130,7 @@ paths = ["config/LEAP_API_helpers.py"]
 # so `codebase/` is stripped when staging. That also keeps this repository's
 # `codebase` package name from colliding with leap_initialisation's.
 [repositories.leap_dashboard]
-commit = "0d9778dc65c29f37ada6938ad0bcc5e224ac7cba"
+commit = "a5ce5b0f0a72d0f2faf3f19f62cbf8be32b54040"
 stage_dir = "leap_dashboard"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -146,7 +146,7 @@ paths = [
 # `mapping_tools` has no __init__.py in its own repository either; it works as
 # an implicit namespace package here exactly as it does there.
 [repositories.leap_mappings]
-commit = "a48cf4611e03933aa1c085ba5aced2271256e49c"
+commit = "ba5b880630e01bb2d91d11da059177eee128132d"
 stage_dir = "leap_mappings"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -169,7 +169,7 @@ paths = [
 # packages into the worker to reach one module. Omitted, each becomes an implicit
 # namespace package (PEP 420) and the submodule imports on its own - verified.
 [repositories.leap_mappings_worker]
-commit = "a48cf4611e03933aa1c085ba5aced2271256e49c"
+commit = "ba5b880630e01bb2d91d11da059177eee128132d"
 stage_dir = "leap_mappings_worker"
 source_key = "leap_mappings"
 on_sys_path = true
