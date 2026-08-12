@@ -884,6 +884,12 @@ def run_dashboard(
             template_path=template_path,
             series_config_path=series_config_path,
             code_colors_path=context.config_asset("dashboard_code_colors"),
+            source_to_common_map_path=context.require_data_asset(
+                "mapping_chain_source_to_common_map"
+            ),
+            esto_to_common_map_path=context.require_data_asset(
+                "mapping_chain_esto_to_common_map"
+            ),
             output_root=run_dir,
             comparison_scope=comparison_scope,
             wide_file_scope=wide_file_scope,
@@ -925,6 +931,10 @@ def run_dashboard(
             "dashboard_code_colors",
             "all_demand_aggregated_components",
         ),
+        data_roles=(
+            "mapping_chain_source_to_common_map",
+            "mapping_chain_esto_to_common_map",
+        ),
         settings={
             "economy": economy,
             "comparison_data_path": str(comparison_path),
@@ -953,6 +963,8 @@ MAPPING_CHAIN_DATA_ROLES = (
     "mapping_chain_esto_exact_rows",
     "mapping_chain_ninth_converted",
     "mapping_chain_common_esto_rows",
+    "mapping_chain_source_to_common_map",
+    "mapping_chain_esto_to_common_map",
 )
 MAPPING_CHAIN_CONFIG_ROLES = (
     "outlook_mappings_master",
@@ -1085,6 +1097,12 @@ def run_dashboard_from_export(
             code_colors_path=context.config_asset("dashboard_code_colors"),
             power_interim_audit_path=Path(
                 chain_result["power_interim_audit_path"]
+            ),
+            source_to_common_map_path=context.require_data_asset(
+                "mapping_chain_source_to_common_map"
+            ),
+            esto_to_common_map_path=context.require_data_asset(
+                "mapping_chain_esto_to_common_map"
             ),
             output_root=run_dir,
             comparison_scope=comparison_scope,

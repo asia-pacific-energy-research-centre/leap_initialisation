@@ -422,6 +422,24 @@ description = "Common ESTO row definitions the mapping-chain fast path applies."
 allow_untracked = true
 
 [[data_assets]]
+repository = "leap_mappings"
+path = "results/common_esto/source_to_common_esto_map.csv"
+dest = "mapping_chain/source_to_common_esto_map.csv"
+role = "mapping_chain_source_to_common_map"
+sha256 = "1937ce70048acd61504f3a9d9032056a270a07b05b6103033d06230c372e9ff8"
+description = "Published LEAP and 9th native-source provenance for Common ESTO rows."
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_mappings"
+path = "results/common_esto/esto_to_common_esto_map.csv"
+dest = "mapping_chain/esto_to_common_esto_map.csv"
+role = "mapping_chain_esto_to_common_map"
+sha256 = "d113282a281da633b327dd288348d9695b332dffeaab0becf9f2a67adf3aac0f"
+description = "Published ESTO component provenance for Common ESTO rows."
+allow_untracked = true
+
+[[data_assets]]
 repository = "leap_initialisation"
 path = "data/00APEC_2024_low_with_subtotals.csv"
 dest = "balance_review/00APEC_2024_low_with_subtotals.csv"

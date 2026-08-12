@@ -24,6 +24,12 @@ LEAP_INITIALISATION_ROOT = Path(__file__).resolve().parents[1]
 EXPORT_DIR = LEAP_INITIALISATION_ROOT / "data" / "leap balances exports" / "12_NZ"
 COMPARISON_DATA = LEAP_MAPPINGS_ROOT / "results" / "common_esto" / "common_esto_comparison_data.csv"
 COMMON_ROWS = LEAP_MAPPINGS_ROOT / "results" / "common_esto" / "common_esto_rows.csv"
+SOURCE_TO_COMMON_MAP = (
+    LEAP_MAPPINGS_ROOT / "results" / "common_esto" / "source_to_common_esto_map.csv"
+)
+ESTO_TO_COMMON_MAP = (
+    LEAP_MAPPINGS_ROOT / "results" / "common_esto" / "esto_to_common_esto_map.csv"
+)
 POWER_INTERIM_AUDIT = (
     LEAP_MAPPINGS_ROOT
     / "results"
@@ -35,6 +41,8 @@ REQUIRED_PATHS = [
     EXPORT_DIR,
     COMPARISON_DATA,
     COMMON_ROWS,
+    SOURCE_TO_COMMON_MAP,
+    ESTO_TO_COMMON_MAP,
     LEAP_DASHBOARD_ROOT / "config" / "common_esto_dashboard" / "common_esto_dashboard_template.json",
     LEAP_DASHBOARD_ROOT / "config" / "common_esto_dashboard" / "series_config.json",
     LEAP_DASHBOARD_ROOT / "config" / "common_esto_dashboard" / "code_colors.json",
@@ -81,6 +89,8 @@ def _context(tmp_path: Path) -> RuntimeContext:
             "mapping_chain_ninth_converted": LEAP_MAPPINGS_ROOT
             / "results" / "mapping_relationships" / "ninth_results_converted_to_esto.csv.gz",
             "mapping_chain_common_esto_rows": COMMON_ROWS,
+            "mapping_chain_source_to_common_map": SOURCE_TO_COMMON_MAP,
+            "mapping_chain_esto_to_common_map": ESTO_TO_COMMON_MAP,
         },
         repository_roots={"leap_mappings": LEAP_MAPPINGS_ROOT},
     )
@@ -121,6 +131,8 @@ def test_run_dashboard_from_export_uses_mapping_chain_and_renders(tmp_path, monk
         "Electricity interim",
         "CHP interim",
     ]
+    dashboard_html = Path(result.outputs["dashboard_index"]).read_text(encoding="utf-8")
+    assert "Native-source provenance files were not included" not in dashboard_html
 
 
 def test_run_dashboard_from_export_escape_hatch_skips_mapping_chain(tmp_path, monkeypatch):

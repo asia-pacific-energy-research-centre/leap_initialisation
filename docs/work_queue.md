@@ -1,5 +1,14 @@
 # Remaining work queue
 
+## [38] Include native-source provenance in portable dashboards
+
+**Status: completed 2026-08-12.**
+
+The portable release now pins the published source-to-Common and
+ESTO-to-Common maps and passes both to dashboard rendering. Guide tables in web
+dashboards can therefore show the ESTO, LEAP and 9th source categories instead
+of reporting that provenance was unavailable.
+
 ## [37] Include the dashboard guide in the portable runtime closure
 
 **Status: completed 2026-08-10.**
