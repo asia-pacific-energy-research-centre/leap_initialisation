@@ -81,10 +81,11 @@ Do not create parallelism by editing `ECONOMIES` or `RUN_OUTPUT_LABEL` between
 two bare invocations of `supply_reconciliation_workflow.py`. A late import can
 re-read those module literals from disk. Sequential execution remains the
 safest default; use the runner, unique labels, and a deliberately bounded
-`max_workers` value when parallel execution is justified. The deterministic
-parent merge does not yet reconstruct the sequential path's single combined
-workbook, so consume the worker seed workbooks directly unless that limitation
-has subsequently been closed.
+`max_workers` value when parallel execution is justified. Deterministic parent
+CSV views cover validation findings, issue groups, source diagnostics,
+template matching, and F5 conservation families. They deliberately do not
+reconstruct the sequential path's single combined workbook, so consume the
+worker seed workbooks directly when that workbook is required.
 
 ## Prompt docs workflow
 

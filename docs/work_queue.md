@@ -2,7 +2,7 @@
 
 ## [42] Restore comparison-basis options and mapping diagnostics in the web app
 
-**Status: requested 2026-08-13; implementation and packaged-runtime validation pending.**
+**Status: implementation complete 2026-08-13; packaged runtime refresh in progress.**
 
 Dashboards rendered through the web app currently omit the normal dashboard's
 Common-category comparison-basis options and its mapping-diagnostics page. The
@@ -19,6 +19,12 @@ choices are reachable, the diagnostics HTML and required supporting artifacts
 exist, navigation reaches the page, and the ordinary publication/readiness
 checks still pass. Refresh portable manifest pins only after the dashboard and
 mapping dependencies are committed at coherent revisions.
+
+The maintained portable renderer now publishes both configured scopes and a
+read-only diagnostics page from mapping-owned provenance files. Web source
+snapshot/publish/archive logic preserves the full nested variant bundle.
+Focused tests and a real portable fixture render pass; the remaining step is to
+pin the coherent mapping/dashboard revisions and regenerate the deployed copy.
 
 ## [41] Preserve the 9th other-petroleum residual in non-specified own use
 

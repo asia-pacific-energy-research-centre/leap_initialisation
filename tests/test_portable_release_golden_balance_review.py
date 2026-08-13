@@ -94,13 +94,16 @@ GOLDEN_CELLS = [
 TOLERANCE = 1e-6
 
 
-pytestmark = pytest.mark.skipif(
-    not (GOLDEN_DIAGNOSTICS_DIR.is_dir() and GOLDEN_BALANCE_EXPORT.is_file()),
-    reason=(
-        "The USA 2022 golden inputs are large local artifacts that are not tracked "
-        "in Git. Restore them from the shared archive to run this test."
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not (GOLDEN_DIAGNOSTICS_DIR.is_dir() and GOLDEN_BALANCE_EXPORT.is_file()),
+        reason=(
+            "The USA 2022 golden inputs are large local artifacts that are not tracked "
+            "in Git. Restore them from the shared archive to run this test."
+        ),
     ),
-)
+]
 
 
 def _sha256(path: Path) -> str:

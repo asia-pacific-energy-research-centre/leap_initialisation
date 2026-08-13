@@ -31,7 +31,7 @@ def test_capacity_catalog_includes_power_interim_records(monkeypatch) -> None:
     monkeypatch.setattr(
         supply_results_saver.electricity_heat_interim_workflow,
         "build_electricity_heat_interim_rows",
-        lambda economies: [copy.deepcopy(power)],
+        lambda economies, scenario=None: [copy.deepcopy(power)],
     )
 
     records = supply_results_saver._build_capacity_allocation_process_records(
@@ -96,7 +96,7 @@ def test_power_workbook_builder_receives_scenario_specific_adjusted_records(
     monkeypatch.setattr(
         supply_leap_io.electricity_heat_interim_workflow,
         "build_electricity_heat_interim_rows",
-        lambda economies: [copy.deepcopy(base_record)],
+        lambda economies, scenario=None: [copy.deepcopy(base_record)],
     )
 
     def fake_apply(records, targets, reconciliation, scenario, *, allocation_ledger=None):

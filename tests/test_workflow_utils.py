@@ -231,6 +231,7 @@ _ESTO_MISSING = not _DEFAULT_ESTO_PATH.exists()
 
 
 @pytest.mark.skipif(_NINTH_MISSING, reason="9th Outlook CSV not present in test environment")
+@pytest.mark.integration
 class TestLoadNinthOutlookCsv(unittest.TestCase):
     def test_returns_nonempty_dataframe(self):
         df = load_ninth_outlook_csv()
@@ -244,6 +245,7 @@ class TestLoadNinthOutlookCsv(unittest.TestCase):
 
 
 @pytest.mark.skipif(_ESTO_MISSING, reason="ESTO CSV not present in test environment")
+@pytest.mark.integration
 class TestLoadEstoCsv(unittest.TestCase):
     def test_returns_nonempty_dataframe(self):
         df = load_esto_csv()

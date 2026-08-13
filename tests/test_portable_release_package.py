@@ -71,10 +71,13 @@ def _repositories_available() -> bool:
     return all((Path(root) / ".git").exists() for root in roots.values())
 
 
-pytestmark = pytest.mark.skipif(
-    not _repositories_available(),
-    reason="All three repository checkouts are needed to stage a release.",
-)
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not _repositories_available(),
+        reason="All three repository checkouts are needed to stage a release.",
+    ),
+]
 
 
 @pytest.fixture(scope="module")

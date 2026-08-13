@@ -772,11 +772,12 @@ def _row_values(row: pd.Series, years: Iterable[int]) -> tuple[dict[int, float] 
     values: dict[int, float] = {}
     for year in requested:
         column = next((candidate for candidate in (year, str(year), float(year)) if candidate in row.index), None)
-        if column is None or pd.isna(row.get(column)):
+        if column is None or pd.isna(row.loc[column]):
             continue
-        value = pd.to_numeric(pd.Series([row.get(column)]), errors="coerce").iloc[0]
+        raw_value = row.loc[column]
+        value = pd.to_numeric(pd.Series([raw_value]), errors="coerce").iloc[0]
         if pd.isna(value):
-            return None, f"non-numeric year value: {year}={row.get(column)}"
+            return None, f"non-numeric year value: {year}={raw_value}"
         values[year] = float(value)
     return values, ""
 
@@ -875,7 +876,7 @@ def check_serialized_value_conservation(
                     None,
                 )
                 raw_viewing = (
-                    viewing_row.get(viewing_column)
+                    viewing_row.loc[viewing_column]
                     if viewing_column is not None
                     else None
                 )

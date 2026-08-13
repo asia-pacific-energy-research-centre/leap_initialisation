@@ -792,8 +792,23 @@ def _flatten_dashboard_output(run_dir: Path, result: dict[str, Any]) -> dict[str
     level is removed, and a one-line page at the top points at the index.
     """
     rendered_root = Path(result.get("output_root", "")) if result.get("output_root") else None
-    if rendered_root is None or not rendered_root.is_dir() or rendered_root == run_dir:
+    if rendered_root is None or not rendered_root.is_dir():
         return result
+    if rendered_root == run_dir:
+        moved = dict(result)
+        dashboard_index = Path(str(result.get("dashboard_index", "")))
+        if dashboard_index.is_file():
+            relative_index = dashboard_index.relative_to(run_dir).as_posix()
+            shortcut = run_dir / _DASHBOARD_SHORTCUT_NAME
+            shortcut.write_text(
+                _DASHBOARD_SHORTCUT.replace(
+                    "dashboards/index.html",
+                    relative_index,
+                ),
+                encoding="utf-8",
+            )
+            moved["open_this"] = str(shortcut)
+        return moved
     for item in list(rendered_root.iterdir()):
         destination = run_dir / item.name
         if destination.exists():
@@ -874,10 +889,10 @@ def run_dashboard(
         )
 
     def work(run_dir: Path) -> dict[str, Any]:
-        from common_esto_dashboard_portable import render_common_esto_dashboard
+        from common_esto_dashboard_portable import render_common_esto_dashboard_variants
 
         missing_branches = _missing_leap_demand_branches(context, economy)
-        result = render_common_esto_dashboard(
+        result = render_common_esto_dashboard_variants(
             economy=economy,
             comparison_data_path=comparison_path,
             common_rows_path=rows_path,
@@ -1052,7 +1067,7 @@ def run_dashboard_from_export(
     )
 
     def work(run_dir: Path) -> dict[str, Any]:
-        from common_esto_dashboard_portable import render_common_esto_dashboard
+        from common_esto_dashboard_portable import render_common_esto_dashboard_variants
 
         economy_code = validation.normalize_economy(economy)
         chain_job = {
@@ -1088,7 +1103,7 @@ def run_dashboard_from_export(
 
         missing_branches = _missing_leap_demand_branches(context, economy)
         progress.begin_step("render")
-        result = render_common_esto_dashboard(
+        result = render_common_esto_dashboard_variants(
             economy=economy_code,
             comparison_data_path=Path(chain_result["comparison_data_path"]),
             common_rows_path=Path(chain_result["common_rows_path"]),

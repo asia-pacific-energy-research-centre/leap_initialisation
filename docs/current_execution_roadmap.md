@@ -109,12 +109,12 @@ Execute the detailed briefs in this order, with their tests and decision gates:
    concurrent smoke test (`01_AUS` + `12_NZ`, `max_workers=2`, two-year
    horizon) completed with both workers succeeding, zero cross-contamination
    (each seed's `Region` column held only its own economy), and `01_AUS`'s
-   concurrent output identical (0 diffs) to its sequential run. A
-   deterministic parent merge across more than one economy's outputs into a
-   single consolidated artifact is **partly built, 2026-07-23** (`5064325`):
-   `codebase/supply_reconciliation/parallel_merge.py` merges the consolidated
-   baseline-seed validation findings/issue-groups CSVs across workers
-   (deterministic order, failed workers skipped rather than read as clean).
+   concurrent output identical (0 diffs) to its sequential run. Deterministic
+   parent CSV views cover baseline-seed validation findings/issue groups
+   (`5064325`) plus source diagnostics, template matching, and F5 conservation
+   summary/breakdown/lineage families (`870b75b`). Ordering is deterministic,
+   failed workers are skipped rather than read as clean, and worker files remain
+   untouched.
    **Deliberately not covered**: merging the single-file combined workbook
    that a sequential multi-economy run also produces — reconstructing its
    exact preamble/header/column layout from N independent workers is a

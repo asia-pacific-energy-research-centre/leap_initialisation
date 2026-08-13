@@ -96,6 +96,7 @@ def _context(tmp_path: Path) -> RuntimeContext:
     )
 
 
+@pytest.mark.integration
 def test_run_dashboard_from_export_uses_mapping_chain_and_renders(tmp_path, monkeypatch):
     context = _context(tmp_path)
     context.activate_sys_path()
@@ -135,6 +136,7 @@ def test_run_dashboard_from_export_uses_mapping_chain_and_renders(tmp_path, monk
     assert "Native-source provenance files were not included" not in dashboard_html
 
 
+@pytest.mark.integration
 def test_run_dashboard_from_export_escape_hatch_skips_mapping_chain(tmp_path, monkeypatch):
     context = _context(tmp_path)
     context.activate_sys_path()

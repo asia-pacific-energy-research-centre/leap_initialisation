@@ -101,6 +101,23 @@ is alive. A killed process can leave stale locks; validate the exact PID first.
 
 ## Expected runtime
 
+Default repository verification is deliberately bounded:
+
+```powershell
+C:\Users\Work\miniconda3\python.exe -m pytest -q
+```
+
+`pytest.ini` excludes tests marked `integration` from that command. On
+2026-08-13 it collected 1,471 default tests in 5.38 seconds and completed in
+10m51s while a full mapping conversion was also active; only one pytest process
+was observed (about 1.2 GB working set), rather than the prior multi-process
+1.8-3.2 GB fan-out. Run an expensive case explicitly with, for example,
+`pytest -o addopts="" -m integration tests/test_dashboard_from_export.py`.
+The complete integration set stages large packages and reads production data;
+the previous unbounded run was still active after 20 minutes with several
+multi-GB workers, so run the required module(s), not the entire integration set,
+unless that cost is intentional.
+
 Observed real three-economy baseline run, 2026-07-28:
 
 ```text

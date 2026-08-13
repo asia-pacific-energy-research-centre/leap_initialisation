@@ -596,9 +596,10 @@ def _resolve_demand_esto_pairs_via_rollups(
     esto_ref = esto_reference.copy()
     for col in ["leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow", "esto_product"]:
         esto_ref[col] = esto_ref[col].fillna("").astype(str).str.strip()
-    for subtotal_col in ["leap_is_subtotal", "esto_pair_is_subtotal"]:
-        if subtotal_col in esto_ref.columns:
-            esto_ref = esto_ref[~esto_ref[subtotal_col].map(_truthy_flag)]
+    # Rollup targets are aggregates by definition. Keep reviewed subtotal rows
+    # in this lookup: the explicit active rollup rule is the authority that
+    # permits a detailed source branch to resolve to that aggregate boundary.
+    # Filtering them here made current generated ``Road`` targets unreachable.
     esto_ref = esto_ref[esto_ref["esto_flow"].ne("") & esto_ref["esto_product"].ne("")]
     esto_lookup: dict[tuple[str, str], tuple[str, str]] = {}
     real_esto_pairs: set[tuple[str, str]] = set()

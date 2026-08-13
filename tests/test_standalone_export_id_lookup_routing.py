@@ -136,7 +136,7 @@ def test_electricity_heat_resolves_each_economy_in_a_multi_economy_call(monkeypa
     )
     monkeypatch.setattr(
         elec_heat, "build_electricity_heat_interim_rows",
-        lambda economies=None: [{"economy": economies[0]}],
+        lambda economies=None, scenario=None: [{"economy": economies[0]}],
     )
     monkeypatch.setattr(elec_heat.core, "consolidate_transformation_output_rows", lambda *a, **k: None)
     monkeypatch.setattr(elec_heat.core, "save_transformation_export", lambda *a, **k: None)
@@ -179,7 +179,7 @@ def test_electricity_heat_explicit_path_still_bypasses_the_resolver(monkeypatch,
     )
     monkeypatch.setattr(
         elec_heat, "build_electricity_heat_interim_rows",
-        lambda economies=None: [{"economy": economies[0]}],
+        lambda economies=None, scenario=None: [{"economy": economies[0]}],
     )
     monkeypatch.setattr(elec_heat.core, "consolidate_transformation_output_rows", lambda *a, **k: None)
 
