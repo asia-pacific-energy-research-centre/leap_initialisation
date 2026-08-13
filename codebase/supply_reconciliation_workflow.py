@@ -1366,6 +1366,15 @@ def run_results_update_with_config(
                 globals()[name] = value
         _broadcast_preset_overrides()
         _refresh_output_paths_for_current_pass_mode()
+        # Path refresh resolves the notebook-facing ``"auto"`` label and
+        # writes that resolved value back through the legacy config globals.
+        # Preserve the caller's editable setting while leaving ACTIVE_* and
+        # the refreshed output paths aligned with the restored run context.
+        original_label = snapshot["RUN_OUTPUT_LABEL"]
+        if original_label is missing:
+            globals().pop("RUN_OUTPUT_LABEL", None)
+        else:
+            globals()["RUN_OUTPUT_LABEL"] = original_label
 
 
 def _run_with_config_inner() -> dict[str, object]:
