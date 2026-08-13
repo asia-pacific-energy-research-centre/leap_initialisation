@@ -714,18 +714,26 @@ def run_transformation_leap_import(
 #%%
 
 # Simple notebook-focused configuration block.
-NOTEBOOK_SCENARIOS = ["Reference", "Target", "Current Accounts"]
-NOTEBOOK_INCLUDE_LEAP_IMPORT = (
-    LEAP_API_AVAILABLE if get_analysis_input_write_mode() == "api" else True
-)
+NOTEBOOK_SCENARIOS = list(workflow_cfg.TRANSFORMATION_NOTEBOOK_SCENARIOS)
+NOTEBOOK_INCLUDE_LEAP_IMPORT = workflow_cfg.TRANSFORMATION_NOTEBOOK_INCLUDE_LEAP_IMPORT
+if NOTEBOOK_INCLUDE_LEAP_IMPORT is None:
+    NOTEBOOK_INCLUDE_LEAP_IMPORT = (
+        LEAP_API_AVAILABLE if get_analysis_input_write_mode() == "api" else True
+    )
 NOTEBOOK_IMPORT_SCENARIOS = [
     scenario.lower()
     for scenario in NOTEBOOK_SCENARIOS
     if scenario.lower() not in {"current accounts", "current account"}
 ]
-NOTEBOOK_ECONOMIES = list(core.ECONOMIES_TO_ANALYZE)
-NOTEBOOK_CURRENT_ACCOUNTS = True
-NOTEBOOK_AGGREGATE_ECONOMY_LABEL = "ALL_ECONOMIES"
+NOTEBOOK_ECONOMIES = (
+    list(core.ECONOMIES_TO_ANALYZE)
+    if workflow_cfg.TRANSFORMATION_NOTEBOOK_ECONOMIES is None
+    else list(workflow_cfg.TRANSFORMATION_NOTEBOOK_ECONOMIES)
+)
+NOTEBOOK_CURRENT_ACCOUNTS = workflow_cfg.TRANSFORMATION_NOTEBOOK_CURRENT_ACCOUNTS
+NOTEBOOK_AGGREGATE_ECONOMY_LABEL = (
+    workflow_cfg.TRANSFORMATION_NOTEBOOK_AGGREGATE_ECONOMY_LABEL
+)
 
 def run_with_notebook_config() -> list[Path]:
     """Run the transformation export/import helpers with the editable notebook constants."""
