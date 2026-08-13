@@ -25,7 +25,7 @@ def test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup(monkeypat
             2022: [2.0],
         }
     )
-    calls = {"aggregate_labels": [], "mapped": False}
+    calls = {"aggregate_labels": [], "mapped": False, "loader_kwargs": None}
 
     monkeypatch.setattr(
         supply_assets,
@@ -56,10 +56,14 @@ def test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup(monkeypat
         "archive_config_dir_once_per_day",
         lambda: None,
     )
+    def fake_load_augmented_reference_tables(**kwargs):
+        calls["loader_kwargs"] = kwargs
+        return esto_raw.copy(), ninth_raw.copy()
+
     monkeypatch.setattr(
         supply_assets,
         "load_augmented_reference_tables",
-        lambda **kwargs: (esto_raw.copy(), ninth_raw.copy()),
+        fake_load_augmented_reference_tables,
     )
     monkeypatch.setattr(
         supply_assets,
@@ -70,11 +74,6 @@ def test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup(monkeypat
         supply_assets,
         "filter_reference_scenario",
         lambda df, label: df.copy(),
-    )
-    monkeypatch.setattr(
-        supply_assets,
-        "apply_matt_subtotal_mapping",
-        lambda df, path: df.copy(),
     )
     monkeypatch.setattr(
         supply_assets,
@@ -145,6 +144,9 @@ def test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup(monkeypat
     assert len(assets) == 5
     assert calls["mapped"] is True
     assert calls["aggregate_labels"] == ["00_APEC", "00_APEC"]
+    assert calls["loader_kwargs"]["apply_esto_subtotal_map"] is True
+    assert calls["loader_kwargs"]["filter_esto_subtotals_flag"] is False
+    assert calls["loader_kwargs"]["filter_ninth_subtotals_flag"] is False
     assert sector_config["01 Coal"]["fuel_name"] == "Coal"
     assert code_to_name_mapping == {"01 Coal": "Coal"}
     assert dataset_map == {"esto_rows": 2, "ninth_rows": 2}

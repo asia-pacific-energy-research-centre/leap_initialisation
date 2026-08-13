@@ -2273,10 +2273,10 @@ carry the same distortion.
   removed on 2026-08-03 by user decision. A finding in one economy no longer has
   any reason to suppress a valid final workbook for another economy.
 
-- `tests/test_supply_assets.py::test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup`
-  — **stale test**. It monkeypatches `apply_matt_subtotal_mapping`, which now
-  only exists under `archive/` and `scrapbook/`. Verified failing at HEAD
-  independently of any current work. Either update or delete the test.
+- ~~`tests/test_supply_assets.py::test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup`~~
+  — **fixed 2026-08-13**. The test now verifies the maintained augmented
+  reference loader's subtotal-map/filter contract instead of monkeypatching the
+  removed `apply_matt_subtotal_mapping` helper.
 - ~~`tests/test_leap_export_template_resolver.py::test_read_area_from_real_usa_template`~~
   — **fixed 2026-07-23** (`ac1a79f`). Diagnosed at last: the assertion was
   pinned to the real USA template's area name string ("USA clean slate
@@ -2284,16 +2284,10 @@ carry the same distortion.
   name ("USA clean slate 28_07") as part of updating the real per-economy
   templates. Updated the assertion to match; not a code defect, just a
   stale fixture string.
-- `tests/test_supply_transformation_export_projection_cache.py::test_transformation_exports_reuse_reference_projection_for_current_accounts`
-  — **added to this list 2026-07-23**, found in a full-suite run unrelated to
-  the work that surfaced it (an aggregated-demand-workflow change touching
-  only `aggregated_demand_workflow.py` and its own test file). Cause: the
-  test's `fake_apply` monkeypatch fixture at line 40 has a stale signature
-  — `apply_transformation_target_overrides_for_scenario` now takes an
-  `allocation_ledger` keyword (Phase 4 D4.1's explicit-injection allocation
-  ledger), the fixture doesn't accept it, and the call raises `TypeError`.
-  Not diagnosed further; fixture needs an `allocation_ledger=None` parameter
-  to match.
+- ~~`tests/test_supply_transformation_export_projection_cache.py::test_transformation_exports_reuse_reference_projection_for_current_accounts`~~
+  — **fixed before re-verification on 2026-08-13**. The fixture accepts the
+  allocation-ledger argument and the test passes alongside the repaired
+  supply-assets test.
 - ~~`tests/test_module_attribute_contracts.py::test_no_bare_name_misattribution[codebase.supply_reconciliation.leap_io]`~~
   — **cleared.** Was failing mid-flight while the export-template work was
   uncommitted; passes at `6bda122` (39/39). Left here only to stop it being
