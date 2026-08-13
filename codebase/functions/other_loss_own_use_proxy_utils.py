@@ -1643,11 +1643,18 @@ def build_target_energy_long(
                 ~ninth_subset["subfuels"].fillna("").astype(str).str.strip().str.lower().isin(exclude_subfuels)
             ].copy()
         ninth_subset["fuel_label_for_grouping"] = ninth_subset.apply(_target_fuel_label_from_ninth, axis=1)
+        fuel_branch_overrides = {
+            _normalize_source_token(source): sanitize_leap_name(str(target))
+            for source, target in dict(ninth_cfg.get("fuel_branch_overrides", {})).items()
+        }
         ninth_subset["fuel_branch_label_for_grouping"] = ninth_subset["fuel_label_for_grouping"].apply(
-            lambda value: _format_fuel_branch_label(
-                value,
-                source_name="ninth",
-                fuel_mapping_lookup=mapping_lookup,
+            lambda value: fuel_branch_overrides.get(
+                _normalize_source_token(value),
+                _format_fuel_branch_label(
+                    value,
+                    source_name="ninth",
+                    fuel_mapping_lookup=mapping_lookup,
+                ),
             )
         )
         allow_without_esto_history = bool(

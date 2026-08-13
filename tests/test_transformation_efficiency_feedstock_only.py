@@ -26,11 +26,14 @@ def test_efficiency_series_uses_feedstock_without_auxiliary_energy() -> None:
     assert efficiency.loc[2022] == pytest.approx(16.775 / 41.930999)
 
 
-def test_historical_production_keeps_base_year_and_zeros_projection() -> None:
+@pytest.mark.parametrize("sector_title", ["Coke ovens", "Blast furnaces"])
+def test_fixed_transformation_historical_production_keeps_projection(
+    sector_title: str,
+) -> None:
     record = build_process_record(
         economy="01_AUS",
-        sector_title="Coke ovens",
-        process_name="Coke ovens",
+        sector_title=sector_title,
+        process_name=sector_title,
         output_values={"Coke oven gas": {2022: 16.775, 2023: 18.0}},
         feedstock_values={"Coking coal": {2022: 41.930999, 2023: 42.0}},
         efficiency={2022: 0.4, 2023: 0.4},
@@ -45,7 +48,7 @@ def test_historical_production_keeps_base_year_and_zeros_projection() -> None:
         region="Australia",
         base_year=2022,
         final_year=2023,
-        code_to_name_mapping={"Coke ovens": "Coke ovens"},
+        code_to_name_mapping={sector_title: sector_title},
     )
 
     historical = {
@@ -53,7 +56,37 @@ def test_historical_production_keeps_base_year_and_zeros_projection() -> None:
         for row in rows
         if row["Measure"] == "Historical Production"
     }
-    assert historical == {2022: pytest.approx(16.775), 2023: pytest.approx(0.0)}
+    assert historical == {2022: pytest.approx(16.775), 2023: pytest.approx(18.0)}
+
+
+def test_other_transformation_historical_production_still_zeros_projection() -> None:
+    record = build_process_record(
+        economy="01_AUS",
+        sector_title="Gas works plants",
+        process_name="Gas works plants",
+        output_values={"Gas works gas": {2022: 4.0, 2023: 5.0}},
+        feedstock_values={"Natural gas": {2022: 8.0, 2023: 10.0}},
+        efficiency={2022: 0.5, 2023: 0.5},
+        auxiliary_ratios={},
+        loss_values={},
+        loss_total=0.0,
+    )
+
+    rows = build_transformation_log_rows(
+        [record],
+        scenario="Reference",
+        region="Australia",
+        base_year=2022,
+        final_year=2023,
+        code_to_name_mapping={"Gas works plants": "Gas works plants"},
+    )
+
+    historical = {
+        int(row["Date"]): float(row["Value"])
+        for row in rows
+        if row["Measure"] == "Historical Production"
+    }
+    assert historical == {2022: pytest.approx(4.0), 2023: pytest.approx(0.0)}
 
 
 def test_process_record_overrides_legacy_efficiency_with_exported_feedstocks() -> None:

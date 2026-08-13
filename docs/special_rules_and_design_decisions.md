@@ -1,5 +1,60 @@
 # Special rules and design decisions
 
+## INIT-016: Non-specified own-use other-petroleum residual
+
+**Status:** Confirmed
+**Owner:** leap_initialisation
+**Type:** Other-loss/own-use proxy fuel routing
+**Affected areas:** `10.01.17 Non-specified own uses`;
+`07_x_other_petroleum_products`; `Other products`
+
+### Current rule
+
+Within the non-specified-own-use proxy, the 9th aggregate
+`07_x_other_petroleum_products` maps to LEAP's residual `Other products`
+branch. It must not be discarded merely because the general fuel-only mapping
+also lists the detailed petroleum branches that the aggregate can represent.
+Those detailed branches remain driven by their own named 9th subfuels.
+
+This is a process-specific residual rule, not a global claim that every use of
+`07_x_other_petroleum_products` should be assigned to one detailed product.
+
+### Validation
+
+A focused target-energy test requires a `-13 PJ` 9th residual to emerge as
+`Other products` without changing its sign or magnitude. The next 01_AUS seed
+rerun must show that branch continuously after 2022.
+
+## INIT-015: Coke ovens and blast furnaces retain projected Historical Production
+
+**Status:** Confirmed
+**Owner:** leap_initialisation
+**Type:** Baseline-seed transformation boundary
+**Affected areas:** `build_transformation_log_rows`; Coke ovens; Blast furnaces
+
+### Current rule
+
+For Coke ovens and Blast furnaces, the LEAP import writes the producer's full
+projected gross-output series to Historical Production. Exogenous Capacity,
+Process Efficiency, Output Share, feedstock shares, and auxiliary use continue
+to be written as before. Other transformation modules keep the base-year-only
+Historical Production migration behavior.
+
+These two modules require the exception because allowing LEAP to redispatch
+them from demand alone does not reproduce the reviewed seed path. In the
+01_AUS evidence, blast-furnace output fell from 16.775 PJ in 2022 to zero in
+2023 despite a 16.751 PJ seeded projection, while coke-oven-coke output rose
+from 62.127 PJ to 132.229 PJ even though the producer's 2023 gross coke-oven
+output remained near the base year.
+
+### Validation
+
+Focused tests require the complete projected Historical Production series for
+both modules and retain the old projection-zero behavior for an unaffected
+module. After the next 01_AUS seed import and LEAP export, the two balance rows
+must follow the seeded production paths rather than the prior demand-dispatch
+results.
+
 ## INIT-014: Other-loss and own-use proxy source fallbacks
 
 **Status:** Implemented

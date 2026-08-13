@@ -1,5 +1,29 @@
 # Remaining work queue
 
+## [41] Preserve the 9th other-petroleum residual in non-specified own use
+
+**Status: implementation complete 2026-08-13; 01_AUS seed rerun pending.**
+
+The 9th `10_01_17_nonspecified_own_uses` projection stores roughly 80% of its
+AUS petroleum use in `07_x_other_petroleum_products`. The general fuel-only
+LEAP lookup correctly treats that code as ambiguous, but the proxy then fell
+back to a mechanical label for which no LEAP branch exists. This process now
+routes the aggregate explicitly to the residual `Other products` branch. The
+named Kerosene, Gas and diesel oil, Fuel oil, and LPG rows remain separate.
+
+## [40] Preserve coke-oven and blast-furnace projection output in baseline seeds
+
+**Status: implementation complete 2026-08-13; 01_AUS seed rerun pending.**
+
+The transformation producer already calculates coherent projected output for
+Coke ovens and Blast furnaces, but the LEAP export boundary previously retained
+only base-year Historical Production and wrote zero thereafter. LEAP then
+redispatched these demand-driven modules: the 01_AUS result lost blast-furnace
+output completely and more than doubled coke-oven-coke output in 2023. The two
+modules now retain their calculated projected gross output as Historical
+Production. Other transformation modules retain the existing base-year-only
+behavior. Focused tests protect both sides of this boundary.
+
 ## [39] Retain legacy template destinations until every LEAP area is migrated
 
 **Status: completed 2026-08-12; compatibility retirement pending template migration.**

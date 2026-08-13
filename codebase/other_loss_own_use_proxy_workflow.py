@@ -283,6 +283,7 @@ def make_proxy_config(
     ninth_activity_exclude_subfuels: Sequence[str] | None = None,
     ninth_target_exclude_fuels: Sequence[str] | None = None,
     ninth_target_exclude_subfuels: Sequence[str] | None = None,
+    ninth_target_fuel_overrides: Mapping[str, str] | None = None,
     allow_ninth_target_without_esto_history: bool = False,
     same_fuel_total_demand_activity_fallback: bool = False,
     leap_balance_rows: Sequence[str] | None = None,
@@ -328,6 +329,7 @@ def make_proxy_config(
                 "sector_codes": list(ninth_target_sectors),
                 "exclude_fuels": list(ninth_target_exclude_fuels or []),
                 "exclude_subfuels": list(ninth_target_exclude_subfuels or []),
+                "fuel_branch_overrides": dict(ninth_target_fuel_overrides or {}),
                 "allow_without_esto_history": bool(
                     allow_ninth_target_without_esto_history
                 ),
@@ -711,6 +713,12 @@ PROXY_CONFIG = [
         activity_value_mode="absolute",
         esto_target_flows=["10.01.17 Non-specified own uses"],
         ninth_target_sectors=["10_01_17_nonspecified_own_uses"],
+        # The 9th dataset retains this petroleum residual as one aggregate.
+        # Route it to LEAP's residual branch rather than dropping it because
+        # the general fuel-only mapping also lists several possible children.
+        ninth_target_fuel_overrides={
+            "07_x_other_petroleum_products": "Other products",
+        },
         notes=(
             "Proxy activity is the absolute sum of every top-level fuel's input plus "
             "output under the whole transformation sector (09 Total transformation "

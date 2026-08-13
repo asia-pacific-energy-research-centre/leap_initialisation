@@ -842,6 +842,51 @@ def test_target_energy_allows_ninth_fuels_seen_in_esto_other_economies() -> None
     assert int(target[target["fuel_branch_label"].eq("Gas works gas")]["target_energy"].sum()) == 9
 
 
+def test_target_energy_applies_process_specific_ninth_fuel_override() -> None:
+    config = workflow.make_proxy_config(
+        enabled=True,
+        process_key="nonspecified_own_uses",
+        process_label="Non-specified own uses",
+        esto_target_flows=["10.01.17 Non-specified own uses"],
+        ninth_target_sectors=["10_01_17_nonspecified_own_uses"],
+        ninth_target_fuel_overrides={
+            "07_x_other_petroleum_products": "Other products",
+        },
+        allow_ninth_target_without_esto_history=True,
+    )
+    esto = pd.DataFrame(
+        columns=["economy", "economy_key", "flows", "products", 2022]
+    )
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy_key": "01_AUS",
+                "sectors": "10_losses_and_own_use",
+                "sub1sectors": "10_01_own_use",
+                "sub2sectors": "10_01_17_nonspecified_own_uses",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "07_petroleum_products",
+                "subfuels": "07_x_other_petroleum_products",
+                2023: -13.0,
+            }
+        ]
+    )
+
+    target = workflow.build_target_energy_long(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="01_AUS",
+        config=config,
+        base_year=2022,
+        final_year=2023,
+        fuel_mapping_lookup={"esto": {}, "ninth": {}},
+    )
+
+    assert target.loc[0, "fuel_branch_label"] == "Other products"
+    assert target.loc[0, "target_energy_signed"] == -13.0
+
+
 def test_target_energy_keeps_zero_rows_for_fuels_seen_in_esto_other_economies() -> None:
     esto = pd.DataFrame(
         [
