@@ -48,7 +48,7 @@ packages = [
 # behaviour.
 
 [repositories.leap_initialisation]
-commit = "ceda170b0089683d8aca2e99dae031137c6c265d"
+commit = "d8c74432e325a815c544b7a73695103a7cfa96ec"
 stage_dir = "leap_initialisation"
 on_sys_path = true
 paths = [
@@ -119,7 +119,7 @@ paths = [
 # ``import LEAP_API_helpers``. Stage only that reviewed metadata module from
 # config/ on its own sys.path root; do not expose the rest of config/ as code.
 [repositories.leap_initialisation_config]
-commit = "ceda170b0089683d8aca2e99dae031137c6c265d"
+commit = "d8c74432e325a815c544b7a73695103a7cfa96ec"
 source_key = "leap_initialisation"
 stage_dir = "leap_initialisation_config"
 strip_prefix = "config"
@@ -130,7 +130,7 @@ paths = ["config/LEAP_API_helpers.py"]
 # so `codebase/` is stripped when staging. That also keeps this repository's
 # `codebase` package name from colliding with leap_initialisation's.
 [repositories.leap_dashboard]
-commit = "12780cbc43db9aed79726bdcf298a620f516f555"
+commit = "5c62d45e745ab8bd8401c2614c79abbd9ac2eac0"
 stage_dir = "leap_dashboard"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -146,7 +146,7 @@ paths = [
 # `mapping_tools` has no __init__.py in its own repository either; it works as
 # an implicit namespace package here exactly as it does there.
 [repositories.leap_mappings]
-commit = "ba5b880630e01bb2d91d11da059177eee128132d"
+commit = "5b578de45a2651650a4e7e8487c20b1f97cfb4a4"
 stage_dir = "leap_mappings"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -169,7 +169,7 @@ paths = [
 # packages into the worker to reach one module. Omitted, each becomes an implicit
 # namespace package (PEP 420) and the submodule imports on its own - verified.
 [repositories.leap_mappings_worker]
-commit = "ba5b880630e01bb2d91d11da059177eee128132d"
+commit = "5b578de45a2651650a4e7e8487c20b1f97cfb4a4"
 stage_dir = "leap_mappings_worker"
 source_key = "leap_mappings"
 on_sys_path = true
@@ -390,7 +390,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/energy_balance_relationships.csv"
 dest = "mapping_chain/energy_balance_relationships.csv"
 role = "mapping_chain_relationships"
-sha256 = "3666d02e083f68dafd68dac132b0907cf5bb6b6878535eab586703408aed5d45"
+sha256 = "a3a87c3762559faa7b3047d0d92fb1348af960eb2c7408419e1772640c551d1c"
 description = "LEAP-to-ESTO conversion relationships, a function of the mapping workbook."
 allow_untracked = true
 
@@ -399,7 +399,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/esto_results_exact_rows.csv.gz"
 dest = "mapping_chain/esto_results_exact_rows.csv.gz"
 role = "mapping_chain_esto_exact_rows"
-sha256 = "f919b62affb39520fa3c98c47fe88b7bf8935b805f0ff1fefc32a6acf6f0fb0f"
+sha256 = "bb1c3efe7eebacf6a9c6177e464c4f84aebc439c1336dd6a1278a3484447bfde"
 description = "ESTO exact-row extract the mapping chain converts LEAP output against."
 allow_untracked = true
 
@@ -408,7 +408,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/ninth_results_converted_to_esto.csv.gz"
 dest = "mapping_chain/ninth_results_converted_to_esto.csv.gz"
 role = "mapping_chain_ninth_converted"
-sha256 = "3e48b9714a9686799715afe43ab5b4fe2c288a7d8859ecd06fcfd7c4998d322b"
+sha256 = "1f14f0a3930ace5eddfc5dd4e58a70cb874bb721159c13b2504c047defcbdd19"
 description = "9th-edition results converted to ESTO structure, a mapping-chain source table."
 allow_untracked = true
 
@@ -417,7 +417,7 @@ repository = "leap_mappings"
 path = "results/common_esto/common_esto_rows.csv"
 dest = "mapping_chain/common_esto_rows.csv"
 role = "mapping_chain_common_esto_rows"
-sha256 = "d0fe556148ed1bd328e1b622c476d1b9c6189eafb646993912d01b41f3a75e91"
+sha256 = "d0539048a7f4cb03ef13c3bfa848d200cb8ee748a7ac72e93ef911c5ddd3c84e"
 description = "Common ESTO row definitions the mapping-chain fast path applies."
 allow_untracked = true
 
@@ -435,7 +435,7 @@ repository = "leap_mappings"
 path = "results/common_esto/esto_to_common_esto_map.csv"
 dest = "mapping_chain/esto_to_common_esto_map.csv"
 role = "mapping_chain_esto_to_common_map"
-sha256 = "d113282a281da633b327dd288348d9695b332dffeaab0becf9f2a67adf3aac0f"
+sha256 = "1f776cd0b417bbe7668f4313c8b93c16cfd41de7ceac1dd29fe6f8d5fe5b0ba5"
 description = "Published ESTO component provenance for Common ESTO rows."
 allow_untracked = true
 
