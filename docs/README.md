@@ -21,6 +21,7 @@ and [`process_map_agent.md`](process_map_agent.md).
 | [`handover/supply_reconciliation_agent_guide.md`](handover/supply_reconciliation_agent_guide.md) | Exact environment, run modes, safety, validation, and diagnostic routing for agents. |
 | [`handover_work_queue_20260728.md`](handover_work_queue_20260728.md) | **Current work starts here.** Dated git/worktree state, prioritized queue INITQ-001…026, and the four-week handover plan. |
 | [`work_queue.md`](work_queue.md) | The detailed engineering log — items `[0]`–`[21]`, recorded traps, and known pre-existing test failures. The reasoning behind the queue above. |
+| [`priority_3_review_decisions.md`](priority_3_review_decisions.md) | Human-review packet for the deferred Priority 3 mapping, seed-gating, ownership, modeling, combined-workbook, and cleanup decisions. It links each decision back to its owning queue. |
 | [`documentation_audit_20260728.md`](documentation_audit_20260728.md) | First-pass findings `D-01`–`D-13` and the follow-up action record. |
 | [`documentation_disposition_20260728.md`](documentation_disposition_20260728.md) | Exhaustive 102-file role/status/evidence/disposition matrix, including prompts and archives. |
 | [`cross_repo_handover_index.md`](cross_repo_handover_index.md) | This repository's half of the cross-repository contract: what it consumes from `leap_mappings`, what it publishes, schemas, refresh order, failure ownership. Parent document is `leap_mappings/docs/cross_repository_handover_index.md`. |
