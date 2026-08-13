@@ -1,5 +1,25 @@
 # Remaining work queue
 
+## [42] Restore comparison-basis options and mapping diagnostics in the web app
+
+**Status: requested 2026-08-13; implementation and packaged-runtime validation pending.**
+
+Dashboards rendered through the web app currently omit the normal dashboard's
+Common-category comparison-basis options and its mapping-diagnostics page. The
+web/portable runtime must expose every configured production comparison basis
+(currently the maintained ESTO/LEAP/NINTH and ESTO/LEAP choices), preserve the
+selected economy and page when switching basis, and generate, stage, and link
+the mapping-diagnostics page from the dashboard navigation.
+
+Implement this at the portable/web packaging boundary using the maintained
+`leap_dashboard` renderer and mapping-owned diagnostic artifacts; do not create
+a second mapping or comparison-scope implementation in the web app. Acceptance
+requires a packaged-runtime test that renders a dashboard and proves both basis
+choices are reachable, the diagnostics HTML and required supporting artifacts
+exist, navigation reaches the page, and the ordinary publication/readiness
+checks still pass. Refresh portable manifest pins only after the dashboard and
+mapping dependencies are committed at coherent revisions.
+
 ## [41] Preserve the 9th other-petroleum residual in non-specified own use
 
 **Status: implementation complete 2026-08-13; 01_AUS seed rerun pending.**
