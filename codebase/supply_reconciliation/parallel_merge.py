@@ -5,8 +5,8 @@ and docs/current_execution_roadmap.md flagged this as still-open work needing
 its own design pass, not a rushed add-on to
 ``codebase/supply_reconciliation/parallel_runner.py``):
 
-* This module merges only the **consolidated baseline-seed validation
-  findings** (``baseline_seed_<stamp>_consolidated_rule_findings.csv`` and
+* This module merges the **consolidated baseline-seed validation findings**
+  (``baseline_seed_<stamp>_consolidated_rule_findings.csv`` and
   ``..._consolidated_issue_groups.csv``) across a set of parallel workers.
   Each worker already writes these two files for its own single economy;
   merging is a safe, deterministic concatenation because
@@ -20,7 +20,11 @@ its own design pass, not a rushed add-on to
   under the worker's own isolated output tree, not a cross-process view, so a
   single-economy worker's own consolidated findings file already contains
   everything the sequential path would have contributed for that economy).
-* **NOT included**: merging the single-file combined workbook
+* It also provides additive parent views for the per-worker source/template
+  diagnostics and the two conservation summary/breakdown/lineage families.
+  Worker files remain untouched; parent rows are tagged with their economy
+  when a producer does not already emit that column.
+* The single-file combined workbook
   (``supply_recon_run_baseline_seed_<economies>_<scenarios>.xlsx``) that a
   sequential multi-economy run also produces. The merge preserves the first
   worker's LEAP ``Export`` preamble and header exactly, verifies every worker
@@ -54,6 +58,16 @@ _FINDINGS_COLUMNS = (
     "year", "exception_applied", "exception_id", "exception_reason",
 )
 _LEAP_KEY_COLUMNS = ("Branch Path", "Variable", "Scenario", "Region")
+_PARALLEL_DIAGNOSTIC_FILENAMES = (
+    "supply_reconciliation_source_diagnostics.csv",
+    "supply_reconciliation_template_matching_summary.csv",
+    "supply_reconciliation_balance_demand_conservation.csv",
+    "supply_reconciliation_balance_demand_conservation_breakdown.csv",
+    "supply_reconciliation_balance_demand_conservation_lineage.csv",
+    "supply_reconciliation_transformation_output_conservation.csv",
+    "supply_reconciliation_transformation_output_conservation_breakdown.csv",
+    "supply_reconciliation_transformation_output_conservation_lineage.csv",
+)
 
 
 def worker_output_dir(result: EconomyWorkerResult, *, pass_mode: str = "baseline_seed") -> Path:
@@ -92,6 +106,94 @@ def _read_consolidated_findings_csv(path: Path) -> pd.DataFrame:
         else:
             frame = frame.rename(columns={legacy_column: expectation_column})
     return frame
+
+
+def _read_diagnostic_csv(path: Path) -> pd.DataFrame:
+    """Read one worker diagnostic, treating a header-only file as empty."""
+    if not path.exists():
+        return pd.DataFrame()
+    try:
+        return pd.read_csv(path)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
+
+
+def merge_parallel_diagnostic_families(
+    results: Sequence[EconomyWorkerResult],
+    *,
+    output_dir: Path | str,
+    pass_mode: str = "baseline_seed",
+    economies_run_order: Sequence[str] | None = None,
+) -> dict[str, Path]:
+    """Write deterministic cross-economy views of worker diagnostic CSVs.
+
+    Only successful workers contribute. A missing optional diagnostic is not
+    treated as a clean result and contributes no rows; the parent view is still
+    written so consumers have one stable path for every supported family.
+    Existing ``economy`` values are preserved, while blank or absent values
+    are filled from the isolated worker snapshot. Worker files are read-only.
+    """
+    order = {
+        str(economy).strip(): index
+        for index, economy in enumerate(economies_run_order or ())
+        if str(economy).strip()
+    }
+    successful = [result for result in results if result.succeeded]
+    successful.sort(
+        key=lambda result: (
+            order.get(result.economy, len(order)),
+            result.economy,
+        )
+    )
+
+    parent_checks_dir = Path(output_dir) / "supporting_files" / "checks"
+    parent_checks_dir.mkdir(parents=True, exist_ok=True)
+    outputs: dict[str, Path] = {}
+
+    for filename in _PARALLEL_DIAGNOSTIC_FILENAMES:
+        frames: list[pd.DataFrame] = []
+        all_columns: list[str] = []
+        for result in successful:
+            worker_path = (
+                worker_output_dir(result, pass_mode=pass_mode)
+                / "supporting_files"
+                / "checks"
+                / filename
+            )
+            frame = _read_diagnostic_csv(worker_path)
+            for column in frame.columns:
+                if column not in all_columns:
+                    all_columns.append(column)
+            if frame.empty:
+                continue
+            frame = frame.copy()
+            if "economy" not in frame.columns:
+                frame.insert(0, "economy", result.economy)
+            else:
+                frame["economy"] = frame["economy"].astype(object)
+                missing_economy = frame["economy"].isna() | frame[
+                    "economy"
+                ].astype(str).str.strip().eq("")
+                frame.loc[missing_economy, "economy"] = result.economy
+            frame.insert(0, "__economy_order", order.get(result.economy, len(order)))
+            frames.append(frame)
+
+        if frames:
+            merged = pd.concat(frames, ignore_index=True, sort=False)
+            merged = merged.sort_values("__economy_order", kind="stable")
+            merged = merged.drop(columns=["__economy_order"]).reset_index(drop=True)
+        else:
+            columns = [
+                "economy",
+                *[column for column in all_columns if column != "economy"],
+            ]
+            merged = pd.DataFrame(columns=columns)
+
+        output_path = parent_checks_dir / filename
+        merged.to_csv(output_path, index=False)
+        outputs[filename] = output_path
+
+    return outputs
 
 
 def _ordered_successful_results(

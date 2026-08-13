@@ -1,10 +1,7 @@
-"""Deterministic parent merge for parallel-worker baseline-seed findings.
+"""Deterministic parent merges for parallel-worker reconciliation artifacts.
 
-Scope: only the consolidated findings/issue-groups CSVs (see the module
-docstring in codebase/supply_reconciliation/parallel_merge.py for why the
-single-file combined workbook is deliberately NOT covered here). Isolated
-via a monkeypatched INTEGRATED_LEAP_EXPORTS_ROOT so nothing touches the real
-outputs/ tree; safe alongside a live run.
+Isolated via a monkeypatched INTEGRATED_LEAP_EXPORTS_ROOT so nothing touches
+the real outputs tree; safe alongside a live run.
 """
 from __future__ import annotations
 
@@ -43,6 +40,17 @@ def _write_worker_findings(label: str, economy: str, rows: list[dict]) -> None:
     findings_dir.mkdir(parents=True, exist_ok=True)
     frame = pd.DataFrame(rows) if rows else pd.DataFrame(columns=list(merge._FINDINGS_COLUMNS))
     frame.to_csv(findings_dir / "baseline_seed_20260723_consolidated_rule_findings.csv", index=False)
+
+
+def _write_worker_diagnostic(
+    label: str,
+    filename: str,
+    rows: list[dict],
+) -> None:
+    context = config.resolve_reconciliation_run_context("baseline_seed", label)
+    checks_dir = context.output_dir / "supporting_files" / "checks"
+    checks_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(checks_dir / filename, index=False)
 
 
 def _finding(economy: str, rule_id: str, **overrides: object) -> dict:
@@ -174,6 +182,93 @@ def test_merge_with_no_findings_anywhere_writes_empty_reports(tmp_path) -> None:
 
     assert pd.read_csv(findings_path).empty
     assert findings_path.exists() and issue_groups_path.exists()
+
+
+def test_merge_parallel_diagnostic_families_writes_ordered_parent_views(tmp_path) -> None:
+    source_name = "supply_reconciliation_source_diagnostics.csv"
+    template_name = "supply_reconciliation_template_matching_summary.csv"
+    conservation_name = "supply_reconciliation_balance_demand_conservation.csv"
+    _write_worker_diagnostic(
+        "DIAGNOSTICS_12_NZ",
+        source_name,
+        [{"economy": "12_NZ", "issue_type": "nz_issue"}],
+    )
+    _write_worker_diagnostic(
+        "DIAGNOSTICS_01_AUS",
+        source_name,
+        [{"economy": "", "issue_type": "aus_issue"}],
+    )
+    _write_worker_diagnostic(
+        "DIAGNOSTICS_01_AUS",
+        template_name,
+        [{"source_check": "unmatched_id"}],
+    )
+    _write_worker_diagnostic(
+        "DIAGNOSTICS_12_NZ",
+        conservation_name,
+        [{"economy": "12_NZ", "is_mismatch": False}],
+    )
+    results = [
+        _fake_result("12_NZ", "DIAGNOSTICS_12_NZ"),
+        _fake_result("01_AUS", "DIAGNOSTICS_01_AUS"),
+    ]
+
+    outputs = merge.merge_parallel_diagnostic_families(
+        results,
+        output_dir=tmp_path / "parent",
+        economies_run_order=["01_AUS", "12_NZ"],
+    )
+
+    assert set(outputs) == set(merge._PARALLEL_DIAGNOSTIC_FILENAMES)
+    source = pd.read_csv(outputs[source_name])
+    assert source[["economy", "issue_type"]].to_dict("records") == [
+        {"economy": "01_AUS", "issue_type": "aus_issue"},
+        {"economy": "12_NZ", "issue_type": "nz_issue"},
+    ]
+    template = pd.read_csv(outputs[template_name])
+    assert template.loc[0, "economy"] == "01_AUS"
+    assert template.loc[0, "source_check"] == "unmatched_id"
+    assert pd.read_csv(outputs[conservation_name]).loc[0, "economy"] == "12_NZ"
+    empty_lineage = pd.read_csv(
+        outputs["supply_reconciliation_balance_demand_conservation_lineage.csv"]
+    )
+    assert empty_lineage.empty
+    assert list(empty_lineage.columns) == ["economy"]
+
+    worker_source = (
+        config.resolve_reconciliation_run_context(
+            "baseline_seed", "DIAGNOSTICS_01_AUS"
+        ).output_dir
+        / "supporting_files"
+        / "checks"
+        / source_name
+    )
+    assert pd.read_csv(worker_source, keep_default_na=False).loc[0, "economy"] == ""
+
+
+def test_merge_parallel_diagnostic_families_skips_failed_workers(tmp_path) -> None:
+    filename = "supply_reconciliation_source_diagnostics.csv"
+    _write_worker_diagnostic(
+        "DIAGNOSTICS_OK",
+        filename,
+        [{"economy": "01_AUS", "issue_type": "keep"}],
+    )
+    _write_worker_diagnostic(
+        "DIAGNOSTICS_FAILED",
+        filename,
+        [{"economy": "12_NZ", "issue_type": "do_not_merge"}],
+    )
+
+    outputs = merge.merge_parallel_diagnostic_families(
+        [
+            _fake_result("12_NZ", "DIAGNOSTICS_FAILED", succeeded=False),
+            _fake_result("01_AUS", "DIAGNOSTICS_OK"),
+        ],
+        output_dir=tmp_path / "parent",
+    )
+
+    merged = pd.read_csv(outputs[filename])
+    assert merged["issue_type"].tolist() == ["keep"]
 
 
 def test_worker_output_dir_matches_the_workflow_own_context_resolution() -> None:

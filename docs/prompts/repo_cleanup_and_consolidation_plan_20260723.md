@@ -138,10 +138,12 @@ separate, unmerged copies of `source_diagnostics`, `template_matching_summary`,
 and both F5 conservation-check triplets, one per economy directory, with no
 combined view anywhere.
 
-**Priority 1 (do this first): extend `supply_reconciliation/parallel_merge.py`** to also
-merge `source_diagnostics`, `template_matching_summary`, and the F5
-conservation summaries across economies. **Risk: low** — reuses an
-already-proven pattern, doesn't touch any column semantics, purely additive.
+**Priority 1 — completed 2026-08-13:**
+`merge_parallel_diagnostic_families()` in
+`supply_reconciliation/parallel_merge.py` now writes parent views for
+`source_diagnostics`, `template_matching_summary`, and both F5 conservation
+triplets across economies. It is additive and retains every per-worker file.
+The full parallel-merge test module passes (12 tests).
 
 ### Priority 2: reconcile two independently-built "unified diagnostic" schemas
 
