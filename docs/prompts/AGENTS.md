@@ -32,7 +32,6 @@ folder appears exactly once below.
 | `initialisation_refactor_continuation.md` | Open-thread register; active | Current T-register for refactor decisions and landed work. | Reconcile against `docs/work_queue.md` and the dated handover queue before selecting a thread. |
 | `initialisation_refactor_thread_execution_prompt.md` | Execution procedure; active | Procedure and evidence standard for executing one refactor thread at a time. | One thread per task; recommendations are not automatic approval for modelling decisions. |
 | `patch_baseline_seeds_module_verification_prompt.md` | Verification; active but partly historical | Durable per-module patch verdicts; transformation-specific ungate work is archived, while final module evidence and losses/own-use strip-scope caveats remain useful. | Treat its status paragraphs independently and re-check the active preset plus current verdict comment. |
-| `phase_2_configuration_standardisation_execution.md` | Implementation; active | Completes wrapper configuration standardisation, now primarily through missing forwarding/default tests. | The wiring largely predates this phase; do not mechanically move modelling rules. See INITQ-019. |
 | `phase_3_canonical_mapping_migration_execution.md` | Verification/decision; partial | Migration implementation landed; D3.4/D3.5 confirmation and final equivalence/ownership evidence remain. | Canonical mapping ownership belongs to `leap_mappings`; local legacy workbooks are not active authorities. |
 | `phase_4_monolith_decomposition_execution.md` | Refactor; partial | Historical split context plus remaining state-boundary decisions. | Re-measure files and use the current roadmap; old LOC figures are not maintained facts. |
 | `phase_5_feature_improvements_execution.md` | Feature plan; partial | Convergence history and parallelism largely landed; remaining independently shippable improvements are tracked in the queues. | Select only a still-open slice and verify its dependency gates first. |
@@ -57,6 +56,7 @@ The following completed, superseded, or invalid prompts were moved to
 - `handoff_20260723_docs_audit_and_cleanup.md`
 - `nz_baseline_seed_hardening_readiness_prompt.md`
 - `other_loss_own_use_proxy_scoped_review.md`
+- `phase_2_configuration_standardisation_execution.md`
 - `preset_forwarding_fix_execution_prompt.md`
 - `review_nz_unmapped_leap_branch_fuel_combinations.md`
 - `session_handoff_20260722.md`

@@ -1384,13 +1384,15 @@ not a delete. Full inventory, sequenced one-commit tasks, and the acceptance gat
 
 ## [14] Initialisation refactor — Phase 2 configuration standardisation
 
-**Status 2026-07-21 — started, with one safe foundation landed.**
-`70613de` made `supply_workflow.py` take its notebook economy default from
-`workflow_config.py` rather than maintaining a hidden USA-only list. This is
-the target convention, not a request to move modelling rules wholesale into a
-new config format.
+**Status 2026-08-13 — complete.** `70613de` established the supply wrapper
+pattern. `7bd733e` centralised and tested the transformation notebook defaults;
+`d2ba65a` did the same for electricity/heat interim while preserving its
+Target + Current Accounts scenario policy. Transfers already followed the
+convention and required no code change. Modelling-heavy wrappers remain
+separate scopes rather than unfinished Phase 2 work.
 
-Detailed execution brief: `docs/prompts/phase_2_configuration_standardisation_execution.md`.
+Archived execution brief:
+`docs/archive/phase_2_configuration_standardisation_execution.md`.
 
 ### Target convention
 
@@ -1408,16 +1410,15 @@ Detailed execution brief: `docs/prompts/phase_2_configuration_standardisation_ex
 1. **`supply_workflow.py` — complete.** `70613de` establishes the pattern and
    tests that notebook defaults mirror central configuration without preparing
    source data.
-2. **`transformation_workflow.py`.** Move only notebook scope/scenario/import
-   defaults to the central convention; preserve all transformation analysis
-   flags, mapping choices, and producer arguments. Add an import-level
-   forwarding/default test.
-3. **`electricity_heat_interim_workflow.py`.** Apply the same notebook-default
-   treatment without changing its module definitions or touching
-   `core.ninth_data` at import time. Add a focused configuration test.
-4. **`transfers_workflow.py` review.** It already mostly follows the desired
-   pattern; make a change only if a concrete naming/default inconsistency
-   remains. Do not rewrite `TRANSFER_PROCESS_CONFIG` here.
+2. **`transformation_workflow.py` — complete (`7bd733e`).** Notebook defaults
+   now derive from central config; focused tests prove copied defaults and
+   argument forwarding without preparing source data.
+3. **`electricity_heat_interim_workflow.py` — complete (`d2ba65a`).** Central
+   defaults preserve Target + Current Accounts and avoid touching
+   `core.ninth_data` at import time; focused forwarding tests pass.
+4. **`transfers_workflow.py` review — complete, no change justified.** It
+   already derives notebook economies, scenarios, import decision, Current
+   Accounts handling, and aggregate label from central config.
 5. **`aggregated_demand_workflow.py`,
    `other_loss_own_use_proxy_workflow.py`, and `refining_workflow.py`** are
    separate scoped subprojects. Their module-level settings include modelling

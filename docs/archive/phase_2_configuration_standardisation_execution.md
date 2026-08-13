@@ -2,6 +2,11 @@
 
 ## Purpose and status
 
+**Completed 2026-08-13.** Supply foundation: `70613de`; transformation wrapper
+and tests: `7bd733e`; electricity/heat interim wrapper and tests: `d2ba65a`.
+Transfers was reviewed and already met the convention, so no commit was
+justified. The six focused wrapper tests pass together.
+
 This prompt is the detailed implementation companion to
 [`docs/work_queue.md` [14]](../work_queue.md). Phase 2 standardises **notebook
 defaults** in the initialisation workflow wrappers. It is not a migration of

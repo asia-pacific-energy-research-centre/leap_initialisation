@@ -22,7 +22,7 @@ for scoping** - see thread T9. The measured position as of 2026-07-21:
 | Phase | Real status |
 |---|---|
 | Phase 1 - shared utilities and cache hardening | **Done** (`56f951a`, `3116741`, `eca34af`). Do not reopen. |
-| Phase 2 - configuration standardisation | **The current phase.** `supply_workflow.py` done (`70613de`); `transformation_workflow.py` and `electricity_heat_interim_workflow.py` remain. See `work_queue.md` [14] and `phase_2_configuration_standardisation_execution.md`. |
+| Phase 2 - configuration standardisation | **Done.** Supply (`70613de`), transformation (`7bd733e`), and electricity/heat interim (`d2ba65a`) use tested central notebook defaults. Transfers already met the convention. See `work_queue.md` [14] and the archived execution brief. |
 | [15] scoped modelling reviews | Pending, sequenced after/alongside Phase 2. Review documents, not implementations. |
 | Phases 3, 4, 5 | **Future work.** Planned in detail (three briefs) but not started. |
 
