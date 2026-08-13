@@ -115,9 +115,8 @@ Execute the detailed briefs in this order, with their tests and decision gates:
    summary/breakdown/lineage families (`870b75b`). Ordering is deterministic,
    failed workers are skipped rather than read as clean, and worker files remain
    untouched.
-   A `merge_parallel_results_workbooks()` helper now preserves the combined workbook,
-   that a sequential multi-economy run also produces — reconstructing its
-   preserving its raw Export preamble/header layout with synthetic structural
+   A `merge_parallel_results_workbooks()` helper now preserves the combined
+   workbook's raw Export preamble/header layout with synthetic structural
    tests. It is not wired into the runner and does not yet carry the separately
    required real sequential multi-economy build-and-diff evidence. Each
    worker's own per-economy seed workbook is already correct standalone and
