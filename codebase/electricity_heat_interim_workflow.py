@@ -1539,21 +1539,19 @@ def run_electricity_heat_interim_export_and_import(
 # Notebook / standalone runtime
 # ---------------------------------------------------------------------------
 
-NOTEBOOK_SCENARIOS = [ "Target", "Current Accounts"]#"Reference",
-NOTEBOOK_INCLUDE_LEAP_IMPORT = (
-    LEAP_API_AVAILABLE if get_analysis_input_write_mode() == "api" else True
+NOTEBOOK_SCENARIOS = list(
+    workflow_cfg.ELECTRICITY_HEAT_INTERIM_NOTEBOOK_SCENARIOS
 )
-def _default_notebook_economies() -> list[str]:
-    """Return notebook economies without forcing data loading at import time."""
-    if core.ninth_data is None or "economy" not in core.ninth_data.columns:
-        return list(core.ECONOMIES_TO_ANALYZE)
-    return sorted(
-        e for e in core.ninth_data["economy"].unique()
-        if not str(e).startswith("00_")
+NOTEBOOK_INCLUDE_LEAP_IMPORT = (
+    workflow_cfg.ELECTRICITY_HEAT_INTERIM_NOTEBOOK_INCLUDE_LEAP_IMPORT
+)
+if NOTEBOOK_INCLUDE_LEAP_IMPORT is None:
+    NOTEBOOK_INCLUDE_LEAP_IMPORT = (
+        LEAP_API_AVAILABLE if get_analysis_input_write_mode() == "api" else True
     )
-
-
-NOTEBOOK_ECONOMIES = _default_notebook_economies()
+NOTEBOOK_ECONOMIES = list(
+    workflow_cfg.ELECTRICITY_HEAT_INTERIM_NOTEBOOK_ECONOMIES
+)
 
 
 def run_with_notebook_config() -> list[Path]:
