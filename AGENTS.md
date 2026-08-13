@@ -83,9 +83,10 @@ re-read those module literals from disk. Sequential execution remains the
 safest default; use the runner, unique labels, and a deliberately bounded
 `max_workers` value when parallel execution is justified. Deterministic parent
 CSV views cover validation findings, issue groups, source diagnostics,
-template matching, and F5 conservation families. They deliberately do not
-reconstruct the sequential path's single combined workbook, so consume the
-worker seed workbooks directly when that workbook is required.
+template matching, and F5 conservation families. A combined-workbook merge
+helper also exists, but the runner does not invoke it and its production
+acceptance remains decision-gated. Consume worker seed workbooks directly
+unless that separate merge has been explicitly selected and verified.
 
 ## Prompt docs workflow
 

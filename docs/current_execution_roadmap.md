@@ -115,14 +115,14 @@ Execute the detailed briefs in this order, with their tests and decision gates:
    summary/breakdown/lineage families (`870b75b`). Ordering is deterministic,
    failed workers are skipped rather than read as clean, and worker files remain
    untouched.
-   **Deliberately not covered**: merging the single-file combined workbook
+   A `merge_parallel_results_workbooks()` helper now preserves the combined workbook,
    that a sequential multi-economy run also produces — reconstructing its
-   exact preamble/header/column layout from N independent workers is a
-   separate, higher-risk task (a malformed structure is a silent defect) and
-   needs its own build-and-diff verification pass before attempting. Each
+   preserving its raw Export preamble/header layout with synthetic structural
+   tests. It is not wired into the runner and does not yet carry the separately
+   required real sequential multi-economy build-and-diff evidence. Each
    worker's own per-economy seed workbook is already correct standalone and
-   needs no merging. This remains open before the parallel path is used for
-   an unattended multi-economy fleet run that also wants one combined file.
+   needs no merging. Production activation of the combined workbook remains a
+   separate, human-scoped item rather than an unattended-run default.
 3. Phase 3 canonical mapping hardening: schema and rollup contracts, retirement
    of the obsolete name-consolidation path, canonical ownership, and deferred
    equivalence evidence. Mapping decisions still owned by `leap_mappings`
