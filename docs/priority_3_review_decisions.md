@@ -106,6 +106,37 @@ selector plus a complete four-source pipeline and all-economy dashboard rerun.
 structure updates remain warnings. LEAP updates are deliberately batched and
 performed periodically rather than every time a missing branch is detected.
 
+### Implementation timing and interim action
+
+This is a **deferred implementation item in this P3 review document**. Implement
+it when the remaining TODO items in this document are worked through together;
+it does not require a standalone change or an immediate LEAP-area update now.
+
+Until then:
+
+- keep `BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True`;
+- continue normal full rebuilds and surgical patches under the current warning
+  policy;
+- record missing LEAP structure for the next periodic, coordinated LEAP update
+  rather than editing an area for each discovered row; and
+- investigate genuine non-structure validation failures rather than assuming
+  every warning is explained by LEAP migration lag.
+
+When the P3 TODOs are implemented, complete P3-02 and P3-03 as one package:
+
+1. add a versioned LEAP structure-migration registry/backlog;
+2. implement the shared known/new/non-migration finding classifier described
+   below;
+3. use it in full rebuild, surgical patch, final-artifact, and promotion paths;
+4. report known, newly discovered, and resolved migration items distinctly;
+5. reconcile the registry when refreshed LEAP templates become available; and
+6. retire the broad global downgrade only after equivalent migration-warning
+   behavior and preserved non-migration severity are covered by tests.
+
+User review is not needed to build and test that mechanism. User/domain review
+is needed later to decide which newly discovered migration candidates should
+actually be included in a periodic LEAP update.
+
 ### Current behavior
 
 The central BSA-001–BSA-010 package runs after physical workbook write/readback.
