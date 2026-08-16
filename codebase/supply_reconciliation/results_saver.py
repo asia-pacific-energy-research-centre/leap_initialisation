@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1217,6 +1218,19 @@ def run_results_linked_transformation_supply_workflow(
     checks_dir = run_paths["checks_dir"]
     state_path = run_paths["state_path"]
     probe_catalog_path = run_paths["probe_catalog_path"]
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_SELECTION
+
+    mapping_selection_manifest_path = runtime_dir / "mapping_workbook_selection.json"
+    mapping_selection_manifest_path.write_text(
+        json.dumps(
+            OUTLOOK_MAPPINGS_MASTER_SELECTION.as_manifest_record(),
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     timer = workflow_common.WorkflowTimer("supply_reconciliation", enabled=ENABLE_WORKFLOW_TIMING)
     timing_path = runtime_dir / WORKFLOW_TIMING_FILENAME
     allocation_ledger = _sra._reset_capacity_unmet_allocation_ledger()

@@ -519,6 +519,27 @@ def validate_balance_review_from_export_inputs(
     """
     report = ValidationReport(command="balance-review-from-export")
 
+    mapping_path = Path(str(mapping_workbook_path)) if mapping_workbook_path else None
+    if mapping_path is None:
+        report.add("mapping_workbook_contract", False, "No mapping workbook was supplied.")
+    else:
+        try:
+            from codebase.utilities.mapping_workbook_resolver import validate_mapping_workbook
+
+            validate_mapping_workbook(mapping_path)
+        except Exception as exc:  # noqa: BLE001
+            report.add(
+                "mapping_workbook_contract",
+                False,
+                f"The staged mapping workbook does not satisfy the initialisation contract: {exc}",
+            )
+        else:
+            report.add(
+                "mapping_workbook_contract",
+                True,
+                f"The staged mapping workbook satisfies the initialisation contract: {mapping_path}",
+            )
+
     try:
         economy_code = normalize_economy(economy)
         report.facts["economy"] = economy_code

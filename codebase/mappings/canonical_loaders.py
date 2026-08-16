@@ -32,6 +32,7 @@ from typing import Iterable, Sequence
 
 import pandas as pd
 
+from codebase.utilities.mapping_workbook_resolver import REQUIRED_SHEET_COLUMNS
 from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
 
 # Canonical workbook and sheet names -----------------------------------------
@@ -78,6 +79,9 @@ CANONICAL_SHEET_CONTRACT: dict[str, tuple[str, ...]] = {
         "rolled_ninth_fuel", "rollup_group_id", "rollup_reason", "priority", "include", "Note",
     ),
 }
+
+if CANONICAL_SHEET_CONTRACT != REQUIRED_SHEET_COLUMNS:
+    raise RuntimeError("Canonical loader and workbook resolver schema contracts have diverged.")
 
 # Column marking rows excluded from LEAP entirely. Explicit False excludes the
 # row; blank/NaN or True keep it (blank is the common case and means "not

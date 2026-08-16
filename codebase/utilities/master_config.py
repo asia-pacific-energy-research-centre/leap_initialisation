@@ -7,9 +7,12 @@ from typing import Any
 
 import pandas as pd
 
+from codebase.utilities.mapping_workbook_resolver import SELECTED_MAPPING_WORKBOOK
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LEAP_MAPPINGS_REPO_ROOT = REPO_ROOT.parent / "leap_mappings"
-OUTLOOK_MAPPINGS_MASTER_PATH = LEAP_MAPPINGS_REPO_ROOT / "config" / "outlook_mappings_master.xlsx"
+OUTLOOK_MAPPINGS_MASTER_PATH = SELECTED_MAPPING_WORKBOOK.path
+OUTLOOK_MAPPINGS_MASTER_SELECTION = SELECTED_MAPPING_WORKBOOK
 RUNTIME_TABLE_DIR = REPO_ROOT / "config" / "runtime_tables"
 
 # Operational tables are standalone CSVs. Semantic LEAP/ESTO/9th mappings are
