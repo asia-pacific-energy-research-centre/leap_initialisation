@@ -1,9 +1,9 @@
 # Parquet migration full-system validation
 
 **Validation date:** 2026-08-16  
-**Status:** implementation and broad validation complete; archive proposal is
-blocked by pre-existing template/data findings that require a semantic
-disposition.
+**Status:** implementation and broad validation complete; reversible archive
+proposal is next. Expected LEAP-model coverage gaps are documented but are not
+Parquet blockers.
 
 ## Cross-repository checks
 
@@ -65,6 +65,14 @@ not for Parquet serialization, schema, checksum or cache-read failures:
 | Existing consolidated `missing_branch` groups after main workflow completion | `01_AUS` 5; `02_BD` 2; `05_PRC` 31; `10_MAS` 1; `11_MEX` 1; `12_NZ` 2; `16_RUS` 9 (51 groups total) |
 | Compressed-preflight expression findings | `SEED-008=4` in later workers; the preflight retains these as blocking evidence |
 
+Per the workflow owner's 2026-08-16 clarification, the seven unavailable
+templates and 51 missing-branch groups are expected pending LEAP-area work,
+just like model rows that have not yet been created. They become testable when
+the corresponding LEAP work and fresh exports become available. They must stay
+visible in workflow evidence, but they are not Parquet failures and do not
+block the reversible archive proposal. The four `SEED-008` records remain a
+separate, optional investigation tracked in work-queue item [45].
+
 The first workers also exposed a code defect in template compatibility: the
 synthetic `00_APEC` preflight aggregate was incorrectly sent to a one-area
 template resolver. Commit `423cda1` routes it through the established APEC
@@ -74,19 +82,18 @@ the sentinel error, providing real execution evidence in addition to tests.
 
 ## Archive gate
 
-No archive proposal was generated, no ZIP was created, and no original was
-moved or deleted. Commit `368f999` adds a proposal-only generator that hashes
+No archive proposal has yet been generated, no ZIP was created, and no original
+was moved or deleted. Commit `368f999` adds a proposal-only generator that hashes
 only explicit shared pickle-cache roots and old reference-cache CSVs with a
 complete exact-key Parquet replacement. It excludes all historical run trees,
 human outputs, contracts, source/configuration inputs, Git/worktrees and
 reparse points.
 
-The mandatory archive gate remains closed because the prompt requires all
-full-system checks to pass before superseded originals are proposed. A human
-must decide whether the 51 existing branch findings and the four compressed
-preflight expression findings are accepted, explicitly out-of-scope baseline
-exceptions for this storage migration, or must be repaired before the archive
-proposal is generated. The recommended safe disposition is to repair or
-formally approve those findings and provide the seven missing templates before
-authorizing any cache archive.
-
+The full-system evidence is sufficient for the storage-migration scope: cache
+serialization, manifests, checksums, production reads and repository suites
+passed, while the remaining model-coverage findings are separately owned. The
+next step is therefore to generate the exact proposal, inspect every candidate
+and exclusion, and present the manifest, sizes, free-space check and restoration
+procedure for explicit approval. Generating the proposal does not authorize a
+ZIP, move or deletion. Work-queue item [45] preserves the option to investigate
+`SEED-008` independently without weakening its model-artifact gate.

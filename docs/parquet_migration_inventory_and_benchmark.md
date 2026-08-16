@@ -1,6 +1,7 @@
 # Parquet migration inventory and benchmark
 
-Status: implementation in progress, checkpoint measured 2026-08-16.
+Status: implementation and measurement complete 2026-08-16; reversible archive
+proposal pending.
 
 This report coordinates work-queue item [44] across `leap_initialisation`,
 `leap_mappings`, `leap_dashboard`, `leap_review_tools`, and the regenerated

@@ -541,6 +541,15 @@ scenario, and region IDs; validate branch existence and metadata; identify
 Resources roots and transformation fuel leaves; and define reset/zeroing scope.
 They are not the source of generated energy values.
 
+Template availability is governed by completion of the underlying LEAP-area
+work. As of 2026-08-16, templates for `03_CDA`, `04_CHL`, `06_HKC`, `07_INA`,
+`08_JPN`, `09_ROK`, and `14_PE` are not yet available. This is expected pending
+LEAP modelling work, just like branches or rows that have not yet been added to
+an area. These gaps are coverage state, not storage-format or workflow defects;
+the affected economies become runnable when that work is completed and a new
+economy export template is supplied. Until then, report or skip the unavailable
+coverage—never manufacture branches or borrow IDs from another economy.
+
 Refresh the affected economy's template after a structural LEAP-area change: a
 branch, process, module, output/feedstock/auxiliary-fuel leaf, variable,
 scenario, or Resources root is added, removed, renamed, moved, or deleted and

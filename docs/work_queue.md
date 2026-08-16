@@ -2,8 +2,8 @@
 
 ## [44] Migrate machine-only tabular intermediates to Parquet across the connected system
 
-**Status: validation complete 2026-08-16; archive proposal blocked at semantic
-gate by pre-existing template/data findings.**
+**Status: validation complete 2026-08-16; reversible archive proposal is the
+next Parquet step. Expected LEAP-model coverage gaps do not block it.**
 
 **Execution plan:**
 `docs/prompts/parquet_migration_and_reversible_archive_execution.md`.
@@ -116,9 +116,46 @@ economies lack templates, and seven otherwise complete main workflows retain
 findings also remain. Full evidence and resource measurements are in
 `docs/parquet_migration_full_system_validation.md`.
 
-No archive manifest or ZIP has been created and no original moved. Archive
-candidate hashing remains blocked until a human formally accepts these
-template/data findings as out-of-scope baseline exceptions or they are repaired.
+The seven unavailable economy templates and the 51 missing-branch groups are
+normal pending LEAP-model work, equivalent to other model rows that do not
+exist yet. They become available for validation when the corresponding LEAP
+area work is completed and a fresh template is exported. They are recorded for
+coverage visibility, but are not Parquet defects and do not block the archive
+proposal. Do not synthesize the missing structures or borrow another economy's
+IDs in the meantime.
+
+No archive manifest or ZIP has been created and no original moved. The next
+Parquet step is to run the proposal-only candidate generator, review its exact
+manifest and exclusions, and stop for explicit approval before moving any
+original file.
+
+## [45] Optionally investigate the four aggregate-preflight SEED-008 findings
+
+**Status: optional follow-up recorded 2026-08-16; not a Parquet archive
+prerequisite.**
+
+The labelled Parquet validation run repeatedly reported four blocking
+`SEED-008` records for
+`Transformation\Hydrogen transformation\Processes\Electrolysers\Feedstock Fuels`
+in the United States aggregate preflight: Reference and Target each have one
+"synthetic fallback blocked because capacity is nonzero" finding and one 2023
+"share group sums to 0 rather than 100" finding. The evidence is under the
+`PARQUET_MIGRATION_FULL_20260816_*` compressed-preflight validation outputs and
+summarised in `docs/parquet_migration_full_system_validation.md`.
+
+If selected, trace the feedstock-share rows from the transformation source
+workbooks through aggregate template alignment and final preflight assembly.
+Confirm whether the intended 100% feedstock member is being dropped, compare
+with the previously documented NZ occurrence in
+`docs/special_rules_and_design_decisions.md`, and add a focused regression test
+before making any general fix. Do not weaken `SEED-008` or add a broad waiver:
+nonzero electrolyser capacity with a zero-total feedstock share is a genuine
+final-artifact defect.
+
+**Complete when:** the four findings have a demonstrated root cause; a narrow
+fix and regression test are committed if the cause is code, or the exact
+upstream LEAP/model dependency is recorded if it is data; and the aggregate
+preflight is rerun to confirm the disposition.
 
 ## [43] Review and execute the deferred cleanup and mapping-authority decisions
 
