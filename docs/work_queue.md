@@ -103,7 +103,7 @@ The user approved HF-001 through HF-004 on 2026-08-16. Complete supply
 conservation lineage, baseline-seed findings, broad-common-row affected output,
 and anchor context/detail tables now use manifested Parquet/Zstandard. Compact
 breakdowns, grouped findings, samples, failure tables, summaries, and examples
-remain CSV for direct review. The dashboard reads the anchor Parquet details
+also use manifested Parquet rather than duplicate CSV review files. The dashboard reads the anchor Parquet details
 server-side and retains a temporary fallback for existing result folders that
 still contain the previous CSV filenames. HF-005 remains unchanged and is not
 part of this implementation approval.
@@ -116,6 +116,35 @@ ESTO, ESTO_EXTENDED, LEAP, and NINTH when they participate in a scope. Its
 canonical Common ESTO values output is also manifested Parquet; the compressed
 published fact contract remains unchanged until its external consumers adopt a
 versioned replacement.
+
+### 2026-08-16 integrated Parquet implementation checkpoint
+
+The intent handoff is implemented across the source and review-runtime
+repositories. New runs publish the universal mapping CSV with columns `scope`,
+`system`, the native pair, `common_row_id`, and readable labels. Detailed
+structural mapping, mapping coverage, Common ESTO values, anchor/broad
+diagnostics, conservation tables, baseline-artifact review, and
+export-readiness findings are manifested Parquet. LEAP/editable workbooks,
+source inputs, compressed published contracts, web formats, the universal
+Common mapping CSV, and HF-005 evidence remain unchanged.
+
+The non-destructive active-output backfill retained every legacy CSV. Across 46
+selected artifacts, the 3,845,371-row Common ESTO values file reduced from
+960,129,846 bytes to 25,086,084 bytes with exact frame equality and checksummed,
+timestamped provenance. Validation passed in `leap_mappings` (540 passed, 1
+skipped, excluding the two known modules requiring the absent 20_USA REF export),
+`leap_initialisation` (1,450 passed, 11 skipped, 12 subtests), `leap_dashboard`
+(259 passes before one obsolete filename assertion; 143 affected tests passed
+after its correction), review tools (50 passed), and the deployed runtime (13
+passed). Source commits are `leap_mappings@8f0dae3`,
+`leap_dashboard@cebddbb`, and `leap_initialisation@1e7e5f2`.
+
+Archive disposition remains deliberately `retain during transition`: no legacy
+CSV has been deleted or moved. Prepare a named checksummed archive batch only
+after consumers have operated through the transition and request explicit user
+approval for that exact batch. This storage-format checkpoint does not resolve
+the separate SEED-008/model-data investigation option or the seven templates
+waiting on upstream LEAP work.
 
 ### 2026-08-16 full-system validation checkpoint
 
