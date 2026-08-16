@@ -1,7 +1,7 @@
 # Parquet migration inventory and benchmark
 
-Status: implementation and measurement complete 2026-08-16; reversible archive
-proposal pending.
+Status: implementation, measurement and reversible archive proposal complete
+2026-08-16; explicit approval pending for the named archive batch.
 
 This report coordinates work-queue item [44] across `leap_initialisation`,
 `leap_mappings`, `leap_dashboard`, `leap_review_tools`, and the regenerated

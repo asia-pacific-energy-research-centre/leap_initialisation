@@ -1,0 +1,28 @@
+{
+  "proposal_created_utc": "2026-08-16T10:12:31.422771+00:00",
+  "repository": "leap_initialisation",
+  "archive_label": "parquet_migration_20260816",
+  "proposal_only": true,
+  "originals_moved_or_deleted": false,
+  "available_disk_bytes_at_proposal": 79539322880,
+  "manifest_sha256": "703bf6b7f27fb9b64c20667313509b6b6aa97e684ced85319daf32e6aa7b0db7",
+  "batches": {
+    "INIT-CACHE-PKL-001": {
+      "file_count": 27,
+      "original_bytes": 7104303518,
+      "planned_zip_filename": "runtime_pickle_caches_001.zip",
+      "predicted_zip_bytes": 442834604,
+      "zip_estimate_sampled_bytes": 315125648,
+      "zip_estimate_method": "Deflate level 6 sampled from up to 4 MiB at the start, middle and end of every proposed member; estimate includes approximate ZIP headers."
+    }
+  },
+  "explicit_exclusions": [
+    "all outputs/**/runs/** historical and current run trees",
+    "human-facing CSV/XLSX reports and workbooks",
+    "published mapping/dashboard/review contracts",
+    "source/configuration inputs",
+    "Git metadata, worktrees, symlinks, junctions and other reparse points",
+    "old reference CSV caches without a complete exact-key Parquet pair and metadata"
+  ],
+  "restoration_procedure": "After an approved ZIP is created and verified, extract members at the leap_initialisation repository root so each stored repository-relative path is restored exactly; verify SHA-256 against the manifest before use."
+}

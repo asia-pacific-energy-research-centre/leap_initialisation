@@ -7,6 +7,8 @@ import csv
 import hashlib
 import json
 import os
+import shutil
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -50,6 +52,8 @@ MANIFEST_COLUMNS = (
     "selection_evidence",
 )
 
+ZIP_ESTIMATE_SAMPLE_BYTES = 4 * 1024 * 1024
+
 
 # --- Safety and hashing helpers ---
 
@@ -85,6 +89,39 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: handle.read(8 * 1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def _sampled_deflate_ratio(path: Path) -> tuple[float, int]:
+    """Estimate ZIP deflate ratio from the start, middle and end of one file."""
+    size = path.stat().st_size
+    if size == 0:
+        return 1.0, 0
+    block_size = min(ZIP_ESTIMATE_SAMPLE_BYTES, size)
+    offsets = sorted({0, max(0, (size - block_size) // 2), size - block_size})
+    sampled_bytes = 0
+    compressed_bytes = 0
+    with path.open("rb") as handle:
+        for offset in offsets:
+            handle.seek(offset)
+            payload = handle.read(block_size)
+            sampled_bytes += len(payload)
+            compressed_bytes += len(zlib.compress(payload, level=6))
+    ratio = compressed_bytes / sampled_bytes if sampled_bytes else 1.0
+    return min(1.0, max(0.0, ratio)), sampled_bytes
+
+
+def _estimate_batch_zip_size(rows: list[dict[str, object]]) -> tuple[int, int]:
+    """Return a sampled ZIP-size estimate and the number of bytes sampled."""
+    predicted_bytes = 0
+    sampled_bytes = 0
+    for row in rows:
+        path = REPO_ROOT / str(row["relative_path"])
+        ratio, file_sampled_bytes = _sampled_deflate_ratio(path)
+        # Allow a small amount for local and central ZIP member headers.
+        member_overhead = 160 + (2 * len(str(row["planned_member_path"])))
+        predicted_bytes += round(int(row["byte_size"]) * ratio) + member_overhead
+        sampled_bytes += file_sampled_bytes
+    return predicted_bytes, sampled_bytes
 
 
 def _manifest_row(
@@ -126,7 +163,7 @@ def collect_shared_pickle_candidates() -> list[dict[str, object]]:
         if not root.exists():
             continue
         for path in sorted(root.rglob("*.pkl")):
-            replacement = path.with_suffix(".parquet_cache")
+            replacement_family = path.parent.relative_to(REPO_ROOT).as_posix()
             rows.append(
                 _manifest_row(
                     path=path,
@@ -137,12 +174,16 @@ def collect_shared_pickle_candidates() -> list[dict[str, object]]:
                         "code path reads pickle."
                     ),
                     replacement_logical_artifact=(
-                        replacement.relative_to(REPO_ROOT).as_posix()
+                        f"{replacement_family}/*.parquet_cache "
+                        "(runtime-keyed and regenerated on demand)"
                     ),
                     planned_zip_filename="runtime_pickle_caches_001.zip",
                     selection_evidence=(
                         "Explicit shared runtime cache root; .pkl suffix; historical "
-                        "runs/** paths excluded by construction."
+                        "runs/** paths excluded by construction; the live producer and "
+                        "consumer use typed Parquet bundles and no live code reads pickle. "
+                        "The current cache key is recalculated from runtime inputs, so an "
+                        "obsolete pickle key is not represented as a same-key replacement."
                     ),
                 )
             )
@@ -228,12 +269,25 @@ def write_archive_proposal() -> tuple[Path, Path]:
         batch["file_count"] = int(batch["file_count"]) + 1
         batch["original_bytes"] = int(batch["original_bytes"]) + int(row["byte_size"])
 
+    for batch_id, batch in batches.items():
+        batch_rows = [row for row in rows if row["batch_id"] == batch_id]
+        predicted_zip_bytes, sampled_bytes = _estimate_batch_zip_size(batch_rows)
+        batch["predicted_zip_bytes"] = predicted_zip_bytes
+        batch["zip_estimate_sampled_bytes"] = sampled_bytes
+        batch["zip_estimate_method"] = (
+            "Deflate level 6 sampled from up to 4 MiB at the start, middle and end "
+            "of every proposed member; estimate includes approximate ZIP headers."
+        )
+
+    disk_usage = shutil.disk_usage(REPO_ROOT)
+
     summary = {
         "proposal_created_utc": datetime.now(timezone.utc).isoformat(),
         "repository": "leap_initialisation",
         "archive_label": ARCHIVE_LABEL,
         "proposal_only": True,
         "originals_moved_or_deleted": False,
+        "available_disk_bytes_at_proposal": disk_usage.free,
         "manifest_sha256": _sha256(MANIFEST_PATH),
         "batches": batches,
         "explicit_exclusions": [

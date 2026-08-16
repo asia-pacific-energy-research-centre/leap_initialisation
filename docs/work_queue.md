@@ -2,8 +2,9 @@
 
 ## [44] Migrate machine-only tabular intermediates to Parquet across the connected system
 
-**Status: validation complete 2026-08-16; reversible archive proposal is the
-next Parquet step. Expected LEAP-model coverage gaps do not block it.**
+**Status: validation and reversible archive proposal complete 2026-08-16;
+explicit approval is required before creating the ZIP or moving originals.
+Expected LEAP-model coverage gaps do not block it.**
 
 **Execution plan:**
 `docs/prompts/parquet_migration_and_reversible_archive_execution.md`.
@@ -124,10 +125,14 @@ coverage visibility, but are not Parquet defects and do not block the archive
 proposal. Do not synthesize the missing structures or borrow another economy's
 IDs in the meantime.
 
-No archive manifest or ZIP has been created and no original moved. The next
-Parquet step is to run the proposal-only candidate generator, review its exact
-manifest and exclusions, and stop for explicit approval before moving any
-original file.
+The proposal-only scan selected batch `INIT-CACHE-PKL-001`: 27 obsolete shared
+pickle caches totalling 7,104,303,518 bytes. A sampled Deflate estimate predicts
+a 442,834,604-byte ZIP; 79,539,322,880 bytes were free when the proposal was
+generated. The manifest and summary are
+`docs/diagnostics/parquet_migration/archive_proposal_manifest.csv` and
+`archive_proposal_summary.json`. No ZIP has been created and no original has
+been moved or deleted. The Parquet work is now stopped at the mandatory
+explicit-approval gate for this named batch.
 
 ## [45] Optionally investigate the four aggregate-preflight SEED-008 findings
 

@@ -1,9 +1,10 @@
 # Parquet migration full-system validation
 
 **Validation date:** 2026-08-16  
-**Status:** implementation and broad validation complete; reversible archive
-proposal is next. Expected LEAP-model coverage gaps are documented but are not
-Parquet blockers.
+**Status:** implementation, broad validation and reversible archive proposal
+complete; explicit approval is required before creating the ZIP or moving any
+original. Expected LEAP-model coverage gaps are documented but are not Parquet
+blockers.
 
 ## Cross-repository checks
 
@@ -82,18 +83,29 @@ the sentinel error, providing real execution evidence in addition to tests.
 
 ## Archive gate
 
-No archive proposal has yet been generated, no ZIP was created, and no original
-was moved or deleted. Commit `368f999` adds a proposal-only generator that hashes
-only explicit shared pickle-cache roots and old reference-cache CSVs with a
-complete exact-key Parquet replacement. It excludes all historical run trees,
+The proposal-only generator has produced batch `INIT-CACHE-PKL-001`: 27 shared
+pickle caches totalling 7,104,303,518 bytes, with a sampled Deflate prediction
+of 442,834,604 bytes for `runtime_pickle_caches_001.zip`. Available disk space
+at proposal time was 79,539,322,880 bytes. No ZIP was created and no original
+was moved or deleted. Commit `368f999` introduced a proposal-only generator
+that hashes only explicit shared pickle-cache roots and old reference-cache
+CSVs with a complete exact-key Parquet replacement. It excludes all historical run trees,
 human outputs, contracts, source/configuration inputs, Git/worktrees and
 reparse points.
+
+The generated manifest correctly describes pickle replacements as
+runtime-keyed, regenerable Parquet cache families rather than claiming that an
+obsolete pickle key has a same-key Parquet directory. Focused proposal safety
+tests pass. Exact evidence is in
+`docs/diagnostics/parquet_migration/archive_proposal_manifest.csv` and
+`archive_proposal_summary.json`.
 
 The full-system evidence is sufficient for the storage-migration scope: cache
 serialization, manifests, checksums, production reads and repository suites
 passed, while the remaining model-coverage findings are separately owned. The
-next step is therefore to generate the exact proposal, inspect every candidate
-and exclusion, and present the manifest, sizes, free-space check and restoration
-procedure for explicit approval. Generating the proposal does not authorize a
-ZIP, move or deletion. Work-queue item [45] preserves the option to investigate
-`SEED-008` independently without weakening its model-artifact gate.
+exact proposal has now been generated and inspected. The next action is the
+mandatory approval decision for named batch `INIT-CACHE-PKL-001`. Approval
+would authorize creating and verifying only the named ZIP; originals would be
+removed from live paths only after member count, path, size and SHA-256 checks
+pass. Work-queue item [45] preserves the option to investigate `SEED-008`
+independently without weakening its model-artifact gate.
