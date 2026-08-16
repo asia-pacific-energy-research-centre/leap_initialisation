@@ -17,7 +17,7 @@ rather than creating another backlog here.
 
 | ID | Decision | Owner / authoritative queue | Suggested choice | Your oversight |
 |---|---|---|---|---|
-| P3-01 | Keep standalone coke/blast detail beside inclusive own-use rows, or introduce replacement semantics | `leap_mappings` MAPQ-046 | Keep both views | Required: mapping semantics |
+| P3-01 | Keep standalone coke/blast detail beside inclusive own-use rows, or introduce replacement semantics | `leap_mappings` MAPQ-046 | **Approved: keep mapping detail; dashboard uses inclusive frontier** | Completed 2026-08-16 |
 | P3-02 | When baseline-seed findings should block runs and promotion | `leap_initialisation` queue [29] / INIT-005 | Keep audit mode until the stated real-run evidence exists; then block promotion, not artifact generation | Required: release policy |
 | P3-03 | Whether surgical seed patches should remain stricter than full rebuilds | `leap_initialisation` queue [12]/INIT-005 evidence | Keep patches strict | Required: operational policy |
 | P3-04 | Activate the parallel parent combined workbook | `leap_initialisation` current execution roadmap item 2 | Do not activate by default yet; first prove real sequential equivalence | Approval after evidence |
@@ -30,7 +30,7 @@ rather than creating another backlog here.
 
 ## P3-01 — Coke-oven and blast-furnace detail-retention policy
 
-**Decision:** ☐ Keep both views ☐ Replace detail with inclusive rows ☐ Defer
+**Decision:** ☒ Keep both mapping views; ordinary dashboards use only the inclusive frontier ☐ Replace detail with inclusive rows ☐ Defer
 
 ### Current behavior
 
@@ -59,18 +59,24 @@ failed rollup.
 
 ### Recommendation
 
-Approve option 1. It preserves useful diagnostics and the established generic
-contract. The dashboard already consumes non-overlapping frontiers. Choose
-option 2 only if downstream exports must physically exclude the standalone
-identities; do not implement option 3 as an incidental fix.
+Option 1 was approved on 2026-08-16. It preserves useful diagnostics and the
+established generic contract. Following the existing Gas works plants and Oil
+refineries precedent, ordinary dashboard charts select the inclusive Coke ovens
+and Blast furnaces leaves and suppress the parallel plain transformation and
+standalone own-use rows. Mapping and diagnostic outputs retain those components
+as lineage evidence. Option 2 remains appropriate only if a future downstream
+export must physically exclude the standalone identities; option 3 must not be
+introduced as an incidental fix.
 
 ### Evidence and completion
 
 - Authority: `leap_mappings/docs/work_queue.md`, MAPQ-046.
 - Focused verification: 76 tests passed.
 - Full-run maximum conservation drift: `1.1641532182693481e-10`.
-- If option 1 is approved, revise MAPQ-046 assertions 3 and 6 to state that
-  coexistence is intentional and consumer frontiers prevent double counting.
+- MAPQ-046 assertions 3 and 6 now state that coexistence is intentional and
+  consumer frontiers prevent double counting.
+- Dashboard regression coverage applies the existing metadata-driven Gas works
+  behavior to Coke ovens and Blast furnaces without duplicating mapping logic.
 - If option 2 is approved, require an exact rule-level selector and rerun the
   complete four-source pipeline plus all-economy dashboards.
 
