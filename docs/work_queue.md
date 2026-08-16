@@ -378,8 +378,9 @@ no longer fall through to the obsolete literal
 
 ## [29] Qualify the central baseline-seed final-artifact gate on real runs
 
-**Status: audit implementation complete; permanent migration-warning policy
-confirmed 2026-08-16; finding-classification improvement pending.**
+**Status: shared migration classifier implemented and verified 2026-08-16
+(`c7662b2`); fresh production-run qualification remains part of normal release
+validation.**
 
 The final writer now runs BSA-001–BSA-010 after saving the physical economy
 workbooks and writes a deterministic shadow acceptance package. Every new check
@@ -398,11 +399,8 @@ next structure update must remain visible warnings and must not stop ordinary
 full rebuilds, surgical patches, or promotion. The production warning setting
 is therefore not a temporary concession and may remain normal indefinitely.
 
-The global
-`BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS=True` switch is still
-too broad: it can downgrade genuine non-migration defects along with expected
-structure lag. Replace it with one finding classifier shared by the writer,
-patcher, final-artifact gate, and promotion logic:
+The broad global downgrade has been replaced by one finding classifier shared
+by the writer, patcher, final-artifact gate, and promotion logic:
 
 1. `known_migration_backlog` — reviewed missing LEAP structure, warning;
 2. `new_migration_candidate` — newly observed missing LEAP structure, warning
@@ -411,20 +409,19 @@ patcher, final-artifact gate, and promotion logic:
    duplicate keys, broken share groups, serialization loss, wrong template/IDs,
    and missing required evidence.
 
-Maintain a versioned migration backlog keyed at least by economy and normalized
-branch path, with stable ID, first/last-seen run, owning workflow, materiality,
-review status, and eventual template/version resolution. A template refresh
-must reconcile the registry automatically, closing entries now present and
-flagging stale exceptions. Full rebuilds and patches must classify the same
-finding identically; a patch may still fail for genuinely incomplete evidence
-about its changed scope, but not merely because it is a patch.
+A versioned migration registry and deterministic per-run report now distinguish
+known, new, resolved, and non-structure findings. Migration classification
+requires matching missing-template-path evidence, so duplicate keys, broken
+share groups, serialization loss, wrong templates/IDs, and missing evidence
+retain their real severity. Full rebuilds and patches classify the same finding
+identically; a patch may still fail for genuinely incomplete evidence about its
+changed scope, but not merely because it is a patch.
 
-Promotion should eventually consume the manifest only after its acceptance
-logic distinguishes declared structure warnings from non-migration integrity
-failures. `SHADOW_PASS` cannot be the release condition while it treats an
-expected periodic-migration backlog as a failure. Fresh NZ, USA, and
-all-economy runs remain useful verification evidence, but zero migration
-warnings is no longer a prerequisite.
+Promotion now consumes the classified manifest state and distinguishes declared
+structure warnings from non-migration integrity failures. A migration warning
+does not prevent promotion; unresolved non-migration blocking findings do.
+Fresh NZ, USA, and all-economy runs remain useful verification evidence, but
+zero migration warnings is no longer a prerequisite.
 
 See `baseline_seed_final_artifact_contract.md` and
 `baseline_seed_gate_consolidation_review.md`.
@@ -856,8 +853,8 @@ workbook values remain open. See
 
 ## [20] General opt-in projection of ESTO-active sectors missing from 9th
 
-**Status: general rule decided 2026-08-16; implementation pending beyond the
-first narrow 09.06 case.**
+**Status: generalized opt-in engine implemented and verified 2026-08-16
+(`17fc6b9`); full mapping-pipeline validation remains queued for the next run.**
 
 Missing children use the economy's ESTO base-year value as the simple
 provisional projection. Without a nonzero projected 9th parent, that value is
@@ -875,18 +872,17 @@ relevant, and owning workflow. `FILL_IN_MISSING_9TH_SECTORS=False` must continue
 to preserve the direct 9th result exactly while the generalized implementation
 is verified.
 
-Build the broader `FILL_IN_MISSING_9TH_SECTORS` capability. When enabled, it
-must identify an ESTO sector/fuel pair that is active in the configured base
+The broader `FILL_IN_MISSING_9TH_SECTORS` capability now identifies an ESTO
+sector/fuel pair that is active in the configured base
 year, absent from the 9th projection, and not already produced by the LEAP
-initialisation output. It must then route the pair to the workflow that owns
+initialisation output. It routes the pair to the workflow that owns
 that sector and apply the approved base-year carry or parent-residual rule.
 
-The initial implementation is deliberately limited to missing `09.06`
-gas-processing children: it carries each missing child flow/product's base-year
-ESTO value forward unchanged, allowing the existing gas process builder to
-retain the corresponding production, efficiency, feedstocks, and outputs.
-This is the first implemented family of the general rule. Add other families
-only with a documented owner, visible fill diagnostics, and tests.
+The shared owner registry separates supply, transformation, transfers, demand,
+and losses/own-use. Current builder consumers in supply, transformation, and
+transfers pass their explicit owner; demand and losses/own-use have distinct
+routes available when those producers consume this builder. The original
+`09.06` gas-processing case remains supported by the generalized engine.
 
 Projection-allocation guard added 2026-07-28: a nonzero `09.06` or `09.08`
 aggregate with neither parent nor child economy-specific base-year evidence is
@@ -895,18 +891,24 @@ The transformation workflow warns and writes
 `transformation_unallocated_projection_values_<scenario>.csv` with the
 unallocated series and same-family historical/projected ESTO context by fuel.
 
-Required design and implementation work:
+Implemented evidence:
 
-- create a diagnostic inventory of candidate missing sector/fuel pairs, with
+- diagnostic rows inventory candidate/applied missing sector/fuel pairs, with
   9th presence, ESTO base-year value, existing LEAP-output presence, owning
   workflow, and proposed rule;
-- define the ownership routing for supply, transformation, transfers, demand,
+- ownership routing separates supply, transformation, transfers, demand,
   and losses/own-use so two workflows cannot project the same pair;
-- make every fill opt-in through `FILL_IN_MISSING_9TH_SECTORS`, preserve exact
+- every fill remains opt-in through `FILL_IN_MISSING_9TH_SECTORS`, preserves exact
   9th results when it is false, and record every applied fill in a reviewable
   diagnostic artifact;
-- add per-family conservation, base-year continuity, and no-duplicate-output
-  tests before enabling a new sector family by default.
+- focused tests cover flag-off identity, parent-residual conservation,
+  base-year continuity, owner mismatch, zero-net unallocated diagnostics, and
+  no duplicate generated output.
+
+At the next normally required full mapping-pipeline run, enable and exercise
+this item together with the other queued mapping validations. Keep the feature
+off by default until that evidence has been reviewed; do not schedule a
+standalone full run solely for this item.
 
 ## [19] Consolidate and filter template-matching diagnostics — ✅ Implemented and verified 2026-07-23 (`9be92bf`)
 

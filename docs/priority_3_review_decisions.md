@@ -20,11 +20,11 @@ owning queue rather than creating another backlog here.
 | ID | Decision | Owner / authoritative queue | Suggested choice | Your oversight |
 |---|---|---|---|---|
 | P3-01 | Keep standalone coke/blast detail beside inclusive own-use rows, or introduce replacement semantics | `leap_mappings` MAPQ-046 | **Approved: keep mapping detail; dashboard uses inclusive frontier** | Completed 2026-08-16 |
-| P3-02 | Classify baseline-seed findings consistently for full rebuilds, patches, and promotion | `leap_initialisation` queue [29] / INIT-005 | LEAP-structure migration lag remains non-blocking; genuine integrity defects retain their own severity | Policy confirmed 2026-08-16; better classifier still needed |
-| P3-03 | Surgical-patch severity | Folded into P3-02 | Use the same finding classification as full rebuilds, not a blanket stricter mode | No separate decision |
+| P3-02 | Classify baseline-seed findings consistently for full rebuilds, patches, and promotion | `leap_initialisation` queue [29] / INIT-005 | LEAP-structure migration lag remains non-blocking; genuine integrity defects retain their own severity | Completed 2026-08-16 (`c7662b2`) |
+| P3-03 | Surgical-patch severity | Folded into P3-02 | Use the same finding classification as full rebuilds, not a blanket stricter mode | Completed with P3-02 (`c7662b2`) |
 | P3-04 | Cross-economy combined workbooks | `leap_initialisation` queue [26] | **Retired completely in sequential and parallel runs; per-economy seed assembly retained** | Decision confirmed and implemented 2026-08-16; no further review required |
-| P3-05 | How initialisation receives the generated mapping master (D3.4) | `leap_initialisation` INITQ-020; mapping semantics owned by `leap_mappings` | **Approved: prefer live `leap_mappings`; committed read-only fallback** | Decision confirmed 2026-08-16; implementation pending |
-| P3-06 | Generalize missing-9th-sector filling beyond gas processing | `leap_initialisation` queue [20] | **Approved: carry the ESTO base year forward; where a projected 9th parent exists, allocate its residual by base-year shares** | Decision confirmed 2026-08-16; implementation pending |
+| P3-05 | How initialisation receives the generated mapping master (D3.4) | `leap_initialisation` INITQ-020; mapping semantics owned by `leap_mappings` | **Approved: prefer live `leap_mappings`; committed read-only fallback** | Completed 2026-08-16 (`0293f8c`) |
+| P3-06 | Generalize missing-9th-sector filling beyond gas processing | `leap_initialisation` queue [20] | **Approved: carry the ESTO base year forward; where a projected 9th parent exists, allocate its residual by base-year shares** | Implementation completed 2026-08-16 (`17fc6b9`); opt-in pipeline validation remains queued |
 | P3-07 | Quarantine/delete old outputs, temporary directories, branches and worktrees | Initialisation queue [43]; mapping MAPQ-013/MAPQ-023; dashboard DASHQ-014 | Quarantine outputs; remove only proven-superseded Git objects | Required before each destructive batch |
 | P3-08 | Remaining mapping authority/frontier/input-contract choices | Initialisation queue [43]; mapping MAPQ-019/MAPQ-020/MAPQ-021 | Use published extracts and named frontiers; review ESTO definitions row by row | Required: three separate domain decisions |
 
@@ -37,7 +37,7 @@ owning queue rather than creating another backlog here.
 **Status:** Complete. No further implementation or mapping-pipeline rerun is
 required for this decision.
 
-### Current behavior
+### Operating context
 
 The four NINTH rollups now create these inclusive Common identities:
 
@@ -106,51 +106,32 @@ selector plus a complete four-source pipeline and all-economy dashboard rerun.
 structure updates remain warnings. LEAP updates are deliberately batched and
 performed periodically rather than every time a missing branch is detected.
 
-### Implementation timing and interim action
+### Implementation completed 2026-08-16
 
-This is a **deferred implementation item in this P3 review document**. Implement
-it when the remaining TODO items in this document are worked through together;
-it does not require a standalone change or an immediate LEAP-area update now.
+Commit `c7662b2` added the versioned structure-migration registry and one shared
+classifier for full rebuild, surgical patch, final-artifact, and promotion
+paths. A finding is eligible for migration treatment only when the same result
+also contains the matching missing-template-path finding; this prevents share,
+duplicate, serialization, and other integrity failures from being downgraded.
+Known and newly observed migration gaps remain visible, non-blocking warnings,
+and template refreshes produce reconciliation/reporting evidence.
 
-Until then:
-
-- keep `BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True`;
-- continue normal full rebuilds and surgical patches under the current warning
-  policy;
-- record missing LEAP structure for the next periodic, coordinated LEAP update
-  rather than editing an area for each discovered row; and
-- investigate genuine non-structure validation failures rather than assuming
-  every warning is explained by LEAP migration lag.
-
-When the P3 TODOs are implemented, complete P3-02 and P3-03 as one package:
-
-1. add a versioned LEAP structure-migration registry/backlog;
-2. implement the shared known/new/non-migration finding classifier described
-   below;
-3. use it in full rebuild, surgical patch, final-artifact, and promotion paths;
-4. report known, newly discovered, and resolved migration items distinctly;
-5. reconcile the registry when refreshed LEAP templates become available; and
-6. retire the broad global downgrade only after equivalent migration-warning
-   behavior and preserved non-migration severity are covered by tests.
-
-User review is not needed to build and test that mechanism. User/domain review
-is needed later to decide which newly discovered migration candidates should
-actually be included in a periodic LEAP update.
+The former broad warning flag is disabled in production configuration and is
+accepted only for backward-compatible calls. User/domain review is still needed
+later to decide which newly discovered candidates belong in a periodic LEAP
+structure update; that review does not block ordinary rebuilds or patches.
 
 ### Current behavior
 
 The central BSA-001–BSA-010 package runs after physical workbook write/readback.
-The production setting
-`BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True` exists because
-many current missing rows are expected differences between the desired model
+Many current missing rows are expected differences between the desired model
 structure and LEAP areas that have not yet received the next periodic structure
 update. Routine seed work must continue while that migration backlog exists.
 
-The problem is not that warning mode is temporary. It may remain the normal
-operating mode indefinitely. The problem is that one global switch cannot
-distinguish expected LEAP-structure lag from unrelated defects such as broken
-share groups, duplicate keys, serialization loss, wrong-economy IDs, or missing
-producer evidence.
+Migration-warning behavior may remain normal indefinitely. The shared
+classifier distinguishes that expected LEAP-structure lag from unrelated
+defects such as broken share groups, duplicate keys, serialization loss,
+wrong-economy IDs, or missing producer evidence.
 
 ### Confirmed policy
 
@@ -167,9 +148,9 @@ producer evidence.
 5. Promotion may proceed with declared migration warnings. Promotion policy
    should consider unresolved non-migration integrity findings separately.
 
-### Recommendation
+### Implemented contract
 
-Replace the global all-findings downgrade with one shared classifier used by
+One shared classifier is used by
 the full writer, patcher, final-artifact gate, and promotion check. At minimum,
 every missing-structure finding should carry:
 
@@ -203,6 +184,8 @@ not the only permanent exceptions.
   and promotion reporting; known/new migration findings are separated; genuine
   integrity failures are no longer downgraded by the migration policy; and
   periodic template refreshes reconcile the backlog automatically.
+- Completed in `c7662b2`; the focused classifier, writer, patcher, artifact,
+  promotion, and registry tests pass.
 
 ---
 
@@ -210,12 +193,11 @@ not the only permanent exceptions.
 
 **Decision:** **No separate policy.** Use P3-02's shared finding classifier.
 
-### Current behavior
+### Implemented behavior
 
-The normal seed writer currently honors
-`BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS`; the baseline patcher
-does not pass that setting and therefore behaves more strictly. That is an
-implementation inconsistency, not the desired policy.
+Full writes and surgical patches now route findings through the same migration
+classifier. Migration candidates remain non-blocking in both paths, while
+non-migration integrity failures retain their configured severity.
 
 ### Trade-off
 
@@ -240,6 +222,7 @@ patch cannot provide evidence required to prove that its changed scope is safe.
   economy-template routing work.
 - Complete together with P3-02, with paired rebuild/patch tests proving the same
   finding receives the same classification and effective severity.
+- Completed with P3-02 in `c7662b2`.
 
 ---
 
@@ -372,6 +355,10 @@ path quoting while keeping the warning prominent.
   sync/validation helper is notebook-safe, standalone tests run with no sibling
   repository present, and the portable release consumes an explicitly staged
   workbook under the same validation contract.
+- Completed in `0293f8c`. The exact fallback workbook and provenance sidecar are
+  committed, runtime selection is reported, the notebook-safe sync is
+  idempotent, and resolver/portable-input tests cover live, standalone, and
+  invalid-live failure paths.
 
 ---
 
@@ -380,14 +367,15 @@ path quoting while keeping the warning prominent.
 **Decision:** ☒ Enable the general carry/residual rule below (approved
 2026-08-16)
 
-### Current behavior
+### Implemented behavior
 
-The only implemented foundation is for missing `09.06` gas-processing children:
-their economy-specific ESTO base-year value is carried forward, then the
-existing gas-process builder retains production, efficiency, feedstocks, and
-outputs. A nonzero aggregate with no economy-specific parent or child evidence
-is left unallocated and written to diagnostics; it does not borrow APEC ratios
-or use an equal split.
+The shared projection builder now implements this rule for owner-routed flow
+families. Supply, transformation, and transfers pass their explicit owner into
+the builder; demand and losses/own-use have distinct reserved owner routes for
+consumers that use the same builder. Direct 9th children are preserved, and an
+existing producer output also prevents a duplicate fill. A nonzero residual
+with no usable signed economy profile remains unallocated and diagnostic; it
+does not borrow APEC ratios or use an equal split.
 
 ### Approved rule
 
@@ -441,11 +429,15 @@ clearly identified so a modeller can replace it manually.
 ### Evidence and completion
 
 - Authority: `docs/work_queue.md` [20].
-- Initial supported family: `09.06` gas processing only.
+- Implemented in `17fc6b9`, with the original `09.06` gas-processing behavior
+  retained through the generalized engine.
 - Completion requires unique workflow ownership, unchanged output when the
   flag is false, diagnostics for every fill, flat-value tests without a
   projected parent, parent-residual additivity tests, base-year continuity,
   conservation, and no-duplicate-output tests.
+- Those implementation tests pass. The flag remains off by default until the
+  queued, normally scheduled full mapping-pipeline run can exercise this item
+  alongside the other pending pipeline validations.
 
 ---
 
@@ -648,12 +640,8 @@ P3-08 is not an all-or-nothing gate.
 
 ## Suggested review order
 
-1. **P3-01** — small, concrete mapping decision with completed run evidence.
-2. **P3-02/P3-03** — implement the confirmed shared migration classifier for
-   rebuilds, patches, and promotion.
-3. **P3-05** — closes the remaining cross-repository ownership ambiguity.
-4. **P3-04** — complete; no further review required.
-5. **P3-06** — approve the inventory before reviewing model-family rules.
-6. **P3-08** — domain and mapping-governance decisions.
-7. **P3-07** — cleanup last, after the decisions above identify which evidence
+P3-01 through P3-06 are implemented. The remaining review order is:
+
+1. **P3-08** — domain and mapping-governance decisions.
+2. **P3-07** — cleanup last, after the decisions above identify which evidence
    must be retained.

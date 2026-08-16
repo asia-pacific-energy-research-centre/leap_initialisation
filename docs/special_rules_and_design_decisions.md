@@ -547,6 +547,11 @@ diagnostics, and no invalid final workbook is written or substituted.
   final-artifact package, and eventual promotion logic. See `work_queue.md`
   [29] and `priority_3_review_decisions.md` P3-02/P3-03.
 
+- 2026-08-16: Implemented the shared classifier and versioned migration registry
+  in `c7662b2`. Migration treatment now requires a matching missing-template
+  finding; unrelated integrity failures retain their real severity. Full writes,
+  patches, final-artifact packaging, and promotion consume the same result.
+
 ## INIT-006: Baseline-seed scenario windows and transformation process boundary
 
 **Status:** Confirmed
@@ -1060,13 +1065,14 @@ an unexpected source-data contradiction and raises a `ValueError`. These
 criteria automatically move from 2022 to a later ESTO year when the configured
 base year is updated.
 
-`FILL_IN_MISSING_9TH_SECTORS` is off by default, preserving
-9th projections exactly. Its first narrow implementation applies only here:
-when enabled, a base-year-active `09.06` child with no direct 9th projection is
-held at its base-year ESTO flow/product value through the projection horizon.
-The ordinary gas process builder then derives the matching production,
-efficiency, feedstocks, and outputs. This is intentionally only the first
-missing-sector family; the broader project is tracked in `work_queue.md` [20].
+`FILL_IN_MISSING_9TH_SECTORS` is off by default, preserving 9th projections
+exactly. As of 2026-08-16, the generalized owner-routed engine applies this
+decision across eligible flow families: it uses a base-year constant when no
+nonzero parent projection exists and signed base-year shares of the parent
+residual otherwise. Direct 9th children and existing producer outputs are never
+overwritten. Zero-net or missing economy profiles remain unallocated and are
+diagnosed. The original `09.06` behavior is retained through this engine; see
+`work_queue.md` [20] for the queued full-pipeline validation.
 
 ### History
 
