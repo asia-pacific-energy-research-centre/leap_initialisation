@@ -48,7 +48,7 @@ packages = [
 # behaviour.
 
 [repositories.leap_initialisation]
-commit = "c74aba7d670d39ad6c02c66bcdddbb16e3d67a26"
+commit = "5d92d1789f48acca37c2746f3e3d97850f26b17b"
 stage_dir = "leap_initialisation"
 on_sys_path = true
 paths = [
@@ -63,6 +63,7 @@ paths = [
     "codebase/functions/balance_review_workbook_builder.py",
     "codebase/functions/balance_review_workbooks.py",
     "codebase/functions/baseline_seed_balance_diagnostics.py",
+    "codebase/functions/baseline_seed_structure_migration.py",
     "codebase/functions/baseline_seed_validation.py",
     "codebase/functions/conservation_policy.py",
     "codebase/functions/esto_data_utils.py",
@@ -121,7 +122,7 @@ paths = [
 # ``import LEAP_API_helpers``. Stage only that reviewed metadata module from
 # config/ on its own sys.path root; do not expose the rest of config/ as code.
 [repositories.leap_initialisation_config]
-commit = "c74aba7d670d39ad6c02c66bcdddbb16e3d67a26"
+commit = "5d92d1789f48acca37c2746f3e3d97850f26b17b"
 source_key = "leap_initialisation"
 stage_dir = "leap_initialisation_config"
 strip_prefix = "config"
