@@ -105,14 +105,20 @@ and renamed atomically. New runtime writes no longer create pickle files.
 - Typed storage and augmented-reference regression tests: 4 passed.
 - Broader augmented-reference consumers: 9 passed with 4 existing warnings.
 - Supply cache/config/preflight contract slice: 93 passed, 5 skipped.
-- Full initialisation suite: 1,446 passed, 11 skipped, 35 deselected, 12
-  subtests passed; 99 existing warnings.
+- First full initialisation suite: 1,446 passed, 11 skipped, 35 deselected, 12
+  subtests passed; 99 existing warnings. The final committed state, including
+  the aggregate-preflight fix, passes 1,447 with the same skip/deselection and
+  warning profile.
 - Real small, medium, and large historical cache bundles passed exact nested
   round-trip comparison.
 
-No existing cache or generated output has been removed. Full mapping,
-initialisation, dashboard, review-tool, and deployed-runtime validation remains
-required before any archive proposal can be approved.
+No existing cache or generated output has been removed. Full-system evidence is
+recorded in
+[`parquet_migration_full_system_validation.md`](parquet_migration_full_system_validation.md).
+Nine template-backed economies produced 18 versioned cache bundles / 162
+Parquet files and zero pickles; production-helper reads restored all expected
+AUS objects. Existing template and baseline-seed findings prevent a completely
+green archive gate, so no archive manifest has been generated.
 
 ## Deliberate retains and transition boundaries
 
@@ -130,12 +136,11 @@ required before any archive proposal can be approved.
 
 ## Remaining execution gates
 
-1. Finish family-level tracing and decisions in mapping, dashboard, and review
-   repositories; resolve only the prioritised human-format register entries.
-2. Run focused suites in every owning repository.
-3. Run one complete four-source mapping pipeline, one supported uniquely
-   labelled initialisation run, dashboard reconstruction/readiness checks,
-   review-tool packaging, and regenerated deployment tests.
-4. Compare final human/browser/LEAP outputs semantically.
-5. Prepare exact checksummed archive batches and stop for explicit approval
-   before moving any original.
+1. Decide whether the 51 existing missing-branch groups and four compressed-
+   preflight SEED-008 findings are accepted out-of-scope baseline exceptions
+   for this storage migration or must be repaired first.
+2. Provide the seven missing economy templates if all 16 configured economies
+   must pass the full workflow gate.
+3. Resolve the prioritised human-format register entries.
+4. Only after the full-system gate is accepted, generate the exact checksummed
+   archive proposal and stop for explicit approval before moving any original.

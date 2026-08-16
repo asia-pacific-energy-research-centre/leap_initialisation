@@ -2,8 +2,8 @@
 
 ## [44] Migrate machine-only tabular intermediates to Parquet across the connected system
 
-**Status: in progress 2026-08-16; initialisation cache pilot implemented and
-focused validation passed.**
+**Status: validation complete 2026-08-16; archive proposal blocked at semantic
+gate by pre-existing template/data findings.**
 
 **Execution plan:**
 `docs/prompts/parquet_migration_and_reversible_archive_execution.md`.
@@ -93,10 +93,32 @@ balance/transform cache bundles now write versioned Parquet/Zstandard plus
 checksummed JSON manifests instead of CSV cache copies or pickle. Existing
 files remain untouched pending the archive gate. Verification at this
 checkpoint: exact real-cache benchmark round trips, 9 broader reference tests,
-93 supply/preflight contract tests passed (5 skipped), and the full repository
-suite passed (1,446 passed, 11 skipped, 35 deselected, 12 subtests; 99 existing
-warnings). Cross-repository family migration, full workflows, deployment
-regeneration, and archive approval remain open.
+93 supply/preflight contract tests passed (5 skipped), and the first full
+repository suite passed (1,446 passed, 11 skipped, 35 deselected, 12 subtests;
+99 existing warnings).
+
+### 2026-08-16 full-system validation checkpoint
+
+The final committed initialisation state passes 1,447 tests (11 skipped, 35
+deselected, 12 subtests). Mapping passes 537 available tests (1 skipped), with
+two modules explicitly unavailable because the required 20_USA REF balance
+export is absent. Dashboard passes 258 tests; review source passes 50 (1
+deselected); deployed runtime passes 13. Mapping Stage 3 and dashboard
+regeneration evidence is complete under MAPQ-048.
+
+The uninterrupted labelled supply run
+`PARQUET_MIGRATION_FULL_20260816` exercised all 16 configured economies with
+two bounded workers. Nine template-backed economies wrote 18 versioned Parquet
+cache bundles / 162 Parquet files and zero pickles; production helper reads
+restored all expected AUS cache objects. PNG and PHL passed end-to-end. Seven
+economies lack templates, and seven otherwise complete main workflows retain
+51 pre-existing missing-branch groups. Four compressed-preflight SEED-008
+findings also remain. Full evidence and resource measurements are in
+`docs/parquet_migration_full_system_validation.md`.
+
+No archive manifest or ZIP has been created and no original moved. Archive
+candidate hashing remains blocked until a human formally accepts these
+template/data findings as out-of-scope baseline exceptions or they are repaired.
 
 ## [43] Review and execute the deferred cleanup and mapping-authority decisions
 
