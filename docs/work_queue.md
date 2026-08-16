@@ -108,6 +108,15 @@ server-side and retains a temporary fallback for existing result folders that
 still contain the previous CSV filenames. HF-005 remains unchanged and is not
 part of this implementation approval.
 
+The simple Common ESTO mapping itself remains CSV by explicit user decision.
+The canonical consumer file is the seven-column
+`leap_mappings/results/common_esto/source_to_common_esto_map.csv`, covering
+ESTO, ESTO_EXTENDED, LEAP, and NINTH when they participate in a scope. Its
+27-column structural derivation and coverage diagnostic are Parquet. The
+canonical Common ESTO values output is also manifested Parquet; the compressed
+published fact contract remains unchanged until its external consumers adopt a
+versioned replacement.
+
 ### 2026-08-16 full-system validation checkpoint
 
 The final committed initialisation state passes 1,447 tests (11 skipped, 35

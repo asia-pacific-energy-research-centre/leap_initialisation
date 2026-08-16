@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
+import pandas as pd
+
 
 #: Diagnostic artifacts the balance-review command reads. The two required files
 #: are produced together by the balance-diagnostics step
@@ -165,6 +167,8 @@ def normalize_economy(economy: object) -> str:
 
 
 def _read_header(path: Path) -> list[str]:
+    if path.suffix.casefold() == ".parquet":
+        return [str(column).strip() for column in pd.read_parquet(path).columns]
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         for row in csv.reader(handle):
             return [str(cell).strip() for cell in row]
@@ -609,7 +613,7 @@ def validate_balance_review_from_export_inputs(
         Path(str(projection_table)) if projection_table else None,
         name="ninth_projection_table",
         description="9th-edition projection table shipped with this release",
-        suffixes=(".csv",),
+        suffixes=(".parquet", ".csv"),
     )
 
     active_esto = esto_table_path or bundled_esto_table

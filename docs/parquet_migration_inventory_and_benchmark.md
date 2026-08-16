@@ -161,6 +161,19 @@ green archive gate, so no archive manifest has been generated.
 - Common ESTO and other cross-repository CSV/CSV.gz contracts remain
   authoritative until producer, all consumers, portable packaging, and the
   deployed runtime move together.
+- The seven-column universal `source_to_common_esto_map.csv` is a deliberate
+  permanent CSV exception. Its 27-column structural derivation and coverage
+  diagnostic are manifested Parquet, not additional public mapping CSVs.
+- The denormalized Common ESTO values product is
+  `common_esto_comparison_data.parquet`. Its legacy CSV is retained alongside
+  the verified Parquet during transition; the separate published CSV.gz fact
+  contract is unchanged.
+- The active legacy backfill converted and exactly verified 46 selected
+  artifacts. The Common ESTO values table retained all 3,845,371 rows while
+  shrinking from 960,129,846 bytes to 25,086,084 bytes. Timestamped source
+  provenance and SHA-256 values are stored in each Parquet sidecar; the local
+  run report is
+  `docs/diagnostics/parquet_migration/active_legacy_csv_conversion_report.json`.
 - Existing pickle and CSV cache files are obsolete candidates, not deletion
   targets. They require the separate checksummed archive approval gate.
 

@@ -130,7 +130,7 @@ paths = ["config/LEAP_API_helpers.py"]
 # so `codebase/` is stripped when staging. That also keeps this repository's
 # `codebase` package name from colliding with leap_initialisation's.
 [repositories.leap_dashboard]
-commit = "5c62d45e745ab8bd8401c2614c79abbd9ac2eac0"
+commit = "cebddbb2105b0074ee54af6c986c84cc1fdbab97"
 stage_dir = "leap_dashboard"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -146,7 +146,7 @@ paths = [
 # `mapping_tools` has no __init__.py in its own repository either; it works as
 # an implicit namespace package here exactly as it does there.
 [repositories.leap_mappings]
-commit = "5b578de45a2651650a4e7e8487c20b1f97cfb4a4"
+commit = "8f0dae3115c460fa63e792fb7b2f7905ebfcd9a5"
 stage_dir = "leap_mappings"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -169,7 +169,7 @@ paths = [
 # packages into the worker to reach one module. Omitted, each becomes an implicit
 # namespace package (PEP 420) and the submodule imports on its own - verified.
 [repositories.leap_mappings_worker]
-commit = "5b578de45a2651650a4e7e8487c20b1f97cfb4a4"
+commit = "8f0dae3115c460fa63e792fb7b2f7905ebfcd9a5"
 stage_dir = "leap_mappings_worker"
 source_key = "leap_mappings"
 on_sys_path = true
@@ -194,6 +194,7 @@ paths = [
     "codebase/mapping_tools/non_expanding_rollups.py",
     "codebase/mapping_tools/parse_leap_balance_export.py",
     "codebase/mapping_tools/result_storage.py",
+    "codebase/mapping_tools/typed_output.py",
     "codebase/mapping_tools/rollup_sheet_registry.py",
     "codebase/mapping_tools/source_branch_preflight.py",
     "codebase/mapping_tools/source_rollups.py",
@@ -426,8 +427,8 @@ repository = "leap_mappings"
 path = "results/common_esto/source_to_common_esto_map.csv"
 dest = "mapping_chain/source_to_common_esto_map.csv"
 role = "mapping_chain_source_to_common_map"
-sha256 = "1937ce70048acd61504f3a9d9032056a270a07b05b6103033d06230c372e9ff8"
-description = "Published LEAP and 9th native-source provenance for Common ESTO rows."
+sha256 = "749fc7380f44352eb6171152ff0ea47137a0f69e987ffd2da2c05a917e0b3b57"
+description = "Universal seven-column ESTO, ESTO Extended, LEAP, and 9th native-source mapping to Common ESTO rows."
 allow_untracked = true
 
 [[data_assets]]
@@ -558,7 +559,7 @@ chart_manifest.csv, and a run manifest, in a dated folder under output/."""
   key = "comparison_data_path"
   kind = "file"
   description = """\
-common_esto_comparison_data.csv from the leap_mappings pipeline. This file is \
+common_esto_comparison_data.parquet from the leap_mappings pipeline. This file is \
 close to a gigabyte for the full economy set, so it is a run input rather than \
 part of the package."""
 
@@ -595,7 +596,7 @@ rendering."""
   kind = "file"
   required = false
   description = """\
-Escape hatch: supply an existing common_esto_comparison_data.csv (with \
+Escape hatch: supply an existing common_esto_comparison_data.parquet (with \
 common_rows_path) to skip the mapping chain entirely and behave like the \
 `dashboard` command."""
 

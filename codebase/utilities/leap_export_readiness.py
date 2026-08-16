@@ -16,6 +16,7 @@ import pandas as pd
 
 from codebase.functions.leap_expressions import parse_expression
 from codebase.utilities import fuel_catalog_preflight
+from codebase.utilities.typed_storage import write_manifested_parquet
 
 
 LOGICAL_KEY_COLUMNS = ["Branch Path", "Variable", "Scenario", "Region"]
@@ -375,9 +376,13 @@ def run_export_readiness(
     if output_dir is not None:
         output = Path(output_dir).resolve()
         output.mkdir(parents=True, exist_ok=True)
-        findings_path = output / "leap_export_readiness_findings.csv"
+        findings_path = output / "leap_export_readiness_findings.parquet"
         summary_path = output / "leap_export_readiness_summary.json"
-        findings_df.to_csv(findings_path, index=False)
+        write_manifested_parquet(
+            findings_df,
+            findings_path,
+            artifact_type="leap_export_readiness_findings",
+        )
         summary_path.write_text(
             json.dumps(
                 {

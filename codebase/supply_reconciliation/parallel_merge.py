@@ -55,11 +55,11 @@ _FINDINGS_COLUMNS = (
 )
 _PARALLEL_DIAGNOSTIC_FILENAMES = (
     "supply_reconciliation_source_diagnostics.csv",
-    "supply_reconciliation_balance_demand_conservation.csv",
-    "supply_reconciliation_balance_demand_conservation_breakdown.csv",
+    "supply_reconciliation_balance_demand_conservation.parquet",
+    "supply_reconciliation_balance_demand_conservation_breakdown.parquet",
     "supply_reconciliation_balance_demand_conservation_lineage.parquet",
-    "supply_reconciliation_transformation_output_conservation.csv",
-    "supply_reconciliation_transformation_output_conservation_breakdown.csv",
+    "supply_reconciliation_transformation_output_conservation.parquet",
+    "supply_reconciliation_transformation_output_conservation_breakdown.parquet",
     "supply_reconciliation_transformation_output_conservation_lineage.parquet",
 )
 

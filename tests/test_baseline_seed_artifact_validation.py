@@ -172,7 +172,9 @@ def test_valid_complete_artifact_set_writes_shadow_pass_package(tmp_path: Path) 
     assert result.findings_path.exists()
     assert result.findings_path.suffix == ".parquet"
     assert result.findings_review_path.exists()
+    assert result.findings_review_path.suffix == ".parquet"
     assert result.summary_path.exists()
+    assert result.summary_path.suffix == ".parquet"
     assert result.manifest_path.exists()
     assert set(result.findings["check_id"]) == set(CHECK_IDS)
     assert not result.findings["would_block"].any()
@@ -601,8 +603,14 @@ def test_manifest_is_complete_and_deterministic(tmp_path: Path) -> None:
         pd.read_parquet(first.findings_path),
         pd.read_parquet(second.findings_path),
     )
-    assert first.findings_review_path.read_text(encoding="utf-8") == second.findings_review_path.read_text(encoding="utf-8")
-    assert first.summary_path.read_text(encoding="utf-8") == second.summary_path.read_text(encoding="utf-8")
+    pd.testing.assert_frame_equal(
+        pd.read_parquet(first.findings_review_path),
+        pd.read_parquet(second.findings_review_path),
+    )
+    pd.testing.assert_frame_equal(
+        pd.read_parquet(first.summary_path),
+        pd.read_parquet(second.summary_path),
+    )
     assert set(first.findings.columns) == set(FINDING_COLUMNS)
     assert {item["check_id"] for item in first.manifest["configured_checks"]} == set(CHECK_IDS)
 

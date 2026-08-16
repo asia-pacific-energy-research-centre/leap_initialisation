@@ -1159,8 +1159,8 @@ def write_acceptance_package(
         "accepted": not bool(ordered_findings["run_was_blocked"].any()),
     }
     findings_path = output / "baseline_seed_artifact_findings.parquet"
-    findings_review_path = output / "baseline_seed_artifact_findings_review.csv"
-    summary_path = output / "baseline_seed_artifact_summary.csv"
+    findings_review_path = output / "baseline_seed_artifact_findings_review.parquet"
+    summary_path = output / "baseline_seed_artifact_summary.parquet"
     manifest_path = output / "baseline_seed_artifact_manifest.json"
     findings_artifact = write_manifested_parquet(
         ordered_findings,
@@ -1168,20 +1168,20 @@ def write_acceptance_package(
         artifact_type="baseline_seed_artifact_findings_detail",
     )
     findings_review = _build_findings_review(ordered_findings)
-    findings_review.to_csv(findings_review_path, index=False, lineterminator="\n")
-    summary.to_csv(summary_path, index=False, lineterminator="\n")
+    findings_review_artifact = write_manifested_parquet(
+        findings_review,
+        findings_review_path,
+        artifact_type="baseline_seed_artifact_findings_review",
+    )
+    summary_artifact = write_manifested_parquet(
+        summary,
+        summary_path,
+        artifact_type="baseline_seed_artifact_summary",
+    )
     manifest["output_artifacts"] = {
         "findings_detail": findings_artifact,
-        "findings_review": {
-            "path": findings_review_path.name,
-            "format": "csv",
-            "row_count": int(len(findings_review)),
-        },
-        "summary": {
-            "path": summary_path.name,
-            "format": "csv",
-            "row_count": int(len(summary)),
-        },
+        "findings_review": findings_review_artifact,
+        "summary": summary_artifact,
     }
     manifest_path.write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",

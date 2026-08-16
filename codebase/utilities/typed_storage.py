@@ -92,6 +92,7 @@ def write_manifested_parquet(
     output_path: Path,
     *,
     artifact_type: str,
+    source_provenance: dict | None = None,
 ) -> dict:
     """Atomically write a Parquet table and its versioned integrity manifest."""
     artifact = write_parquet_atomic(frame, Path(output_path), index=False)
@@ -101,6 +102,8 @@ def write_manifested_parquet(
         "artifact_type": str(artifact_type),
         "artifact": artifact,
     }
+    if source_provenance is not None:
+        manifest["source_provenance"] = source_provenance
     write_json_atomic(manifest, parquet_manifest_path(Path(output_path)))
     return manifest
 

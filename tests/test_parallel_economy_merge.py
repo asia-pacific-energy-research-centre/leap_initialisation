@@ -50,7 +50,16 @@ def _write_worker_diagnostic(
     context = config.resolve_reconciliation_run_context("baseline_seed", label)
     checks_dir = context.output_dir / "supporting_files" / "checks"
     checks_dir.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows).to_csv(checks_dir / filename, index=False)
+    frame = pd.DataFrame(rows)
+    path = checks_dir / filename
+    if path.suffix == ".parquet":
+        merge.write_manifested_parquet(
+            frame,
+            path,
+            artifact_type="test_worker_diagnostic",
+        )
+    else:
+        frame.to_csv(path, index=False)
 
 
 def _finding(economy: str, rule_id: str, **overrides: object) -> dict:
@@ -186,7 +195,7 @@ def test_merge_with_no_findings_anywhere_writes_empty_reports(tmp_path) -> None:
 
 def test_merge_parallel_diagnostic_families_writes_ordered_parent_views(tmp_path) -> None:
     source_name = "supply_reconciliation_source_diagnostics.csv"
-    conservation_name = "supply_reconciliation_balance_demand_conservation.csv"
+    conservation_name = "supply_reconciliation_balance_demand_conservation.parquet"
     _write_worker_diagnostic(
         "DIAGNOSTICS_12_NZ",
         source_name,
@@ -219,7 +228,7 @@ def test_merge_parallel_diagnostic_families_writes_ordered_parent_views(tmp_path
         {"economy": "01_AUS", "issue_type": "aus_issue"},
         {"economy": "12_NZ", "issue_type": "nz_issue"},
     ]
-    assert pd.read_csv(outputs[conservation_name]).loc[0, "economy"] == "12_NZ"
+    assert merge.read_manifested_parquet_file(outputs[conservation_name]).loc[0, "economy"] == "12_NZ"
     empty_lineage = merge.read_manifested_parquet_file(
         outputs["supply_reconciliation_balance_demand_conservation_lineage.parquet"]
     )

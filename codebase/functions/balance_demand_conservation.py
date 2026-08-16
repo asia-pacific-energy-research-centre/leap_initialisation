@@ -619,10 +619,17 @@ def write_balance_demand_conservation_diagnostics(
     diagnostics: pd.DataFrame,
     output_path: Path | str,
 ) -> Path:
-    """Write the diagnostic table to CSV and return the resolved path."""
+    """Write the diagnostic table and return the resolved path."""
     path = Path(output_path).resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
-    diagnostics.to_csv(path, index=False)
+    if path.suffix.casefold() == ".parquet":
+        write_manifested_parquet(
+            diagnostics,
+            path,
+            artifact_type="supply_reconciliation_conservation_breakdown",
+        )
+    else:
+        diagnostics.to_csv(path, index=False)
     return path
 
 

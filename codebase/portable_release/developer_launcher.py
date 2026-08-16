@@ -415,7 +415,7 @@ def default_developer_inputs(
     resolved = settings or load_developer_settings()
     mappings = resolved.repositories["leap_mappings"]
     return {
-        "comparison_data_path": mappings / "results" / "common_esto" / "common_esto_comparison_data.csv",
+        "comparison_data_path": mappings / "results" / "common_esto" / "common_esto_comparison_data.parquet",
         "common_rows_path": mappings / "results" / "common_esto" / "common_esto_rows.csv",
         "balance_exports_root": resolved.repositories["leap_initialisation"]
         / "data"

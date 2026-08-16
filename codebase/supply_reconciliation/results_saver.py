@@ -1516,7 +1516,7 @@ def run_results_linked_transformation_supply_workflow(
         )
     balance_demand_conservation_path = write_balance_demand_conservation_diagnostics(
         balance_demand_conservation,
-        checks_dir / "supply_reconciliation_balance_demand_conservation.csv",
+        checks_dir / "supply_reconciliation_balance_demand_conservation.parquet",
     )
     mismatch_count = int(balance_demand_conservation["is_mismatch"].sum())
     print(
@@ -1560,7 +1560,7 @@ def run_results_linked_transformation_supply_workflow(
         )
         balance_demand_breakdown_path = write_balance_demand_conservation_table(
             balance_demand_breakdown,
-            checks_dir / "supply_reconciliation_balance_demand_conservation_breakdown.csv",
+            checks_dir / "supply_reconciliation_balance_demand_conservation_breakdown.parquet",
         )
         balance_demand_lineage_path = write_balance_demand_conservation_table(
             balance_demand_lineage,
@@ -2157,12 +2157,12 @@ def run_results_linked_transformation_supply_workflow(
             transformation_output_conservation_path = write_supply_diagnostic(
                 transformation_totals,
                 checks_dir
-                / "supply_reconciliation_transformation_output_conservation.csv",
+                / "supply_reconciliation_transformation_output_conservation.parquet",
             )
             transformation_output_conservation_breakdown_path = write_supply_diagnostic(
                 transformation_breakdown,
                 checks_dir
-                / "supply_reconciliation_transformation_output_conservation_breakdown.csv",
+                / "supply_reconciliation_transformation_output_conservation_breakdown.parquet",
             )
             transformation_output_conservation_lineage_path = write_supply_diagnostic(
                 transformation_lineage,

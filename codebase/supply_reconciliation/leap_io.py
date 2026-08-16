@@ -2597,7 +2597,7 @@ def write_per_economy_combined_workbooks(
                 / "supporting_files"
                 / "export_readiness"
                 / economy
-                / "leap_export_readiness_findings.csv"
+                / "leap_export_readiness_findings.parquet"
                 for economy in economy_list
             ],
         ]

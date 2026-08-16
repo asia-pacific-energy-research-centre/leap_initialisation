@@ -113,3 +113,16 @@ individual approval here. The machine-readable companion is
 - `retain_temporarily`: Common ESTO and other published cross-repository
   CSV/CSV.gz contracts until every producer/consumer/runtime migrates atomically.
 - Browser JSON/HTML remains browser-readable and is outside Parquet conversion.
+
+### Common ESTO mapping CSV exception — confirmed 2026-08-16
+
+The public `leap_mappings/results/common_esto/source_to_common_esto_map.csv`
+remains CSV. It is the deliberately simple seven-column mapping from every
+dataset participating in a comparison scope to `common_row_id` and its two
+labels. The former 27-column derivation is not the public mapping contract and
+now writes as manifested
+`structural_artifacts/source_pair_to_common_row.parquet`; its coverage report is
+also Parquet. The primary Common ESTO values dataset is manifested
+`common_esto_comparison_data.parquet`; the separately published compressed fact
+contract remains CSV.gz. Existing legacy CSV copies remain untouched pending
+the archive gate.
