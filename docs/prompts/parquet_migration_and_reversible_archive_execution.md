@@ -111,6 +111,50 @@ For each logical artifact record:
 Write a concise Markdown summary for people and a machine-readable CSV or
 Parquet inventory. Keep heavyweight trace details under diagnostics.
 
+### Human-format decision register
+
+Create `docs/parquet_human_format_decision_register.md` during the inventory
+phase, with a machine-readable companion under the migration diagnostics. Use
+it for every CSV/XLSX output whose human use is uncertain. Do not silently
+classify an ambiguous output as machine-only merely because no current code
+reference or recent modification is found.
+
+Each register entry must contain:
+
+- a stable decision ID and owning repository;
+- exact path or path pattern and logical artifact family;
+- producer, known code consumers, and how often it is produced;
+- current total size and typical single-file size;
+- whether the XLSX contains multiple sheets, formulas, formatting, comments,
+  charts, or other semantics that Parquet cannot preserve directly;
+- likely human audience and evidence for or against actual human use;
+- a representative sample path or a compact preview;
+- the agent's recommendation and expected storage/runtime benefit;
+- the effect of conversion, including any proposed human-readable companion;
+- status, user decision, decision date, and short rationale; and
+- any exceptions within an otherwise similar artifact family.
+
+Use these decision outcomes:
+
+- `retain_csv_or_xlsx` — the human-readable file remains authoritative;
+- `parquet_plus_human_summary` — detailed machine data becomes Parquet while a
+  narrower CSV/XLSX summary remains for people;
+- `parquet_with_on_demand_export` — Parquet is authoritative and an existing
+  workflow can regenerate a human file when requested;
+- `parquet_only` — confirmed machine-only;
+- `retain_temporarily` — insufficient evidence; reconsider after runtime
+  tracing or user review; and
+- `retire_after_archive` — no continuing use, subject to the separate archive
+  approval gate.
+
+Group genuinely similar outputs into one family decision, but show exceptions
+explicitly. Present the uncertain register entries to the user in small,
+prioritised batches, starting with the largest potential savings and including
+the recommendation rather than asking the user to investigate each file from
+scratch. Pending entries default to `retain_temporarily`; they do not block
+migration of clearly machine-only families and must never enter an archive
+batch until decided.
+
 ## Phase 2 — Benchmark before standardising helpers
 
 Benchmark representative small, medium, and largest candidates with their real
@@ -258,6 +302,8 @@ Provide:
 
 - commits by repository;
 - the inventory and benchmark report;
+- the completed human-format decision register, with unresolved entries clearly
+  separated from approved family decisions;
 - migrated and deliberately retained artifact lists;
 - focused and end-to-end validation results;
 - before/after disk, runtime, and memory measurements;
