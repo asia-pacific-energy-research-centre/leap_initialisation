@@ -48,7 +48,7 @@ packages = [
 # behaviour.
 
 [repositories.leap_initialisation]
-commit = "20804380034a3e217b9faab2a6161a26582451ba"
+commit = "c74aba7d670d39ad6c02c66bcdddbb16e3d67a26"
 stage_dir = "leap_initialisation"
 on_sys_path = true
 paths = [
@@ -99,6 +99,7 @@ paths = [
     "codebase/utilities/leap_results_dashboard_v2/shadow_compare.py",
     "codebase/utilities/master_config.py",
     "codebase/utilities/output_paths.py",
+    "codebase/utilities/typed_storage.py",
     "codebase/utilities/workflow_common.py",
     "codebase/utilities/workflow_outputs.py",
     "codebase/portable_release/__init__.py",
@@ -120,7 +121,7 @@ paths = [
 # ``import LEAP_API_helpers``. Stage only that reviewed metadata module from
 # config/ on its own sys.path root; do not expose the rest of config/ as code.
 [repositories.leap_initialisation_config]
-commit = "20804380034a3e217b9faab2a6161a26582451ba"
+commit = "c74aba7d670d39ad6c02c66bcdddbb16e3d67a26"
 source_key = "leap_initialisation"
 stage_dir = "leap_initialisation_config"
 strip_prefix = "config"
