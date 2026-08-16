@@ -14,7 +14,7 @@ individual approval here. The machine-readable companion is
 ### HF-001 — Supply conservation lineage detail
 
 - Owner/family: `leap_initialisation`; patterns
-  `outputs/leap_exports/supply_reconciliation/**/checks/supply_reconciliation_*_conservation_lineage.csv`.
+  `outputs/leap_exports/supply_reconciliation/**/checks/supply_reconciliation_*_conservation_lineage.parquet`.
 - Producer/consumers/frequency: conservation writers in the supply workflow;
   produced by retained baseline and results-update runs. Compact conservation
   summaries and breakdowns are sibling outputs.
@@ -30,14 +30,14 @@ individual approval here. The machine-readable companion is
 - Recommendation: `parquet_plus_human_summary`.
 - Effect/benefit: detailed rows become typed Parquet/Zstandard; existing compact
   CSV summary/breakdown remains. Expected storage and read savings are large.
-- Status: `retain_temporarily`; user decision/date/rationale pending.
+- Status: `parquet_plus_human_summary`; approved by the user on 2026-08-16.
 - Exceptions: compact summary and reviewer-sized breakdown CSVs remain human
   outputs.
 
 ### HF-002 — Baseline-seed artifact validation detail
 
 - Owner/family: `leap_initialisation`;
-  `outputs/leap_exports/supply_reconciliation/**/baseline_seed_artifact_validation/baseline_seed_artifact_findings.csv`.
+  `outputs/leap_exports/supply_reconciliation/**/baseline_seed_artifact_validation/baseline_seed_artifact_findings.parquet`.
 - Producer/consumers/frequency: baseline-seed validation; produced for full
   retained runs, with summary/count surfaces consumed by workflow reporting.
 - Size: representative files are 600–690 MB.
@@ -47,13 +47,13 @@ individual approval here. The machine-readable companion is
 - Recommendation: `parquet_plus_human_summary`.
 - Effect/benefit: full findings become Parquet, with a narrow CSV containing
   issue groups/counts/sample rows.
-- Status: `retain_temporarily`; decision pending.
+- Status: `parquet_plus_human_summary`; approved by the user on 2026-08-16.
 - Exceptions: warning reports and compact issue-group CSVs remain human-facing.
 
 ### HF-003 — Mapping broad-row affected-output detail
 
 - Owner/family: `leap_mappings`;
-  `results/common_esto/diagnostics/broad_common_row_affected_output.csv`.
+  `results/common_esto/diagnostics/broad_common_row_affected_output.parquet`.
 - Producer/consumers/frequency: Common ESTO diagnostic generation; regenerated
   by full mapping runs and used to derive compact diagnostic evidence.
 - Size: one current file is among the repository's largest CSVs (hundreds of MB).
@@ -63,7 +63,7 @@ individual approval here. The machine-readable companion is
 - Recommendation: `parquet_plus_human_summary`.
 - Effect/benefit: retain a reviewer-sized CSV summary and samples; use Parquet
   for the complete evidence table.
-- Status: `retain_temporarily`; decision pending.
+- Status: `parquet_plus_human_summary`; approved by the user on 2026-08-16.
 - Exceptions: mapping health summaries and compact QA tables remain CSV.
 
 ### HF-004 — Full anchor-validation matrix/detail
@@ -80,7 +80,7 @@ individual approval here. The machine-readable companion is
 - Recommendation: `parquet_plus_human_summary`.
 - Effect/benefit: full matrix/details migrate; failed/skipped summaries and
   representative evidence stay CSV.
-- Status: `retain_temporarily`; decision pending.
+- Status: `parquet_plus_human_summary`; approved by the user on 2026-08-16.
 - Exceptions: files named as summary, failed-only, readiness, or health report
   remain human-readable.
 

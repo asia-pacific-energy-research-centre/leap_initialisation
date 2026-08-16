@@ -100,6 +100,31 @@ the JSON manifest. Mixed integer/string columns and original pandas dtypes are
 restored explicitly. The complete directory is staged beside the destination
 and renamed atomically. New runtime writes no longer create pickle files.
 
+### Approved human-format families (HF-001 through HF-004)
+
+The user approved the recommended `parquet_plus_human_summary` disposition on
+2026-08-16. Complete conservation lineage and baseline-seed finding tables in
+`leap_initialisation`, plus broad-row affected output and complete anchor detail
+in `leap_mappings`, now use manifested Parquet/Zstandard. Compact breakdown,
+grouped review, sample, findings, summary, and example CSVs remain available for
+direct inspection. `leap_dashboard` reads the anchor details server-side and
+temporarily falls back to legacy CSV result folders when Parquet is absent.
+
+Representative existing outputs passed exact value/order/dtype round trips
+through the production manifest writers and integrity readers:
+
+| Artifact | Rows | Current bytes | Parquet bytes | Reduction |
+|---|---:|---:|---:|---:|
+| Balance-demand lineage | 39,582 | 8,403,478 | 467,650 | 94.435% |
+| Transformation lineage | 12,681 | 2,961,832 | 341,414 | 88.473% |
+| Baseline-seed findings | 1,436,464 | 689,911,996 | 1,625,991 | 99.764% |
+| Broad-common-row affected output | 145,716 | 735,953,139 | 677,139 | 99.908% |
+| Full anchor validation | 166,916 | 2,583,887 (CSV.gz) | 808,655 | 68.704% |
+| Economy mapped-component context | 94,800 | 33,179,982 | 167,531 | 99.495% |
+
+Exact measurements are in
+`docs/diagnostics/parquet_migration/approved_human_format_validation.csv`.
+
 ## Validation completed at this checkpoint
 
 - Pre-change cache tests failed as expected because only CSV caches existed.
@@ -112,6 +137,10 @@ and renamed atomically. New runtime writes no longer create pickle files.
   warning profile.
 - Real small, medium, and large historical cache bundles passed exact nested
   round-trip comparison.
+- The approved HF implementation passes 1,450 initialisation tests (11 skipped,
+  35 deselected, 12 subtests), 540 available mapping tests (1 skipped; two
+  modules unavailable because the required 20_USA REF balance export is
+  absent), and 259 dashboard tests.
 
 No existing cache or generated output has been removed. Full-system evidence is
 recorded in
@@ -137,11 +166,10 @@ green archive gate, so no archive manifest has been generated.
 
 ## Remaining execution gates
 
-1. Decide whether the 51 existing missing-branch groups and four compressed-
-   preflight SEED-008 findings are accepted out-of-scope baseline exceptions
-   for this storage migration or must be repaired first.
-2. Provide the seven missing economy templates if all 16 configured economies
-   must pass the full workflow gate.
-3. Resolve the prioritised human-format register entries.
-4. Only after the full-system gate is accepted, generate the exact checksummed
-   archive proposal and stop for explicit approval before moving any original.
+1. Optionally investigate the four compressed-preflight SEED-008 findings;
+   they are tracked separately and are not a Parquet prerequisite.
+2. Wait for the seven economy templates and 51 missing-branch groups to become
+   available through the corresponding LEAP-model work; do not synthesize them.
+3. Keep HF-005 and all historical-run retention decisions separate.
+4. Create no archive and move no original until the user explicitly approves
+   the named checksummed archive batch.

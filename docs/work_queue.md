@@ -2,8 +2,9 @@
 
 ## [44] Migrate machine-only tabular intermediates to Parquet across the connected system
 
-**Status: validation and reversible archive proposal complete 2026-08-16;
-explicit approval is required before creating the ZIP or moving originals.
+**Status: HF-001 through HF-004 approved, implemented, and validated
+2026-08-16. The separate reversible archive proposal still
+requires explicit approval before creating the ZIP or moving originals.
 Expected LEAP-model coverage gaps do not block it.**
 
 **Execution plan:**
@@ -97,6 +98,15 @@ checkpoint: exact real-cache benchmark round trips, 9 broader reference tests,
 93 supply/preflight contract tests passed (5 skipped), and the first full
 repository suite passed (1,446 passed, 11 skipped, 35 deselected, 12 subtests;
 99 existing warnings).
+
+The user approved HF-001 through HF-004 on 2026-08-16. Complete supply
+conservation lineage, baseline-seed findings, broad-common-row affected output,
+and anchor context/detail tables now use manifested Parquet/Zstandard. Compact
+breakdowns, grouped findings, samples, failure tables, summaries, and examples
+remain CSV for direct review. The dashboard reads the anchor Parquet details
+server-side and retains a temporary fallback for existing result folders that
+still contain the previous CSV filenames. HF-005 remains unchanged and is not
+part of this implementation approval.
 
 ### 2026-08-16 full-system validation checkpoint
 

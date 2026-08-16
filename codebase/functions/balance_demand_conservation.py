@@ -8,6 +8,8 @@ import re
 
 import pandas as pd
 
+from codebase.utilities.typed_storage import write_manifested_parquet
+
 
 CONSERVATION_KEY_COLUMNS = (
     "economy",
@@ -509,7 +511,14 @@ def write_balance_demand_conservation_table(rows: pd.DataFrame, output_path: Pat
     """Write one conservation support table and return its resolved path."""
     path = Path(output_path).resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
-    rows.to_csv(path, index=False)
+    if path.suffix.casefold() == ".parquet":
+        write_manifested_parquet(
+            rows,
+            path,
+            artifact_type="supply_reconciliation_conservation_lineage",
+        )
+    else:
+        rows.to_csv(path, index=False)
     return path
 
 

@@ -131,7 +131,8 @@ checks the explicit economy/template/artifact set, reruns shared duplicate,
 ID/share/coverage validation, compares post-assembly values with serialized
 values, and checks required evidence. Outputs are:
 
-- `supporting_files/baseline_seed_artifact_validation/baseline_seed_artifact_findings.csv`;
+- `supporting_files/baseline_seed_artifact_validation/baseline_seed_artifact_findings.parquet`;
+- `supporting_files/baseline_seed_artifact_validation/baseline_seed_artifact_findings_review.csv`;
 - `supporting_files/baseline_seed_artifact_validation/baseline_seed_artifact_summary.csv`;
 - `supporting_files/baseline_seed_artifact_validation/baseline_seed_artifact_manifest.json`.
 

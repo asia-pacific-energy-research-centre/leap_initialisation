@@ -52,7 +52,10 @@ are `disabled`, `audit`, `warn`, and `block`. `disabled` records a non-pass
 
 `run_baseline_seed_artifact_validation` writes, deterministically:
 
-- `baseline_seed_artifact_findings.csv`;
+- `baseline_seed_artifact_findings.parquet` (complete typed detail, with a
+  checksummed JSON storage manifest);
+- `baseline_seed_artifact_findings_review.csv` (group counts and representative
+  examples for human review);
 - `baseline_seed_artifact_summary.csv`;
 - `baseline_seed_artifact_manifest.json`.
 

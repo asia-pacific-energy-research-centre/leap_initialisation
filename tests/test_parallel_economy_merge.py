@@ -220,8 +220,8 @@ def test_merge_parallel_diagnostic_families_writes_ordered_parent_views(tmp_path
         {"economy": "12_NZ", "issue_type": "nz_issue"},
     ]
     assert pd.read_csv(outputs[conservation_name]).loc[0, "economy"] == "12_NZ"
-    empty_lineage = pd.read_csv(
-        outputs["supply_reconciliation_balance_demand_conservation_lineage.csv"]
+    empty_lineage = merge.read_manifested_parquet_file(
+        outputs["supply_reconciliation_balance_demand_conservation_lineage.parquet"]
     )
     assert empty_lineage.empty
     assert list(empty_lineage.columns) == ["economy"]

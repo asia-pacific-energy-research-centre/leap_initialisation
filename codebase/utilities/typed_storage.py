@@ -19,6 +19,8 @@ PARQUET_SCHEMA_VERSION = 1
 PARQUET_COMPRESSION = "zstd"
 TYPED_BUNDLE_FORMAT = "leap_typed_cache_bundle"
 TYPED_BUNDLE_VERSION = 1
+TABULAR_ARTIFACT_FORMAT = "leap_manifested_tabular_artifact"
+TABULAR_ARTIFACT_VERSION = 1
 
 
 def sha256_file(path: Path) -> str:
@@ -77,6 +79,48 @@ def write_json_atomic(payload: dict, output_path: Path) -> None:
     except Exception:
         temporary_path.unlink(missing_ok=True)
         raise
+
+
+def parquet_manifest_path(path: Path) -> Path:
+    """Return the sidecar manifest path for one authoritative Parquet table."""
+    path = Path(path)
+    return path.with_name(f"{path.name}.manifest.json")
+
+
+def write_manifested_parquet(
+    frame: pd.DataFrame,
+    output_path: Path,
+    *,
+    artifact_type: str,
+) -> dict:
+    """Atomically write a Parquet table and its versioned integrity manifest."""
+    artifact = write_parquet_atomic(frame, Path(output_path), index=False)
+    manifest = {
+        "storage_format": TABULAR_ARTIFACT_FORMAT,
+        "format_version": TABULAR_ARTIFACT_VERSION,
+        "artifact_type": str(artifact_type),
+        "artifact": artifact,
+    }
+    write_json_atomic(manifest, parquet_manifest_path(Path(output_path)))
+    return manifest
+
+
+def read_manifested_parquet_file(path: Path) -> pd.DataFrame:
+    """Read a Parquet table after validating its versioned sidecar manifest."""
+    path = Path(path)
+    manifest_path = parquet_manifest_path(path)
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Unreadable Parquet artifact manifest: {manifest_path}") from exc
+    expected_header = {
+        "storage_format": TABULAR_ARTIFACT_FORMAT,
+        "format_version": TABULAR_ARTIFACT_VERSION,
+    }
+    actual_header = {key: manifest.get(key) for key in expected_header}
+    if actual_header != expected_header:
+        raise ValueError(f"Unsupported Parquet artifact manifest: {manifest_path}")
+    return read_manifested_parquet(path, manifest.get("artifact", {}))
 
 
 def read_manifested_parquet(path: Path, artifact_manifest: dict) -> pd.DataFrame:

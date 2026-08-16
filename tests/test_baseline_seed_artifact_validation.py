@@ -170,6 +170,8 @@ def test_valid_complete_artifact_set_writes_shadow_pass_package(tmp_path: Path) 
     assert result.shadow_status == "SHADOW_PASS"
     assert result.accepted is True
     assert result.findings_path.exists()
+    assert result.findings_path.suffix == ".parquet"
+    assert result.findings_review_path.exists()
     assert result.summary_path.exists()
     assert result.manifest_path.exists()
     assert set(result.findings["check_id"]) == set(CHECK_IDS)
@@ -595,7 +597,11 @@ def test_manifest_is_complete_and_deterministic(tmp_path: Path) -> None:
     first_manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
     second_manifest = json.loads(second.manifest_path.read_text(encoding="utf-8"))
     assert first_manifest == second_manifest
-    assert first.findings_path.read_text(encoding="utf-8") == second.findings_path.read_text(encoding="utf-8")
+    pd.testing.assert_frame_equal(
+        pd.read_parquet(first.findings_path),
+        pd.read_parquet(second.findings_path),
+    )
+    assert first.findings_review_path.read_text(encoding="utf-8") == second.findings_review_path.read_text(encoding="utf-8")
     assert first.summary_path.read_text(encoding="utf-8") == second.summary_path.read_text(encoding="utf-8")
     assert set(first.findings.columns) == set(FINDING_COLUMNS)
     assert {item["check_id"] for item in first.manifest["configured_checks"]} == set(CHECK_IDS)

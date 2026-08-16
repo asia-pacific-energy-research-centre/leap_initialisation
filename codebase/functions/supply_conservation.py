@@ -8,6 +8,8 @@ import re
 
 import pandas as pd
 
+from codebase.utilities.typed_storage import write_manifested_parquet
+
 from codebase.functions import supply_data_pipeline
 
 
@@ -239,7 +241,14 @@ def build_results_update_closure_diagnostics(reconciliation_table: pd.DataFrame,
 def write_supply_diagnostic(rows: pd.DataFrame, output_path: Path | str) -> Path:
     path = Path(output_path).resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
-    rows.to_csv(path, index=False)
+    if path.suffix.casefold() == ".parquet":
+        write_manifested_parquet(
+            rows,
+            path,
+            artifact_type="supply_reconciliation_conservation_lineage",
+        )
+    else:
+        rows.to_csv(path, index=False)
     return path
 
 

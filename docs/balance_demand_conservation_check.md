@@ -77,7 +77,7 @@ proves the two sides drop the same sector and still reconcile.
 
 ## Drill-down outputs (inspectable, not pass/fail)
 
-Two support CSVs are written beside the totals diagnostic:
+Two drill-down artifacts are written beside the totals diagnostic:
 
 - `..._balance_demand_conservation_breakdown.csv` — explains each total
   difference. `source_to_expected_mapping` shows energy lost or gained while
@@ -85,11 +85,13 @@ Two support CSVs are written beside the totals diagnostic:
   `expected_mapping_to_actual_resolved` decomposes the produced total across
   `esto_product`. Summing the `difference` column for one economy/scenario/year
   reproduces the totals-diagnostic difference for that group.
-- `..._balance_demand_conservation_lineage.csv` — the underlying rows in labelled
+- `..._balance_demand_conservation_lineage.parquet` — the complete underlying rows in labelled
   stages: `original_source`, `expected_mapped`, `actual_resolved`, plus
   `source_scope` records for included/excluded ESTO or 9th rows. The
   `actual_resolved` stage is labelled as **produced demand**
-  (`source_system = PRODUCED_DEMAND`), not a LEAP readback.
+  (`source_system = PRODUCED_DEMAND`), not a LEAP readback. It uses typed
+  Parquet/Zstandard with a checksummed JSON manifest; the compact breakdown CSV
+  remains the normal human-review surface.
 
 The workflow does not retain a row-by-row link from every raw source row through
 allocation to its produced row, so the lineage says

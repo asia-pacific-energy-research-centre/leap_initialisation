@@ -10,7 +10,9 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 from codebase.utilities.typed_storage import (
+    read_manifested_parquet_file,
     read_typed_cache_bundle,
+    write_manifested_parquet,
     write_typed_cache_bundle_atomic,
 )
 
@@ -52,3 +54,20 @@ def test_typed_cache_bundle_rejects_corrupted_parquet(tmp_path):
 
     with pytest.raises(ValueError, match="hash mismatch"):
         read_typed_cache_bundle(bundle_path)
+
+
+def test_manifested_parquet_round_trip_preserves_table_contract(tmp_path):
+    frame = pd.DataFrame(
+        {
+            "label": pd.Series(["a", pd.NA], dtype="string"),
+            "year": pd.Series([2022, 2023], dtype="int64"),
+            "value": pd.Series([1.25, float("nan")], dtype="float64"),
+        }
+    )
+    path = tmp_path / "detail.parquet"
+
+    manifest = write_manifested_parquet(frame, path, artifact_type="test_detail")
+    restored = read_manifested_parquet_file(path)
+
+    assert manifest["artifact_type"] == "test_detail"
+    pd.testing.assert_frame_equal(restored, frame)

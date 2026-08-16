@@ -1,0 +1,7 @@
+artifact_id,rows,columns,source_bytes,parquet_bytes,reduction_percent,csv_read_seconds,parquet_write_and_integrity_read_seconds,exact_round_trip
+HF-001-balance-lineage,39582,21,8403478,467650,94.435,0.183,0.293,True
+HF-001-transformation-lineage,12681,19,2961832,341414,88.473,0.075,0.131,True
+HF-002-baseline-seed-findings,1436464,19,689911996,1625991,99.764,8.418,5.565,True
+HF-003-broad-common-row,145716,24,735953139,677139,99.908,9.212,1.583,True
+HF-004-anchor-validation-full,166916,39,2583887,808655,68.704,2.465,1.274,True
+HF-004-anchor-economy-mapped-context,94800,18,33179982,167531,99.495,0.565,0.534,True

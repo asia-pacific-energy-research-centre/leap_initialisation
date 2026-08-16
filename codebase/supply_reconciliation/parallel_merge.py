@@ -41,6 +41,10 @@ from codebase.functions.baseline_seed_validation import (
     build_validation_issue_groups,
 )
 from codebase.supply_reconciliation.parallel_runner import EconomyWorkerResult
+from codebase.utilities.typed_storage import (
+    read_manifested_parquet_file,
+    write_manifested_parquet,
+)
 
 _FINDINGS_COLUMNS = (
     "economy", "rule_id", "status", "severity", "blocking",
@@ -53,10 +57,10 @@ _PARALLEL_DIAGNOSTIC_FILENAMES = (
     "supply_reconciliation_source_diagnostics.csv",
     "supply_reconciliation_balance_demand_conservation.csv",
     "supply_reconciliation_balance_demand_conservation_breakdown.csv",
-    "supply_reconciliation_balance_demand_conservation_lineage.csv",
+    "supply_reconciliation_balance_demand_conservation_lineage.parquet",
     "supply_reconciliation_transformation_output_conservation.csv",
     "supply_reconciliation_transformation_output_conservation_breakdown.csv",
-    "supply_reconciliation_transformation_output_conservation_lineage.csv",
+    "supply_reconciliation_transformation_output_conservation_lineage.parquet",
 )
 
 
@@ -98,10 +102,12 @@ def _read_consolidated_findings_csv(path: Path) -> pd.DataFrame:
     return frame
 
 
-def _read_diagnostic_csv(path: Path) -> pd.DataFrame:
-    """Read one worker diagnostic, treating a header-only file as empty."""
+def _read_diagnostic_table(path: Path) -> pd.DataFrame:
+    """Read one worker CSV or manifested Parquet diagnostic."""
     if not path.exists():
         return pd.DataFrame()
+    if path.suffix.casefold() == ".parquet":
+        return read_manifested_parquet_file(path)
     try:
         return pd.read_csv(path)
     except pd.errors.EmptyDataError:
@@ -150,7 +156,7 @@ def merge_parallel_diagnostic_families(
                 / "checks"
                 / filename
             )
-            frame = _read_diagnostic_csv(worker_path)
+            frame = _read_diagnostic_table(worker_path)
             for column in frame.columns:
                 if column not in all_columns:
                     all_columns.append(column)
@@ -180,7 +186,14 @@ def merge_parallel_diagnostic_families(
             merged = pd.DataFrame(columns=columns)
 
         output_path = parent_checks_dir / filename
-        merged.to_csv(output_path, index=False)
+        if output_path.suffix.casefold() == ".parquet":
+            write_manifested_parquet(
+                merged,
+                output_path,
+                artifact_type="parallel_supply_reconciliation_conservation_lineage",
+            )
+        else:
+            merged.to_csv(output_path, index=False)
         outputs[filename] = output_path
 
     return outputs

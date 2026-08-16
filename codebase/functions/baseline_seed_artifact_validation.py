@@ -33,6 +33,7 @@ from codebase.functions.baseline_seed_structure_migration import (
 )
 from codebase.functions.leap_excel_io import LeapSheet, read_leap_sheet
 from codebase.functions.leap_expressions import parse_expression
+from codebase.utilities.typed_storage import write_manifested_parquet
 
 
 # --- Stable contract -------------------------------------------------------
@@ -116,6 +117,7 @@ class ArtifactValidationResult:
     summary: pd.DataFrame
     manifest: dict[str, object]
     findings_path: Path
+    findings_review_path: Path
     summary_path: Path
     manifest_path: Path
 
@@ -1038,6 +1040,50 @@ def _shadow_status(findings: pd.DataFrame) -> str:
     return "SHADOW_PASS"
 
 
+def _build_findings_review(findings: pd.DataFrame) -> pd.DataFrame:
+    """Return a compact human review table for non-pass artifact findings."""
+    review_columns = [
+        "check_id",
+        "status",
+        "economy",
+        "scenario",
+        "source_workflow",
+        "suggested_fix",
+        "finding_count",
+        "sample_branch_path",
+        "sample_variable",
+        "sample_year",
+        "sample_expected",
+        "sample_actual",
+        "sample_evidence",
+    ]
+    actionable = findings.loc[~findings["status"].eq("PASS")].copy()
+    if actionable.empty:
+        return pd.DataFrame(columns=review_columns)
+    group_columns = [
+        "check_id",
+        "status",
+        "economy",
+        "scenario",
+        "source_workflow",
+        "suggested_fix",
+    ]
+    review = (
+        actionable.groupby(group_columns, dropna=False, sort=True)
+        .agg(
+            finding_count=("status", "size"),
+            sample_branch_path=("branch_path", "first"),
+            sample_variable=("variable", "first"),
+            sample_year=("year", "first"),
+            sample_expected=("expected", "first"),
+            sample_actual=("actual", "first"),
+            sample_evidence=("evidence", "first"),
+        )
+        .reset_index()
+    )
+    return review[review_columns]
+
+
 def _file_records(paths_by_economy: Mapping[str, Path | str]) -> list[dict[str, str]]:
     return [
         {
@@ -1112,11 +1158,31 @@ def write_acceptance_package(
         "final_shadow_status": shadow_status,
         "accepted": not bool(ordered_findings["run_was_blocked"].any()),
     }
-    findings_path = output / "baseline_seed_artifact_findings.csv"
+    findings_path = output / "baseline_seed_artifact_findings.parquet"
+    findings_review_path = output / "baseline_seed_artifact_findings_review.csv"
     summary_path = output / "baseline_seed_artifact_summary.csv"
     manifest_path = output / "baseline_seed_artifact_manifest.json"
-    ordered_findings.to_csv(findings_path, index=False, lineterminator="\n")
+    findings_artifact = write_manifested_parquet(
+        ordered_findings,
+        findings_path,
+        artifact_type="baseline_seed_artifact_findings_detail",
+    )
+    findings_review = _build_findings_review(ordered_findings)
+    findings_review.to_csv(findings_review_path, index=False, lineterminator="\n")
     summary.to_csv(summary_path, index=False, lineterminator="\n")
+    manifest["output_artifacts"] = {
+        "findings_detail": findings_artifact,
+        "findings_review": {
+            "path": findings_review_path.name,
+            "format": "csv",
+            "row_count": int(len(findings_review)),
+        },
+        "summary": {
+            "path": summary_path.name,
+            "format": "csv",
+            "row_count": int(len(summary)),
+        },
+    }
     manifest_path.write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -1126,6 +1192,7 @@ def write_acceptance_package(
         summary=summary,
         manifest=manifest,
         findings_path=findings_path,
+        findings_review_path=findings_review_path,
         summary_path=summary_path,
         manifest_path=manifest_path,
     )
