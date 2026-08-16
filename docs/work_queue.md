@@ -4,6 +4,9 @@
 
 **Status: planned 2026-08-16; inventory and benchmark first.**
 
+**Execution plan:**
+`docs/prompts/parquet_migration_and_reversible_archive_execution.md`.
+
 This is the coordinating item for `leap_initialisation`, `leap_mappings`,
 `leap_dashboard`, the maintained web-app source in `leap_review_tools`, and the
 prepared `leap_review_web_app` runtime. Replace large tabular intermediate files
