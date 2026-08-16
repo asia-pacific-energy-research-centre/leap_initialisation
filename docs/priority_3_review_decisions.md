@@ -1,10 +1,11 @@
 # Priority 3 review decisions
 
-**Prepared:** 2026-08-13  
+**Prepared:** 2026-08-13; updated 2026-08-16
 **Purpose:** a human-review packet for the decisions deliberately excluded from
 the autonomous Priority 1–2 work.  
-**Status:** review only; this file does not replace the owning repositories'
-work queues.
+**Status:** mixed. Completed decisions are marked explicitly; unresolved items
+remain for review. This file does not replace the owning repositories' work
+queues.
 
 ## How to use this document
 
@@ -21,7 +22,7 @@ owning queue rather than creating another backlog here.
 | P3-01 | Keep standalone coke/blast detail beside inclusive own-use rows, or introduce replacement semantics | `leap_mappings` MAPQ-046 | **Approved: keep mapping detail; dashboard uses inclusive frontier** | Completed 2026-08-16 |
 | P3-02 | Classify baseline-seed findings consistently for full rebuilds, patches, and promotion | `leap_initialisation` queue [29] / INIT-005 | LEAP-structure migration lag remains non-blocking; genuine integrity defects retain their own severity | Policy confirmed 2026-08-16; better classifier still needed |
 | P3-03 | Surgical-patch severity | Folded into P3-02 | Use the same finding classification as full rebuilds, not a blanket stricter mode | No separate decision |
-| P3-04 | Cross-economy combined workbooks | `leap_initialisation` queue [26] | **Retired in sequential and parallel runs** | Decision confirmed 2026-08-16; implementation complete |
+| P3-04 | Cross-economy combined workbooks | `leap_initialisation` queue [26] | **Retired completely in sequential and parallel runs; per-economy seed assembly retained** | Decision confirmed and implemented 2026-08-16; no further review required |
 | P3-05 | How initialisation receives the generated mapping master (D3.4) | `leap_initialisation` INITQ-020; mapping semantics owned by `leap_mappings` | **Approved: prefer live `leap_mappings`; committed read-only fallback** | Decision confirmed 2026-08-16; implementation pending |
 | P3-06 | Generalize missing-9th-sector filling beyond gas processing | `leap_initialisation` queue [20] | Inventory first; approve family-specific rules individually | Required per model family |
 | P3-07 | Quarantine/delete old outputs, temporary directories, branches and worktrees | Mapping MAPQ-013/MAPQ-023; dashboard DASHQ-014 | Quarantine outputs; remove only proven-superseded Git objects | Required before destructive work |
@@ -214,19 +215,47 @@ patch cannot provide evidence required to prove that its changed scope is safe.
 ## P3-04 — Cross-economy combined workbooks
 
 **Decision:** **Retired 2026-08-16.** No sequential or parallel run needs a
-workbook containing multiple economies.
+workbook containing multiple economies. This is a completed decision, not a
+disabled feature awaiting later activation and not an opt-in output.
+
+### Terminology boundary
+
+Two similarly named concepts previously caused confusion:
+
+- **Retired:** a single `supply_recon_run_*.xlsx` workbook containing rows for
+  multiple economies, whether built directly by a sequential run or merged by
+  a parallel parent process.
+- **Required and retained:** one
+  `leap_import_baseline_seed_<economy>_*.xlsx` workbook for each economy. The
+  function `write_per_economy_combined_workbooks()` remains because “combined”
+  here means combining that economy's supply, transformation, transfers,
+  demand, and loss/own-use producer outputs into its final LEAP-import seed. It
+  never means combining economies.
+
+### Implementation completed
 
 The sequential `supply_recon_run_*.xlsx` writer, its archive/configuration
 controls, and the unused `merge_parallel_results_workbooks()` helper were
-removed. Their workbook-specific tests were removed with them. This does not
-remove `write_per_economy_combined_workbooks`: that function assembles the
-producer workbooks into each economy's final LEAP-import seed and remains part
-of the required output path.
+removed in commit `ccf8189`. Their workbook-specific tests and the
+template-matching diagnostics that existed only to inspect that retired QA
+workbook were removed with them.
+
+### Outputs that remain
 
 Parallel parent aggregation now remains deliberately CSV-only: validation
-findings, issue groups, source/template diagnostics, and conservation families.
-The authoritative workbook artifacts are the independent
-`leap_import_baseline_seed_<economy>_*.xlsx` files.
+findings, issue groups, source diagnostics, and conservation families. Both
+sequential and parallel execution retain the per-economy readiness checks,
+final-artifact validation, producer diagnostics, manifests, and provenance.
+The authoritative workbook artifacts are the independent per-economy seed
+files.
+
+### No remaining action
+
+Do not restore, activate, equivalence-test, or add an option for a cross-economy
+workbook unless a new user decision explicitly changes this policy. A future
+full pipeline run should validate the ordinary per-economy seed artifacts and
+CSV diagnostics only; it does not need a sequential-versus-parallel combined-
+workbook comparison.
 
 ---
 
