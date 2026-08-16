@@ -48,7 +48,7 @@ packages = [
 # behaviour.
 
 [repositories.leap_initialisation]
-commit = "d8c74432e325a815c544b7a73695103a7cfa96ec"
+commit = "20804380034a3e217b9faab2a6161a26582451ba"
 stage_dir = "leap_initialisation"
 on_sys_path = true
 paths = [
@@ -85,6 +85,7 @@ paths = [
     "codebase/utilities/esto_reference_loader.py",
     "codebase/utilities/fuel_catalog_preflight.py",
     "codebase/utilities/leap_balance_export_resolver.py",
+    "codebase/utilities/mapping_workbook_resolver.py",
     "codebase/utilities/leap_results_dashboard_balance.py",
     "codebase/utilities/leap_results_dashboard_utils.py",
     "codebase/utilities/leap_results_dashboard_v2/__init__.py",
@@ -119,7 +120,7 @@ paths = [
 # ``import LEAP_API_helpers``. Stage only that reviewed metadata module from
 # config/ on its own sys.path root; do not expose the rest of config/ as code.
 [repositories.leap_initialisation_config]
-commit = "d8c74432e325a815c544b7a73695103a7cfa96ec"
+commit = "20804380034a3e217b9faab2a6161a26582451ba"
 source_key = "leap_initialisation"
 stage_dir = "leap_initialisation_config"
 strip_prefix = "config"
