@@ -80,7 +80,7 @@ conda activate leap_utilities
 ```bash
 cd leap_utilities
 pip install -e .
-# environment.yml lists the same deps: pandas openpyxl matplotlib pywin32
+# environment.yml lists the same deps: pandas pyarrow openpyxl matplotlib pywin32
 ```
 
 Do the same in `leap_dashboard` if you are running the dashboard workflow:
