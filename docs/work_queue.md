@@ -1,5 +1,107 @@
 # Remaining work queue
 
+## [44] Migrate machine-only tabular intermediates to Parquet across the connected system
+
+**Status: planned 2026-08-16; inventory and benchmark first.**
+
+This is the coordinating item for `leap_initialisation`, `leap_mappings`,
+`leap_dashboard`, the maintained web-app source in `leap_review_tools`, and the
+prepared `leap_review_web_app` runtime. Replace large tabular intermediate files
+that are neither edited nor directly reviewed by people with a compact,
+typed, fast format. **Parquet with Zstandard compression is the default
+candidate; Python pickle is not.** Pickle is Python-specific, unsafe to load
+from untrusted sources, and fragile across library/code changes. Arrow IPC or
+Feather may be considered only for measured local-cache cases where it is
+materially faster and the larger size is acceptable.
+
+This is not permission for a blind extension rewrite. First create a generated
+inventory in each repository with: producer, every consumer, schema/key,
+current format and size, human-review status, publication/runtime-contract
+status, regeneration cost, and whether row order/dtypes are semantically
+important. Classify every candidate as one of:
+
+1. machine-only disposable intermediate/cache;
+2. machine-readable published contract;
+3. human review/audit artifact;
+4. browser-facing or downloadable web asset;
+5. source input owned outside the workflow.
+
+Begin with category 1. Keep CSV/XLSX for human review, editable configuration,
+LEAP import/export, audit summaries, and colleague handoff unless an equivalent
+human-facing view remains. Keep browser-facing JSON/HTML unless the server reads
+Parquet and emits browser-ready data; browser JavaScript must not acquire a new
+Parquet dependency merely to save server disk. Do not convert external source
+inputs in place.
+
+### Required implementation sequence
+
+1. Inventory and measure current disk use, read/write time, peak memory, and
+   downstream consumers in all participating repositories.
+2. Benchmark representative small, medium, and largest tables using CSV or
+   CSV.gz versus Parquet (`zstd`), including cold reads and the actual selected
+   columns/filters used by workflows.
+3. Define a versioned storage manifest: logical artifact name, schema, key,
+   format, compression, row count, byte size, SHA-256, producer commit/run ID,
+   and compatibility policy.
+4. Migrate producer and all consumers together, one artifact family at a time.
+   Use explicit dual-read compatibility only during a bounded transition; new
+   writes should have one authoritative format.
+5. Prove round-trip equivalence for keys, values, nulls, dtypes, category/date
+   semantics, and required ordering. Floating-point comparisons must use the
+   artifact's existing tolerance rather than string equality.
+6. Update runtime packaging and dependency closure. The web deployment must
+   include a compatible `pyarrow` build if it reads Parquet server-side, and
+   the runtime manifest must pin the migrated artifacts and hashes.
+7. Rerun repository suites and representative production workflows, compare
+   output dashboards/workbooks/manifests, then quarantine superseded files
+   through [43]/P3-07 rather than deleting them inside the migration commit.
+
+### Repository ownership
+
+- `leap_initialisation`: runtime caches, producer intermediates, and packaged
+  release inputs; never LEAP workbooks or human diagnostics.
+- `leap_mappings` MAPQ-047: mapping/conversion/lineage intermediates. Preserve
+  the current published Common ESTO contract until all consumers support its
+  replacement; existing `.csv.gz` files are already compressed and must win a
+  benchmark before migration.
+- `leap_dashboard` DASHQ-055: renderer-side caches/intermediates only. Static
+  HTML/JSON chart bundles remain browser-readable.
+- `leap_review_tools` and `leap_review_web_app`: source-side preparation and
+  server-only runtime data together. Never hand-edit the deployed snapshot;
+  regenerate it from committed sources and validate `source_manifest.json`.
+
+**Complete when:** every in-scope artifact has a recorded retain/migrate
+decision; migrated families have producer/consumer and round-trip tests;
+representative end-to-end outputs are equivalent; measured size and runtime
+results are published; portable/web runtimes install and load cleanly; no
+unsafe pickle is introduced; and superseded files have a separately approved,
+recoverable P3-07 disposition.
+
+## [43] Review and execute the deferred cleanup and mapping-authority decisions
+
+**Status: deferred for later human review, recorded 2026-08-16.**
+
+This coordination item covers only P3-07 and P3-08 in
+`docs/priority_3_review_decisions.md`. It does not transfer semantic ownership
+from the sibling repositories and does not authorize deletion.
+
+- **P3-07:** prepare exact, reversible cleanup batches for generated outputs,
+  session temporary directories, branches, and worktrees. The review must name
+  every target, why it is redundant, its recovery path, any junction/reparse
+  point, and the owning queue (mapping MAPQ-013/MAPQ-023 or dashboard
+  DASHQ-014). Generated-output quarantine and Git-object removal are separate
+  approvals.
+- **P3-08:** decide three independent mapping contracts: how LEAP no-data
+  evidence crosses repositories (MAPQ-019), which external ESTO definitions are
+  authoritative (MAPQ-020), and which named additive frontiers mappings publish
+  for dashboard consumers (MAPQ-021/CROSS-002). A pipeline completing cleanly
+  does not decide any of these semantics.
+
+**Complete when:** the user records each decision in the Priority 3 document;
+the owning mapping/dashboard decision logs and queues are updated; approved
+implementation and validation are committed in the owning repositories; and
+cleanup, if approved, includes a before/after inventory and recovery statement.
+
 ## [42] Restore comparison-basis options and mapping diagnostics in the web app
 
 **Status: completed 2026-08-13.**

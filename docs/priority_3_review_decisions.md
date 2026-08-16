@@ -25,8 +25,8 @@ owning queue rather than creating another backlog here.
 | P3-04 | Cross-economy combined workbooks | `leap_initialisation` queue [26] | **Retired completely in sequential and parallel runs; per-economy seed assembly retained** | Decision confirmed and implemented 2026-08-16; no further review required |
 | P3-05 | How initialisation receives the generated mapping master (D3.4) | `leap_initialisation` INITQ-020; mapping semantics owned by `leap_mappings` | **Approved: prefer live `leap_mappings`; committed read-only fallback** | Decision confirmed 2026-08-16; implementation pending |
 | P3-06 | Generalize missing-9th-sector filling beyond gas processing | `leap_initialisation` queue [20] | **Approved: carry the ESTO base year forward; where a projected 9th parent exists, allocate its residual by base-year shares** | Decision confirmed 2026-08-16; implementation pending |
-| P3-07 | Quarantine/delete old outputs, temporary directories, branches and worktrees | Mapping MAPQ-013/MAPQ-023; dashboard DASHQ-014 | Quarantine outputs; remove only proven-superseded Git objects | Required before destructive work |
-| P3-08 | Remaining mapping authority/frontier/input-contract choices | Mapping MAPQ-019/MAPQ-020/MAPQ-021 | Use published extracts and named frontiers; review ESTO definitions row by row | Required: domain semantics |
+| P3-07 | Quarantine/delete old outputs, temporary directories, branches and worktrees | Initialisation queue [43]; mapping MAPQ-013/MAPQ-023; dashboard DASHQ-014 | Quarantine outputs; remove only proven-superseded Git objects | Required before each destructive batch |
+| P3-08 | Remaining mapping authority/frontier/input-contract choices | Initialisation queue [43]; mapping MAPQ-019/MAPQ-020/MAPQ-021 | Use published extracts and named frontiers; review ESTO definitions row by row | Required: three separate domain decisions |
 
 ---
 
@@ -454,6 +454,26 @@ clearly identified so a modeller can replace it manually.
 **Decision:** ☐ Approve reversible quarantine ☐ Approve named Git cleanup
 ☐ Approve both ☐ Defer
 
+**Queued for later:** `docs/work_queue.md` [43]. This section is the review
+brief; the owning repository queues remain authoritative for target-level work.
+
+### What this decision is—and is not
+
+P3-07 is a controlled disposition review, not a request to “clean everything.”
+Four kinds of state look disposable but have different recovery and safety
+rules:
+
+| Work stream | Typical contents | Main risk | Required disposition |
+|---|---|---|---|
+| Generated results | Old mapping runs, large diagnostics, `_rebuilt` fallbacks | Removing reproducibility, rollback, or cited review evidence | Dated quarantine archive with manifest and restore path |
+| Session temporary data | `.codex_tmp_*`, scratch comparisons, agent staging folders | Deleting another session's only copy or following a junction | Identify owner/content/reparse points; remove only after redundancy is proved |
+| Git branches/worktrees | Merged or patch-equivalent branches, stale worktrees | Losing unique commits or recursively deleting a linked repository | Prove ancestry/patch equivalence and clean state; use exact `git worktree remove` |
+| Web runtime state | `.claude/`, runtime stats, generated deployment bundle | Removing deployment evidence or editing generated runtime independently of source | Classify source versus regenerated state; rebuild deployment from committed source |
+
+The new machine-intermediate storage job in `docs/work_queue.md` [44] is
+separate. Changing CSV intermediates to Parquet does not authorize deletion of
+the old files; their disposition returns here after equivalence is proven.
+
 ### Items currently preserved
 
 - Large/stale mapping results covered by mapping MAPQ-013, including old
@@ -482,6 +502,31 @@ Use two separate approvals:
 Temporary directories belonging to another agent should be removed only after
 that agent's contents are inspected and confirmed redundant.
 
+### Review packet required before approval
+
+For each proposed batch, provide one narrow table containing:
+
+- exact absolute and repository-relative path;
+- file/directory/branch/worktree type and current size;
+- producer, known consumers, and citations from active docs/tests;
+- last modification and, for outputs, producing run ID/commit where available;
+- tracked/untracked/ignored status;
+- duplicate/superseded evidence, not merely a similar filename;
+- junction, symlink, or other reparse-point status and target;
+- proposed action: retain, quarantine, remove Git reference, or delete;
+- recovery method and the validation performed after the action.
+
+Approval should name a batch ID. “Approve cleanup” must never be interpreted as
+permission to delete later-discovered paths or a whole `results/`, `outputs/`,
+or worktree-parent directory.
+
+### What can be done without further oversight
+
+An agent may inventory, hash, measure, trace consumers, check Git ancestry,
+identify reparse points, and prepare a dry-run/quarantine plan. Moving,
+deleting, pruning, or removing branches/worktrees waits for the corresponding
+named approval.
+
 ### Evidence and completion
 
 - Mapping outputs: `../leap_mappings/docs/results_folder_cleanup_candidates.md`
@@ -497,6 +542,26 @@ that agent's contents are inspected and confirmed redundant.
 
 **Decision:** record choices separately below.
 
+**Queued for later:** `docs/work_queue.md` [43]. P3-08 is three independent
+semantic contracts. None should be approved implicitly because another one is.
+
+### Why these choices affect results
+
+- A **no-data flag** can mean “checked and absent,” “source export unavailable,”
+  or “not evaluated.” Collapsing those states can make missing coverage look
+  like a genuine zero.
+- A **definition authority** determines what an ESTO code means when internal
+  labels, external definitions, and observed row use disagree. This can change
+  mapping targets and review conclusions.
+- An **additive frontier** selects one non-overlapping layer of a hierarchy for
+  summation. Choosing the wrong frontier can double count a parent beside its
+  children or omit a valid inclusive boundary even when every individual row
+  is correct.
+
+The mapping repository owns these meanings. Initialisation and dashboard code
+may consume published states/frontiers, but must not infer or repair them from
+labels.
+
 ### P3-08A — LEAP no-data input contract (MAPQ-019)
 
 **Decision:** ☐ Published extract ☐ Direct sibling-repository read ☐ Defer
@@ -507,6 +572,19 @@ keeps runs reproducible and lets incomplete economy coverage be stated in the
 artifact contract. Available balance exports do not yet cover all 21 economies,
 so missing coverage must remain `unavailable`, not false/no-data.
 
+The extract should distinguish at least:
+
+- `present_nonzero` — the exact LEAP branch/fuel has nonzero evidence;
+- `present_zero` — it was checked and is zero;
+- `absent_in_available_export` — the relevant export was checked but the row is
+  absent;
+- `export_unavailable` — no qualifying export exists for the economy/scope;
+- `not_evaluated` or `error` — the check did not establish a result.
+
+It should record economy, export scope/date, source file hash, logical branch
+identity, units, and producer commit. A missing economy must never default to
+`absent_in_available_export`.
+
 ### P3-08B — ESTO external definition authority (MAPQ-020)
 
 **Decision:** ☐ Review current working set ☐ Defer with named rows/reasons
@@ -515,6 +593,12 @@ Recommendation: re-derive the review queue against the latest completed mapping
 run before reviewing it. Decide each remaining definition row individually,
 with source citations and rejected interpretations preserved. Do not carry the
 old quoted row counts forward or accept candidates in bulk.
+
+The review workbook is evidence, not an automatic authority. For every row,
+show the current mapping meaning, external definition/citation, observed source
+examples, downstream Common target(s), and the consequence of accept/reject.
+Possible outcomes are `accept_external_definition`, `retain_current_meaning`,
+`needs_source_owner`, or `defer`; a deferred row remains visibly unresolved.
 
 ### P3-08C — Additive frontier ownership (MAPQ-021 / CROSS-002)
 
@@ -527,12 +611,38 @@ frontier for a chart but must never infer hierarchy from labels. Each chart
 type should name its required frontier, and the metadata should make summing
 across frontier layers impossible or visibly invalid.
 
+For example, a broad energy-balance total may need an inclusive transformation
+boundary, while a diagnostic drill-down needs the component identities that
+explain it. Both views can coexist, but only one named member set is additive
+within a given chart/total. Published metadata should include a stable frontier
+ID, purpose/scope, member Common row IDs, excluded overlapping rows, source
+systems covered, and a source-once/conservation check.
+
+### Decision effects
+
+| Choice | If approved | If deferred |
+|---|---|---|
+| P3-08A published extract | Mapping no-data QA can expand reproducibly for available economies | Keep `leap_side_has_data` unknown; do not infer absence |
+| P3-08B row-level authority review | Approved definition changes can become narrowly tested mapping work | Existing meanings remain; unresolved rows stay visible |
+| P3-08C named frontiers | Dashboard views select mapping-published additive sets with explicit IDs | Keep existing reviewed frontiers; add no label-derived variants |
+
+### What can be done without further oversight
+
+An agent may regenerate the current review population, trace definitions and
+consumers, build a non-operative extract prototype, and measure candidate
+frontiers. It may not confirm an ESTO definition, mark missing LEAP evidence as
+true absence, or publish a new additive frontier without the corresponding
+human decision.
+
 ### Completion
 
 Record each choice in the mapping decision log and update the published mapping
 metadata or cross-repository contract. These are semantic decisions: a clean
 pipeline run is evidence that processing completed, not evidence that a choice
 is conceptually correct.
+
+Each sub-decision completes separately with its own tests and dated evidence;
+P3-08 is not an all-or-nothing gate.
 
 ---
 
