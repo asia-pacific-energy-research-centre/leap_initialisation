@@ -95,6 +95,10 @@ from codebase.utilities.leap_results_dashboard_utils import (
 )
 from codebase.scrapbook.utilities import load_augmented_reference_tables
 from codebase.utilities.workflow_common import archive_config_dir_once_per_day
+from codebase.utilities.typed_storage import (
+    read_typed_cache_bundle,
+    write_typed_cache_bundle_atomic,
+)
 from codebase.supply_reconciliation.utils import (
     _canonical_transformation_fuel_label,
     _load_code_to_name_table,
@@ -1336,7 +1340,7 @@ def run_results_linked_transformation_supply_workflow(
     timer.lap("setup")
     _bd_cache_hit = False
     if TRANSFORMATION_SUPPLY_CACHE_ENABLED:
-        import hashlib as _hashlib, json as _json, pickle as _pickle
+        import hashlib as _hashlib, json as _json
         _bd_cache_dir = runtime_dir / "balance_demand_cache"
         _bd_cache_dir.mkdir(parents=True, exist_ok=True)
         _leap_results_dir = _resolve(LEAP_RESULTS_TABLES_DIR)
@@ -1358,11 +1362,10 @@ def run_results_linked_transformation_supply_workflow(
             "config_mtimes": _config_mtimes2,
         }, sort_keys=True)
         _bd_cache_key = _hashlib.md5(_bd_key_payload.encode()).hexdigest()[:16]
-        _bd_cache_file = _bd_cache_dir / f"{_bd_cache_key}.pkl"
+        _bd_cache_file = _bd_cache_dir / f"{_bd_cache_key}.parquet_cache"
         if _bd_cache_file.exists():
             try:
-                with open(_bd_cache_file, "rb") as _f:
-                    _bd = _pickle.load(_f)
+                _bd = read_typed_cache_bundle(_bd_cache_file)
                 comparison_long_df = _bd["comparison_long_df"]
                 mapping_status_df = _bd["mapping_status_df"]
                 balance_demand_issues = _bd["balance_demand_issues"]
@@ -1394,15 +1397,14 @@ def run_results_linked_transformation_supply_workflow(
         )
         if TRANSFORMATION_SUPPLY_CACHE_ENABLED:
             try:
-                with open(_bd_cache_file, "wb") as _f:
-                    _pickle.dump({
-                        "comparison_long_df": comparison_long_df,
-                        "mapping_status_df": mapping_status_df,
-                        "balance_demand_issues": balance_demand_issues,
-                        "balance_matching_diagnostics": balance_matching_diagnostics,
-                        "sector_demand_table": sector_demand_table,
-                        "demand_table": demand_table,
-                    }, _f, protocol=_pickle.HIGHEST_PROTOCOL)
+                write_typed_cache_bundle_atomic({
+                    "comparison_long_df": comparison_long_df,
+                    "mapping_status_df": mapping_status_df,
+                    "balance_demand_issues": balance_demand_issues,
+                    "balance_matching_diagnostics": balance_matching_diagnostics,
+                    "sector_demand_table": sector_demand_table,
+                    "demand_table": demand_table,
+                }, _bd_cache_file)
                 print(f"[INFO] Saved balance demand cache (key={_bd_cache_key}).")
             except Exception as _bd_exc:
                 print(f"[WARN] Could not write balance demand cache: {_bd_exc}.")
@@ -1572,7 +1574,7 @@ def run_results_linked_transformation_supply_workflow(
         print(f"[WARN] Balance-demand breakdown/lineage prototype could not run: {exc}")
     _ts_cache_hit = False
     if TRANSFORMATION_SUPPLY_CACHE_ENABLED:
-        import hashlib as _hashlib, json as _json, pickle as _pickle
+        import hashlib as _hashlib, json as _json
         _ts_cache_dir = runtime_dir / "transform_supply_cache"
         _ts_cache_dir.mkdir(parents=True, exist_ok=True)
         _config_dir = REPO_ROOT / "config"
@@ -1593,11 +1595,10 @@ def run_results_linked_transformation_supply_workflow(
             "config_mtimes": _config_mtimes,
         }, sort_keys=True)
         _ts_cache_key = _hashlib.md5(_ts_key_payload.encode()).hexdigest()[:16]
-        _ts_cache_file = _ts_cache_dir / f"{_ts_cache_key}.pkl"
+        _ts_cache_file = _ts_cache_dir / f"{_ts_cache_key}.parquet_cache"
         if _ts_cache_file.exists():
             try:
-                with open(_ts_cache_file, "rb") as _f:
-                    _ts = _pickle.load(_f)
+                _ts = read_typed_cache_bundle(_ts_cache_file)
                 transformation_table = _ts["transformation_table"]
                 transformation_sector_table = _ts["transformation_sector_table"]
                 transformation_target_rows = _ts["transformation_target_rows"]
@@ -1633,18 +1634,17 @@ def run_results_linked_transformation_supply_workflow(
         )
         if TRANSFORMATION_SUPPLY_CACHE_ENABLED:
             try:
-                with open(_ts_cache_file, "wb") as _f:
-                    _pickle.dump({
-                        "transformation_table": transformation_table,
-                        "transformation_sector_table": transformation_sector_table,
-                        "transformation_target_rows": transformation_target_rows,
-                        "transformation_process_records": transformation_process_records,
-                        "supply_projection_table": supply_projection_table,
-                        "supply_primary_table": supply_primary_table,
-                        "assets": assets,
-                        "supply_constraints": supply_constraints,
-                        "transformation_constraints": transformation_constraints,
-                    }, _f, protocol=_pickle.HIGHEST_PROTOCOL)
+                write_typed_cache_bundle_atomic({
+                    "transformation_table": transformation_table,
+                    "transformation_sector_table": transformation_sector_table,
+                    "transformation_target_rows": transformation_target_rows,
+                    "transformation_process_records": transformation_process_records,
+                    "supply_projection_table": supply_projection_table,
+                    "supply_primary_table": supply_primary_table,
+                    "assets": assets,
+                    "supply_constraints": supply_constraints,
+                    "transformation_constraints": transformation_constraints,
+                }, _ts_cache_file)
                 print(f"[INFO] Saved transformation/supply cache (key={_ts_cache_key}).")
             except Exception as _cache_exc:
                 print(f"[WARN] Could not write transformation/supply cache: {_cache_exc}.")

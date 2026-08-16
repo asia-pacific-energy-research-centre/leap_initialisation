@@ -13,6 +13,13 @@ import pandas as pd
 
 from codebase.mappings.canonical_mapping import load_canonical_pairs
 from codebase.utilities.master_config import config_table_exists, read_config_table
+from codebase.utilities.typed_storage import (
+    PARQUET_COMPRESSION,
+    PARQUET_SCHEMA_VERSION,
+    read_manifested_parquet,
+    write_json_atomic,
+    write_parquet_atomic,
+)
 from codebase.utilities.leap_results_dashboard_utils import (
     apply_explicit_sector_reassignments,
     load_explicit_sector_fuel_mappings,
@@ -136,12 +143,27 @@ def load_augmented_reference_tables(
         },
     }
     cache_key = _build_reference_cache_key(cache_payload)
-    esto_cache = cache_dir / f"{cache_key}_esto.csv"
-    ninth_cache = cache_dir / f"{cache_key}_ninth.csv"
+    esto_cache = cache_dir / f"{cache_key}_esto.parquet"
+    ninth_cache = cache_dir / f"{cache_key}_ninth.parquet"
     meta_cache = cache_dir / f"{cache_key}_meta.json"
 
     if esto_cache.exists() and ninth_cache.exists() and meta_cache.exists():
-        return read_config_table(esto_cache), read_config_table(ninth_cache)
+        try:
+            cache_metadata = json.loads(meta_cache.read_text(encoding="utf-8"))
+            cache_storage = cache_metadata.get("cache_storage", {})
+            if cache_storage != {
+                "format": "parquet",
+                "compression": PARQUET_COMPRESSION,
+                "schema_version": PARQUET_SCHEMA_VERSION,
+            }:
+                raise ValueError("unsupported augmented-reference cache storage metadata")
+            artifacts = cache_metadata.get("artifacts", {})
+            return (
+                read_manifested_parquet(esto_cache, artifacts.get("esto", {})),
+                read_manifested_parquet(ninth_cache, artifacts.get("ninth", {})),
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"[WARN] Ignoring invalid augmented-reference cache {cache_key}: {exc}")
 
     esto_df = read_config_table(esto_path)
     ninth_df = read_config_table(ninth_path, low_memory=False)
@@ -197,7 +219,17 @@ def load_augmented_reference_tables(
             canonical_pairs=canonical_pairs,
         )
 
-    esto_df.to_csv(esto_cache, index=False)
-    ninth_df.to_csv(ninth_cache, index=False)
-    meta_cache.write_text(json.dumps(cache_payload, indent=2))
+    cache_metadata = {
+        **cache_payload,
+        "cache_storage": {
+            "format": "parquet",
+            "compression": PARQUET_COMPRESSION,
+            "schema_version": PARQUET_SCHEMA_VERSION,
+        },
+        "artifacts": {
+            "esto": write_parquet_atomic(esto_df, esto_cache, index=False),
+            "ninth": write_parquet_atomic(ninth_df, ninth_cache, index=False),
+        },
+    }
+    write_json_atomic(cache_metadata, meta_cache)
     return esto_df, ninth_df

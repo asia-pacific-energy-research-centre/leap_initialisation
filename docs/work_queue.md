@@ -2,7 +2,8 @@
 
 ## [44] Migrate machine-only tabular intermediates to Parquet across the connected system
 
-**Status: planned 2026-08-16; inventory and benchmark first.**
+**Status: in progress 2026-08-16; initialisation cache pilot implemented and
+focused validation passed.**
 
 **Execution plan:**
 `docs/prompts/parquet_migration_and_reversible_archive_execution.md`.
@@ -79,6 +80,23 @@ representative end-to-end outputs are equivalent; measured size and runtime
 results are published; portable/web runtimes install and load cleanly; no
 unsafe pickle is introduced; and superseded files have a separately approved,
 recoverable P3-07 disposition.
+
+### 2026-08-16 implementation checkpoint
+
+The generated five-repository inventory, benchmark report, and human-format
+decision register are now maintained in
+`docs/parquet_migration_inventory_and_benchmark.md`,
+`docs/parquet_human_format_decision_register.md`, and
+`docs/diagnostics/parquet_migration/`. The first initialisation families are
+implemented: augmented ESTO/9th reference caches and supply-reconciliation
+balance/transform cache bundles now write versioned Parquet/Zstandard plus
+checksummed JSON manifests instead of CSV cache copies or pickle. Existing
+files remain untouched pending the archive gate. Verification at this
+checkpoint: exact real-cache benchmark round trips, 9 broader reference tests,
+93 supply/preflight contract tests passed (5 skipped), and the full repository
+suite passed (1,446 passed, 11 skipped, 35 deselected, 12 subtests; 99 existing
+warnings). Cross-repository family migration, full workflows, deployment
+regeneration, and archive approval remain open.
 
 ## [43] Review and execute the deferred cleanup and mapping-authority decisions
 
