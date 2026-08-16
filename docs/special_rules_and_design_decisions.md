@@ -1,5 +1,45 @@
 # Special rules and design decisions
 
+## INIT-017: Missing 9th children use base-year carry or parent residuals
+
+**Status:** Decided 2026-08-16; generalized implementation pending
+**Owner:** leap_initialisation
+**Type:** Projection gap fill / parent-child additivity
+**Affected areas:** `FILL_IN_MISSING_9TH_SECTORS`; workflow ownership routing;
+projection fill diagnostics
+
+### Current rule
+
+When an economy-specific ESTO sector/fuel child is active in the configured
+base year, has no direct 9th projection value, and is not already produced by
+another initialisation workflow, use a deliberately simple provisional fill.
+
+If there is no nonzero projected 9th parent total, carry the child's ESTO
+base-year value forward unchanged. If a projected 9th parent exists, preserve
+all direct 9th children and calculate the remaining parent residual for each
+year. Allocate that residual only among missing, base-year-active children
+using their product-specific signed ESTO base-year shares. Direct and filled
+children must sum to the projected parent in every year; in this case the base
+values are allocation weights rather than literal flat projections.
+
+If no usable economy-specific base-year profile exists, or the signed profile
+nets to zero, leave the residual unallocated and report it. Do not use APEC
+shares or an equal split. Every fill must identify its owning workflow and emit
+a reviewable method/input/residual/share diagnostic. With
+`FILL_IN_MISSING_9TH_SECTORS=False`, direct 9th output remains unchanged.
+
+### Rationale
+
+The provisional behavior is intentionally obvious: a modeller can recognize a
+flat carried series, understand that it exists because the 9th value was
+missing, and replace it manually. A projected parent remains authoritative, so
+the simplicity rule must not break parent-child additivity.
+
+### History
+
+- 2026-08-16: User selected parent-residual allocation over scaling direct 9th
+  children or allowing children to disagree with the projected parent.
+
 ## INIT-016: Non-specified own-use other-petroleum residual
 
 **Status:** Confirmed

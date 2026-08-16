@@ -24,7 +24,7 @@ owning queue rather than creating another backlog here.
 | P3-03 | Surgical-patch severity | Folded into P3-02 | Use the same finding classification as full rebuilds, not a blanket stricter mode | No separate decision |
 | P3-04 | Cross-economy combined workbooks | `leap_initialisation` queue [26] | **Retired completely in sequential and parallel runs; per-economy seed assembly retained** | Decision confirmed and implemented 2026-08-16; no further review required |
 | P3-05 | How initialisation receives the generated mapping master (D3.4) | `leap_initialisation` INITQ-020; mapping semantics owned by `leap_mappings` | **Approved: prefer live `leap_mappings`; committed read-only fallback** | Decision confirmed 2026-08-16; implementation pending |
-| P3-06 | Generalize missing-9th-sector filling beyond gas processing | `leap_initialisation` queue [20] | Inventory first; approve family-specific rules individually | Required per model family |
+| P3-06 | Generalize missing-9th-sector filling beyond gas processing | `leap_initialisation` queue [20] | **Approved: carry the ESTO base year forward; where a projected 9th parent exists, allocate its residual by base-year shares** | Decision confirmed 2026-08-16; implementation pending |
 | P3-07 | Quarantine/delete old outputs, temporary directories, branches and worktrees | Mapping MAPQ-013/MAPQ-023; dashboard DASHQ-014 | Quarantine outputs; remove only proven-superseded Git objects | Required before destructive work |
 | P3-08 | Remaining mapping authority/frontier/input-contract choices | Mapping MAPQ-019/MAPQ-020/MAPQ-021 | Use published extracts and named frontiers; review ESTO definitions row by row | Required: domain semantics |
 
@@ -377,8 +377,8 @@ path quoting while keeping the warning prominent.
 
 ## P3-06 — General missing-9th-sector modeling
 
-**Decision:** ☐ Approve inventory/design only ☐ Approve selected families
-☐ Enable a general fill rule ☐ Defer
+**Decision:** ☒ Enable the general carry/residual rule below (approved
+2026-08-16)
 
 ### Current behavior
 
@@ -389,35 +389,63 @@ outputs. A nonzero aggregate with no economy-specific parent or child evidence
 is left unallocated and written to diagnostics; it does not borrow APEC ratios
 or use an equal split.
 
-### Why one universal rule is unsafe
+### Approved rule
 
-Different families may require fixed values, historical ratios, capacity
-assumptions, external drivers, or an explicit decision to remain unprojected.
-Supply, transformation, transfers, demand, and losses/own-use can also overlap
-unless ownership is assigned before filling.
+The user selected a deliberately simple and visible provisional rule:
 
-### Recommendation
+1. Identify a sector/fuel child that is active in the economy's ESTO base year,
+   has no direct 9th projection value, and is not already produced by another
+   initialisation workflow.
+2. If there is **no nonzero projected 9th parent total**, carry that child's
+   ESTO base-year value forward unchanged through the projection horizon.
+3. If the 9th parent has a projected value, preserve every directly projected
+   9th child and calculate each year's residual:
 
-Approve only the inventory and ownership-routing phase now. For every candidate
-pair record:
+   `residual = projected parent - sum(directly projected children)`
+
+4. Allocate the residual only among missing, ESTO-base-year-active children,
+   using their product-specific signed ESTO base-year shares. Direct and filled
+   children must sum to the projected parent in every year.
+5. If no usable economy-specific base-year profile exists, or the signed
+   profile nets to zero, leave the residual unallocated and emit a prominent
+   diagnostic. Do not borrow APEC shares or invent an equal split.
+
+The parent constraint takes precedence over a literal flat carry. When a parent
+exists, the carried base-year values are allocation weights for its residual,
+not fixed projected quantities.
+
+### Rationale
+
+Simplicity and transparency are intentional. A modeller should be able to spot
+a flat carried series, understand immediately that it exists because the 9th
+value was missing, and manually replace it. Parent-constrained cases remain
+additive and therefore do not corrupt the published 9th aggregate.
+
+### Required implementation evidence
+
+For every filled pair record:
 
 - ESTO base-year activity and 9th presence;
 - whether an initialisation producer already emits it;
 - exactly one owning workflow;
-- the proposed projection method and why it fits that family;
+- whether the method was `base_year_constant` or
+  `parent_residual_base_year_share`;
+- the parent value, direct-child sum, residual, and allocation share where a
+  parent constraint applied;
 - conservation, continuity, and duplicate-output evidence.
 
-Then approve families individually. Keep `FILL_IN_MISSING_9TH_SECTORS` opt-in
-until each approved family has diagnostics and tests. Do not enable a generic
-carry-forward rule across all sectors.
+Keep `FILL_IN_MISSING_9TH_SECTORS` opt-in during generalized implementation and
+verification. A fill must never overwrite a direct 9th child and must remain
+clearly identified so a modeller can replace it manually.
 
 ### Evidence and completion
 
 - Authority: `docs/work_queue.md` [20].
 - Initial supported family: `09.06` gas processing only.
-- Completion is incremental: a family is complete when ownership is unique,
-  the rule is documented, false-mode output is unchanged, and conservation,
-  base-year continuity, and no-duplicate tests pass.
+- Completion requires unique workflow ownership, unchanged output when the
+  flag is false, diagnostics for every fill, flat-value tests without a
+  projected parent, parent-residual additivity tests, base-year continuity,
+  conservation, and no-duplicate-output tests.
 
 ---
 

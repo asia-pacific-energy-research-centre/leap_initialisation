@@ -751,21 +751,37 @@ workbook values remain open. See
 
 ## [20] General opt-in projection of ESTO-active sectors missing from 9th
 
-**Status: planned; first narrow 09.06 implementation landed 2026-07-27.**
+**Status: general rule decided 2026-08-16; implementation pending beyond the
+first narrow 09.06 case.**
+
+Missing children use the economy's ESTO base-year value as the simple
+provisional projection. Without a nonzero projected 9th parent, that value is
+carried forward unchanged. Where a projected parent exists, direct 9th children
+remain authoritative and the remaining parent residual is allocated only
+across missing, base-year-active children using their product-specific signed
+ESTO base-year shares. Direct plus filled children must equal the parent each
+year. If no usable economy profile exists or it nets to zero, leave the
+residual unallocated and diagnose it; never borrow APEC shares or use an equal
+split.
+
+The rule is deliberately easy for a modeller to recognize and manually
+replace. Every fill must record its method, inputs, residual/share where
+relevant, and owning workflow. `FILL_IN_MISSING_9TH_SECTORS=False` must continue
+to preserve the direct 9th result exactly while the generalized implementation
+is verified.
 
 Build the broader `FILL_IN_MISSING_9TH_SECTORS` capability. When enabled, it
 must identify an ESTO sector/fuel pair that is active in the configured base
 year, absent from the 9th projection, and not already produced by the LEAP
 initialisation output. It must then route the pair to the workflow that owns
-that sector and apply an explicit, sector-appropriate projection rule.
+that sector and apply the approved base-year carry or parent-residual rule.
 
 The initial implementation is deliberately limited to missing `09.06`
 gas-processing children: it carries each missing child flow/product's base-year
 ESTO value forward unchanged, allowing the existing gas process builder to
 retain the corresponding production, efficiency, feedstocks, and outputs.
-This is a foundation, **not** a universal imputation rule. Other sectors may
-need fixed base-year values, ratios, capacity assumptions, external drivers, or
-must remain unprojected; add them only with a documented owner and tests.
+This is the first implemented family of the general rule. Add other families
+only with a documented owner, visible fill diagnostics, and tests.
 
 Projection-allocation guard added 2026-07-28: a nonzero `09.06` or `09.08`
 aggregate with neither parent nor child economy-specific base-year evidence is
