@@ -145,12 +145,16 @@ def prepare_supply_assets(
             projection_years=PROJECTION_YEAR_RANGE,
             sign_stable_flows=PROJECTION_SIGN_STABLE_MODE,
             strict_conservation=strict_conservation,
+            fill_missing_ninth_sectors=workflow_cfg.FILL_IN_MISSING_9TH_SECTORS,
+            owner_workflow="supply_workflow",
         ),
     )
     projection_lookup = build_projection_lookup(projection_df)
     global SUPPLY_PROJECTION_LOOKUP
     SUPPLY_PROJECTION_LOOKUP = projection_lookup
-    if SAVE_PROJECTION_DIAGNOSTICS and projection_diagnostics is not None:
+    if (
+        SAVE_PROJECTION_DIAGNOSTICS or workflow_cfg.FILL_IN_MISSING_9TH_SECTORS
+    ) and projection_diagnostics is not None:
         if not projection_diagnostics.empty:
             PROJECTION_DIAGNOSTICS_PATH.parent.mkdir(parents=True, exist_ok=True)
             projection_diagnostics.to_csv(PROJECTION_DIAGNOSTICS_PATH, index=False)

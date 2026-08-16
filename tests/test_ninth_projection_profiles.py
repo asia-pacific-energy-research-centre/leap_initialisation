@@ -742,6 +742,145 @@ def test_gas_parent_residual_without_any_active_child_profile_is_skipped(tmp_pat
     assert "gas_parent_residual_no_active_child_profile" in set(diagnostics["diagnostic_type"])
 
 
+def _general_transfer_fill_fixture(tmp_path: Path, *, parent_2023: float = 200.0):
+    esto = pd.DataFrame(
+        [
+            {"economy": "01AUS", "flows": "08 Transfers", "products": "08.01 Natural gas", "is_subtotal": True, "2022": 100.0},
+            {"economy": "01AUS", "flows": "08.01 Recycled products", "products": "08.01 Natural gas", "is_subtotal": False, "2022": 30.0},
+            {"economy": "01AUS", "flows": "08.02 Interproduct transfers", "products": "08.01 Natural gas", "is_subtotal": False, "2022": 70.0},
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {"economy": "01_AUS", "scenarios": "reference", "sectors": "08_transfers", "sub1sectors": "x", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x", "fuels": "08_01_natural_gas", "subfuels": "x", "subtotal_results": True, 2023: parent_2023},
+            {"economy": "01_AUS", "scenarios": "reference", "sectors": "08_transfers", "sub1sectors": "08_01_recycled_products", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x", "fuels": "08_01_natural_gas", "subfuels": "x", "subtotal_results": False, 2023: 80.0},
+        ]
+    )
+    mapping_path = tmp_path / "general_mapping.xlsx"
+    pd.DataFrame(
+        [
+            {"ninth_sector": "08_transfers", "ninth_fuel": "08_01_natural_gas", "esto_flow": "08 Transfers", "esto_product": "08.01 Natural gas"},
+            {"ninth_sector": "08_01_recycled_products", "ninth_fuel": "08_01_natural_gas", "esto_flow": "08.01 Recycled products", "esto_product": "08.01 Natural gas"},
+        ]
+    ).to_excel(mapping_path, index=False)
+    return esto, ninth, mapping_path
+
+
+def test_general_missing_child_uses_parent_residual_and_preserves_direct_child(tmp_path: Path) -> None:
+    esto, ninth, mapping_path = _general_transfer_fill_fixture(tmp_path)
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth,
+        esto,
+        mapping_path,
+        base_year=2022,
+        projection_years=[2023],
+        fill_missing_ninth_sectors=True,
+        owner_workflow="transfers_workflow",
+        strict_conservation=True,
+    )
+
+    values = projection.set_index("esto_flow")[2023].to_dict()
+    assert values["08.01 Recycled products"] == pytest.approx(80.0)
+    assert values["08.02 Interproduct transfers"] == pytest.approx(120.0)
+    assert sum(values.values()) == pytest.approx(200.0)
+    fill = diagnostics[diagnostics["diagnostic_type"].eq("missing_ninth_sector_fill_applied")]
+    assert set(fill["allocation_method"]) == {"parent_residual_base_year_share"}
+    assert fill.iloc[0]["owner_workflow"] == "transfers_workflow"
+    assert fill.iloc[0]["residual_value"] == pytest.approx(120.0)
+    assert fill.iloc[0]["allocation_share"] == pytest.approx(1.0)
+    assert fill.iloc[0]["conservation_error"] == pytest.approx(0.0)
+    assert fill.iloc[0]["duplicate_output_count"] == 0
+
+
+def test_general_missing_child_carries_base_year_when_parent_has_no_projection(tmp_path: Path) -> None:
+    esto, ninth, mapping_path = _general_transfer_fill_fixture(tmp_path, parent_2023=0.0)
+    ninth = ninth[ninth["subtotal_results"].eq(True)].copy()
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth,
+        esto,
+        mapping_path,
+        base_year=2022,
+        projection_years=[2023],
+        fill_missing_ninth_sectors=True,
+        owner_workflow="transfers_workflow",
+    )
+
+    values = projection.set_index("esto_flow")[2023].to_dict()
+    assert values == {
+        "08.01 Recycled products": pytest.approx(30.0),
+        "08.02 Interproduct transfers": pytest.approx(70.0),
+    }
+    fill = diagnostics[diagnostics["diagnostic_type"].eq("missing_ninth_sector_fill_applied")]
+    assert set(fill["allocation_method"]) == {"base_year_constant"}
+    assert set(fill["base_year_continuity_error"]) == {0.0}
+
+
+def test_general_missing_child_flag_off_preserves_direct_ninth_result(tmp_path: Path) -> None:
+    esto, ninth, mapping_path = _general_transfer_fill_fixture(tmp_path)
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth,
+        esto,
+        mapping_path,
+        base_year=2022,
+        projection_years=[2023],
+        fill_missing_ninth_sectors=False,
+        owner_workflow="transfers_workflow",
+    )
+
+    assert projection.set_index("esto_flow")[2023].to_dict() == {
+        "08.01 Recycled products": pytest.approx(80.0)
+    }
+    assert not diagnostics.get("diagnostic_type", pd.Series(dtype=object)).eq(
+        "missing_ninth_sector_fill_applied"
+    ).any()
+
+
+def test_general_missing_child_wrong_owner_does_not_fill(tmp_path: Path) -> None:
+    esto, ninth, mapping_path = _general_transfer_fill_fixture(tmp_path)
+
+    projection, _ = build_esto_projection_table(
+        ninth,
+        esto,
+        mapping_path,
+        base_year=2022,
+        projection_years=[2023],
+        fill_missing_ninth_sectors=True,
+        owner_workflow="transformation_workflow",
+    )
+
+    assert projection.set_index("esto_flow")[2023].to_dict() == {
+        "08.01 Recycled products": pytest.approx(80.0)
+    }
+
+
+def test_general_missing_children_with_zero_signed_profile_remain_unallocated(tmp_path: Path) -> None:
+    esto, ninth, mapping_path = _general_transfer_fill_fixture(tmp_path)
+    esto.loc[esto["flows"].eq("08.01 Recycled products"), "2022"] = 30.0
+    esto.loc[esto["flows"].eq("08.02 Interproduct transfers"), "2022"] = -30.0
+    ninth = ninth[ninth["subtotal_results"].eq(True)].copy()
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth,
+        esto,
+        mapping_path,
+        base_year=2022,
+        projection_years=[2023],
+        fill_missing_ninth_sectors=True,
+        owner_workflow="transfers_workflow",
+    )
+
+    assert projection.empty
+    unallocated = diagnostics[
+        diagnostics["diagnostic_type"].eq("missing_ninth_sector_fill_unallocated")
+    ]
+    assert len(unallocated) == 1
+    assert unallocated.iloc[0]["allocation_method"] == "unallocated_signed_profile_net_zero"
+    assert unallocated.iloc[0]["residual_value"] == pytest.approx(200.0)
+
+
 def test_apec_aggregate_is_a_stress_fixture_not_a_production_fallback() -> None:
     repo = Path(__file__).resolve().parents[1]
     ninth_path = repo / "data" / "9th merged_file_energy_00_APEC_20251106.csv"

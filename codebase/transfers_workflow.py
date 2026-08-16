@@ -662,7 +662,7 @@ def build_transfer_data_for_scenario(scenario: str) -> tuple[pd.DataFrame, list[
         historical,
         core.BASE_YEAR,
     )
-    projection_df, _ = build_with_conservation_policy(
+    projection_df, projection_diagnostics = build_with_conservation_policy(
         f"transfers projection (scenario={scenario!r})",
         lambda strict_conservation: core.build_esto_projection_table(
             ninth_data=ninth_transfer_data,
@@ -673,8 +673,18 @@ def build_transfer_data_for_scenario(scenario: str) -> tuple[pd.DataFrame, list[
             scenario=scenario,
             sign_stable_flows="all",
             strict_conservation=strict_conservation,
+            fill_missing_ninth_sectors=workflow_cfg.FILL_IN_MISSING_9TH_SECTORS,
+            owner_workflow="transfers_workflow",
         ),
     )
+    if projection_diagnostics is not None and not projection_diagnostics.empty:
+        diagnostic_path = (
+            Path(core.EXPORT_OUTPUT_DIR)
+            / f"transfer_projection_diagnostics_{str(scenario).strip().lower()}.csv"
+        )
+        diagnostic_path.parent.mkdir(parents=True, exist_ok=True)
+        projection_diagnostics.to_csv(diagnostic_path, index=False)
+        print(f"Saved transfer projection diagnostics to {diagnostic_path}")
     projection_df = _route_transfer_projection_to_historical_flow(
         projection_df,
         historical,

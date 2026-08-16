@@ -1827,6 +1827,36 @@ def save_unallocated_projection_diagnostics(
     return output_path
 
 
+def save_missing_ninth_fill_diagnostics(
+    projection_diagnostics: pd.DataFrame | None,
+    scenario: str,
+    output_dir: Path | str | None = None,
+) -> Path | None:
+    """Write every applied or unallocated missing-sector fill decision."""
+    if (
+        projection_diagnostics is None
+        or projection_diagnostics.empty
+        or "diagnostic_type" not in projection_diagnostics.columns
+    ):
+        return None
+    mask = projection_diagnostics["diagnostic_type"].astype(str).str.contains(
+        "missing_ninth|gas_missing_ninth|gas_parent_residual",
+        regex=True,
+    )
+    inventory = projection_diagnostics.loc[mask].copy()
+    if inventory.empty:
+        return None
+    scenario_token = re.sub(
+        r"[^a-z0-9]+", "_", str(scenario or "scenario").strip().lower()
+    ).strip("_")
+    diagnostics_dir = Path(output_dir or EXPORT_OUTPUT_DIR) / "supporting_files" / "diagnostics"
+    diagnostics_dir.mkdir(parents=True, exist_ok=True)
+    output_path = diagnostics_dir / f"transformation_missing_ninth_sector_fills_{scenario_token}.csv"
+    inventory.to_csv(output_path, index=False)
+    print(f"Saved missing-9th-sector fill inventory to {output_path}")
+    return output_path
+
+
 
 
 def prepare_transformation_assets() -> None:
@@ -1897,18 +1927,25 @@ def prepare_transformation_assets() -> None:
             sign_stable_flows=projection_sign_stable_flows,
             strict_conservation=strict_conservation,
             fill_missing_ninth_sectors=FILL_IN_MISSING_9TH_SECTORS,
+            owner_workflow="transformation_workflow",
         ),
     )
     esto_data = merge_projection_into_esto(
         esto_data, projection_df, PROJECTION_YEAR_RANGE
     )
     esto_year_cols = sorted([col for col in esto_data.columns if str(col).isdigit()])
-    if SAVE_PROJECTION_DIAGNOSTICS and projection_diagnostics is not None:
+    if (
+        SAVE_PROJECTION_DIAGNOSTICS or FILL_IN_MISSING_9TH_SECTORS
+    ) and projection_diagnostics is not None:
         if not projection_diagnostics.empty:
             os.makedirs(EXPORT_OUTPUT_DIR, exist_ok=True)
             projection_diagnostics.to_csv(PROJECTION_DIAGNOSTICS_PATH, index=False)
             print(f"Saved projection fallback report to {PROJECTION_DIAGNOSTICS_PATH}")
     save_unallocated_projection_diagnostics(
+        projection_diagnostics,
+        scenario="reference",
+    )
+    save_missing_ninth_fill_diagnostics(
         projection_diagnostics,
         scenario="reference",
     )

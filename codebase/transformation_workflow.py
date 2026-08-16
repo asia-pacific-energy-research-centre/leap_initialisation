@@ -218,9 +218,14 @@ def collect_transformation_rows(
                 sign_stable_flows=projection_sign_stable_flows,
                 strict_conservation=strict_conservation,
                 fill_missing_ninth_sectors=core.FILL_IN_MISSING_9TH_SECTORS,
+                owner_workflow="transformation_workflow",
             ),
         )
         core.save_unallocated_projection_diagnostics(
+            projection_diagnostics,
+            scenario=normalized_projection_scenario,
+        )
+        core.save_missing_ninth_fill_diagnostics(
             projection_diagnostics,
             scenario=normalized_projection_scenario,
         )

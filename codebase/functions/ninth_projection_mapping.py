@@ -40,11 +40,106 @@ NINTH_SECTOR_COLS = [
 ]
 NINTH_FUEL_COLS = ["subfuels", "fuels"]
 
+MISSING_NINTH_FLOW_OWNER_BY_PREFIX = {
+    "01": "supply_workflow",
+    "02": "supply_workflow",
+    "03": "supply_workflow",
+    "04": "supply_workflow",
+    "05": "supply_workflow",
+    "06": "supply_workflow",
+    "07": "supply_workflow",
+    "08": "transfers_workflow",
+    "09": "transformation_workflow",
+    "10": "other_loss_own_use_proxy_workflow",
+    "11": "supply_workflow",
+    "12": "other_loss_own_use_proxy_workflow",
+    "13": "aggregated_demand_workflow",
+    "14": "aggregated_demand_workflow",
+    "15": "aggregated_demand_workflow",
+    "16": "aggregated_demand_workflow",
+    "17": "aggregated_demand_workflow",
+}
+
 
 def _esto_flow_family(value: object) -> str:
     """Return the dotted parent code shared by an ESTO flow family."""
     match = re.match(r"^\s*(\d{2}\.\d{2})(?:\.|\s|$)", str(value or ""))
     return match.group(1) if match else ""
+
+
+def _esto_flow_code(value: object) -> str:
+    return str(value or "").strip().split(" ", 1)[0]
+
+
+def _missing_ninth_owner(esto_flow: object) -> str:
+    return MISSING_NINTH_FLOW_OWNER_BY_PREFIX.get(_esto_flow_code(esto_flow)[:2], "unassigned")
+
+
+def build_general_child_flow_profiles(
+    esto_df: pd.DataFrame,
+    mapping_df: pd.DataFrame,
+    base_year: int,
+) -> pd.DataFrame:
+    """Return signed active-child profiles beneath mapped ESTO parent flows."""
+    columns = [
+        "economy_key", "esto_product", "child_flow", "base_value",
+        "base_value_abs", "profile_parent_flow", "owner_workflow",
+    ]
+    if esto_df is None or esto_df.empty or mapping_df is None or mapping_df.empty:
+        return pd.DataFrame(columns=columns)
+    year_col = base_year if base_year in esto_df.columns else str(base_year)
+    if year_col not in esto_df.columns:
+        return pd.DataFrame(columns=columns)
+    mapped_parent_flows = sorted({
+        str(value).strip() for value in mapping_df.get("esto_flow", pd.Series(dtype=object))
+        if str(value).strip()
+    })
+    parent_codes = {
+        flow: _esto_flow_code(flow)
+        for flow in mapped_parent_flows
+    }
+    working = esto_df.copy()
+    if "is_subtotal" in working.columns:
+        subtotal = (
+            working["is_subtotal"].fillna(False).astype(str).str.strip().str.lower()
+            .isin({"1", "true", "yes", "y", "t"})
+        )
+        working = working.loc[~subtotal].copy()
+    rows: list[dict[str, object]] = []
+    for _, row in working.iterrows():
+        child_flow = str(row.get("flows", "")).strip()
+        child_code = _esto_flow_code(child_flow)
+        candidate_parents = [
+            (flow, code) for flow, code in parent_codes.items()
+            if code and child_code.startswith(code + ".")
+        ]
+        if not candidate_parents:
+            continue
+        parent_flow, _ = max(candidate_parents, key=lambda item: len(item[1]))
+        value = float(pd.to_numeric(pd.Series([row.get(year_col)]), errors="coerce").fillna(0.0).iloc[0])
+        if abs(value) <= 1e-12:
+            continue
+        rows.append({
+            "economy_key": normalize_economy_key(row.get("economy")),
+            "esto_product": str(row.get("products", "")).strip(),
+            "child_flow": child_flow,
+            "base_value": value,
+            "base_value_abs": abs(value),
+            "profile_parent_flow": parent_flow,
+            "owner_workflow": _missing_ninth_owner(parent_flow),
+        })
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    return (
+        pd.DataFrame(rows)
+        .groupby(
+            ["economy_key", "esto_product", "child_flow", "profile_parent_flow", "owner_workflow"],
+            dropna=False,
+        )[["base_value", "base_value_abs"]]
+        .sum()
+        .reset_index()
+        .reindex(columns=columns)
+    )
 
 
 def normalize_economy_key(value: str | None) -> str:
@@ -556,22 +651,33 @@ def _allocate_gas_parent_residuals(
             for _, profile_row in missing_children.iterrows():
                 child = parent_row.to_dict()
                 child["esto_flow"] = profile_row["child_flow"]
-                child["gas_allocation_method"] = "base_year_constant_missing_ninth_fill"
+                child["gas_allocation_method"] = "base_year_constant"
                 for year in year_cols:
                     child[year] = float(profile_row["base_value"])
+                    diagnostics.append(
+                        {
+                            "economy_key": economy_key,
+                            "esto_product": product,
+                            "parent_flow": GAS_PARENT_ESTO_FLOW,
+                            "child_flow": profile_row["child_flow"],
+                            "base_year_value": float(profile_row["base_value"]),
+                            "direct_ninth_presence": False,
+                            "existing_output_presence": False,
+                            "owner_workflow": "transformation_workflow",
+                            "diagnostic_type": "gas_missing_ninth_child_base_year_fill",
+                            "allocation_method": "base_year_constant",
+                            "year": int(year),
+                            "parent_value": float(parent_row[year]),
+                            "direct_children_value": float(direct_by_flow[year].sum())
+                            if year in direct_by_flow.columns else 0.0,
+                            "residual_value": pd.NA,
+                            "allocation_share": pd.NA,
+                            "conservation_error": pd.NA,
+                            "base_year_continuity_error": 0.0,
+                            "duplicate_output_count": 0,
+                        }
+                    )
                 generated_rows.append(child)
-            if not missing_children.empty:
-                diagnostics.append(
-                    {
-                        "economy_key": economy_key,
-                        "esto_product": product,
-                        "parent_flow": GAS_PARENT_ESTO_FLOW,
-                        "diagnostic_type": "gas_missing_ninth_child_base_year_fill",
-                        "allocation_method": "base_year_constant_missing_ninth_fill",
-                        "direct_children": "; ".join(sorted(direct_flows)),
-                        "missing_children": "; ".join(missing_children["child_flow"].astype(str)),
-                    }
-                )
             continue
         if not any(abs(value) > tolerance for value in residual.values()):
             continue
@@ -600,30 +706,225 @@ def _allocate_gas_parent_residuals(
             )
         profile_total = float(missing_children["base_value"].sum())
         if abs(profile_total) <= tolerance:
-            raise ValueError(
-                "Gas processing residual cannot be allocated because the base-year-active "
-                f"missing child profile nets to zero: economy={economy_key}, product={product}."
-            )
+            for year in year_cols:
+                diagnostics.append(
+                    {
+                        "economy_key": economy_key,
+                        "esto_product": product,
+                        "parent_flow": GAS_PARENT_ESTO_FLOW,
+                        "diagnostic_type": "gas_parent_residual_unallocated",
+                        "allocation_method": "unallocated_signed_profile_net_zero",
+                        "year": int(year),
+                        "parent_value": float(parent_row[year]),
+                        "direct_children_value": float(direct_by_flow[year].sum())
+                        if year in direct_by_flow.columns else 0.0,
+                        "residual_value": residual[year],
+                        "profile_net_value": profile_total,
+                        "owner_workflow": "transformation_workflow",
+                    }
+                )
+            continue
         for _, profile_row in missing_children.iterrows():
             child = parent_row.to_dict()
             child["esto_flow"] = profile_row["child_flow"]
-            child["gas_allocation_method"] = "parent_residual_signed_profile_scale"
+            child["gas_allocation_method"] = "parent_residual_base_year_share"
             scale = float(profile_row["base_value"]) / profile_total
             for year in year_cols:
                 child[year] = residual[year] * scale
+                diagnostics.append(
+                    {
+                        "economy_key": economy_key,
+                        "esto_product": product,
+                        "parent_flow": GAS_PARENT_ESTO_FLOW,
+                        "child_flow": profile_row["child_flow"],
+                        "base_year_value": float(profile_row["base_value"]),
+                        "direct_ninth_presence": False,
+                        "existing_output_presence": False,
+                        "owner_workflow": "transformation_workflow",
+                        "diagnostic_type": "gas_parent_residual_allocated",
+                        "allocation_method": "parent_residual_base_year_share",
+                        "year": int(year),
+                        "parent_value": float(parent_row[year]),
+                        "direct_children_value": float(direct_by_flow[year].sum())
+                        if year in direct_by_flow.columns else 0.0,
+                        "residual_value": residual[year],
+                        "allocation_share": scale,
+                        "conservation_error": 0.0,
+                        "base_year_continuity_error": pd.NA,
+                        "duplicate_output_count": 0,
+                    }
+                )
             generated_rows.append(child)
-        diagnostics.append(
-            {
-                "economy_key": economy_key,
-                "esto_product": product,
-                "parent_flow": GAS_PARENT_ESTO_FLOW,
-                "diagnostic_type": "gas_parent_residual_allocated",
-                "allocation_method": "parent_residual_signed_profile_scale",
-                "direct_children": "; ".join(sorted(direct_flows)),
-                "missing_children": "; ".join(missing_children["child_flow"].astype(str)),
-            }
-        )
     return pd.concat([retained, pd.DataFrame(generated_rows)], ignore_index=True, sort=False), pd.DataFrame(diagnostics)
+
+
+def _fill_general_missing_ninth_children(
+    allocated_rows: pd.DataFrame,
+    child_profiles: pd.DataFrame | None,
+    year_cols: Sequence[int],
+    *,
+    owner_workflow: str,
+    existing_output_pairs: pd.DataFrame | None = None,
+    tolerance: float = 1e-9,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Fill non-gas/coal missing children using the approved carry/residual rule."""
+    if allocated_rows.empty or child_profiles is None or child_profiles.empty or not year_cols:
+        return allocated_rows, pd.DataFrame()
+    owner = str(owner_workflow or "").strip()
+    profile = child_profiles[
+        child_profiles["owner_workflow"].astype(str).eq(owner)
+        & ~child_profiles["profile_parent_flow"].isin(
+            {GAS_PARENT_ESTO_FLOW, COAL_PARENT_ESTO_FLOW}
+        )
+    ].copy()
+    if profile.empty:
+        return allocated_rows, pd.DataFrame()
+
+    existing_pairs: set[tuple[str, str, str]] = set()
+    existing_rows = pd.DataFrame()
+    if existing_output_pairs is not None and not existing_output_pairs.empty:
+        required = {"economy_key", "esto_flow", "esto_product"}
+        if required.issubset(existing_output_pairs.columns):
+            existing_rows = existing_output_pairs.copy()
+            existing_pairs = {
+                (str(row["economy_key"]), str(row["esto_flow"]), str(row["esto_product"]))
+                for _, row in existing_output_pairs.iterrows()
+            }
+
+    parent_flows = set(profile["profile_parent_flow"].astype(str))
+    parent_mask = (
+        allocated_rows["esto_flow"].astype(str).isin(parent_flows)
+        & ~allocated_rows["economy_key"].astype(str).eq("00APEC")
+    )
+    if not parent_mask.any():
+        return allocated_rows, pd.DataFrame()
+
+    retained = allocated_rows.loc[~parent_mask].copy()
+    generated: list[dict[str, object]] = []
+    diagnostics: list[dict[str, object]] = []
+    for _, parent_row in allocated_rows.loc[parent_mask].iterrows():
+        economy = str(parent_row["economy_key"])
+        product = str(parent_row["esto_product"]).strip()
+        parent_flow = str(parent_row["esto_flow"]).strip()
+        active = profile[
+            profile["economy_key"].astype(str).eq(economy)
+            & profile["esto_product"].astype(str).eq(product)
+            & profile["profile_parent_flow"].astype(str).eq(parent_flow)
+            & profile["base_value_abs"].gt(tolerance)
+        ].copy()
+        child_flows = set(active["child_flow"].astype(str))
+        parent_code = _esto_flow_code(parent_flow)
+        direct = retained[
+            retained["economy_key"].astype(str).eq(economy)
+            & retained["esto_product"].astype(str).eq(product)
+            & retained["esto_flow"].map(_esto_flow_code).str.startswith(parent_code + ".")
+        ]
+        direct_flows = set(direct["esto_flow"].astype(str))
+        produced_elsewhere = {
+            flow for flow in child_flows
+            if (economy, flow, product) in existing_pairs
+        }
+        missing = active[
+            ~active["child_flow"].astype(str).isin(direct_flows | produced_elsewhere)
+        ].copy()
+        if missing.empty:
+            continue
+
+        external_direct = existing_rows[
+            existing_rows["economy_key"].astype(str).eq(economy)
+            & existing_rows["esto_product"].astype(str).eq(product)
+            & existing_rows["esto_flow"].astype(str).isin(produced_elsewhere)
+        ] if not existing_rows.empty else pd.DataFrame()
+        direct_by_year = {
+            year: float(
+                pd.to_numeric(direct.get(year, pd.Series(dtype=float)), errors="coerce").fillna(0.0).sum()
+                + pd.to_numeric(external_direct.get(year, pd.Series(dtype=float)), errors="coerce").fillna(0.0).sum()
+            )
+            for year in year_cols
+        }
+        parent_by_year = {year: float(parent_row.get(year, 0.0) or 0.0) for year in year_cols}
+        parent_has_projection = any(abs(value) > tolerance for value in parent_by_year.values())
+        profile_total = float(missing["base_value"].sum())
+        if parent_has_projection and abs(profile_total) <= tolerance:
+            for year in year_cols:
+                residual = parent_by_year[year] - direct_by_year[year]
+                diagnostics.append({
+                    "economy_key": economy,
+                    "esto_product": product,
+                    "parent_flow": parent_flow,
+                    "child_flow": "",
+                    "base_year_value": profile_total,
+                    "direct_ninth_presence": bool(direct_flows),
+                    "existing_output_presence": bool(produced_elsewhere),
+                    "owner_workflow": owner,
+                    "diagnostic_type": "missing_ninth_sector_fill_unallocated",
+                    "allocation_method": "unallocated_signed_profile_net_zero",
+                    "year": int(year),
+                    "parent_value": parent_by_year[year],
+                    "direct_children_value": direct_by_year[year],
+                    "residual_value": residual,
+                    "allocation_share": pd.NA,
+                    "conservation_error": residual,
+                    "base_year_continuity_error": pd.NA,
+                    "duplicate_output_count": 0,
+                })
+            continue
+
+        method = "parent_residual_base_year_share" if parent_has_projection else "base_year_constant"
+        for _, profile_row in missing.iterrows():
+            child = parent_row.to_dict()
+            child_flow = str(profile_row["child_flow"])
+            child["esto_flow"] = child_flow
+            child["missing_ninth_fill_method"] = method
+            share = float(profile_row["base_value"]) / profile_total if parent_has_projection else pd.NA
+            for year in year_cols:
+                residual = parent_by_year[year] - direct_by_year[year]
+                child_value = (
+                    residual * float(share)
+                    if parent_has_projection
+                    else float(profile_row["base_value"])
+                )
+                child[year] = child_value
+                diagnostics.append({
+                    "economy_key": economy,
+                    "esto_product": product,
+                    "parent_flow": parent_flow,
+                    "child_flow": child_flow,
+                    "base_year_value": float(profile_row["base_value"]),
+                    "direct_ninth_presence": child_flow in direct_flows,
+                    "existing_output_presence": child_flow in produced_elsewhere,
+                    "owner_workflow": owner,
+                    "diagnostic_type": "missing_ninth_sector_fill_applied",
+                    "allocation_method": method,
+                    "year": int(year),
+                    "parent_value": parent_by_year[year],
+                    "direct_children_value": direct_by_year[year],
+                    "residual_value": residual if parent_has_projection else pd.NA,
+                    "allocation_share": share,
+                    "conservation_error": 0.0 if parent_has_projection else pd.NA,
+                    "base_year_continuity_error": child_value - float(profile_row["base_value"])
+                    if int(year) == min(int(value) for value in year_cols)
+                    else pd.NA,
+                    "duplicate_output_count": 0,
+                })
+            generated.append(child)
+
+    generated_frame = pd.DataFrame(generated)
+    duplicate_keys = ["economy_key", "esto_flow", "esto_product"]
+    if not generated_frame.empty:
+        generated_counts = generated_frame.groupby(duplicate_keys, dropna=False).size()
+        duplicate_generated = generated_counts[generated_counts.gt(1)]
+        retained_keys = set(map(tuple, retained[duplicate_keys].astype(str).to_numpy()))
+        generated_keys = set(map(tuple, generated_frame[duplicate_keys].astype(str).to_numpy()))
+        collisions = retained_keys & generated_keys
+        if not duplicate_generated.empty or collisions:
+            duplicate_examples = list(duplicate_generated.index) + sorted(collisions)
+            raise ValueError(
+                "General missing-9th fill produced duplicate ESTO output pairs: "
+                + "; ".join(str(key) for key in duplicate_examples[:10])
+            )
+    result = pd.concat([retained, generated_frame], ignore_index=True, sort=False)
+    return result, pd.DataFrame(diagnostics)
 
 
 def _build_parent_child_reconciliation_diagnostics(
@@ -704,7 +1005,10 @@ def allocate_ninth_projection_to_esto(
     return_allocation_provenance: bool = False,
     child_flow_profiles: pd.DataFrame | None = None,
     gas_child_flow_profiles: pd.DataFrame | None = None,
+    general_child_flow_profiles: pd.DataFrame | None = None,
     fill_missing_ninth_sectors: bool = False,
+    owner_workflow: str = "",
+    existing_output_pairs: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame] | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Allocate 9th projections to ESTO pairs using base-year share rules.
 
@@ -1069,8 +1373,37 @@ def allocate_ninth_projection_to_esto(
         merged,
         gas_child_flow_profiles,
         year_cols,
-        fill_missing_ninth_sectors=fill_missing_ninth_sectors,
+        fill_missing_ninth_sectors=(
+            fill_missing_ninth_sectors
+            and str(owner_workflow or "").strip() in {"", "transformation_workflow"}
+        ),
     )
+    general_fill_diagnostics = pd.DataFrame()
+    general_parent_source_keys: set[tuple[str, str, str]] = set()
+    if fill_missing_ninth_sectors:
+        if general_child_flow_profiles is not None and not general_child_flow_profiles.empty:
+            owned_parent_flows = set(
+                general_child_flow_profiles.loc[
+                    general_child_flow_profiles["owner_workflow"].astype(str).eq(
+                        str(owner_workflow or "").strip()
+                    ),
+                    "profile_parent_flow",
+                ].astype(str)
+            ) - {GAS_PARENT_ESTO_FLOW, COAL_PARENT_ESTO_FLOW}
+            general_parent_source_keys = set(map(
+                tuple,
+                merged.loc[
+                    merged["esto_flow"].astype(str).isin(owned_parent_flows),
+                    ["economy_key", "ninth_sector", "ninth_fuel"],
+                ].astype(str).to_numpy(),
+            ))
+        merged, general_fill_diagnostics = _fill_general_missing_ninth_children(
+            merged,
+            general_child_flow_profiles,
+            year_cols,
+            owner_workflow=owner_workflow,
+            existing_output_pairs=existing_output_pairs,
+        )
     parent_child_diagnostics = _build_parent_child_reconciliation_diagnostics(
         source_by_pair,
         merged,
@@ -1144,10 +1477,18 @@ def allocate_ninth_projection_to_esto(
             sort=False,
         )
 
+    conservation_source = source_by_pair.loc[
+        ~source_by_pair["ninth_sector"].eq(GAS_PARENT_NINTH_SECTOR)
+    ].copy()
+    if general_parent_source_keys and not conservation_source.empty:
+        source_keys = pd.MultiIndex.from_frame(
+            conservation_source[["economy_key", "ninth_sector", "ninth_fuel"]].astype(str)
+        )
+        conservation_source = conservation_source.loc[
+            ~source_keys.isin(pd.MultiIndex.from_tuples(sorted(general_parent_source_keys)))
+        ]
     conservation_diagnostics = _build_conservation_diagnostics(
-        source_by_pair.loc[
-            ~source_by_pair["ninth_sector"].eq(GAS_PARENT_NINTH_SECTOR)
-        ],
+        conservation_source,
         merged,
         year_cols,
         tolerance=1e-6,
@@ -1187,6 +1528,12 @@ def allocate_ninth_projection_to_esto(
     if not gas_profile_diagnostics.empty:
         diagnostics = pd.concat(
             [diagnostics, gas_profile_diagnostics],
+            ignore_index=True,
+            sort=False,
+        )
+    if not general_fill_diagnostics.empty:
+        diagnostics = pd.concat(
+            [diagnostics, general_fill_diagnostics],
             ignore_index=True,
             sort=False,
         )
@@ -1388,6 +1735,8 @@ def build_esto_projection_table(
     sign_stable_flows: Iterable[str] | str | None = None,
     strict_conservation: bool = False,
     fill_missing_ninth_sectors: bool = False,
+    owner_workflow: str = "",
+    existing_output_pairs: pd.DataFrame | None = None,
     return_allocation_provenance: bool = False,
 ) -> (
     tuple[pd.DataFrame, pd.DataFrame]
@@ -1421,11 +1770,16 @@ def build_esto_projection_table(
     if mapping_df.empty:
         empty = (pd.DataFrame(), pd.DataFrame())
         return (*empty, pd.DataFrame()) if return_allocation_provenance else empty
+    general_child_flow_profiles = build_general_child_flow_profiles(
+        esto_data,
+        mapping_df,
+        base_year,
+    )
     ninth_filtered = filter_ninth_projection_rows(ninth_data, scenario=scenario)
     ninth_pairs = add_ninth_pair_columns(ninth_filtered)
-    # 09.06 is exceptional: the aggregate parent is marked subtotal while its
-    # children are not consistently projected.  Keep this parent as a source
-    # for the residual policy below; all other subtotal rows stay excluded.
+    # 09.06 is always retained for its established residual policy. With the
+    # generalized opt-in enabled, retain other mapped subtotal parents only
+    # when the current ESTO data prove they have active detailed children.
     ninth_with_subtotals = ninth_data.copy()
     if scenario and "scenarios" in ninth_with_subtotals.columns:
         ninth_with_subtotals = ninth_with_subtotals[
@@ -1438,8 +1792,38 @@ def build_esto_projection_table(
             ninth_parent_pairs["subtotal_results"].fillna(False).astype(str).str.strip().str.lower()
             .isin({"1", "true", "yes", "y", "t"})
         )
+        eligible_parent_pairs: set[tuple[str, str]] = set()
+        if fill_missing_ninth_sectors and not general_child_flow_profiles.empty:
+            eligible_parent_flows = set(
+                general_child_flow_profiles.loc[
+                    general_child_flow_profiles["owner_workflow"].astype(str).eq(
+                        str(owner_workflow or "").strip()
+                    ),
+                    "profile_parent_flow",
+                ].astype(str)
+            )
+            eligible_parent_pairs = set(map(
+                tuple,
+                mapping_df.loc[
+                    mapping_df["esto_flow"].astype(str).isin(eligible_parent_flows),
+                    ["ninth_sector", "ninth_fuel"],
+                ].astype(str).to_numpy(),
+            ))
+        parent_pair_index = pd.MultiIndex.from_frame(
+            ninth_parent_pairs[["ninth_sector", "ninth_fuel"]].astype(str)
+        )
+        general_parent_mask = parent_pair_index.isin(
+            pd.MultiIndex.from_tuples(
+                sorted(eligible_parent_pairs),
+                names=["ninth_sector", "ninth_fuel"],
+            )
+        ) if eligible_parent_pairs else pd.Series(False, index=ninth_parent_pairs.index)
         ninth_parent_pairs = ninth_parent_pairs.loc[
-            subtotal_mask & ninth_parent_pairs["ninth_sector"].eq(GAS_PARENT_NINTH_SECTOR)
+            subtotal_mask
+            & (
+                ninth_parent_pairs["ninth_sector"].eq(GAS_PARENT_NINTH_SECTOR)
+                | general_parent_mask
+            )
         ]
         # The APEC aggregate is a validation fixture, never a production
         # allocation profile.  Do not activate the gas-parent residual rule
@@ -1454,10 +1838,7 @@ def build_esto_projection_table(
         if not ninth_parent_pairs.empty:
             subtotal_index = pd.MultiIndex.from_frame(ninth_parent_pairs[parent_keys])
             normal_index = pd.MultiIndex.from_frame(ninth_pairs[parent_keys])
-            duplicate_parent = (
-                ninth_pairs["ninth_sector"].eq(GAS_PARENT_NINTH_SECTOR)
-                & normal_index.isin(subtotal_index)
-            )
+            duplicate_parent = normal_index.isin(subtotal_index)
             ninth_pairs = ninth_pairs.loc[~duplicate_parent]
         ninth_pairs = pd.concat([ninth_pairs, ninth_parent_pairs], ignore_index=True, sort=False)
     ninth_pairs["economy_key"] = ninth_pairs["economy"].apply(normalize_economy_key)
@@ -1482,7 +1863,10 @@ def build_esto_projection_table(
         strict_conservation=strict_conservation,
         child_flow_profiles=child_flow_profiles,
         gas_child_flow_profiles=gas_child_flow_profiles,
+        general_child_flow_profiles=general_child_flow_profiles,
         fill_missing_ninth_sectors=fill_missing_ninth_sectors,
+        owner_workflow=owner_workflow,
+        existing_output_pairs=existing_output_pairs,
         return_allocation_provenance=return_allocation_provenance,
     )
     if return_allocation_provenance:

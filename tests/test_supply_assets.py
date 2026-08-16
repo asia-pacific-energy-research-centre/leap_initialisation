@@ -107,11 +107,15 @@ def test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup(monkeypat
         projection_years,
         sign_stable_flows,
         strict_conservation,
+        fill_missing_ninth_sectors,
+        owner_workflow,
     ):
         assert "00_APEC" in set(ninth_data["economy"])
         assert "00_APEC" in set(esto_data["economy"])
         assert sign_stable_flows == "all"
         assert strict_conservation is True
+        assert fill_missing_ninth_sectors is False
+        assert owner_workflow == "supply_workflow"
         return pd.DataFrame({"value": [1.0]}), pd.DataFrame()
 
     monkeypatch.setattr(
