@@ -33,6 +33,9 @@ owning queue rather than creating another backlog here.
 
 **Decision:** ☒ Keep both mapping views; ordinary dashboards use only the inclusive frontier ☐ Replace detail with inclusive rows ☐ Defer
 
+**Status:** Complete. No further implementation or mapping-pipeline rerun is
+required for this decision.
+
 ### Current behavior
 
 The four NINTH rollups now create these inclusive Common identities:
@@ -78,8 +81,21 @@ introduced as an incidental fix.
   consumer frontiers prevent double counting.
 - Dashboard regression coverage applies the existing metadata-driven Gas works
   behavior to Coke ovens and Blast furnaces without duplicating mapping logic.
-- If option 2 is approved, require an exact rule-level selector and rerun the
-  complete four-source pipeline plus all-economy dashboards.
+- The complete dashboard test module passes: 119 tests.
+- Mapping data and rollup semantics were not changed while closing this
+  decision, so the completed 2026-08-13 full-pipeline evidence remains valid.
+  Do not schedule another full mapping-pipeline run solely for P3-01.
+- At the next normally scheduled all-economy dashboard render, confirm that
+  `10.01.05` and `10.01.07` remain absent from ordinary chart manifests. This
+  is a non-blocking confirmation, not unfinished P3-01 work.
+- The implementation and decision records are committed locally in
+  `leap_dashboard` (`00210a0`), `leap_mappings` (`33042b1`), and
+  `leap_initialisation` (`4ef91ce`). Pushing those commits is the only remaining
+  administrative follow-up.
+
+Reopen P3-01 only if a future downstream export must physically exclude the
+standalone identities. That would require an exact rule-level replacement
+selector plus a complete four-source pipeline and all-economy dashboard rerun.
 
 ---
 
