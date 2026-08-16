@@ -298,7 +298,6 @@ def test_results_supply_runner_builds_other_loss_proxy_paths(
     monkeypatch.setattr(workflow, "OTHER_LOSS_OWN_USE_PROXY_STAGE", "first", raising=False)
     monkeypatch.setattr(workflow, "CAPACITY_UNMET_PASS_MODE", "baseline_seed", raising=False)
     monkeypatch.setattr(workflow, "CAPACITY_UNMET_STATE_PATH", tmp_path / "state.json", raising=False)
-    monkeypatch.setattr(workflow, "RESULTS_SINGLE_FILE_OUTPUT", False, raising=False)
     monkeypatch.setattr(workflow, "RESULTS_WRITE_LEGACY_SIDECAR_FILES", False, raising=False)
     monkeypatch.setattr(workflow, "RUN_LEAP_FUEL_BRANCH_PROBE_AT_START", False, raising=False)
     monkeypatch.setattr(workflow, "SCRAPE_LEAP_RESULTS", False, raising=False)

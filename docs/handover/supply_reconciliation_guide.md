@@ -176,7 +176,7 @@ outputs/leap_exports/supply_reconciliation/
 A full run can write:
 
 - per-economy `leap_import_baseline_seed_*.xlsx` or update workbooks;
-- a consolidated run workbook;
+- one assembled LEAP-import workbook per economy (never a cross-economy workbook);
 - yearly/conventional balance tables;
 - module workbooks and supporting detail;
 - conservation/source-preservation/mapping checks;

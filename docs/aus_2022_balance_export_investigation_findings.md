@@ -242,7 +242,7 @@ Historical one-economy, three-scenario timings have a median total of
 | Generate LEAP import workbooks | 621.9 s |
 | Build transformation and supply inputs | 200.5 s |
 | Write per-economy combined workbooks | 87.9 s |
-| Write consolidated run workbook | 35.2 s |
+| Write consolidated run workbook (historical; retired 2026-08-16) | 35.2 s |
 
 There is no measured one-scenario history yet. A configuration-only Current
 Accounts run should materially reduce workbook rows and scenario loops, but it

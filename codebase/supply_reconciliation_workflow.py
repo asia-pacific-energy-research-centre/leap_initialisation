@@ -330,10 +330,6 @@ from codebase.supply_reconciliation.results_saver import (  # noqa: F401
     refresh_fuel_branch_catalog_from_leap,
     _build_transformation_supply_fuel_catalog_df,
     _build_transformation_supply_fuel_catalog,
-    _resolve_results_single_file_name,
-    _archive_existing_results_file_if_needed,
-    _archive_results_file_snapshot,
-    save_results_linked_single_workbook,
     run_results_linked_transformation_supply_workflow,
     run_results_linked_supply_workflow,
 )
@@ -559,7 +555,6 @@ def _sync_results_saver_overrides() -> None:
         "RUN_OTHER_LOSS_OWN_USE_PROXY",
         "RUN_ELECTRICITY_HEAT_INTERIM",
         "OTHER_LOSS_OWN_USE_PROXY_STAGE",
-        "RESULTS_SINGLE_FILE_OUTPUT",
         "RESULTS_WRITE_LEGACY_SIDECAR_FILES",
         "RUN_LEAP_FUEL_BRANCH_PROBE_AT_START",
         "SCRAPE_LEAP_RESULTS",

@@ -137,7 +137,6 @@ supply_reconciliation_SCENARIOS = list(workflow_cfg.SUPPLY_NOTEBOOK_SCENARIOS)
 supply_reconciliation_CAPACITY_UNMET_PASS_MODE = "baseline_seed"  # baseline_seed|results_update
 supply_reconciliation_SCRAPE_LEAP_RESULTS = False
 supply_reconciliation_RUN_LEAP_FUEL_BRANCH_PROBE_AT_START = False
-supply_reconciliation_RESULTS_SINGLE_FILE_OUTPUT = True
 supply_reconciliation_RESULTS_WRITE_LEGACY_SIDECAR_FILES = False
 supply_reconciliation_KEEP_ALL_ZERO_SUPPLY_ROWS = True
 supply_reconciliation_ENABLE_COMPLETION_BEEP = True
@@ -146,8 +145,6 @@ supply_reconciliation_COMPLETION_BEEP_COUNT = 1
 supply_reconciliation_COMPLETION_BEEP_FREQUENCY_HZ = 880
 supply_reconciliation_COMPLETION_BEEP_DURATION_MS = 180
 supply_reconciliation_COMPLETION_BEEP_PAUSE_SECONDS = 0.12
-supply_reconciliation_RESULTS_SINGLE_FILE_ARCHIVE_MIN_HOURS = 24
-supply_reconciliation_RESULTS_SINGLE_FILE_ARCHIVE_EVERY_RUN = True
 supply_reconciliation_RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT = False
 
 #%%
@@ -276,9 +273,6 @@ def run_supply_reconciliation_workflow():
     supply_reconciliation_workflow.RUN_LEAP_FUEL_BRANCH_PROBE_AT_START = (
         supply_reconciliation_RUN_LEAP_FUEL_BRANCH_PROBE_AT_START
     )
-    supply_reconciliation_workflow.RESULTS_SINGLE_FILE_OUTPUT = (
-        supply_reconciliation_RESULTS_SINGLE_FILE_OUTPUT
-    )
     supply_reconciliation_workflow.RESULTS_WRITE_LEGACY_SIDECAR_FILES = (
         supply_reconciliation_RESULTS_WRITE_LEGACY_SIDECAR_FILES
     )
@@ -302,12 +296,6 @@ def run_supply_reconciliation_workflow():
     )
     supply_reconciliation_workflow.COMPLETION_BEEP_PAUSE_SECONDS = (
         supply_reconciliation_COMPLETION_BEEP_PAUSE_SECONDS
-    )
-    supply_reconciliation_workflow.RESULTS_SINGLE_FILE_ARCHIVE_MIN_HOURS = (
-        supply_reconciliation_RESULTS_SINGLE_FILE_ARCHIVE_MIN_HOURS
-    )
-    supply_reconciliation_workflow.RESULTS_SINGLE_FILE_ARCHIVE_EVERY_RUN = (
-        supply_reconciliation_RESULTS_SINGLE_FILE_ARCHIVE_EVERY_RUN
     )
     supply_reconciliation_workflow.RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT = (
         supply_reconciliation_RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT

@@ -121,7 +121,7 @@ opened during a normal run; "fallback" = only opened when a primary path yields
 | # | Site | Class | Reads at runtime? | Action to archive |
 | --- | --- | --- | --- | --- |
 | A | `fuel_catalog_preflight.py:36` `DEFAULT_FULL_MODEL_EXPORT_PATH` | shared-union fuel-branch catalog source ([7]/[11]) | **YES — and currently the *sole* source**: the catalog is LEAP-probe **+** full-model-export, but the probe needs the decommissioned LEAP API (`LEAP_API_BLOCKED`), so the export alone feeds the catalog today | Repoint to the canonical `20_USA` template (or a named `canonical fuel branch union.xlsx`). Highest-risk item — do it first and verify the catalog is byte-stable. |
-| B | `supply_reconciliation/results_saver.py:3796` | cross-economy single-file combined export `template_path` (`RESULTS_VERIFICATION_EXPORT_PATH`) | **YES** — read for IDs of the all-economy single-file artifact | Repoint to the `20_USA` template. Already documented as a deliberate pin; the artifact spans all economies so no one area is "correct" — USA is the intentional reference. |
+| B | retired 2026-08-16 | former cross-economy single-file combined export | **NO** — writer removed | No migration action remains; per-economy seeds resolve their own templates. |
 | C | `supply_reconciliation/results_saver.py:1772` `_load_results_verification_data` | results-verification metadata-mismatch reference (`RESULTS_VERIFICATION_EXPORT_PATH`, `USE_RESULTS_VERIFICATION_EXPORT_SOURCE=True`) | **YES** — live by default | Repoint to the `20_USA` template. Diagnostic only (never raises), but it is read. |
 | D | `workflow_common.py:760` `diagnose_missing_canonical_branches` | branch-existence diagnostic vs canonical export (defaults to `fuel_catalog_preflight.DEFAULT_FULL_MODEL_EXPORT_PATH`) | **YES** when called — informational, warns and skips if missing | Follows A automatically (shares A's default). No separate work if A is repointed. |
 | E | `supply_reconciliation/config.py:310` `RESULTS_VERIFICATION_EXPORT_PATH` (+ `:321` `FULL_MODEL_EXPORT_CATALOG_PATH` alias) | the constant behind B, C, and the resolver fallback in `supply_leap_io:1426/1438` and `supply_preflight:576/757` | mixed | Point the constant itself at the canonical `20_USA` template once B/C are confirmed. Kills several fallbacks at once. |
@@ -146,10 +146,10 @@ Tests that build their own `tmp_path / "full model export.xlsx"` fixtures;
    `DEFAULT_FULL_MODEL_EXPORT_PATH` to the canonical target. Rebuild the catalog
    and assert it is unchanged vs the committed `leap_fuel_branch_catalog.csv`.
    Highest risk because it is the sole live catalog source under `LEAP_API_BLOCKED`.
-2. **B + C + E — results-verification / single-file artifact.** Repoint
+2. **C + E — results-verification/catalog references.** Repoint
    `RESULTS_VERIFICATION_EXPORT_PATH` (and the `FULL_MODEL_EXPORT_CATALOG_PATH`
-   alias). Confirm the single-file combined workbook and the metadata-mismatch
-   diagnostic are unchanged.
+   alias). The former cross-economy single-file artifact (B) was retired and
+   requires no equivalence check.
 3. **F — supply-root classification.** Repoint the constant; confirm the seed
    path is unaffected (it already threads a per-economy template).
 4. **G — analysis-input canonical layout.** Remove the `full model export.xlsx`

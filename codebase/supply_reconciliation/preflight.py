@@ -397,12 +397,11 @@ those results to correct remaining gaps.
   - Supply workbook:           LEAP imports for Resources\\ branches
   - Transformation workbook:   LEAP imports for Transformation\\ branches
   - Transfers workbook:        LEAP imports for Transformation\\Transfers\\ branches
-  - Combined workbook:         all three merged for easier review
+  - Per-economy assembled seed: producer workbooks merged for LEAP import
   - Yearly balance CSVs:       per-product reconciliation tables (also used as
                                input for the next results_update pass)
-  - Consolidated run workbook: everything bundled into one Excel for QA
-  - Diagnostic reports:        unmatched rows, metadata mismatches, demand
-                               issues, timing -- written to RESULTS_CHECKS_DIR
+  - Diagnostic reports:        demand, conservation, source, validation, and
+                               timing evidence written to RESULTS_CHECKS_DIR
 """
 
 # Runtime mutable globals live in supply_reconciliation/allocation.py.
@@ -1023,7 +1022,6 @@ def _snapshot_preflight_state() -> dict[str, object]:
         "CONVENTIONAL_BALANCE_DIR",
         "RESULTS_CHECKS_DIR",
         "RESULTS_RUNTIME_DIR",
-        "RESULTS_SINGLE_FILE_NAME",
         "LEAP_IMPORT_SUPPLY_TO_LEAP",
         "LEAP_IMPORT_TRANSFORMATION_TO_LEAP",
         "LEAP_IMPORT_TRANSFERS_TO_LEAP",
@@ -1129,7 +1127,6 @@ def _build_preflight_config_overrides(
         "CONVENTIONAL_BALANCE_DIR": preflight_root / "conventional_balance_tables",
         "RESULTS_CHECKS_DIR": preflight_root / "checks",
         "RESULTS_RUNTIME_DIR": preflight_root / "runtime",
-        "RESULTS_SINGLE_FILE_NAME": f"preflight_compressed_{mode}_run.xlsx",
         # --- disable LEAP imports / branch creation / scraping / caches ---
         "LEAP_IMPORT_SUPPLY_TO_LEAP": False,
         "LEAP_IMPORT_TRANSFORMATION_TO_LEAP": False,

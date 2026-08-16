@@ -273,9 +273,8 @@ no longer fall through to the obsolete literal
 
 ## [29] Qualify the central baseline-seed final-artifact gate on real runs
 
-**Status: audit implementation and existing-NZ-artifact requalification
-complete 2026-08-03; a fresh producer run and promotion coupling remain
-pending.**
+**Status: audit implementation complete; permanent migration-warning policy
+confirmed 2026-08-16; finding-classification improvement pending.**
 
 The final writer now runs BSA-001–BSA-010 after saving the physical economy
 workbooks and writes a deterministic shadow acceptance package. Every new check
@@ -288,22 +287,39 @@ writer/readback fix,
 but it reused already-produced LEAP rows and therefore does not qualify the
 upstream producer fixes.
 
-Before enabling `block` or making promotion read the manifest:
+**Policy confirmed 2026-08-16:** LEAP-area structure updates are deliberately
+batched and performed periodically. Missing rows caused by an area awaiting the
+next structure update must remain visible warnings and must not stop ordinary
+full rebuilds, surgical patches, or promotion. The production warning setting
+is therefore not a temporary concession and may remain normal indefinitely.
 
-1. **Deferred until the current higher-priority work is complete:** run a fresh
-   full `12_NZ` baseline-seed producer workflow with a unique run label. This
-   must natively exercise the per-economy fuel-catalog fix (`21d6489`), the
-   final `FOR_VIEWING` serialization fix (`3c33fbc`), and the central artifact
-   gate. Accept only if BSA-003 reports no LNG duplicate conflict, BSA-009
-   passes, the twelve aggregate-demand placeholders remain non-blocking
-   BSA-005 warnings, and the package has zero `would_block` findings;
-2. review one fresh real-template `20_USA` package and resolve every
-   `SHADOW_INCOMPLETE` evidence gap;
-3. run the intended all-economy set and confirm hashes, template routing,
-   producer evidence, and diagnostic requirements;
-4. integrate the same run-level gate after the active parallel parent merge;
-5. make promotion consume the manifest in a separate, explicitly reviewed
-   behaviour-change commit.
+The global
+`BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS=True` switch is still
+too broad: it can downgrade genuine non-migration defects along with expected
+structure lag. Replace it with one finding classifier shared by the writer,
+patcher, final-artifact gate, and promotion logic:
+
+1. `known_migration_backlog` — reviewed missing LEAP structure, warning;
+2. `new_migration_candidate` — newly observed missing LEAP structure, warning
+   but prominent until reviewed and queued for the next periodic LEAP update;
+3. `not_structure_migration` — retain the check's true severity, including
+   duplicate keys, broken share groups, serialization loss, wrong template/IDs,
+   and missing required evidence.
+
+Maintain a versioned migration backlog keyed at least by economy and normalized
+branch path, with stable ID, first/last-seen run, owning workflow, materiality,
+review status, and eventual template/version resolution. A template refresh
+must reconcile the registry automatically, closing entries now present and
+flagging stale exceptions. Full rebuilds and patches must classify the same
+finding identically; a patch may still fail for genuinely incomplete evidence
+about its changed scope, but not merely because it is a patch.
+
+Promotion should eventually consume the manifest only after its acceptance
+logic distinguishes declared structure warnings from non-migration integrity
+failures. `SHADOW_PASS` cannot be the release condition while it treats an
+expected periodic-migration backlog as a failure. Fresh NZ, USA, and
+all-economy runs remain useful verification evidence, but zero migration
+warnings is no longer a prerequisite.
 
 See `baseline_seed_final_artifact_contract.md` and
 `baseline_seed_gate_consolidation_review.md`.
@@ -352,17 +368,15 @@ a full initialisation run is not required.
 
 ## [26] Decide whether consolidated baseline-seed results workbooks are required
 
-**Status: investigation requested 2026-08-03.**
+**Status: completed 2026-08-16 — retired by user decision.**
 
-The `supply_recon_run_*.xlsx` files are currently produced as consolidated
-intermediate results alongside the economy-specific
-`leap_import_baseline_seed_<economy>_*.xlsx` deliverables. Confirm whether
-downstream workflows, diagnostics, dashboards, or human review consume the
-consolidated workbooks after the final seed is written. If they are not
-required, reduce them to an explicitly marked intermediate artifact or make
-their creation opt-in, while preserving the final seed, diagnostics, and
-provenance needed for reproducibility. Do not remove them until consumers and
-the validation/monitoring chain have been audited.
+The cross-economy `supply_recon_run_*.xlsx` packaging path and the unused
+parallel parent-workbook merge were removed after confirming no live caller or
+downstream consumer required them. Sequential and parallel runs now share the
+same artifact rule: retain one assembled
+`leap_import_baseline_seed_<economy>_*.xlsx` workbook per economy, plus the
+existing CSV diagnostics, validation findings, manifests, and provenance.
+Per-economy assembly remains required and was not removed.
 
 ## [25] Add a Non energy branch to All demand aggregated
 
@@ -775,7 +789,14 @@ Required design and implementation work:
 
 ## [19] Consolidate and filter template-matching diagnostics — ✅ Implemented and verified 2026-07-23 (`9be92bf`)
 
-**Status: follow-up recorded 2026-07-23 from the four-real-template full run.**
+**Status: retired with the cross-economy verification workbook 2026-08-16.**
+
+The summary below described diagnostics for the former cross-economy
+`supply_recon_run_*.xlsx` verification artifact. That artifact and its
+artifact-specific ID/metadata comparison stack are no longer produced. Final
+per-economy LEAP-import seeds retain their readiness checks, final-artifact
+validation, producer diagnostics, and run manifests. The historical evidence
+is retained below to explain the superseded implementation.
 
 `filter_actionable_mapping_config_mismatches()` and
 `build_template_matching_summary()` in
@@ -1382,8 +1403,9 @@ they pin the template explicitly too, exercising the very branch that masked it.
 
 **Not blocked; follow-on to [7].** ID-routing no longer depends on this file, but
 it is still read at runtime as the **shared-union fuel-catalog source** (currently
-the *sole* source under `LEAP_API_BLOCKED`), the **cross-economy single-file /
-verification reference**, and several **fallbacks**. Archiving is a
+   the *sole* source under `LEAP_API_BLOCKED`), a **verification/catalog
+   reference**, and several **fallbacks**. The former cross-economy single-file
+   consumer was retired on 2026-08-16. Archiving is a
 *repoint-and-verify* task (repoint these uses at the canonical `20_USA` template),
 not a delete. Full inventory, sequenced one-commit tasks, and the acceptance gate:
 [full_model_export_retirement_scope.md](full_model_export_retirement_scope.md).

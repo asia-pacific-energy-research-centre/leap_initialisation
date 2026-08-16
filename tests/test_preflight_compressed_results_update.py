@@ -353,7 +353,6 @@ def test_projection_override_dict_is_exact(tmp_path) -> None:
     assert overrides["TRANSFORMATION_EXPORT_OUTPUT_DIR"] == root / "workbooks"
     assert overrides["RESULTS_CHECKS_DIR"] == root / "checks"
     assert overrides["RESULTS_RUNTIME_DIR"] == root / "runtime"
-    assert overrides["RESULTS_SINGLE_FILE_NAME"] == "preflight_compressed_projection_run.xlsx"
     for flag in (
         "LEAP_IMPORT_SUPPLY_TO_LEAP",
         "LEAP_IMPORT_TRANSFORMATION_TO_LEAP",
@@ -397,13 +396,9 @@ def test_results_update_override_dict_extends_projection_exactly(tmp_path) -> No
     differing = {
         key for key in projection if projection[key] != results_update[key]
     }
-    assert differing == {"ECONOMIES", "RESULTS_SINGLE_FILE_NAME"}
+    assert differing == {"ECONOMIES"}
 
     assert results_update["ECONOMIES"] == ["20_USA"]
-    assert (
-        results_update["RESULTS_SINGLE_FILE_NAME"]
-        == "preflight_compressed_results_update_run.xlsx"
-    )
     assert results_update["CAPACITY_UNMET_PASS_MODE"] == "results_update"
     assert results_update["USE_AGGREGATED_DEMAND_AS_DUMMY"] is False
     assert results_update["OTHER_LOSS_OWN_USE_PROXY_STAGE"] == "second"

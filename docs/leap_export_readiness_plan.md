@@ -21,8 +21,9 @@ This plan follows the transfer-specific improvement:
   validator.
 - Share row reading, key normalisation, scope selection, reporting, and output
   manifests.
-- Validate the combined workbook as well as producer-specific workbooks where
-  the producer boundary matters.
+- Validate each assembled per-economy seed workbook as well as producer-specific
+  workbooks where the producer boundary matters. No cross-economy workbook is
+  produced.
 - Treat `(Branch Path, Variable, Scenario, Region)` as the authoritative import
   identity. These fields must match the selected template exactly.
 - Do not use `BranchID`, `VariableID`, `ScenarioID`, or `RegionID` to match or
@@ -195,7 +196,7 @@ The work is complete when:
 
 - every export producer uses the shared workbook reader and readiness reporting;
 - transfer exports run catalog preflight explicitly;
-- the combined workbook has one documented readiness gate;
+- each assembled per-economy seed workbook has one documented readiness gate;
 - every check appears in `docs/check_registry.md`;
 - findings are written to durable CSV/JSON outputs;
 - blocking failures prevent import;

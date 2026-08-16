@@ -55,7 +55,7 @@ current decomposition (per `docs/current_execution_roadmap.md`, T3/T4/T7 in
 | `codebase/supply_reconciliation/allocation.py` | 1,994 | Capacity-unmet iterative allocation ledger: `_run_capacity_unmet_iterative_pass`, `_run_capacity_unmet_iterative_balanced_pass`, `_build_capacity_process_catalog`, `_reset_capacity_unmet_allocation_ledger`. |
 | `codebase/supply_reconciliation/history.py` | 784 | Iterative-state persistence: state-key helpers, `_read_capacity_unmet_state` / `_write_capacity_unmet_state`, results-signature comparison so a rerun on identical LEAP results is a detectable no-op. |
 | `codebase/supply_reconciliation/tables.py` | 2,034 | Reconciliation-table construction: `build_reconciliation_table`, `build_transformation_balance_table`, `build_transformation_sector_table`, `build_transformation_trade_target_rows`, `prepare_projected_supply_table`, `prepare_supply_primary_table`, `apply_trade_split_between_transformation_and_supply`, `reset_supply_and_transformation_import_export_to_zero` (line 1741 — the F1 reset mechanism). |
-| `codebase/supply_reconciliation/results_saver.py` | 4,429 | The engine (§2 below): per-economy export generation loop, LEAP-import fuel catalog, combined-workbook assembly, single-file consolidated workbook, conservation diagnostics. Deliberately not yet split further (D4.3 deferred per the continuation register). |
+| `codebase/supply_reconciliation/results_saver.py` | — | The engine (§2 below): per-economy export generation loop, LEAP-import fuel catalog, per-economy seed assembly orchestration, and conservation diagnostics. Cross-economy workbook packaging was retired on 2026-08-16. |
 | `codebase/supply_reconciliation/preflight.py` | 2,126 | F4 preflight family: `run_preflight_compressed_projection`, `run_preflight_compressed_results_update`, reset-scope resolution from the full-model export, source diagnostics. |
 | `codebase/supply_reconciliation/parallel_runner.py` | 324 | Outer-loop process-per-economy orchestrator (§6). Not used by the default single-process path. |
 | `codebase/supply_reconciliation/leap_io.py` | (not separately measured here) | Per-workflow export→combine→LEAP-import glue: `save_transformation_exports_with_split_targets`, `save_transfer_exports_with_supply_overrides`, `save_combined_supply_transformation_export`, `write_per_economy_combined_workbooks`, `run_results_linked_leap_import`, the `run_*_leap_import` family per sub-workflow. |
@@ -143,11 +143,8 @@ flowchart TD
     P1 --> Q{"include_leap_import<br/>(ANALYSIS_INPUT_WRITE_MODE=='api', decommissioned)"}
     Q -->|False, normal| R
     Q -->|True, dead path| Q1["run_results_linked_leap_import() etc.<br/>-&gt; leap_core.py, LEAP_API_BLOCKED=True raises<br/>(see docs/check_registry.md hotspot 3)"]
-    Q1 --> R["write_per_economy_combined_workbooks()<br/>supply_reconciliation/leap_io.py:1663<br/>-&gt; prepare_seed_rows_for_write()<br/>baseline_seed_validation.py:1780 (F2 emit boundary)<br/>-&gt; outputs/leap_exports/supply_reconciliation/baseline_seed/<br/>leap_import_baseline_seed_{economy}_{run_stamp}.xlsx"]
-    R --> S{"RESULTS_SINGLE_FILE_OUTPUT"}
-    S -->|True| S1["save_results_linked_single_workbook()<br/>supply_reconciliation/results_saver.py:1562<br/>-&gt; outputs/leap_exports/supply_reconciliation/<br/>supply_recon_run_{mode}_{economies}_{scenarios}.xlsx"]
-    S -->|False| T
-    S1 --> T["diagnostics: balance matching, balance-demand<br/>issue report, source diagnostics<br/>-&gt; supporting_files/checks/"]
+    Q1 --> R["write_per_economy_combined_workbooks()<br/>supply_reconciliation/leap_io.py<br/>-&gt; prepare_seed_rows_for_write()<br/>baseline_seed_validation.py (F2 emit boundary)<br/>-&gt; outputs/leap_exports/supply_reconciliation/baseline_seed/<br/>leap_import_baseline_seed_{economy}_{run_stamp}.xlsx"]
+    R --> T["diagnostics: balance matching, balance-demand<br/>issue report, source diagnostics<br/>-&gt; supporting_files/checks/"]
 ```
 
 ### 2.1 Stage detail with reads/writes
@@ -165,7 +162,6 @@ flowchart TD
 | Fuel branch catalog | `_build_transformation_supply_fuel_catalog_df` / `_build_transformation_supply_fuel_catalog` (`supply_reconciliation/results_saver.py`) | `data/leap_export_templates/*`, `data/full model export {date}.xlsx` (most recent), optional live LEAP probe rows | `fuel_registry.csv` under the run's supporting files |
 | Zeroing workbooks | `build_supply_transformation_zeroing_workbooks`, `build_other_demand_zeroing_workbooks` (`supply_reconciliation/leap_io.py`) | full-model export template, `RESET_SCOPE_*` | `supply_transformation_zeroing_{economy}.xlsx`, `demand_zeroing_{economy}*.xlsx` — **must be imported into LEAP before** the main seed workbook (see `docs/current_execution_roadmap.md` "[18] zeroing workbooks") |
 | Emit boundary / seed assembly | `write_per_economy_combined_workbooks` (`supply_reconciliation/leap_io.py`) → `prepare_seed_rows_for_write` (`baseline_seed_validation.py`) → physical workbook write → `run_baseline_seed_artifact_validation` (audit only) | every per-sub-workflow export path, economy template, post-assembly rows, zero-scope declarations, required diagnostics | `leap_import_baseline_seed_{economy}_{run_stamp}.xlsx` plus `supporting_files/baseline_seed_artifact_validation/{findings,summary,manifest}` |
-| Consolidated single-file workbook | `save_results_linked_single_workbook` (`supply_reconciliation/results_saver.py:1562`) | `reconciliation_table`, all export paths, `fuel_branch_catalog_df` | `outputs/leap_exports/supply_reconciliation/supply_recon_run_{mode}_{economies}_{scenario-abbrev}.xlsx` — a verification/results-view artifact spanning every economy in the run, **not** a per-economy LEAP import file (its Region/BranchID are not area-correct for every economy; see the `template_path` comment at `supply_reconciliation/results_saver.py:~4204`) |
 | Diagnostics | various `write_supply_diagnostic` calls (`supply_reconciliation/results_saver.py`) | `reconciliation_table`, conservation reference builders | `outputs/leap_exports/supply_reconciliation/supporting_files/checks/*.csv` (F5 conservation, balance-matching, balance-demand issue report) |
 
 ## 3. Config and mapping sources actually read
@@ -227,13 +223,10 @@ are edited separately per run.
    2026-07-23 (`9aab65b`): sequential equivalence against a known-good
    `01_AUS` baseline (byte-for-byte, 3,432 rows / 0 diffs) and a controlled
    two-economy concurrent smoke test (`01_AUS` + `12_NZ`, zero
-   cross-contamination). **Not yet built**: merging more than one economy's
-   *combined single-file* workbook into one artifact — each worker's
-   per-economy seed workbook is already correct standalone, but the
-   consolidated multi-economy file (§2.1 "Consolidated single-file
-   workbook") is not reconstructed across workers. See
-   `codebase/supply_reconciliation/parallel_merge.py` for the partial piece that
-   does exist (merging validation findings/issue-group CSVs across workers).
+    cross-contamination). Each worker's per-economy seed workbook is the final
+    workbook artifact; cross-economy workbook merging is intentionally absent.
+    `codebase/supply_reconciliation/parallel_merge.py` merges only validation,
+    issue-group, and diagnostic CSV views across workers.
 
 ## 6. Diagnostics / checks — where each family sits in this pipeline
 

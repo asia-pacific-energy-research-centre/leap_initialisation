@@ -107,8 +107,8 @@ Do not hand-instrument timing — the workflow already writes this. Use:
 
 - `outputs/leap_exports/supply_reconciliation/supporting_files/runtime/workflow_stage_timings.csv`
   for stage-level start/end timestamps and durations (setup, load balance
-  demand inputs, generate LEAP import workbooks, write per-economy combined
-  workbooks, write consolidated run workbook, total, etc.) — this is written
+  demand inputs, generate LEAP import workbooks, write per-economy assembled
+  seed workbooks, diagnostics, total, etc.) — this is written
   once at the end of the run.
 - `[TIMING] ... | <stage> | <Xh Ym Z.Zs>` lines in the console/workflow log
   for a live view before the CSV exists.

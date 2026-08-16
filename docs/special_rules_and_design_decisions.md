@@ -490,6 +490,23 @@ diagnostics, and no invalid final workbook is written or substituted.
   why this sat open for a week. The CSV should record what **would** have blocked
   and note that the downgrade was applied.
 
+- 2026-08-16: **Policy clarified; the July recommendation to revert the global
+  flag after clearing a finite exception list is superseded.** LEAP-area
+  structure changes are intentionally accumulated and applied in periodic
+  batches because updating LEAP is expensive. Missing rows caused by this
+  migration lag are therefore expected to remain non-blocking in ordinary full
+  rebuilds and surgical patches, potentially indefinitely. A newly identified
+  missing branch joins the migration-review backlog; it does not require an
+  immediate LEAP edit.
+
+  The remaining defect is the global scope of the flag, not its warning policy.
+  One shared classifier must distinguish `known_migration_backlog`,
+  `new_migration_candidate`, and `not_structure_migration`. Both migration
+  classes remain warnings; non-migration defects retain their actual severity.
+  The classifier must be used consistently by full writers, patchers, the
+  final-artifact package, and eventual promotion logic. See `work_queue.md`
+  [29] and `priority_3_review_decisions.md` P3-02/P3-03.
+
 ## INIT-006: Baseline-seed scenario windows and transformation process boundary
 
 **Status:** Confirmed

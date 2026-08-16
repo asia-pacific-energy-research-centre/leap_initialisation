@@ -8,20 +8,21 @@ work queues.
 
 ## How to use this document
 
-Each section is an independent decision. You can approve one without deciding
-the others. Record a choice in the **Decision** line and, where useful, add a
-short reason. After review, implementation should update the named owning queue
-rather than creating another backlog here.
+Sections are independent unless explicitly folded together. P3-03 is now part
+of P3-02 because rebuild and patch severity should use the same finding
+classification. Record a choice in each remaining **Decision** line and, where
+useful, add a short reason. After review, implementation should update the named
+owning queue rather than creating another backlog here.
 
 ## Decision summary
 
 | ID | Decision | Owner / authoritative queue | Suggested choice | Your oversight |
 |---|---|---|---|---|
 | P3-01 | Keep standalone coke/blast detail beside inclusive own-use rows, or introduce replacement semantics | `leap_mappings` MAPQ-046 | **Approved: keep mapping detail; dashboard uses inclusive frontier** | Completed 2026-08-16 |
-| P3-02 | When baseline-seed findings should block runs and promotion | `leap_initialisation` queue [29] / INIT-005 | Keep audit mode until the stated real-run evidence exists; then block promotion, not artifact generation | Required: release policy |
-| P3-03 | Whether surgical seed patches should remain stricter than full rebuilds | `leap_initialisation` queue [12]/INIT-005 evidence | Keep patches strict | Required: operational policy |
-| P3-04 | Activate the parallel parent combined workbook | `leap_initialisation` current execution roadmap item 2 | Do not activate by default yet; first prove real sequential equivalence | Approval after evidence |
-| P3-05 | Ownership of rollup-rule reading (D3.4) | `leap_initialisation` INITQ-020; mapping contract owned by `leap_mappings` | Local reader against a frozen published schema contract | Required: cross-repo boundary |
+| P3-02 | Classify baseline-seed findings consistently for full rebuilds, patches, and promotion | `leap_initialisation` queue [29] / INIT-005 | LEAP-structure migration lag remains non-blocking; genuine integrity defects retain their own severity | Policy confirmed 2026-08-16; better classifier still needed |
+| P3-03 | Surgical-patch severity | Folded into P3-02 | Use the same finding classification as full rebuilds, not a blanket stricter mode | No separate decision |
+| P3-04 | Cross-economy combined workbooks | `leap_initialisation` queue [26] | **Retired in sequential and parallel runs** | Decision confirmed 2026-08-16; implementation complete |
+| P3-05 | How initialisation receives the generated mapping master (D3.4) | `leap_initialisation` INITQ-020; mapping semantics owned by `leap_mappings` | **Approved: prefer live `leap_mappings`; committed read-only fallback** | Decision confirmed 2026-08-16; implementation pending |
 | P3-06 | Generalize missing-9th-sector filling beyond gas processing | `leap_initialisation` queue [20] | Inventory first; approve family-specific rules individually | Required per model family |
 | P3-07 | Quarantine/delete old outputs, temporary directories, branches and worktrees | Mapping MAPQ-013/MAPQ-023; dashboard DASHQ-014 | Quarantine outputs; remove only proven-superseded Git objects | Required before destructive work |
 | P3-08 | Remaining mapping authority/frontier/input-contract choices | Mapping MAPQ-019/MAPQ-020/MAPQ-021 | Use published extracts and named frontiers; review ESTO definitions row by row | Required: domain semantics |
@@ -82,171 +83,219 @@ introduced as an incidental fix.
 
 ---
 
-## P3-02 — Baseline-seed gate: audit, blocking, and promotion
+## P3-02 — Baseline-seed finding classification and LEAP migration lag
 
-**Decision:** ☐ Follow staged recommendation ☐ Keep warnings indefinitely
-☐ Block immediately ☐ Defer
+**Decision:** **Confirmed 2026-08-16.** Missing rows caused by pending LEAP-area
+structure updates remain warnings. LEAP updates are deliberately batched and
+performed periodically rather than every time a missing branch is detected.
 
 ### Current behavior
 
-The central BSA-001–BSA-010 final-artifact package runs after physical workbook
-write/readback. Hard findings expose `would_block`, but the production setting
-`BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True` lets a full run
-finish. Promotion does not yet consume the acceptance manifest.
+The central BSA-001–BSA-010 package runs after physical workbook write/readback.
+The production setting
+`BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True` exists because
+many current missing rows are expected differences between the desired model
+structure and LEAP areas that have not yet received the next periodic structure
+update. Routine seed work must continue while that migration backlog exists.
 
-The repaired historical NZ artifact reached `SHADOW_WARN`, but that reused
-already-produced rows and therefore did not exercise every upstream producer
-fix. Enabling blocking now would turn a shadow contract into release policy
-without the specified fleet evidence.
+The problem is not that warning mode is temporary. It may remain the normal
+operating mode indefinitely. The problem is that one global switch cannot
+distinguish expected LEAP-structure lag from unrelated defects such as broken
+share groups, duplicate keys, serialization loss, wrong-economy IDs, or missing
+producer evidence.
 
-### Options
+### Confirmed policy
 
-1. **Staged enforcement:** retain audit mode while gathering the required real
-   runs, then make promotion require an accepted manifest.
-2. **Block artifact generation immediately:** any hard BSA finding stops the
-   run before a reviewable candidate is available.
-3. **Warnings only indefinitely:** retain diagnostics but never make them a
-   release gate.
+1. A missing LEAP branch attributable to a pending periodic area update is a
+   visible, non-blocking migration finding.
+2. Discovering another missing branch does not trigger an immediate LEAP area
+   edit. It is added to the structure-migration backlog for the next coordinated
+   LEAP update batch.
+3. Full rebuilds and surgical patches use the same classification. A patch is
+   not stricter merely because it is a patch.
+4. Findings unrelated to LEAP structure retain their actual severity. Warning
+   treatment for migration lag must not downgrade a duplicate, invalid share
+   group, serialization loss, wrong template/IDs, or missing required evidence.
+5. Promotion may proceed with declared migration warnings. Promotion policy
+   should consider unresolved non-migration integrity findings separately.
 
 ### Recommendation
 
-Choose option 1. It separates producing evidence from approving an artifact:
+Replace the global all-findings downgrade with one shared classifier used by
+the full writer, patcher, final-artifact gate, and promotion check. At minimum,
+every missing-structure finding should carry:
 
-1. run a fresh full `12_NZ` producer with a unique label;
-2. review a fresh real-template `20_USA` package;
-3. run the intended all-economy set;
-4. integrate the gate with the parallel parent evidence merge;
-5. in a separate reviewed commit, require an accepted manifest for promotion.
+- a stable finding or backlog ID;
+- economy and normalized branch path;
+- classification: `known_migration_backlog`, `new_migration_candidate`, or
+  `not_structure_migration`;
+- first-seen and last-seen dates/run IDs;
+- affected workflow and current value/materiality;
+- review status and notes for the next LEAP update batch;
+- the template/version where the branch becomes available, once migrated.
 
-Keep the twelve known aggregate-demand placeholders visible as non-blocking
-BSA-005 warnings unless their LEAP branches are deliberately added.
+Both known and newly detected structural gaps should remain non-blocking, but a
+new candidate should be prominent in the migration report until reviewed. Once
+LEAP templates are refreshed, the next validation should automatically close
+backlog entries that are now present and flag stale exceptions rather than
+silently retaining them forever.
+
+Do not require `SHADOW_PASS` for promotion while that status treats declared
+LEAP-structure lag as failure. Define acceptance as: required checks completed;
+no unresolved non-migration integrity failure; migration warnings fully
+reported. The twelve aggregate-demand placeholders are examples of this class,
+not the only permanent exceptions.
 
 ### Evidence and completion
 
 - Authority: `docs/work_queue.md` [29].
 - Contract: `docs/baseline_seed_final_artifact_contract.md`.
 - Review: `docs/baseline_seed_gate_consolidation_review.md`.
-- Complete only when real-run evidence has zero unexplained `would_block`
-  findings and promotion behavior is changed in its own reviewable commit.
+- Improvement complete when one classifier drives rebuild, patch, artifact,
+  and promotion reporting; known/new migration findings are separated; genuine
+  integrity failures are no longer downgraded by the migration policy; and
+  periodic template refreshes reconcile the backlog automatically.
 
 ---
 
-## P3-03 — Should surgical patching be stricter than full rebuilds?
+## P3-03 — Surgical patching severity (folded into P3-02)
 
-**Decision:** ☐ Keep patcher strict ☐ Match full-run warning mode ☐ Defer
+**Decision:** **No separate policy.** Use P3-02's shared finding classifier.
 
 ### Current behavior
 
-The normal seed writer honors
+The normal seed writer currently honors
 `BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS`; the baseline patcher
-does not pass that setting and therefore uses strict validation. The divergence
-was discovered while verifying NZ template/ID routing and is not currently
-documented as policy.
+does not pass that setting and therefore behaves more strictly. That is an
+implementation inconsistency, not the desired policy.
 
 ### Trade-off
 
-- A patch changes an existing artifact without rebuilding all producer
-  evidence. Strict refusal reduces the chance of preserving or compounding an
-  invalid seed.
-- Matching the full-run warning mode makes patches easier to apply, but could
-  allow an invalid old workbook to be carried forward under a warning policy
-  designed for newly generated, fully diagnosed output.
+- A missing branch caused by scheduled LEAP migration remains the same missing
+  branch whether encountered during a rebuild or a patch. It should not block
+  either path.
+- A patch can lack some fresh producer evidence, but that should be represented
+  explicitly as absent/incomplete evidence—not by treating every validation
+  family as stricter.
+- Genuine invalidity must retain its severity in both paths.
 
 ### Recommendation
 
-Keep the patcher strict and document the difference. If a seed fails strict
-validation, regenerate it rather than patching it. Add a deliberate escape
-hatch only if it is explicit per invocation, records the accepted findings,
-and never becomes the default.
+Route patch findings through the same classifier as rebuild findings. Allow
+declared or newly identified LEAP-structure migration gaps to remain warnings.
+Continue to refuse a patch for non-migration integrity failures or when the
+patch cannot provide evidence required to prove that its changed scope is safe.
 
 ### Evidence and completion
 
 - Authority/evidence: `docs/work_queue.md`, patcher verification under the
   economy-template routing work.
-- Complete when the policy is recorded beside both call sites and a regression
-  test proves the patcher remains strict while full-run audit mode remains
-  configurable.
+- Complete together with P3-02, with paired rebuild/patch tests proving the same
+  finding receives the same classification and effective severity.
 
 ---
 
-## P3-04 — Parallel combined-workbook activation
+## P3-04 — Cross-economy combined workbooks
 
-**Decision:** ☐ Require combined workbook ☐ Make it opt-in ☐ Keep disabled
-☐ Defer pending real equivalence
+**Decision:** **Retired 2026-08-16.** No sequential or parallel run needs a
+workbook containing multiple economies.
 
-### Current behavior
+The sequential `supply_recon_run_*.xlsx` writer, its archive/configuration
+controls, and the unused `merge_parallel_results_workbooks()` helper were
+removed. Their workbook-specific tests were removed with them. This does not
+remove `write_per_economy_combined_workbooks`: that function assembles the
+producer workbooks into each economy's final LEAP-import seed and remains part
+of the required output path.
 
-Process-based per-economy workers are safe and their standalone seed workbooks
-are correct. `merge_parallel_results_workbooks()` can preserve the raw Export
-preamble/header layout and has synthetic tests, but the parallel runner does
-not invoke it. Diagnostic CSV families already have deterministic parent
-merges.
-
-### Missing evidence
-
-- A real, sequential multi-economy combined workbook built from the same inputs.
-- A cell/key/layout comparison between that workbook and the proposed parent
-  merge.
-- Failure/retry evidence proving no partial combined workbook can look complete.
-- Confirmation of the intended ownership of shared proxy rows when more than
-  one worker supplies them.
-
-### Recommendation
-
-Do not activate it by default yet. First run a bounded two-economy real-data
-comparison. If equivalent, introduce the merged workbook as opt-in for one
-release cycle while per-economy workbooks remain authoritative. Make it the
-default only after a broader economy run and manifest review.
-
-### Evidence and completion
-
-- Authority: `docs/current_execution_roadmap.md`, item 2.
-- Tests: `tests/test_parallel_economy_merge.py`.
-- Acceptance: identical logical rows and values to the sequential artifact;
-  identical LEAP preamble/header semantics; deterministic economy ordering;
-  failed/missing workers make the merge fail closed.
+Parallel parent aggregation now remains deliberately CSV-only: validation
+findings, issue groups, source/template diagnostics, and conservation families.
+The authoritative workbook artifacts are the independent
+`leap_import_baseline_seed_<economy>_*.xlsx` files.
 
 ---
 
-## P3-05 — D3.4 rollup-rule reading ownership
+## P3-05 — Prefer the live mapping master, with a standalone fallback
 
-**Decision:** ☐ Frozen published schema + local reader ☐ Shared Python helper
-☐ Duplicate independent reader ☐ Defer
+**Decision:** **Confirmed 2026-08-16.** A user must be able to run
+`leap_initialisation` without a sibling `leap_mappings` checkout, while a normal
+developer checkout must use the live generated master from `leap_mappings` when
+that repository is available. A fallback copy is committed under
+`leap_initialisation/config/` and clearly named as a read-only generated
+dependency.
 
-### Question
+### Confirmed ownership boundary
 
-Should `leap_initialisation` read the rollup-rule sheets itself, or import a
-Python helper from `leap_mappings`?
+- `leap_mappings/config/outlook_mappings_single_axis.xlsx` remains the only
+  human-edited mapping authority.
+- `leap_mappings/config/outlook_mappings_master.xlsx` remains the generated
+  production master.
+- `leap_initialisation` receives an exact committed snapshot named
+  `config/outlook_mappings_master_DO_NOT_EDIT.xlsx`.
+- Initialisation first resolves
+  `../leap_mappings/config/outlook_mappings_master.xlsx`. If that workbook
+  exists and is readable and schema-valid, it is always selected.
+- Only when the sibling workbook is unavailable does initialisation use
+  `config/outlook_mappings_master_DO_NOT_EDIT.xlsx`.
+- Users do not edit the snapshot. Mapping changes are made in `leap_mappings`,
+  regenerated there, then synchronized into initialisation.
 
-The repositories currently share data contracts, not Python runtime imports.
-`leap_mappings` owns mapping semantics; `leap_initialisation` must not silently
-reinterpret them, but it also should not depend on a sibling checkout's module
-layout to run.
+The local file is a **vendored fallback snapshot**, not a placeholder: its exact
+contents affect standalone initialisation results. Runtime manifests must record
+whether the sibling or fallback workbook was selected, its resolved path, its
+SHA-256, and—when available—the source mapping commit.
 
-### Recommendation
+### Refresh and commit policy
 
-Approve a **frozen published column contract with a small local reader and
-contract tests**:
+Do not create an automatic commit on every ordinary repository commit. Instead,
+run a required synchronization check before committing or releasing mapping-
+dependent initialisation changes:
 
-- `leap_mappings` owns and publishes the workbook schema and meaning;
-- `leap_initialisation` owns only parsing/validation of that published schema;
-- unknown/missing required columns fail clearly;
-- no label inference or fallback mapping semantics are allowed locally;
-- schema changes require coordinated contract/version updates.
+1. regenerate and commit the master in `leap_mappings`;
+2. copy it byte-for-byte to
+   `leap_initialisation/config/outlook_mappings_master_DO_NOT_EDIT.xlsx`;
+3. update a small fallback-provenance sidecar with the source repository commit, source
+   path, workbook SHA-256, copy time, and schema/contract version where
+   available;
+4. validate the workbook schema and prove the copied SHA-256 equals the source;
+5. commit the snapshot, sidecar, and any required initialisation compatibility
+   changes together.
 
-This is the recommendation already drafted in the Phase 3 execution prompt,
-but it was parked so it would not be decided independently of the mapping-side
-work.
+If the source workbook has not changed, the sync check should produce no Git
+diff. A commit hook may run the check, but it must not silently rewrite or
+commit files.
+
+### Filename rationale
+
+Use `outlook_mappings_master_DO_NOT_EDIT.xlsx`, not
+`master_config-DO NOT EDIT.xlsx`. `master_config.xlsx` is already the name of a
+retired legacy workbook under `config/legacy/`; reusing it would make the new
+canonical snapshot look like the old format. Underscores also avoid unnecessary
+path quoting while keeping the warning prominent.
+
+### Failure behavior
+
+- If the sibling workbook exists but is unreadable or schema-incompatible, fail
+  clearly; do not silently hide a broken live mapping checkout by using the
+  fallback.
+- If no sibling workbook exists, a missing, unreadable, hash-mismatched, or
+  schema-incompatible fallback fails clearly before workflow processing.
+- There is no silent fallback to `config/legacy/master_config.xlsx`,
+  or `config/legacy/leap_mappings.xlsx`.
+- When both copies exist, the sibling is selected even if its hash differs from
+  the committed fallback. Report the difference as a refresh reminder, not a
+  reason to substitute the older fallback.
 
 ### Evidence and completion
 
 - Authority: INITQ-020 and
   `docs/prompts/phase_3_canonical_mapping_migration_execution.md`, D3.4.
-- Cross-repo boundary:
-  `../leap_mappings/docs/handover/cross_repository_data_contracts.md`.
-- Complete when the choice is recorded in
-  `docs/special_rules_and_design_decisions.md`, the local reader docstring names
-  the owning mapping contract, and contract tests pin required columns/modes.
+- Mapping semantics and generation remain owned by `leap_mappings`; only the
+  immutable fallback snapshot is owned here.
+- Complete when the snapshot and provenance file are committed, all canonical
+  loaders implement and report sibling-first/fallback-second resolution, the
+  sync/validation helper is notebook-safe, standalone tests run with no sibling
+  repository present, and the portable release consumes an explicitly staged
+  workbook under the same validation contract.
 
 ---
 
@@ -386,11 +435,11 @@ is conceptually correct.
 ## Suggested review order
 
 1. **P3-01** — small, concrete mapping decision with completed run evidence.
-2. **P3-03 and P3-02** — establish patch/run/promotion safety policy together.
+2. **P3-02/P3-03** — implement the confirmed shared migration classifier for
+   rebuilds, patches, and promotion.
 3. **P3-05** — closes the remaining cross-repository ownership ambiguity.
-4. **P3-04** — approve evidence collection, then decide activation.
+4. **P3-04** — complete; no further review required.
 5. **P3-06** — approve the inventory before reviewing model-family rules.
 6. **P3-08** — domain and mapping-governance decisions.
 7. **P3-07** — cleanup last, after the decisions above identify which evidence
    must be retained.
-

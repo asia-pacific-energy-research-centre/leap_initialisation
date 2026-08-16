@@ -279,11 +279,7 @@ OTHER_LOSS_OWN_USE_LEAP_BALANCE_WORKBOOK_PATH = None
 OTHER_LOSS_OWN_USE_LEAP_BALANCE_SCENARIO = "Target"
 OTHER_LOSS_OWN_USE_LEAP_BALANCE_DATE_ID = None
 
-# Results packaging controls.
-RESULTS_SINGLE_FILE_NAME = "supply_recon_run.xlsx"
-RESULTS_SINGLE_FILE_OUTPUT = True
-RESULTS_SINGLE_FILE_ARCHIVE_MIN_HOURS = 24
-RESULTS_SINGLE_FILE_ARCHIVE_EVERY_RUN = True
+# Results support directories.
 RESULTS_SINGLE_FILE_ARCHIVE_DIR = OUTPUT_DIR / "supporting_files" / "archive"
 RESULTS_CHECKS_DIR = OUTPUT_DIR / "supporting_files" / "checks"
 RESULTS_RUNTIME_DIR = OUTPUT_DIR / "supporting_files" / "runtime"
@@ -305,7 +301,6 @@ COMPLETION_BEEP_PAUSE_SECONDS = 0.12
 RESULTS_UNMATCHED_ID_REPORT_FILENAME = "supply_reconciliation_unmatched_id_rows.csv"
 RESULTS_METADATA_MISMATCH_REPORT_FILENAME = "supply_reconciliation_metadata_mismatches.csv"
 RESULTS_CONFIG_MAPPING_MISMATCH_REPORT_FILENAME = "supply_reconciliation_config_mapping_mismatches.csv"
-RESULTS_TEMPLATE_MATCHING_SUMMARY_FILENAME = "supply_reconciliation_template_matching_summary.csv"
 # [19]: config-mapping-mismatch variables this workflow does not set itself, so
 # a unit/value difference against the reference template is not a genuine
 # template issue. Named and extensible rather than hard-coded to one run's

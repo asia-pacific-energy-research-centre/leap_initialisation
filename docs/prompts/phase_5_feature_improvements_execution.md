@@ -370,7 +370,7 @@ collide:
 | capacity-unmet state JSON (`CAPACITY_UNMET_STATE_PATH`) | last-writer-wins | key by economy, or keep per-worker and merge |
 | `supporting_files/runtime/` timing CSV + `history/` | concurrent writes, and `load_history_summary` averaging partial runs | per-worker file, parent merge; do not let workers write history |
 | `archive_config_dir_once_per_day` | N processes racing the same archive | do it once in the parent before fan-out |
-| single-file combine (`supply_results_saver`) and cross-economy verification artifacts | inherently cross-economy | parent-only, after all workers finish |
+| cross-economy workbook | retired 2026-08-16 | do not produce; retain per-economy seeds and parent CSV diagnostics |
 | `economy_locks/` | none - this is the mitigation | see below |
 
 `codebase/utilities/economy_run_lock.py` already provides exactly the right

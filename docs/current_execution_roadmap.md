@@ -21,8 +21,8 @@ older handoff describes a prior state, this document is the current authority.
   per-process snapshots via `LEAP_WORKER_SNAPSHOT_JSON`. Do not edit
   `ECONOMIES` or `RUN_OUTPUT_LABEL` to launch a second bare workflow while the
   first is running. Sequential execution remains the default; the parallel
-  path is bounded and verified, but its parent merge still does not recreate
-  the sequential path's single combined workbook.
+  path is bounded and verified. Neither mode creates a cross-economy combined
+  workbook; each economy's assembled seed workbook is authoritative.
 - Use a unique `RUN_OUTPUT_LABEL` for every retained test run; restore
   `ECONOMIES = ECONOMIES_RUN_ORDER` and `RUN_OUTPUT_LABEL = "auto"` when the
   run is over. Do not edit workflow code or configuration while a run is live.
@@ -111,17 +111,15 @@ Execute the detailed briefs in this order, with their tests and decision gates:
    (each seed's `Region` column held only its own economy), and `01_AUS`'s
    concurrent output identical (0 diffs) to its sequential run. Deterministic
    parent CSV views cover baseline-seed validation findings/issue groups
-   (`5064325`) plus source diagnostics, template matching, and F5 conservation
+   (`5064325`) plus source diagnostics and F5 conservation
    summary/breakdown/lineage families (`870b75b`). Ordering is deterministic,
    failed workers are skipped rather than read as clean, and worker files remain
    untouched.
-   A `merge_parallel_results_workbooks()` helper now preserves the combined
-   workbook's raw Export preamble/header layout with synthetic structural
-   tests. It is not wired into the runner and does not yet carry the separately
-   required real sequential multi-economy build-and-diff evidence. Each
-   worker's own per-economy seed workbook is already correct standalone and
-   needs no merging. Production activation of the combined workbook remains a
-   separate, human-scoped item rather than an unattended-run default.
+   Cross-economy workbook packaging was retired by user decision on 2026-08-16.
+   The unused parent workbook merge and the sequential `supply_recon_run_*.xlsx`
+   writer were removed. Each worker's per-economy seed workbook is correct
+   standalone and needs no workbook merge; only the deterministic parent CSV
+   diagnostic views are retained.
 3. Phase 3 canonical mapping hardening: schema and rollup contracts, retirement
    of the obsolete name-consolidation path, canonical ownership, and deferred
    equivalence evidence. Mapping decisions still owned by `leap_mappings`

@@ -108,7 +108,7 @@ At each poll, check and record:
   console log.
 - New warnings/errors since the last poll: grep the stderr log and the stdout
   log for tracebacks, `BaselineSeedValidationError`, and `[WARN] Deferred error`.
-- New outputs: list the expected per-economy combined workbook and any updated
+- New outputs: list the expected assembled per-economy LEAP-import workbook and any updated
   export files, sorted or filtered by modification timestamp against the run’s
   start time, not just by existence.
 

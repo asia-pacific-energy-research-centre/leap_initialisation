@@ -87,11 +87,6 @@ def test_results_saver_context_paths_match_legacy_path_view(monkeypatch) -> None
     )
     monkeypatch.setattr(saver, "YEARLY_BALANCE_DIR", context.yearly_balance_dir)
     monkeypatch.setattr(saver, "CONVENTIONAL_BALANCE_DIR", context.conventional_balance_dir)
-    monkeypatch.setattr(
-        saver,
-        "RESULTS_SINGLE_FILE_ARCHIVE_DIR",
-        context.results_single_file_archive_dir,
-    )
     monkeypatch.setattr(saver, "RESULTS_RUNTIME_DIR", context.results_runtime_dir)
     monkeypatch.setattr(saver, "RESULTS_CHECKS_DIR", context.results_checks_dir)
     monkeypatch.setattr(saver, "CAPACITY_UNMET_STATE_PATH", context.capacity_unmet_state_path)
@@ -113,7 +108,6 @@ def test_results_saver_context_paths_match_legacy_path_view(monkeypatch) -> None
     assert context_paths["transformation_export_dir"] == context.transformation_export_output_dir
     assert context_paths["yearly_balance_dir"] == context.yearly_balance_dir
     assert context_paths["conventional_balance_dir"] == context.conventional_balance_dir
-    assert context_paths["archive_dir"] == context.results_single_file_archive_dir
     assert context_paths["probe_catalog_path"] == context.leap_fuel_branch_probe_output_path
 
 
@@ -137,11 +131,6 @@ def test_results_saver_context_output_families_do_not_follow_legacy_globals(monk
     monkeypatch.setattr(saver, "CONVENTIONAL_BALANCE_DIR", legacy_context.conventional_balance_dir)
     monkeypatch.setattr(
         saver,
-        "RESULTS_SINGLE_FILE_ARCHIVE_DIR",
-        legacy_context.results_single_file_archive_dir,
-    )
-    monkeypatch.setattr(
-        saver,
         "LEAP_FUEL_BRANCH_PROBE_OUTPUT_PATH",
         legacy_context.leap_fuel_branch_probe_output_path,
     )
@@ -152,7 +141,6 @@ def test_results_saver_context_output_families_do_not_follow_legacy_globals(monk
     assert paths["transformation_export_dir"] == explicit_context.transformation_export_output_dir
     assert paths["yearly_balance_dir"] == explicit_context.yearly_balance_dir
     assert paths["conventional_balance_dir"] == explicit_context.conventional_balance_dir
-    assert paths["archive_dir"] == explicit_context.results_single_file_archive_dir
     assert paths["probe_catalog_path"] == explicit_context.leap_fuel_branch_probe_output_path
 
 

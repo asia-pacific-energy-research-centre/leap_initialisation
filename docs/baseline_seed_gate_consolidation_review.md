@@ -24,6 +24,20 @@ removed in this change.
   run-level gate supersets, but does not replace, that useful per-workbook report.
 - Promotion remains independent of the new manifest during audit qualification.
 
+### Operating-policy clarification — 2026-08-16
+
+LEAP-area structure updates are intentionally batched. Missing branches caused
+by an area awaiting the next periodic update remain warnings in full rebuilds
+and surgical patches and do not prevent promotion. This can be the permanent
+operating policy rather than a temporary audit concession.
+
+The implementation improvement is to replace the global all-findings downgrade
+with one shared classifier. Known migration backlog and newly discovered
+migration candidates remain non-blocking but separately visible; unrelated
+integrity defects retain their actual severity. Patch and rebuild entry paths
+must not classify the same finding differently. The owning implementation item
+is `work_queue.md` [29].
+
 ## Runtime-check inventory and disposition
 
 Abbreviations: final = final-workbook observable; central = required in the
@@ -50,7 +64,7 @@ run-level gate.
 | supply conservation and results-update closure | `supply_conservation.py` / results saver, post-compute | supply references, allocation records, output rows | results saver | all tests in `test_supply_conservation.py` | no | diagnostic evidence in BSA-010; optional expected rows in BSA-009 | keep local | Final rows lack the independent reference and lineage. | Keep; no tests removed. |
 | transformation output conservation | `transformation_conservation.py` / results saver, post-compute | process records and source reference | results saver | all tests in `test_transformation_conservation.py` | no | diagnostic evidence in BSA-010; optional expected rows in BSA-009 | keep local | Same reason as supply conservation. | Keep. |
 | promotion (`promote_baseline_seed_to_primary_dir`) | `supply_leap_io.py`, immediately after final write/readiness | Run-scoped path and current unverified state | full writer | all tests in `test_baseline_seed_promotion.py` | n/a | eventual consumer of BSA manifest, not in audit phase | leave unchanged | Coupling now would change run/promotion behaviour, explicitly prohibited. Risk of moving: operational interruption. | Keep all promotion tests; add block-mode acceptance-unit test without wiring promotion. |
-| parallel findings/workbook merge | `parallel_economy_merge.py`, parent post-worker stage | worker statuses, manifests, workbooks | parallel runner parent | all tests in `test_parallel_economy_merge.py` | yes | future parent-gate caller | keep; do not edit in this task | Master currently has unrelated work in this file. A parent audit invocation is follow-up after that work lands. | Keep tests; sequential/full writer integration is added now. |
+| parallel findings/diagnostic merge | `parallel_merge.py`, parent post-worker stage | worker statuses and CSV findings/diagnostics | parallel runner parent | all remaining tests in `test_parallel_economy_merge.py` | diagnostic evidence only | future parent-gate caller | keep CSV merge; cross-economy workbook merge retired | Workbook merging is intentionally absent; each worker seed is authoritative. | Keep findings and diagnostic-family tests. |
 | preflights and mapping/fuel-catalog currency checks | `supply_preflight.py`, `fuel_catalog_preflight.py`, pre-compute | source files, mappings, LEAP probe/catalog | long-run presets | preflight, fuel-catalog, resolver tests | no | no (BSA-010 may require their artifacts) | keep local | These answer readiness-to-compute, not readiness-to-emit. | Keep. |
 
 ## Automated-test disposition by suite
@@ -198,10 +212,6 @@ suite-level dispositions above.
 - `tests/test_parallel_economy_merge.py::test_merge_skips_a_failed_worker_rather_than_treating_it_as_clean`
 - `tests/test_parallel_economy_merge.py::test_merge_with_no_findings_anywhere_writes_empty_reports`
 - `tests/test_parallel_economy_merge.py::test_worker_output_dir_matches_the_workflow_own_context_resolution`
-- `tests/test_parallel_economy_merge.py::test_merge_parallel_results_workbooks_preserves_sequential_layout_and_data`
-- `tests/test_parallel_economy_merge.py::test_merge_parallel_results_workbooks_rejects_failed_or_missing_worker`
-- `tests/test_parallel_economy_merge.py::test_merge_parallel_results_workbooks_rejects_layout_drift`
-- `tests/test_parallel_economy_merge.py::test_merge_parallel_results_workbooks_uses_later_economy_for_shared_proxy_rows`
 - `tests/test_conservation_policy.py::test_default_is_warn_not_error`
 - `tests/test_conservation_policy.py::test_check_is_attempted_strict_first`
 - `tests/test_conservation_policy.py::test_failure_warns_and_retries_non_strict`

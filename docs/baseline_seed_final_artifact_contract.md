@@ -13,6 +13,15 @@ All ten rules have contract severity `hard`. In the current production
 configuration their enforcement mode is `audit`. A failed rule therefore records
 `would_block=true` and `run_was_blocked=false`; it is never relabelled warning.
 
+**LEAP structure-migration policy (confirmed 2026-08-16):** missing rows caused
+by LEAP areas awaiting the next periodic structure-update batch are operational
+warnings, not reasons to stop a rebuild, patch, or promotion. This policy may be
+permanent because LEAP updates are intentionally batched. It does not make every
+validation failure a warning. The current global writer switch is an interim,
+over-broad implementation; `work_queue.md` [29] tracks a shared classifier that
+will separate known migration backlog, new migration candidates, and genuine
+non-migration integrity defects across all entry paths.
+
 | ID | Exact output requirement and applicability | Severity | Required evidence / tolerance / exceptions | Existing rule cross-reference | Expected upstream mechanism | Central implementation | Automated tests | Status |
 |---|---|---|---|---|---|---|---|---|
 | BSA-001 | Exactly one readable candidate workbook is supplied for every expected economy; no unexpected economy is silently included. Applies to the complete run artifact set. | hard | Explicit expected economies and explicit economy→candidate paths. No directory-only inference. No tolerance. Exceptions are not allowed for a missing expected economy. | SEED-012 / SEED-C018 | Producer coverage tracking and `write_per_economy_combined_workbooks` | `check_required_artifact_set` | valid set; missing expected workbook | implemented; audit |
@@ -69,6 +78,9 @@ this phase uses audit mode only and does not consult `accepted` before promotion
 Producer/assembly mechanisms remain documented in
 `baseline_seed_rule_inventory.md`, `check_registry.md`, and
 `baseline_seed_gate_consolidation_review.md`. Promotion may later depend on this
-manifest by checking `shadow_status == SHADOW_PASS`, no `would_block` findings,
-and manifest/check completeness. That dependency is deliberately not enabled in
+manifest, but it must not require a literal `SHADOW_PASS` while declared
+LEAP-structure migration findings contribute to a non-pass status. The eventual
+acceptance rule should require complete checks and no unresolved
+**non-migration** integrity failure while retaining known and new migration
+findings as visible warnings. That dependency is deliberately not enabled in
 contract version `1.0.0-audit`.

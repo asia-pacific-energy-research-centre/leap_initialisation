@@ -66,15 +66,16 @@ GLOBAL_AGGREGATE_ECONOMY_LABEL = _resolve_global_aggregate(GLOBAL_ECONOMIES)
 # complete configured model horizon for every represented scenario.
 BASELINE_SEED_VALIDATION_BASE_YEAR = 2022
 BASELINE_SEED_VALIDATION_FINAL_YEAR = 2060
-# Set back to True (2026-07-10) at the user's explicit instruction: current
-# blocking findings are not considered significant enough to hold up a run.
-# This contradicts the confirmed INIT-005 design decision (deferring failure
-# must not turn a blocking finding into a warning) -- see
-# docs/special_rules_and_design_decisions.md (INIT-005 History) for the prior
-# 2026-07-07/2026-07-10 back-and-forth on this flag. Writer tests exercise
-# strict mode by monkeypatching this flag to False locally, while a paired test
-# verifies that the configured production warning behavior remains available.
-# Revert to False to restore the INIT-005 guarantee once reviewed.
+# Confirmed production policy (2026-08-16): LEAP-area structure changes are
+# intentionally accumulated and applied in periodic batches. Missing rows caused
+# by that migration lag must remain visible without stopping ordinary rebuilds
+# or patches, so warning behavior may remain the normal long-term setting.
+#
+# This global switch is broader than the intended policy because it can also
+# downgrade unrelated integrity defects. Work queue [29] tracks replacement by
+# a shared finding classifier (known migration backlog / new migration candidate
+# / non-migration defect). Until that lands, tests exercise strict mode by
+# monkeypatching False and separately pin the configured production behavior.
 BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True
 
 # LEAP can export share variables with an implicit percentage representation:
