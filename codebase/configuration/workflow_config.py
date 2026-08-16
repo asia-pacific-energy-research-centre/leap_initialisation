@@ -66,17 +66,10 @@ GLOBAL_AGGREGATE_ECONOMY_LABEL = _resolve_global_aggregate(GLOBAL_ECONOMIES)
 # complete configured model horizon for every represented scenario.
 BASELINE_SEED_VALIDATION_BASE_YEAR = 2022
 BASELINE_SEED_VALIDATION_FINAL_YEAR = 2060
-# Confirmed production policy (2026-08-16): LEAP-area structure changes are
-# intentionally accumulated and applied in periodic batches. Missing rows caused
-# by that migration lag must remain visible without stopping ordinary rebuilds
-# or patches, so warning behavior may remain the normal long-term setting.
-#
-# This global switch is broader than the intended policy because it can also
-# downgrade unrelated integrity defects. Work queue [29] tracks replacement by
-# a shared finding classifier (known migration backlog / new migration candidate
-# / non-migration defect). Until that lands, tests exercise strict mode by
-# monkeypatching False and separately pin the configured production behavior.
-BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = True
+# Retained only for compatibility with older callers. The shared migration
+# classifier now downgrades only missing-template structure findings; genuine
+# duplicate, share, serialization, ID, and producer failures stay blocking.
+BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS = False
 
 # LEAP can export share variables with an implicit percentage representation:
 # generated rows use Units=Share/Scale=% while the template reports

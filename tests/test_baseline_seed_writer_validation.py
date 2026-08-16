@@ -959,6 +959,14 @@ def test_combined_export_blocks_by_default_on_conflicting_duplicates(
         "codebase.supply_reconciliation.leap_io.RESULTS_VERIFICATION_EXPORT_PATH", template
     )
     monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io.workflow_cfg.BASELINE_SEED_VALIDATION_FINAL_YEAR",
+        2023,
+    )
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io.transformation_workflow.core.EXPORT_FINAL_YEAR",
+        2023,
+    )
+    monkeypatch.setattr(
         "codebase.supply_reconciliation.leap_io.workflow_cfg.BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS",
         False,
     )
@@ -980,15 +988,11 @@ def test_combined_export_blocks_by_default_on_conflicting_duplicates(
         )
 
 
-def test_combined_export_downgrades_blocking_findings_when_configured(
+def test_combined_export_never_blanket_downgrades_nonmigration_failures(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Regression test: save_combined_supply_transformation_export previously
-    never wired BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS through
-    to prepare_seed_rows_for_write, so every baseline-seed combined workbook
-    write raised BaselineSeedValidationError regardless of the config flag,
-    silently skipping every economy's workbook for the whole run."""
+    """The retired broad flag cannot hide duplicates or coverage failures."""
     source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
     _write_leap_and_viewing_workbook(source, [_row("Data(2023,1)"), _row("Data(2023,2)")])
     template = tmp_path / "full model export.xlsx"
@@ -1002,18 +1006,16 @@ def test_combined_export_downgrades_blocking_findings_when_configured(
     )
     output_dir = tmp_path / "output"
 
-    written = save_combined_supply_transformation_export(
-        supply_export_paths=[source],
-        transformation_export_paths=[],
-        transfer_export_paths=[],
-        output_dir=output_dir,
-        economy_label="20_USA",
-        scenarios=["Reference"],
-        template_path=template,  # pin the fixture; see the test above
-    )
-
-    assert written is not None
-    assert written.exists()
+    with pytest.raises(BaselineSeedValidationError, match="SEED-001"):
+        save_combined_supply_transformation_export(
+            supply_export_paths=[source],
+            transformation_export_paths=[],
+            transfer_export_paths=[],
+            output_dir=output_dir,
+            economy_label="20_USA",
+            scenarios=["Reference"],
+            template_path=template,  # pin the fixture; see the test above
+        )
 
 
 def test_combined_export_resolves_template_from_economy_label(
@@ -1028,11 +1030,19 @@ def test_combined_export_resolves_template_from_economy_label(
     therefore asserts the *default* (template_path=None) path specifically.
     """
     source = tmp_path / "supply_leap_imports_12_NZ_reference.xlsx"
-    _write_leap_and_viewing_workbook(source, [_row("Data(2023,1)")])
+    _write_leap_and_viewing_workbook(source, [_row("Data(2023,1,2060,1)")])
     template = tmp_path / "full model export.xlsx"
     _write_template(template)
     monkeypatch.setattr(
         "codebase.supply_reconciliation.leap_io.RESULTS_VERIFICATION_EXPORT_PATH", template
+    )
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io.workflow_cfg.BASELINE_SEED_VALIDATION_FINAL_YEAR",
+        2023,
+    )
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io.transformation_workflow.core.EXPORT_FINAL_YEAR",
+        2023,
     )
 
     seen: list[object] = []
@@ -1065,10 +1075,9 @@ def test_combined_export_explicit_template_bypasses_the_resolver(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An explicit template_path is honoured — the multi-economy single-file
-    output relies on this, since its label spans areas and is not an economy."""
+    """An explicit template_path is honoured without consulting the resolver."""
     source = tmp_path / "supply_leap_imports_20_USA_reference.xlsx"
-    _write_leap_and_viewing_workbook(source, [_row("Data(2023,1)")])
+    _write_leap_and_viewing_workbook(source, [_row("Data(2023,1,2060,1)")])
     template = tmp_path / "full model export.xlsx"
     _write_template(template)
 
@@ -1079,13 +1088,21 @@ def test_combined_export_explicit_template_bypasses_the_resolver(
         "codebase.supply_reconciliation.leap_io._leap_export_template_for_economy",
         _explode,
     )
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io.workflow_cfg.BASELINE_SEED_VALIDATION_FINAL_YEAR",
+        2023,
+    )
+    monkeypatch.setattr(
+        "codebase.supply_reconciliation.leap_io.transformation_workflow.core.EXPORT_FINAL_YEAR",
+        2023,
+    )
 
     written = save_combined_supply_transformation_export(
         supply_export_paths=[source],
         transformation_export_paths=[],
         transfer_export_paths=[],
         output_dir=tmp_path / "output",
-        economy_label="20_USA-01_AUS-05_PRC",
+        economy_label="20_USA",
         scenarios=["Reference"],
         template_path=template,
     )

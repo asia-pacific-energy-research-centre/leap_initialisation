@@ -27,6 +27,10 @@ from codebase.functions.baseline_seed_validation import (
     row_has_only_zero_payload,
     validate_seed_rows,
 )
+from codebase.functions.baseline_seed_structure_migration import (
+    CLASSIFICATION_COLUMN,
+    classify_structure_migration_findings,
+)
 from codebase.functions.leap_excel_io import LeapSheet, read_leap_sheet
 from codebase.functions.leap_expressions import parse_expression
 
@@ -61,7 +65,11 @@ FINDING_COLUMNS = [
     "enforcement_mode",
     "status",
     "would_block",
+    "would_block_without_migration_policy",
     "run_was_blocked",
+    CLASSIFICATION_COLUMN,
+    "migration_backlog_id",
+    "migration_review_status",
     "branch_path",
     "variable",
     "scenario",
@@ -203,7 +211,11 @@ def _finding(
         "enforcement_mode": enforcement_mode,
         "status": normalized_status,
         "would_block": bool(would_block),
+        "would_block_without_migration_policy": bool(would_block),
         "run_was_blocked": bool(would_block and enforcement_mode == "block"),
+        CLASSIFICATION_COLUMN: "not_structure_migration",
+        "migration_backlog_id": "",
+        "migration_review_status": "",
         "branch_path": _text(branch_path),
         "variable": _text(variable),
         "scenario": _text(scenario),
@@ -479,9 +491,15 @@ def check_shared_seed_rules(
         exceptions=validation_exceptions,
         allow_exact_duplicate_resolution=False,
     )
+    classified_seed_findings, _migration_report = classify_structure_migration_findings(
+        result.findings,
+        economy=economy,
+        run_id=run_id,
+        template_path=template_path,
+    )
     findings: list[dict[str, object]] = []
     failed_check_ids: set[str] = set()
-    for _, seed_finding in result.findings.iterrows():
+    for _, seed_finding in classified_seed_findings.iterrows():
         seed_rule = _text(seed_finding.get("rule_id"))
         check_id = SEED_RULE_TO_BSA.get(seed_rule)
         if check_id not in {"BSA-003", "BSA-004", "BSA-005", "BSA-006", "BSA-007"}:
@@ -498,7 +516,7 @@ def check_shared_seed_rules(
             else "FAIL"
         )
         failed_check_ids.add(check_id)
-        findings.append(_finding(
+        artifact_finding = _finding(
             run_id=run_id,
             check_id=check_id,
             enforcement_mode=enforcement_by_check[check_id],
@@ -515,7 +533,16 @@ def check_shared_seed_rules(
             source_workflow=seed_finding.get("source_workflow"),
             exception_id=exception_id,
             suggested_fix="Correct the producer or shared pre-write assembly rule, then regenerate the workbook.",
-        ))
+        )
+        artifact_finding["would_block_without_migration_policy"] = bool(
+            seed_finding.get("would_block_without_migration_policy", artifact_finding["would_block"])
+        )
+        artifact_finding[CLASSIFICATION_COLUMN] = seed_finding.get(
+            CLASSIFICATION_COLUMN, "not_structure_migration"
+        )
+        artifact_finding["migration_backlog_id"] = seed_finding.get("migration_backlog_id", "")
+        artifact_finding["migration_review_status"] = seed_finding.get("migration_review_status", "")
+        findings.append(artifact_finding)
     for check_id in ("BSA-003", "BSA-005", "BSA-006", "BSA-007"):
         if check_id not in failed_check_ids:
             findings.append(_pass_finding(

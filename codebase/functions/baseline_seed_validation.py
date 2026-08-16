@@ -16,6 +16,9 @@ import pandas as pd
 
 from codebase.configuration.known_leap_label_exceptions import KNOWN_LEAP_LABEL_EXCEPTIONS
 from codebase.functions.leap_expressions import parse_expression
+from codebase.functions.baseline_seed_structure_migration import (
+    classify_structure_migration_findings,
+)
 
 
 # --- Stable rule definitions ---
@@ -2219,8 +2222,15 @@ def prepare_seed_rows_for_write(
     exceptions: Iterable[dict[str, object]] | None = None,
     blocking_findings_are_warnings: bool = False,
     raise_on_blocking: bool = True,
+    economy: str = "",
+    run_id: str = "",
 ) -> ValidationResult:
-    """Complete, enrich, validate, and persist diagnostics before any write."""
+    """Complete, enrich, classify, validate, and persist diagnostics before write.
+
+    ``blocking_findings_are_warnings`` remains accepted for call compatibility,
+    but no longer performs a blanket downgrade. Only findings proven to share a
+    missing-template branch with SEED-011 receive the migration warning policy.
+    """
     enriched = enrich_seed_ids_from_template(data, template_path)
     enriched = drop_zero_only_optional_unmatched_rows(enriched)
     initial = validate_seed_rows(
@@ -2263,20 +2273,17 @@ def prepare_seed_rows_for_write(
         findings=pd.concat(finding_frames, ignore_index=True, sort=False) if finding_frames else pd.DataFrame(),
     )
 
-    if blocking_findings_are_warnings and not result.findings.empty and "blocking" in result.findings.columns:
-        work = result.findings.copy()
-        blocking_mask = work["blocking"].fillna(False)
-        if bool(blocking_mask.any()):
-            work.loc[blocking_mask, "blocking"] = False
-            if "severity" in work.columns:
-                work.loc[blocking_mask, "severity"] = "warning"
-            if "status" in work.columns:
-                work.loc[blocking_mask, "status"] = "warn"
-            result = ValidationResult(
-                resolved_rows=result.resolved_rows,
-                duplicate_groups=result.duplicate_groups,
-                findings=work,
-            )
+    classified_findings, migration_report = classify_structure_migration_findings(
+        result.findings,
+        economy=economy,
+        run_id=run_id or diagnostic_stem,
+        template_path=template_path,
+    )
+    result = ValidationResult(
+        resolved_rows=result.resolved_rows,
+        duplicate_groups=result.duplicate_groups,
+        findings=classified_findings,
+    )
 
     output_dir = Path(diagnostics_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -2284,11 +2291,13 @@ def prepare_seed_rows_for_write(
     duplicates_path = output_dir / f"{diagnostic_stem}_duplicate_groups.csv"
     issue_groups_path = output_dir / f"{diagnostic_stem}_issue_groups.csv"
     branch_issue_summary_path = output_dir / f"{diagnostic_stem}_branch_issue_summary.csv"
+    migration_report_path = output_dir / f"{diagnostic_stem}_structure_migration_report.csv"
     filter_actionable_findings(result.findings).to_csv(findings_path, index=False)
     result.duplicate_groups.to_csv(duplicates_path, index=False)
     actionable_findings = filter_actionable_findings(result.findings)
     build_validation_issue_groups(actionable_findings).to_csv(issue_groups_path, index=False)
     build_branch_issue_summary(actionable_findings).to_csv(branch_issue_summary_path, index=False)
+    migration_report.to_csv(migration_report_path, index=False)
 
     if raise_on_blocking and not result.blocking_findings.empty:
         rule_counts = result.blocking_findings["rule_id"].value_counts().sort_index()

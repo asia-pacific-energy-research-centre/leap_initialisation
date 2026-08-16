@@ -244,12 +244,19 @@ def test_id_label_mismatch_against_target_template_is_reported(tmp_path: Path) -
     assert failure["actual"].str.contains('"BranchID": 999').any()
 
 
-def test_nonzero_unresolved_payload_is_reported(tmp_path: Path) -> None:
+def test_nonzero_unresolved_new_structure_is_prominent_but_nonblocking(tmp_path: Path) -> None:
     unknown = _row(branch_path=r"Resources\Primary\Unknown", branch_id=-1)
     rows = pd.DataFrame([unknown])
     result = _run(tmp_path, rows=rows, template_rows=pd.DataFrame([_row()]))
 
-    assert _failures(result, "BSA-005")["evidence"].str.contains("SEED-004").any()
+    warnings = result.findings[
+        result.findings["check_id"].eq("BSA-005")
+        & result.findings["status"].eq("WARN")
+    ]
+    assert warnings["evidence"].str.contains("SEED-004").any()
+    assert set(warnings["structure_migration_classification"]) == {"new_migration_candidate"}
+    assert warnings["would_block_without_migration_policy"].any()
+    assert not warnings["would_block"].any()
 
 
 def test_aggregate_demand_placeholder_warning_never_blocks(tmp_path: Path) -> None:
@@ -279,7 +286,7 @@ def test_aggregate_demand_placeholder_warning_never_blocks(tmp_path: Path) -> No
     assert result.shadow_status == "SHADOW_WARN"
 
 
-def test_standalone_chp_missing_petroleum_coke_is_blocking_with_provenance(
+def test_standalone_chp_missing_petroleum_coke_is_new_migration_with_provenance(
     tmp_path: Path,
 ) -> None:
     branch_path = r"Transformation\CHP interim\Processes\CHP interim\Feedstock Fuels\Petroleum coke"
@@ -299,8 +306,10 @@ def test_standalone_chp_missing_petroleum_coke_is_blocking_with_provenance(
     ]
     assert set(findings["source_workflow"]) == {"electricity_heat_interim_workflow"}
     assert findings["evidence"].str.contains("SEED-003|SEED-004|SEED-011").any()
-    assert findings["would_block"].any()
-    assert not result.accepted
+    assert set(findings["structure_migration_classification"]) == {"new_migration_candidate"}
+    assert findings["would_block_without_migration_policy"].any()
+    assert not findings["would_block"].any()
+    assert result.accepted
 
 
 def test_valid_standalone_producer_has_no_shared_seed_failures(tmp_path: Path) -> None:

@@ -1121,14 +1121,9 @@ def save_combined_supply_transformation_export(
         required_years_by_scenario=required_years_by_scenario,
         required_scenarios_by_source=required_scenarios_by_source,
         blocking_findings_are_warnings=blocking_findings_are_warnings,
+        economy=str(economy_label),
+        run_id=diagnostic_stem,
     )
-    if blocking_findings_are_warnings and not validation.blocking_findings.empty:
-        rule_counts = validation.blocking_findings["rule_id"].value_counts().sort_index()
-        summary = ", ".join(f"{rule_id}={count}" for rule_id, count in rule_counts.items())
-        print(
-            f"[WARN] Baseline-seed validation findings were downgraded to warnings "
-            f"for {economy_label} ({summary})."
-        )
     leap_data = validation.resolved_rows.drop(
         columns=[SOURCE_WORKFLOW_COLUMN, SOURCE_FILE_COLUMN, "source_excel_row"],
         errors="ignore",
@@ -2254,6 +2249,8 @@ def write_per_economy_combined_workbooks(
                 exceptions=configured_exceptions,
                 blocking_findings_are_warnings=blocking_findings_are_warnings,
                 raise_on_blocking=False,
+                economy=econ_token,
+                run_id=diagnostic_stem,
             )
             validation_results.append((econ_token, validation))
             zero_scope_columns = [
