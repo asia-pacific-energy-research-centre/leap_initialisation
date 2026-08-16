@@ -89,6 +89,33 @@ def test_resolver_uses_new_behavior_when_complete_preferred_rows_exist(tmp_path:
     assert decision["preferred_nonenergy_supported"] is True
 
 
+def test_aggregate_resolver_uses_template_union_without_borrowing_area_ids(
+    monkeypatch,
+) -> None:
+    union_paths = _nonenergy_paths("Non Energy Use") | {
+        _hydrogen_path("Electricity for hydrogen")
+    }
+    monkeypatch.setattr(
+        template_compatibility.leap_export_template_resolver,
+        "resolve_template_branch_paths_or_apec_union",
+        lambda economy: frozenset(union_paths),
+    )
+    monkeypatch.setattr(
+        template_compatibility.leap_export_template_resolver,
+        "find_leap_export_template",
+        lambda economy: (_ for _ in ()).throw(
+            AssertionError("aggregate must not resolve one area's template")
+        ),
+    )
+
+    decision = template_compatibility.resolve_template_compatibility("00_APEC")
+
+    assert decision["template_filename"] == "APEC_TEMPLATE_BRANCH_PATH_UNION"
+    assert decision["template_is_provisional"] is False
+    assert decision["selected_nonenergy_sector"] == "Non Energy Use"
+    assert decision["selected_green_electricity_label"] == "Electricity for hydrogen"
+
+
 def test_nonenergy_legacy_route_adds_to_existing_other_sector() -> None:
     demand = pd.DataFrame(
         [

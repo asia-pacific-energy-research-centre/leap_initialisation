@@ -66,15 +66,33 @@ def resolve_template_compatibility(
     template_path: Path | str | None = None,
 ) -> dict[str, object]:
     """Choose preferred or legacy destinations after checking exact template rows."""
-    template = (
-        leap_export_template_resolver.find_leap_export_template(economy)
-        if template_path is None
-        else None
-    )
-    resolved_template_path = Path(template.path if template is not None else template_path)
-    template_paths = leap_export_template_resolver.read_leap_export_template_branch_paths(
-        resolved_template_path
-    )
+    is_aggregate = leap_export_template_resolver.is_aggregate_economy(economy)
+    if template_path is None and is_aggregate:
+        # Compressed preflight uses 00_APEC as a synthetic aggregate and never
+        # imports its workbook into one LEAP area. Match the established
+        # aggregate structural rule: use the union of available area templates
+        # for label compatibility, but never borrow any area's IDs.
+        template = None
+        resolved_template_path = Path("APEC_TEMPLATE_BRANCH_PATH_UNION")
+        template_paths = (
+            leap_export_template_resolver.resolve_template_branch_paths_or_apec_union(
+                economy
+            )
+        )
+    else:
+        template = (
+            leap_export_template_resolver.find_leap_export_template(economy)
+            if template_path is None
+            else None
+        )
+        resolved_template_path = Path(
+            template.path if template is not None else template_path
+        )
+        template_paths = (
+            leap_export_template_resolver.read_leap_export_template_branch_paths(
+                resolved_template_path
+            )
+        )
 
     preferred_nonenergy_missing = _missing_paths(
         _required_nonenergy_paths(PREFERRED_NONENERGY_SECTOR), template_paths
@@ -117,7 +135,13 @@ def resolve_template_compatibility(
         "template_is_provisional": bool(
             template.is_provisional
             if template is not None
-            else leap_export_template_resolver.is_provisional_template(resolved_template_path)
+            else (
+                False
+                if is_aggregate and template_path is None
+                else leap_export_template_resolver.is_provisional_template(
+                    resolved_template_path
+                )
+            )
         ),
         "checked_at_utc": datetime.now(timezone.utc).isoformat(),
         "preferred_nonenergy_supported": not preferred_nonenergy_missing,
