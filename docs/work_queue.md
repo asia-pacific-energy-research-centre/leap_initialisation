@@ -146,6 +146,9 @@ approval for that exact batch. This storage-format checkpoint does not resolve
 the separate SEED-008/model-data investigation option or the seven templates
 waiting on upstream LEAP work.
 
+The completed execution prompt is archived at
+`docs/archive/parquet_migration_and_reversible_archive_execution.md`.
+
 ### 2026-08-16 full-system validation checkpoint
 
 The final committed initialisation state passes 1,447 tests (11 skipped, 35
