@@ -2,7 +2,7 @@
 
 ## [47] Preserve Reference and Target supply scenarios in baseline seeds
 
-**Status: implemented; 12-economy production rerun pending 2026-08-17.**
+**Status: implemented, tested, and production-rerun verified 2026-08-18.**
 
 Supply preparation now retains the 9th-edition Reference and Target rows and
 allocates each scenario independently onto the ESTO product shape. Current
@@ -13,11 +13,29 @@ and typed-cache contracts; stale scenario-less caches are rejected. The
 legacy singular projection lookup remains a Reference-only compatibility view
 and cannot be used as a Target fallback.
 
-Focused scenario/export tests and the broader 123-test supply suite pass. A
-real-data USA smoke check found 23 export products and 13 production products
-with distinct Reference/Target projections. The remaining acceptance step is
-the full-horizon sequential baseline-seed run for the 12 economies with active
-templates, followed by the USA fixed-fuel/year comparison.
+Focused scenario/export tests, the 123-test supply suite, and the full repository
+suite pass (`1,460 passed, 11 skipped, 35 deselected, 12 subtests`). A real-data
+USA smoke check found 23 export products and 13 production products with
+distinct Reference/Target projections.
+
+The full-horizon sequential batch used run label
+`SEED_12TEMPLATE_SCENARIO_FIX_20260817` and wrote combined seeds for 10 of the
+12 template economies. Accumulated process memory caused caught allocation
+errors for the final USA and Viet Nam component stages; fresh-process retries
+`SEED_20_USA_SCENARIO_FIX_RETRY_20260818` and
+`SEED_21_VN_SCENARIO_FIX_RETRY_20260818` completed those seeds. Validation
+findings were retained and reported rather than stopping progress, so promoted
+files marked `UNVERIFIED` still require repair/review before LEAP import.
+
+The final USA seed has 38 Reference/Target Production/Exports expression pairs
+that differ, so scenario expressions are no longer universally identical. All
+136 fixed comparisons against the Target review workbooks passed at 0.001 PJ:
+20 export fuels and 14 fixed-production fuels over 2030, 2040, 2050, and 2060,
+with zero maximum difference. The six unlimited-production fuels remain
+endogenous by design. Requested spot checks matched exactly: 2040 crude-oil
+production `34,850.62228 PJ`, 2050 LNG exports `16,699.89974 PJ`, 2060
+natural-gas exports `3,265.921771 PJ`, and 2030 NGL production
+`8,780.606722 PJ`.
 
 ## [46] Provide a portable source-data bundle workflow
 
