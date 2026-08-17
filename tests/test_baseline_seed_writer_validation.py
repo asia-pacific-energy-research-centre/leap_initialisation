@@ -580,7 +580,7 @@ def test_final_writer_writes_grouped_missing_branch_issue_summary(
     assert "missing from the selected economy's LEAP template" in grouped["summary"].iloc[0]
     consolidated = pd.read_csv(next(diagnostics.glob("*_consolidated_rule_findings.csv")))
     standalone = consolidated[
-        consolidated["source_file"].eq(str(source))
+        consolidated["source_file"].eq(source.name)
         & consolidated["Branch Path"].eq(
             "Transformation\\CHP interim\\Processes\\CHP interim\\Feedstock Fuels\\Petroleum coke"
         )
@@ -937,8 +937,13 @@ def test_missing_producer_finding_names_nonexistent_workbook_path(
     assert coverage["source_workflow"].tolist() == ["transformation_workflow"]
     message = str(coverage["message"].iloc[0])
     assert "1 expected workbook(s) do not exist on disk" in message
-    # The concrete missing path is carried on the finding itself.
-    assert str(absent_source) in str(coverage["source_file"].iloc[0])
+    # The review CSV stays narrow; the complete path remains in the detail
+    # artifact for audit and machine diagnosis.
+    assert coverage["source_file"].tolist() == [absent_source.name]
+    detail_path = next(consolidated.parent.glob("*_consolidated_rule_findings_detail.parquet"))
+    detail = read_manifested_parquet_file(detail_path)
+    detail_coverage = detail[detail["rule_id"].eq("SEED-012")]
+    assert str(absent_source) in str(detail_coverage["source_file"].iloc[0])
 
 
 def test_final_writer_can_skip_validation_for_side_combines(
