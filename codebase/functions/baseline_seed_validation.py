@@ -70,6 +70,28 @@ BRANCH_ISSUE_FAMILY_BY_RULE_ID = {
     "SEED-014": "proxy_source_fallback",
 }
 
+# Keep the consolidated CSV focused on columns a reviewer uses to understand
+# and locate an issue. The complete row-level audit record is persisted
+# separately as manifested Parquet by the final seed writer.
+CONSOLIDATED_FINDINGS_REVIEW_COLUMNS = (
+    "economy",
+    "blocking",
+    "status",
+    "rule_id",
+    "message",
+    "issue_context",
+    "Branch Path",
+    "Variable",
+    "Scenario",
+    "Region",
+    "year",
+    SOURCE_WORKFLOW_COLUMN,
+    SOURCE_FILE_COLUMN,
+    "evidence",
+    "policy_context",
+    "finding_count",
+)
+
 # When a share group is all-zero in one scenario, borrow the genuine profile from
 # another scenario (first match wins) before falling back to a synthetic anchor.
 SHARE_DONOR_SCENARIO_PRIORITY = ("Reference", "Current Accounts", "Target")
@@ -677,6 +699,70 @@ def build_branch_issue_summary(findings: pd.DataFrame) -> pd.DataFrame:
             ),
         })
     return pd.DataFrame(rows, columns=columns)
+
+
+def build_consolidated_findings_review(findings: pd.DataFrame) -> pd.DataFrame:
+    """Return the narrow human-facing view of consolidated seed findings.
+
+    Validation and gating continue to use the complete findings frame. This
+    view removes low-value schema and migration bookkeeping columns while
+    preserving the issue, location, provenance, evidence, and policy context
+    needed for review.
+    """
+    review = findings.copy()
+    if review.empty:
+        return pd.DataFrame(columns=CONSOLIDATED_FINDINGS_REVIEW_COLUMNS)
+
+    def _policy_context(row: pd.Series) -> str:
+        parts: list[str] = []
+        labels = (
+            ("migration", "structure_migration_classification"),
+            ("review", "migration_review_status"),
+            ("exception", "exception_id"),
+            ("exception reason", "exception_reason"),
+        )
+        for label, column in labels:
+            value = _text(row.get(column))
+            if value:
+                parts.append(f"{label}: {value}")
+        return "; ".join(parts)
+
+    def _issue_context(row: pd.Series) -> str:
+        parts = []
+        for label, column in (
+            ("process", "process_label"),
+            ("fuel", "fuel_branch_label"),
+        ):
+            value = _text(row.get(column))
+            if value:
+                parts.append(f"{label}: {value}")
+        return "; ".join(parts)
+
+    def _short_source_files(value: object) -> str:
+        paths = [_text(item) for item in _text(value).split("|") if _text(item)]
+        return "|".join(Path(item).name for item in paths)
+
+    review["issue_context"] = review.apply(_issue_context, axis=1)
+    review["policy_context"] = review.apply(_policy_context, axis=1)
+    if SOURCE_FILE_COLUMN in review.columns:
+        review[SOURCE_FILE_COLUMN] = review[SOURCE_FILE_COLUMN].map(_short_source_files)
+
+    value_columns = [
+        column
+        for column in CONSOLIDATED_FINDINGS_REVIEW_COLUMNS
+        if column != "finding_count"
+    ]
+    for column in value_columns:
+        if column not in review.columns:
+            review[column] = pd.NA
+    review = (
+        review.loc[:, value_columns]
+        .groupby(value_columns, dropna=False, sort=False)
+        .size()
+        .rename("finding_count")
+        .reset_index()
+    )
+    return review.loc[:, list(CONSOLIDATED_FINDINGS_REVIEW_COLUMNS)]
 
 
 def _text(value: object) -> str:
@@ -2312,6 +2398,7 @@ def prepare_seed_rows_for_write(
 
 __all__ = [
     "AGGREGATED_DEMAND_BRANCH_PREFIX",
+    "CONSOLIDATED_FINDINGS_REVIEW_COLUMNS",
     "ID_COLUMNS",
     "OPTIONAL_ZERO_ONLY_TEMPLATE_BRANCH_PREFIXES",
     "LOGICAL_KEY_COLUMNS",
@@ -2327,6 +2414,7 @@ __all__ = [
     "drop_zero_only_optional_unmatched_rows",
     "build_missing_branch_issue_groups",
     "build_branch_issue_summary",
+    "build_consolidated_findings_review",
     "build_producer_coverage_issue_groups",
     "build_share_issue_groups",
     "build_validation_issue_groups",

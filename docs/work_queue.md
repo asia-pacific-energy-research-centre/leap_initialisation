@@ -1,5 +1,16 @@
 # Remaining work queue
 
+## [45] Simplify baseline-seed consolidated findings for human review
+
+**Status: implemented and focused tests passing 2026-08-17.**
+
+`baseline_seed_*_consolidated_rule_findings.csv` is now a narrow review table
+containing the issue, location, provenance, evidence, and compact policy
+context. The full validator schema remains available as the manifested
+`baseline_seed_*_consolidated_rule_findings_detail.parquet` audit artifact.
+Sequential and parallel validation logic continues to operate on the complete
+in-memory findings frame, so reducing the CSV does not weaken gating.
+
 ## [44] Migrate machine-only tabular intermediates to Parquet across the connected system
 
 **Status: HF-001 through HF-004 approved, implemented, and validated

@@ -69,6 +69,7 @@ from codebase.functions.baseline_seed_validation import (
     SOURCE_FILE_COLUMN,
     SOURCE_WORKFLOW_COLUMN,
     build_branch_issue_summary,
+    build_consolidated_findings_review,
     build_validation_issue_groups,
     check_producer_coverage,
     complete_canonical_share_groups,
@@ -79,6 +80,7 @@ from codebase.functions.baseline_seed_validation import (
     prepare_seed_rows_for_write,
     validate_seed_rows,
 )
+from codebase.utilities.typed_storage import write_manifested_parquet
 from codebase import (
     electricity_heat_interim_workflow,
     other_loss_own_use_proxy_workflow,
@@ -2473,7 +2475,19 @@ def write_per_economy_combined_workbooks(
             else pd.DataFrame()
         )
         consolidated_path = diagnostics_dir / f"baseline_seed_{run_stamp}_consolidated_rule_findings.csv"
-        consolidated.to_csv(consolidated_path, index=False)
+        consolidated_detail_path = (
+            diagnostics_dir
+            / f"baseline_seed_{run_stamp}_consolidated_rule_findings_detail.parquet"
+        )
+        write_manifested_parquet(
+            consolidated,
+            consolidated_detail_path,
+            artifact_type="baseline_seed_consolidated_rule_findings_detail",
+        )
+        build_consolidated_findings_review(consolidated).to_csv(
+            consolidated_path,
+            index=False,
+        )
         proxy_warnings = consolidated[
             consolidated.get("rule_id", pd.Series(dtype=object)).eq("SEED-014")
             & consolidated.get("status", pd.Series(dtype=object)).eq("warn")

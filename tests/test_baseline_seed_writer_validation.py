@@ -7,6 +7,8 @@ import pandas as pd
 import pytest
 
 from codebase.functions.baseline_seed_validation import (
+    CONSOLIDATED_FINDINGS_REVIEW_COLUMNS,
+    build_consolidated_findings_review,
     BaselineSeedValidationError,
     build_branch_issue_summary,
     build_validation_issue_groups,
@@ -22,6 +24,7 @@ from codebase.supply_reconciliation.leap_io import (
 )
 from codebase.functions.leap_expressions import build_data_expression_from_row
 from codebase.configuration.workflow_config import get_baseline_seed_validation_years
+from codebase.utilities.typed_storage import read_manifested_parquet_file
 
 
 def test_baseline_seed_filename_marks_comp_gen_templates() -> None:
@@ -109,6 +112,42 @@ def test_persisted_findings_keep_only_actionable_statuses() -> None:
     actionable = filter_actionable_findings(findings)
 
     assert actionable["rule_id"].tolist() == ["SEED-009", "SEED-003"]
+
+
+def test_consolidated_findings_review_keeps_issue_context_without_audit_bookkeeping() -> None:
+    finding = {
+        "economy": "20_USA",
+        "blocking": False,
+        "status": "warn",
+        "rule_id": "SEED-011",
+        "message": "Branch is missing from the template.",
+        "Branch Path": r"Transformation\Example",
+        "Variable": "Activity Level",
+        "Scenario": "Reference",
+        "source_workflow": "transformation_workflow",
+        "source_file": r"C:\outputs\source.xlsx",
+        "evidence": "template.xlsx",
+        "violated_rule_expectation": "Branch paths exist in the template.",
+        "documentation_reference": "docs/example.md",
+        "structure_migration_classification": "known_structure_gap",
+        "migration_review_status": "accepted",
+        "migration_backlog_id": "MIG-001",
+        "migration_notes": "Repeated metadata that belongs in the detail artifact.",
+    }
+    findings = pd.DataFrame([finding, finding])
+
+    review = build_consolidated_findings_review(findings)
+
+    assert list(review.columns) == list(CONSOLIDATED_FINDINGS_REVIEW_COLUMNS)
+    assert review.loc[0, "policy_context"] == (
+        "migration: known_structure_gap; review: accepted"
+    )
+    assert review.loc[0, "source_file"] == "source.xlsx"
+    assert review.loc[0, "finding_count"] == 2
+    assert "migration_backlog_id" not in review.columns
+    assert "migration_notes" not in review.columns
+    assert "violated_rule_expectation" not in review.columns
+    assert "documentation_reference" not in review.columns
 
 
 def test_unlimited_expression_is_not_a_year_coverage_failure() -> None:
@@ -370,10 +409,14 @@ def test_final_writer_consolidates_proxy_seed_fallback_warnings(
     assert len(written) == 1
     diagnostics = output_dir / "supporting_files" / "baseline_seed_validation"
     consolidated = pd.read_csv(next(diagnostics.glob("*_consolidated_rule_findings.csv")))
+    assert list(consolidated.columns) == list(CONSOLIDATED_FINDINGS_REVIEW_COLUMNS)
     proxy = consolidated[consolidated["rule_id"].eq("SEED-014")]
     assert len(proxy) == 1
     assert proxy["status"].iloc[0] == "warn"
     assert proxy["economy"].iloc[0] == "20_USA"
+    detail_path = next(diagnostics.glob("*_consolidated_rule_findings_detail.parquet"))
+    detail = read_manifested_parquet_file(detail_path)
+    assert detail["process_key"].tolist() == ["transmission_and_distribution_losses"]
 
 
 def test_final_writer_runs_central_artifact_gate_after_physical_write(
