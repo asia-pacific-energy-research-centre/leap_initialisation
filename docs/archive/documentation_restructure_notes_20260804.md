@@ -1,7 +1,9 @@
 # Documentation restructure — notes for review
 
 **Date:** 2026-08-04
-**Status:** review notes, nothing changed yet.
+**Status:** completed/superseded. The user guide and review-tool documentation
+were revised and the web application moved to the sibling `leap_review_tools`
+repository. Retained here only as the pre-change review record.
 **Why now:** both user-facing documents were last edited 2026-08-03 20:00, before
 the input-folder redesign and before build sessions 1–3. Two of their statements
 are now the opposite of what the tool does.

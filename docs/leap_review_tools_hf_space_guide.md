@@ -363,4 +363,5 @@ last prepared snapshot. Re-run bundle preparation, upload the refreshed
 
 For the repository-specific release contract and bundle contents, also see
 [`docs/balance_review_web_app.md`](balance_review_web_app.md) and
-[`web_app/README.md`](../web_app/README.md).
+the current sibling app's
+[`web_app/README.md`](../../leap_review_tools/web_app/README.md).

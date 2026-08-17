@@ -20,19 +20,19 @@ When adding or changing a prompt:
 
 ## Active prompt inventory
 
-Reviewed exhaustively on 2026-07-28. Every Markdown file currently in this
+Reviewed against the folder on 2026-08-17. Every Markdown file currently in this
 folder appears exactly once below.
 
 | Prompt | Type and status | Purpose / evidence | Before use |
 |---|---|---|---|
 | `aggregated_demand_scoped_review.md` | Scoped review; partial | Cache-measurement and any remaining aggregated-demand review work. Earlier implementation slices landed. | Re-check the remaining checklist against `docs/work_queue.md`; do not repeat completed work. |
 | `baseline_seed_aus_things_to_check.md` | Post-run review; active | Focused Australia checklist for the next full seed, including the remaining Bitumen/display-name check. | Use only with a fresh comparable AUS run and record the exact source/template vintages. |
+| `baseline_to_results_update_round_trip_convergence_exploration.md` | Exploration; active | Measures whether a LEAP results-update cycle converges toward the independent source balance. | Use current baseline/result exports and keep diagnostic conclusions separate from automatic update authority. |
 | `final_owned_seed_completion_execution_prompt.md` | Implementation; active | Template-aware final completion of explicitly owned missing seed keys. | Start diagnostics-only; do not turn this into blanket zero-fill or migrate an ownership domain without equivalence evidence. |
 | `fix_augmented_source_csv_dtype_warnings.md` | Implementation; pending | Removes known augmented-source CSV dtype warnings without changing values. | Confirm the warning still reproduces and no reconciliation run is active before editing shared files. |
 | `initialisation_refactor_continuation.md` | Open-thread register; active | Current T-register for refactor decisions and landed work. | Reconcile against `docs/work_queue.md` and the dated handover queue before selecting a thread. |
 | `initialisation_refactor_thread_execution_prompt.md` | Execution procedure; active | Procedure and evidence standard for executing one refactor thread at a time. | One thread per task; recommendations are not automatic approval for modelling decisions. |
 | `patch_baseline_seeds_module_verification_prompt.md` | Verification; active but partly historical | Durable per-module patch verdicts; transformation-specific ungate work is archived, while final module evidence and losses/own-use strip-scope caveats remain useful. | Treat its status paragraphs independently and re-check the active preset plus current verdict comment. |
-| `parquet_migration_and_reversible_archive_execution.md` | Cross-repository implementation; active | Executes work-queue item [44]: typed machine-only storage, full validation, and a separately approved reversible archive proposal. | Read every owning repository's guidance and queue; preserve human/browser/LEAP/contracts and stop before moving originals without exact batch approval. |
 | `phase_3_canonical_mapping_migration_execution.md` | Verification/decision; partial | Migration implementation landed; D3.4/D3.5 confirmation and final equivalence/ownership evidence remain. | Canonical mapping ownership belongs to `leap_mappings`; local legacy workbooks are not active authorities. |
 | `phase_4_monolith_decomposition_execution.md` | Refactor; partial | Historical split context plus remaining state-boundary decisions. | Re-measure files and use the current roadmap; old LOC figures are not maintained facts. |
 | `phase_5_feature_improvements_execution.md` | Feature plan; partial | Convergence history and parallelism largely landed; remaining independently shippable improvements are tracked in the queues. | Select only a still-open slice and verify its dependency gates first. |

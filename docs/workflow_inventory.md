@@ -1,6 +1,6 @@
 # Workflow Inventory
 
-Last reviewed: 2026-07-28
+Last reviewed: 2026-08-17
 
 This is a cleanup-oriented inventory of the active workflow entry scripts in
 `codebase/`. It is meant to answer two questions:
@@ -24,6 +24,10 @@ separately below.
 | `electricity_heat_interim_workflow.py` | Builds interim electricity, CHP, and heat transformation modules from ESTO power-sector data and 9th projections. |
 | `other_loss_own_use_proxy_workflow.py` | Builds proxy demand branches for losses and own-use flows that do not fit cleanly in transformation modules. |
 | `baseline_seed_comparison_workflow.py` | Compares generated baseline seed workbooks with reviewed references and separates structural, metadata, expression, duplicate-key, and share-total differences. |
+| `baseline_seed_artifact_validation_workflow.py` | Validates finished seed artifacts and writes the final artifact findings, summary, and manifest contract. |
+| `baseline_seed_balance_diagnostics_workflow.py` | Builds the cyclical baseline-seed versus LEAP/source balance diagnostics used for review. |
+| `balance_update_workflow.py` | Builds reviewed results-update workbooks from current LEAP balance exports and configured adjustment strategies. |
+| `aggregated_demand_template_coverage_workflow.py` | Audits aggregated-demand branch coverage against the resolved LEAP templates. |
 | `outlook_mapping_maintenance_workflow.py` | Maintenance workflow for the Outlook mapping workbook. It recomputes audit columns and produces mapping QA outputs. |
 | `transformation_entry.py` | Convenience entrypoint used by the full-model notebook to run transformation-related workflow pieces together. |
 
@@ -55,6 +59,10 @@ These are useful supporting workflows, but they are not part of the main
 supply-reconciliation loop.
 
 - `baseline_seed_comparison_workflow.py`
+- `baseline_seed_artifact_validation_workflow.py`
+- `baseline_seed_balance_diagnostics_workflow.py`
+- `balance_update_workflow.py`
+- `aggregated_demand_template_coverage_workflow.py`
 - `outlook_mapping_maintenance_workflow.py`
 - `transformation_entry.py`
 
@@ -88,6 +96,11 @@ The former active `codebase/minor_demand_workflow.py` and
 `codebase/refining_workflow.py` entrypoints have been retired. Minor-demand
 history is under `codebase/archive/`; Oil Refining is handled by
 `transformation_workflow.py`.
+
+`codebase/portable_release/` is retained packaging/runtime support from the
+review-tools handover. The current web/release application is owned by the
+sibling `leap_review_tools` repository; this package is not a second active web
+application in `leap_initialisation`.
 
 ## Layout Note
 

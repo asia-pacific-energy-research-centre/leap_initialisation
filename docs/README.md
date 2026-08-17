@@ -23,6 +23,7 @@ and [`process_map_agent.md`](process_map_agent.md).
 | [`work_queue.md`](work_queue.md) | The detailed engineering log — items `[0]`–`[21]`, recorded traps, and known pre-existing test failures. The reasoning behind the queue above. |
 | [`priority_3_review_decisions.md`](priority_3_review_decisions.md) | Human-review packet for the deferred Priority 3 mapping, seed-gating, ownership, modeling, combined-workbook, and cleanup decisions. It links each decision back to its owning queue. |
 | [`documentation_audit_20260728.md`](documentation_audit_20260728.md) | First-pass findings `D-01`–`D-13` and the follow-up action record. |
+| [`documentation_audit_20260817.md`](documentation_audit_20260817.md) | Current re-review of post-July architecture, front doors, workflow inventory, prompts, and retired guidance. |
 | [`documentation_disposition_20260728.md`](documentation_disposition_20260728.md) | Exhaustive 102-file role/status/evidence/disposition matrix, including prompts and archives. |
 | [`cross_repo_handover_index.md`](cross_repo_handover_index.md) | This repository's half of the cross-repository contract: what it consumes from `leap_mappings`, what it publishes, schemas, refresh order, failure ownership. Parent document is `leap_mappings/docs/cross_repository_handover_index.md`. |
 | [`current_execution_roadmap.md`](current_execution_roadmap.md) | Operational roadmap and run policy, corrected to route concurrent economies through the bounded process runner. |
@@ -78,7 +79,7 @@ Dated findings. Historical context, not live instruction.
 
 ## `prompts/` and `archive/`
 
-- [`prompts/`](prompts/) — 18 active or pending multi-step agent prompts.
+- [`prompts/`](prompts/) — 18 active, pending, or reusable multi-step agent prompts.
   [`prompts/AGENTS.md`](prompts/AGENTS.md) is the folder policy and complete
   inventory of record. Completed and superseded prompts were moved to archive
   during the 2026-07-28 preservation audit.
@@ -90,3 +91,7 @@ Dated findings. Historical context, not live instruction.
 
 See also `data/README.md` and `codebase/old_workflows/README.md`, placed in those
 folders so the guidance is where you need it.
+
+The `leap_review_tools*.md` files record the packaging and handover originally
+built here. Current web-app implementation and deployment live in the sibling
+`C:\Users\Work\github\leap_review_tools` repository.

@@ -36,7 +36,8 @@ Demand
 ```
 
 The exact full paths are in
-[leap_all_demand_aggregated_fuels_by_sector.csv](leap_all_demand_aggregated_fuels_by_sector.csv).
+`leap_all_demand_aggregated_fuels_by_sector.csv` (generated evidence not retained
+with this archived guide).
 
 ## What you need to do in LEAP
 

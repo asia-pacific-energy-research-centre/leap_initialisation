@@ -1,250 +1,98 @@
-# leap_initialisation
+# LEAP initialisation
 
-This repository is the active home for LEAP area initialisation, supply
-reconciliation, and LEAP import-workbook preparation. It was rebuilt from the
-corresponding workflows in `leap_utilities`.
+This repository owns LEAP area initialisation, supply reconciliation, and the
+generation and validation of LEAP import workbooks. It consumes reviewed
+mapping semantics from the sibling `leap_mappings` repository; it does not own
+mapping relationships or dashboard presentation.
 
 ## Start here
 
-For the connected three-repository ownership and reading route, start with
+Begin with the connected-system route in
 [`leap_mappings/docs/start_here.md`](../leap_mappings/docs/start_here.md).
-
-Mapping semantics are maintained upstream in
-`../leap_mappings/config/outlook_mappings_single_axis.xlsx`. The mappings
-repository must run its separate-axis refresh as the preliminary production
-gate before this repository consumes the generated
-`outlook_mappings_master.xlsx`. Do not repair mapping relationships in a copied
-initialisation workbook or in a generated master pair sheet.
-
-Within this repository:
 
 | Need | Authoritative route |
 |---|---|
 | understand or run supply reconciliation | [`docs/handover/supply_reconciliation_guide.md`](docs/handover/supply_reconciliation_guide.md) |
 | execute safely as an agent | [`docs/handover/supply_reconciliation_agent_guide.md`](docs/handover/supply_reconciliation_agent_guide.md) |
-| interpret validation rules | [`docs/check_registry.md`](docs/check_registry.md) |
-| understand placeholder demand and interim power branches | [`docs/placeholder_branches_and_interim_models.md`](docs/placeholder_branches_and_interim_models.md) |
+| interpret readiness and validation checks | [`docs/check_registry.md`](docs/check_registry.md) |
+| understand placeholder/interim branches | [`docs/placeholder_branches_and_interim_models.md`](docs/placeholder_branches_and_interim_models.md) |
 | choose current work | [`docs/handover_work_queue_20260728.md`](docs/handover_work_queue_20260728.md) |
-| review deferred Priority 3 decisions | [`docs/priority_3_review_decisions.md`](docs/priority_3_review_decisions.md) |
 | inspect detailed engineering history and traps | [`docs/work_queue.md`](docs/work_queue.md) |
-| run the review tools, or ship them to a colleague | [`docs/leap_review_tools.md`](docs/leap_review_tools.md) |
+| find a workflow | [`docs/workflow_inventory.md`](docs/workflow_inventory.md) |
 
-The primary entry point is:
+The primary entry point is
+`codebase/supply_reconciliation_workflow.py`. It is notebook-style: edit the
+explicit constants/preset blocks in the repository, then run it with the pinned
+Windows interpreter described in `AGENTS.md`.
 
-- `codebase/supply_reconciliation_workflow.py`
+## Mapping boundary
 
-Supporting workflows copied with it include supply, transformation, transfers, interim electricity/heat, aggregated demand, loss/own-use proxy, LEAP export helpers, and mapping readers.
+Researchers edit independent axis relationships in:
 
-Current copied inputs include `config/`, live `data/` inputs, docs, scripts, tests, and the current `outputs/leap_exports/supply_reconciliation` plus related balance/mapping output context.
-
----
-
-## Historical leap-utilities notes
-
-The material below preserves useful setup history and examples from the
-repository's origin. For current ownership, execution order, and validation
-authority, use the Start-here routes above. Treat old repository names, setup
-commands, and API assumptions below as historical unless a maintained guide
-confirms them.
-
-Shared LEAP helpers (branch utilities, Excel import/export, energy-use reconciliation and LEAP API interactions). It was originally intended to be flexible and reusable but perhaps is just a bit of a grab-bag of utilities that have been built up over time for interacting with LEAP in various ways.
-
-A large portion of the codebase was developed for setting up LEAP areas for the APERC 10th edition with the intended modelling structure of that project in mind. A lot of code is built to extract and process ESTO data to put it into the strucutre used by the LEAP areas. This uses a lot of mappings, which have been built for reuse in other similar applications. 
-
-Also there is a large workflow called supply_reconciliation_workflow which combines the demand, transformation and supply workflows to create a full end-to-end workflow for initialising the data for a new LEAP area and iterating on its results to get to a good state.
-
-For the current end-to-end system shape, rewrite context, and handover notes, see
-[`docs/system_overview_for_rewrite.md`](docs/system_overview_for_rewrite.md).
-
-## Setup
-
-### Prerequisites
-
-- **Windows** — LEAP uses a COM/win32 interface that only works on Windows. Note that as of 9June2026 we consider the LEAP API too buggy to use, so we have switched to using Excel import/export as the main method of moving data in and out of LEAP, and use manual processes for other API tasks like branch creation.
-- **LEAP** — must be installed and licensed on the machine. The workflows read and write LEAP data through its COM API and through exported Excel workbooks.
-- **Python 3.11** — via conda (recommended) or a standalone install.
-- **Both repos cloned as siblings** — `leap_utilities` and `leap_dashboard` must sit in the same parent folder if you want to use leap_dashboard to create dashboards (e.g. `github/leap_utilities` and `github/leap_dashboard`). The dashboard workflow finds `leap_utilities` by looking one level up.
-
-### 1) Install dependencies
-
-#### Option A — conda (recommended)
-
-```bash
-cd leap_utilities
-conda env create -f environment.yml
-conda activate leap_utilities
+```text
+../leap_mappings/config/outlook_mappings_single_axis.xlsx
 ```
 
-#### Option B — pip only
+The mappings pipeline must run its `generate` stage (the separate-axis refresh)
+before Stages 1–3. This repository consumes the generated compatibility
+workbook `../leap_mappings/config/outlook_mappings_master.xlsx`. Do not edit its
+generated pair sheets or repair mappings in copied initialisation workbooks.
 
-```bash
-cd leap_utilities
-pip install -e .
-# environment.yml lists the same deps: pandas pyarrow openpyxl matplotlib pywin32
+## Main workflow surface
+
+- `supply_reconciliation_workflow.py` — linked baseline-seed/results-update
+  orchestration and per-economy execution.
+- `supply_workflow.py` — standalone supply preparation.
+- `transformation_workflow.py` and `hydrogen_transformation_workflow.py` —
+  transformation preparation.
+- `transfers_workflow.py` — transfer processes.
+- `aggregated_demand_workflow.py` — temporary aggregated demand placeholder.
+- `electricity_heat_interim_workflow.py` — interim electricity/CHP/heat model.
+- `other_loss_own_use_proxy_workflow.py` — losses and own-use proxy branches.
+- `balance_update_workflow.py` and the baseline-seed diagnostic/validation
+  workflows — review and iterative update support.
+
+See `docs/workflow_inventory.md` for the full current classification.
+
+## Required inputs
+
+The maintained workflow expects reviewed local data, including:
+
+- `data/00APEC_2024_low_with_subtotals.csv` — configured ESTO base table;
+- `data/merged_file_energy_ALL_20251106.csv` — 9th Outlook projections;
+- `data/leap_export_templates/*.xlsx` — per-economy branch/ID templates, resolved
+  through the template resolver rather than filename construction; and
+- `data/leap balances exports/<economy>/` — current manually exported LEAP
+  Energy Balance workbooks.
+
+See [`data/README.md`](data/README.md) for the exact current file contracts.
+
+## Running and safety
+
+Use Windows because the optional LEAP COM integration depends on `pywin32`, but
+ordinary production transfer is workbook-first and does not require enabling
+the retired API write path. From the repository root:
+
+```powershell
+C:\Users\Work\miniconda3\python.exe codebase\supply_reconciliation_workflow.py
 ```
 
-Do the same in `leap_dashboard` if you are running the dashboard workflow:
+Before a run, check the active preset, economy/scenario scope, explicit run
+label, resolved templates, current LEAP exports, and mapping generation. Long
+runs must follow the launch, lock, isolation and polling rules in `AGENTS.md`.
+Generated outputs stay under `outputs/` and must not be treated as current only
+because an old file exists.
 
-```bash
-cd leap_dashboard
-pip install -e .
-# deps: pandas openpyxl plotly jinja2
-```
+## Review tools and historical material
 
-### 2) Data files required
+The web/release application moved to the sibling
+`C:\Users\Work\github\leap_review_tools` repository on 5 August 2026. The
+`docs/leap_review_tools*.md` files and `codebase/portable_release/` retained here
+describe the original packaging and handover boundary; use the sibling
+repository for current web-app implementation and deployment.
 
-The main workflows expect the following files to already be present (they are not generated — they come from external datasets or LEAP exports):
-
-| File | Where used |
-| ---- | ---------- |
-| `data/00APEC_2024_low_with_subtotals.csv` | Current shared ESTO base-table default (`workflow_config.py`); base year is configured separately |
-| `data/merged_file_energy_ALL_20251106.csv` | 9th Outlook projection data |
-| `data/leap_export_templates/*.xlsx` with the economy code as a filename token | Per-economy LEAP branch/ID reference (`COMP_GEN` marks a provisional copy); resolve through `leap_export_template_resolver.py` rather than constructing a filename |
-| current resolved USA template | Shared catalog/verification reference where explicitly configured; the retired literal `data/full model export.xlsx` is absent |
-| `data/leap balances exports/<economy>/` | Canonical raw LEAP balance exports (manual export from LEAP) |
-
-See `data/README.md` for full descriptions and `data/leap balances exports/README.md` for the expected filename format of LEAP exports.
-
-### 3) Running `supply_reconciliation_workflow.py`
-
-This is the main workflow for syncing a new LEAP area. No environment variables need to be set — the repo root is resolved automatically from the file location.
-
-Open the script, check the `ACTIVE_PRESET` at the bottom (either `_PRESET_BASELINE_SEED` or `_PRESET_RESULTS_UPDATE`), set the economy and scenario in `codebase/configuration/workflow_config.py`, then run the script. See the *Syncing a new area* section of the researcher guide for the full iterative process.
-
-### Troubleshooting
-
-- **`ImportError: No module named 'win32com'`** — pywin32 is not installed or the wrong Python environment is active.
-- **`FileNotFoundError` on a data file** — check `data/README.md` for which files need to be present before running.
-- **LEAP COM errors on startup** — LEAP must be open and the correct area/scenario must be active before running any workflow that uses the COM API.
-
-## Modules
-
-- `leap_core`: COM helpers, expression building, branch creation/fill utilities (transport mappings optional/injectable).
-- `leap_excel_io`: helpers to build LEAP import Excel files and merge/view sheets.
-- `leap_exports`: packaged helpers for export filename formatting, workbook creation, and workbook discovery/validation.
-- `leap_api`: packaged helpers for LEAP API availability checks and workbook import operations.
-- `energy_use_reconciliation`: ESTO/LEAP reconciliation helpers (transport checks optional).
-- `codebase/examples/power_mapping_example.py`: notebook-style example of
-  export-driven LEAP branch creation/fill. Its editable input currently defaults
-  to `data/USA_power_leap_import_REF.xlsx`, which is not bundled in this
-  checkout—supply a reviewed LEAP-shaped workbook before running it. Supply
-  reconciliation uses its own integrated electricity/heat workflow rather than
-  the retired `data/power export.xlsx` prototype.
-
-## LEAP / ESTO / 9th balance mapping
-
-The balance-mapping workflow is layered so researchers maintain simple editable mapping sheets and explicit rollup rules while scripts generate the complex comparison tables.
-
-Primary mappings say where each source row belongs. Rollup rules say where comparison needs to happen at a broader shared level. The code applies rollups before calculating cardinality, so detailed source categories are not forced to match detailed target categories when the intended comparison is broader.
-
-Researchers mainly edit these sheets in `C:\Users\Work\github\leap_mappings\config\outlook_mappings_master.xlsx`:
-
-- `leap_combined_esto`
-- `ninth_pairs_to_esto_pairs`
-- `leap_combined_ninth`
-- `leap_rollup_rules`
-- `esto_rollup_rules`
-- `ninth_rollup_rules`
-
-Generated relationship IDs, effective rolled rows, cardinality summaries, and
-QA tables are created by code. The canonical execution path is now the sibling
-`leap_mappings/codebase/run_mapping_pipeline.py`; the similarly named
-`codebase/mapping_tools/` files retained here are compatibility/reference code
-and do not own mapping semantics. The current editor loop is:
-
-1. Fill in simple source-to-target mappings.
-2. Add rollup rules where detail levels do not align.
-3. Run mapping maintenance and Stages 1–3 in `leap_mappings`.
-4. Review
-   `leap_mappings/results/mapping_relationships/qa/qa_many_to_many_after_rollup.csv`.
-5. Fix mappings or add rollups until effective many-to-many rows are resolved.
-6. Rerun the canonical mapping pipeline and use its compiled outputs.
-
-Important distinction: many-to-many before rollup is not automatically bad; it is reported as a warning. Many-to-many after rollup is a high-severity problem that needs mapping or rollup review.
-
-Canonical generated outputs in `leap_mappings` include:
-
-- `results/mapping_relationships/energy_balance_relationships.csv`
-- `results/mapping_relationships/energy_balance_relationships.xlsx`
-- `results/mapping_relationships/relationship_catalogue.csv`
-- `results/mapping_relationships/rolled_mapping_rows.csv`
-- QA files under `results/mapping_relationships/qa/`
-
-The compiled relationship builder creates rows for LEAP to ESTO, 9th to ESTO, LEAP to 9th, and the separately checked reverse 9th to LEAP initialisation mapping. Rows with `remove_row=True` are preserved but marked excluded for their use case.
-
-The current Common ESTO layer is also produced by `leap_mappings` for
-dashboard-shaped comparison data:
-
-1. `leap_mappings/codebase/mapping_tools/build_common_esto_structure.py` infers common ESTO rows by comparison scope and writes `results/common_esto/common_esto_rows.csv`, `common_esto_rows.xlsx`, and `esto_to_common_esto_map.csv`.
-2. `leap_mappings/codebase/mapping_tools/apply_common_esto_structure.py` converts source data into `results/common_esto/common_esto_comparison_data.csv` and the versioned output contract on a QA-successful publication.
-3. Dashboards should consume the common ESTO comparison data, not `relationship_id` to graph links.
-
-Current comparison scopes are `esto_leap`, `esto_extended_leap`,
-`esto_leap_ninth`, and `esto_extended_leap_ninth`. Older documents may use the
-superseded conceptual names `leap_vs_esto`, `leap_vs_ninth`,
-`leap_vs_esto_vs_ninth`, or `esto_only`; do not pass those old labels to current
-workflows. If LEAP or 9th represents several exact ESTO flow/product rows as one
-aggregate, the common-structure builder keeps those exact ESTO components
-together for scopes that include that source.
-
-## Notes
-
-- Requires Windows/pywin32 for COM access.
-- If struggling talk to finn, he understands that it might be tricky!
-- If you don't want to install, add the repo root to `PYTHONPATH`/`sys.path` before importing `code`, but `pip install -e .` is recommended.
-
-# Industry example:
-
-This is useful historical context for the Excel import/export pattern that was
-used to move data between LEAP models. The original
-`codebase/industry_mapping_workflow.py` is no longer present in this rebuilt
-repository; do not try to run that path. Its central pattern remains supported
-by `create_branches_from_export_file()` and `fill_branches_from_export_file()`
-in `codebase/functions/leap_core.py`, with a current notebook-style example in
-`codebase/examples/power_mapping_example.py`. The export/import shape remains
-the same: Branch Path, Variable, Scenario, Region, Scale, Units, Per..., and
-year columns.
-
-### How to use the example:
-
-- Open `codebase/examples/power_mapping_example.py` and point
-  `LEAP_EXPORT_FILENAME` to your mapping file (exported from the source model
-  or constructed in the same LEAP import/export shape).
-- Set `SCENARIO` and `REGION` to the target values in the destination LEAP
-  area; adjust `SHEET_NAME` if your Excel sheet differs from `"Export"`.
-- If you need to create the branch structure in the destination model, set `CREATE_BRANCHES_FROM_EXPORT_FILE = True` (uses `create_branches_from_export_file`).
-- To write data into existing branches, set
-  `FILL_BRANCHES_FROM_EXPORT_FILE = True` (uses
-  `fill_branches_from_export_file`). Unit/scale handling remains something to
-  verify in the generated workbook or LEAP GUI; the current example has no
-  `SET_UNITS` toggle.
-- Run the script after making sure your Python environment is ready (e.g. pywin32 is installed) and LEAP is installed and open in the right area, region and scenario, with the right Fuels set. The helper will connect via `connect_to_leap()`, then create/fill branches based on your file.
-
-### Notes/ideas:
-
-- The same pattern works for other sectors—swap in a different export file or build one programmatically (see usage in the APERC `leap_transport` and `power_fish` repos).
-- For percentage/share variables you may need to confirm the Scale in the LEAP GUI after import (e.g., set unit to “share” so LEAP assigns the correct scale).
-
-The original documentation included a screenshot of the resulting USA
-industry-to-transport copy, including the manually corrected scale and units.
-That image is not present in this repository, so the example script and the
-verification notes above are the maintained evidence.
-
-# Balance tables example:
-
-This was a quick project to generate balance tables from the 9th edition energy
-dataset. The retained example is
-`codebase/examples/balance_tables_example.py` (plural `tables`). It demonstrates
-`copy_energy_spreadsheet_into_leap_import_file` and can either prepare a
-workbook or, when the configured write mode permits API use, create/fill LEAP
-branches under Key Assumptions.
-
-The original balance-table screenshot is not present in this repository. Use
-the retained example script and inspect its generated workbook instead.
-
-# Common issue: units and scale
-
-After creating branches from an export file, verify their units and scale in
-the generated workbook and in the LEAP GUI. The example helper has no
-`SET_UNITS` toggle, and an unsuitable LEAP default can distort projected
-values.
+`leap_utilities`, old setup commands, the retired LEAP API-first workflow,
+`config/leap_mappings.xlsx`, and `config/master_config.xlsx` are historical or
+compatibility context. They are not current authorities. Current legacy and
+archive classifications are documented in `docs/workflow_inventory.md`,
+`codebase/old_workflows/README.md`, and the dated documentation audits.
