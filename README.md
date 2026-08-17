@@ -16,6 +16,7 @@ Begin with the connected-system route in
 | execute safely as an agent | [`docs/handover/supply_reconciliation_agent_guide.md`](docs/handover/supply_reconciliation_agent_guide.md) |
 | interpret readiness and validation checks | [`docs/check_registry.md`](docs/check_registry.md) |
 | understand placeholder/interim branches | [`docs/placeholder_branches_and_interim_models.md`](docs/placeholder_branches_and_interim_models.md) |
+| see how each balance flow is estimated | [`docs/initialisation_flow_estimation_methods.md`](docs/initialisation_flow_estimation_methods.md) |
 | choose current work | [`docs/handover_work_queue_20260728.md`](docs/handover_work_queue_20260728.md) |
 | inspect detailed engineering history and traps | [`docs/work_queue.md`](docs/work_queue.md) |
 | find a workflow | [`docs/workflow_inventory.md`](docs/workflow_inventory.md) |

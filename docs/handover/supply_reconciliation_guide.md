@@ -14,6 +14,8 @@ update workbooks. For cross-repository routing, start at
 This guide is the reader-friendly handover route. The full rule and workflow
 reference remains
 [`../supply_reconciliation_workflow_guide.md`](../supply_reconciliation_workflow_guide.md);
+the consolidated source and estimation method for each balance flow is in
+[`../initialisation_flow_estimation_methods.md`](../initialisation_flow_estimation_methods.md);
 validation ownership remains in [`../check_registry.md`](../check_registry.md).
 
 ## Purpose and repository boundary

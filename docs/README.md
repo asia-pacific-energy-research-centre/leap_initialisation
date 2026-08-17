@@ -41,6 +41,7 @@ and [`process_map_agent.md`](process_map_agent.md).
 
 | File | What it covers |
 |---|---|
+| [`initialisation_flow_estimation_methods.md`](initialisation_flow_estimation_methods.md) | Consolidated flow-by-flow reference for source values, projection allocation, transformation formulas, own-use/loss proxies, and results-update estimation. |
 | [`supply_reconciliation_workflow_guide.md`](supply_reconciliation_workflow_guide.md) | The modeller-facing guide: how to run it, the LEAP export procedure (§ 9b), surplus/shortfall rules (§ 12b), and the seven supporting scripts. |
 | [`special_rules_and_design_decisions.md`](special_rules_and_design_decisions.md) | The decision log — `INIT-*`, `SEED-*`, `CROSS-*`. Check here before assuming odd behaviour is a bug. |
 | [`check_registry.md`](check_registry.md) | Directory of every readiness check across five families (F1–F5), with boundary-vs-local and gateability rules. Enforced by `tests/test_check_registry.py`. |
