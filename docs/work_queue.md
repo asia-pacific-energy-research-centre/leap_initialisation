@@ -1,5 +1,19 @@
 # Remaining work queue
 
+## [46] Provide a portable source-data bundle workflow
+
+**Status: implemented; focused tests and clean-clone verification pending.**
+
+Provide notebook-friendly `scripts/create_data_bundle.py` and
+`scripts/extract_data_bundle.py` workflows for collaborators who clone this
+repository without its ignored source data. The bundle contains the maintained
+ESTO/9th tables, active top-level LEAP export templates, and current balance
+exports while excluding archive folders and generated outputs. Extraction
+validates the embedded path/size manifest and ZIP CRCs, rejects unsafe paths,
+stages files before installation, and refuses to replace different local data
+unless explicitly enabled. The handoff is one ZIP; no separate checksum file,
+Git hook, Drive API, or additional `.gitkeep` files are required.
+
 ## [45] Simplify baseline-seed consolidated findings for human review
 
 **Status: implemented and focused tests passing 2026-08-17.**

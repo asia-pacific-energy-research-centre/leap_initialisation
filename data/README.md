@@ -4,6 +4,21 @@ This folder holds model inputs, manually exported LEAP workbooks, reference
 tables, and local caches used by the workflow scripts. Most generated workflow
 outputs should go under `outputs/`, not here.
 
+## Portable Data Bundle
+
+The large source inputs are intentionally not stored in Git. To prepare a
+handoff ZIP, run `scripts/create_data_bundle.py` from Jupyter or an IDE cell
+runner. It writes a dated, commit-labelled ZIP under `data_bundles/` containing
+the maintained ESTO/9th tables, active top-level export templates, and current
+LEAP balance exports. Archive folders and generated outputs are excluded.
+
+After cloning the repository, place that ZIP under `data_bundles/` and run
+`scripts/extract_data_bundle.py`. The extractor validates the embedded manifest
+and ZIP contents, refuses unsafe paths, and does not overwrite different local
+files unless `ALLOW_OVERWRITE` is deliberately changed to `True`. The ZIP is
+ignored by Git and is intended to be shared separately through restricted
+storage such as Google Drive.
+
 ## Main Reference Tables
 
 These CSVs are the common historical/projection data sources used across
