@@ -266,6 +266,7 @@ def build_supply_log_rows(
     final_year,
     code_to_name_mapping=None,
     projection_lookup=None,
+    projection_lookups_by_scenario=None,
     projection_years=None,
     flow_value_overrides=None,
     supply_measures=None,
@@ -348,30 +349,78 @@ def build_supply_log_rows(
                 for measure in measures
                 if str(measure.get("flow_key") or "").strip()
             }
-            default_flow_values_by_year = {}
-            for flow_key in sorted(required_flow_keys):
-                source_flow_key = "production" if flow_key == "max_production" else flow_key
-                flow_value = flow_codes.get(source_flow_key)
-                default_flow_values_by_year[flow_key] = build_supply_value_by_year(
-                    data,
-                    year_cols,
-                    economy,
-                    entry,
-                    source_flow_key,
-                    flow_value,
-                    base_year,
-                    final_year,
-                    projection_lookup=projection_lookup,
-                    projection_years=projection_years,
-                    code_to_name_mapping=code_to_name_mapping,
-                    bucket_allocator=bucket_allocator,
-                )
-                if flow_key == "max_production" and _is_unlimited_production_entry(entry):
-                    default_flow_values_by_year[flow_key] = {
-                        year: float(workflow_cfg.SUPPLY_UNLIMITED_PRODUCTION_YEAR_VALUE)
-                        for year in range(base_year, final_year + 1)
-                    }
             for scenario in scenario_names:
+                scenario_token = str(scenario or "").strip().lower()
+                canonical_scenario = (
+                    "Target" if scenario_token == "target" else "Reference"
+                )
+                scenario_lookup = None
+                if isinstance(projection_lookups_by_scenario, dict):
+                    scenario_lookup = projection_lookups_by_scenario.get(canonical_scenario)
+                if scenario_lookup is None and canonical_scenario == "Reference":
+                    scenario_lookup = projection_lookup
+                if (
+                    scenario_token == "target"
+                    and scenario_lookup is None
+                    and esto_data is not None
+                    and int(final_year) > int(base_year)
+                ):
+                    raise ValueError(
+                        "Target supply projection lookup is unavailable; refusing "
+                        "to emit Reference defaults into Target."
+                    )
+
+                current_accounts = scenario_token in {
+                    "current accounts",
+                    "current account",
+                }
+                scenario_data = data
+                scenario_year_cols = year_cols
+                scenario_bucket_allocator = bucket_allocator
+                scenario_projection_years = projection_years
+                if esto_data is not None:
+                    scenario_data = esto_data
+                    scenario_year_cols = esto_year_cols
+                    scenario_bucket_allocator = None
+                elif "scenarios" in scenario_data.columns:
+                    source_scenario = "reference" if current_accounts else scenario_token
+                    scenario_data = scenario_data[
+                        scenario_data["scenarios"]
+                        .astype(str)
+                        .str.strip()
+                        .str.lower()
+                        .eq(source_scenario)
+                    ].copy()
+                if current_accounts:
+                    scenario_lookup = None
+                    scenario_projection_years = []
+
+                default_flow_values_by_year = {}
+                for flow_key in sorted(required_flow_keys):
+                    source_flow_key = "production" if flow_key == "max_production" else flow_key
+                    scenario_flow_codes = flow_codes
+                    if scenario_data is esto_data:
+                        scenario_flow_codes = FLOW_CODES_BY_DATASET["esto"]
+                    flow_value = scenario_flow_codes.get(source_flow_key)
+                    default_flow_values_by_year[flow_key] = build_supply_value_by_year(
+                        scenario_data,
+                        scenario_year_cols,
+                        economy,
+                        entry,
+                        source_flow_key,
+                        flow_value,
+                        base_year,
+                        final_year,
+                        projection_lookup=scenario_lookup,
+                        projection_years=scenario_projection_years,
+                        code_to_name_mapping=code_to_name_mapping,
+                        bucket_allocator=scenario_bucket_allocator,
+                    )
+                    if flow_key == "max_production" and _is_unlimited_production_entry(entry):
+                        default_flow_values_by_year[flow_key] = {
+                            year: float(workflow_cfg.SUPPLY_UNLIMITED_PRODUCTION_YEAR_VALUE)
+                            for year in range(base_year, final_year + 1)
+                        }
                 for branch_root in branch_roots:
                     branch_type = str(branch_root[-1] if branch_root else "").strip().lower()
                     template_label = None
@@ -466,6 +515,7 @@ def generate_supply_exports(
     fuel_config,
     code_to_name_mapping,
     projection_lookup=None,
+    projection_lookups_by_scenario=None,
     projection_years=None,
     dataset_key: str = workflow_cfg.SUPPLY_EXPORT_DATASET_KEY,
     economies: list[str] | None = None,
@@ -530,6 +580,7 @@ def generate_supply_exports(
             final_year,
             code_to_name_mapping=code_to_name_mapping,
             projection_lookup=projection_lookup,
+            projection_lookups_by_scenario=projection_lookups_by_scenario,
             projection_years=projection_years,
             flow_value_overrides=economy_flow_overrides,
             supply_measures=supply_measures,

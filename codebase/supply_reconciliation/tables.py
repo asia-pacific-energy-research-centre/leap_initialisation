@@ -1144,13 +1144,51 @@ def build_transformation_sector_table(
     ).reset_index(drop=True)
 
 
+def _normalize_supply_scenarios(scenarios: Iterable[str] | None) -> list[str]:
+    """Return canonical, ordered supply scenarios without silent substitution."""
+    values = list(scenarios or workflow_cfg.SUPPLY_NOTEBOOK_SCENARIOS)
+    canonical: list[str] = []
+    for value in values:
+        token = str(value or "").strip().lower()
+        if token in {"current accounts", "current account"}:
+            label = "Current Accounts"
+        elif token == "reference":
+            label = "Reference"
+        elif token == "target":
+            label = "Target"
+        else:
+            continue
+        if label not in canonical:
+            canonical.append(label)
+    return canonical or ["Reference"]
+
+
+def _supply_projection_lookup_for_scenario(scenario: str):
+    lookups = getattr(
+        supply_data_pipeline,
+        "SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO",
+        {},
+    )
+    lookup = lookups.get(str(scenario)) if isinstance(lookups, dict) else None
+    if lookup is None and str(scenario) == "Reference":
+        lookup = supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP
+    if lookup is None and str(scenario) == "Target":
+        raise ValueError(
+            "Target supply projection lookup is unavailable; refusing to reuse "
+            "Reference values for Target."
+        )
+    return lookup
+
+
 def prepare_projected_supply_table(
     economies: Iterable[str] | None = None,
     dataset_key: str = EXPORT_DATASET_KEY,
+    scenarios: Iterable[str] | None = None,
 ) -> tuple[pd.DataFrame, tuple]:
-    """Build the existing supply projection table by ESTO product/year."""
+    """Build scenario-specific supply trade projections by ESTO product/year."""
     output_columns = [
         "economy",
+        "scenario",
         "esto_product",
         "year",
         "projected_imports",
@@ -1159,20 +1197,13 @@ def prepare_projected_supply_table(
     ]
     assets = supply_data_pipeline.prepare_supply_assets(economies=economies)
     dataset_map, sector_config, code_to_name_mapping, _, _ = assets
-    data, year_cols = supply_data_pipeline.resolve_dataset(dataset_map, dataset_key)
-    flow_codes = supply_data_pipeline.FLOW_CODES_BY_DATASET.get(dataset_key)
+    # The allocation lookup carries each 9th scenario on the ESTO shape. Use
+    # ESTO itself for the historical base year in every scenario.
+    data, year_cols = supply_data_pipeline.resolve_dataset(dataset_map, "esto")
+    flow_codes = supply_data_pipeline.FLOW_CODES_BY_DATASET.get("esto")
     if not flow_codes:
         raise KeyError(f"Unknown supply dataset key: {dataset_key}")
-    bucket_allocator = None
-    if "esto" in dataset_map:
-        esto_data, _ = supply_data_pipeline.resolve_dataset(dataset_map, "esto")
-        bucket_allocator = supply_data_pipeline.build_ninth_bucket_allocator(
-            data,
-            sector_config,
-            code_to_name_mapping,
-            esto_data,
-            BASE_YEAR,
-        )
+    del dataset_key
 
     economy_list = workflow_common.normalize_economies(
         economies or supply_data_pipeline.ECONOMIES_TO_ANALYZE
@@ -1181,49 +1212,57 @@ def prepare_projected_supply_table(
         economy_list = _get_economy_list(data, None)
 
     rows: list[dict[str, object]] = []
-    for economy in economy_list:
-        for fuel_key, entry in sorted(sector_config.items()):
-            imports_by_year = supply_data_pipeline.build_supply_value_by_year(
-                data,
-                year_cols,
-                economy,
-                entry,
-                "imports",
-                flow_codes.get("imports"),
-                BASE_YEAR,
-                FINAL_YEAR,
-                projection_lookup=supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP,
-                projection_years=supply_data_pipeline.PROJECTION_YEAR_RANGE,
-                code_to_name_mapping=code_to_name_mapping,
-                bucket_allocator=bucket_allocator,
-            )
-            exports_by_year = supply_data_pipeline.build_supply_value_by_year(
-                data,
-                year_cols,
-                economy,
-                entry,
-                "exports",
-                flow_codes.get("exports"),
-                BASE_YEAR,
-                FINAL_YEAR,
-                projection_lookup=supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP,
-                projection_years=supply_data_pipeline.PROJECTION_YEAR_RANGE,
-                code_to_name_mapping=code_to_name_mapping,
-                bucket_allocator=bucket_allocator,
-            )
-            for year in range(BASE_YEAR, FINAL_YEAR + 1):
-                imports_value = float(imports_by_year.get(year, 0.0))
-                exports_value = float(exports_by_year.get(year, 0.0))
-                rows.append(
-                    {
-                        "economy": economy,
-                        "esto_product": fuel_key,
-                        "year": year,
-                        "projected_imports": imports_value,
-                        "projected_exports": exports_value,
-                        "projected_net_imports": imports_value - exports_value,
-                    }
+    for scenario in _normalize_supply_scenarios(scenarios):
+        projection_lookup = (
+            None
+            if scenario == "Current Accounts"
+            else _supply_projection_lookup_for_scenario(scenario)
+        )
+        projection_years = (
+            [] if scenario == "Current Accounts" else supply_data_pipeline.PROJECTION_YEAR_RANGE
+        )
+        for economy in economy_list:
+            for fuel_key, entry in sorted(sector_config.items()):
+                imports_by_year = supply_data_pipeline.build_supply_value_by_year(
+                    data,
+                    year_cols,
+                    economy,
+                    entry,
+                    "imports",
+                    flow_codes.get("imports"),
+                    BASE_YEAR,
+                    FINAL_YEAR,
+                    projection_lookup=projection_lookup,
+                    projection_years=projection_years,
+                    code_to_name_mapping=code_to_name_mapping,
                 )
+                exports_by_year = supply_data_pipeline.build_supply_value_by_year(
+                    data,
+                    year_cols,
+                    economy,
+                    entry,
+                    "exports",
+                    flow_codes.get("exports"),
+                    BASE_YEAR,
+                    FINAL_YEAR,
+                    projection_lookup=projection_lookup,
+                    projection_years=projection_years,
+                    code_to_name_mapping=code_to_name_mapping,
+                )
+                for year in range(BASE_YEAR, FINAL_YEAR + 1):
+                    imports_value = float(imports_by_year.get(year, 0.0))
+                    exports_value = float(exports_by_year.get(year, 0.0))
+                    rows.append(
+                        {
+                            "economy": economy,
+                            "scenario": scenario,
+                            "esto_product": fuel_key,
+                            "year": year,
+                            "projected_imports": imports_value,
+                            "projected_exports": exports_value,
+                            "projected_net_imports": imports_value - exports_value,
+                        }
+                    )
     supply_projection = pd.DataFrame(rows, columns=output_columns)
     return supply_projection, assets
 
@@ -1232,6 +1271,7 @@ def prepare_supply_primary_table(
     assets: tuple,
     economies: Iterable[str] | None = None,
     dataset_key: str = EXPORT_DATASET_KEY,
+    scenarios: Iterable[str] | None = None,
 ) -> pd.DataFrame:
     """Build production and stock-change rows by fuel/year from supply sources.
 
@@ -1242,27 +1282,20 @@ def prepare_supply_primary_table(
     """
     output_columns = [
         "economy",
+        "scenario",
         "year",
         "esto_product",
         "production",
         "stock_changes",
     ]
     dataset_map, sector_config, code_to_name_mapping, _, _ = assets
-    data, year_cols = supply_data_pipeline.resolve_dataset(dataset_map, dataset_key)
-    flow_codes = supply_data_pipeline.FLOW_CODES_BY_DATASET.get(dataset_key)
+    data, year_cols = supply_data_pipeline.resolve_dataset(dataset_map, "esto")
+    flow_codes = supply_data_pipeline.FLOW_CODES_BY_DATASET.get("esto")
     if not flow_codes:
         raise KeyError(f"Unknown supply dataset key: {dataset_key}")
-    production_data, production_year_cols = supply_data_pipeline.resolve_dataset(
-        dataset_map, "esto"
-    )
+    production_data, production_year_cols = data, year_cols
     production_flow_codes = supply_data_pipeline.FLOW_CODES_BY_DATASET["esto"]
-    bucket_allocator = supply_data_pipeline.build_ninth_bucket_allocator(
-        data,
-        sector_config,
-        code_to_name_mapping,
-        production_data,
-        BASE_YEAR,
-    )
+    del dataset_key
 
     economy_list = workflow_common.normalize_economies(
         economies or supply_data_pipeline.ECONOMIES_TO_ANALYZE
@@ -1271,45 +1304,54 @@ def prepare_supply_primary_table(
         economy_list = _get_economy_list(data, None)
 
     rows: list[dict[str, object]] = []
-    for economy in economy_list:
-        for fuel_key, entry in sorted(sector_config.items()):
-            production_by_year = supply_data_pipeline.build_supply_value_by_year(
-                production_data,
-                production_year_cols,
-                economy,
-                entry,
-                "production",
-                production_flow_codes["production"],
-                BASE_YEAR,
-                FINAL_YEAR,
-                projection_lookup=supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP,
-                projection_years=supply_data_pipeline.PROJECTION_YEAR_RANGE,
-                code_to_name_mapping=code_to_name_mapping,
-            )
-            stock_changes_by_year = supply_data_pipeline.build_supply_value_by_year(
-                data,
-                year_cols,
-                economy,
-                entry,
-                "stock_changes",
-                flow_codes.get("stock_changes"),
-                BASE_YEAR,
-                FINAL_YEAR,
-                projection_lookup=supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP,
-                projection_years=supply_data_pipeline.PROJECTION_YEAR_RANGE,
-                code_to_name_mapping=code_to_name_mapping,
-                bucket_allocator=bucket_allocator,
-            )
-            for year in range(BASE_YEAR, FINAL_YEAR + 1):
-                rows.append(
-                    {
-                        "economy": economy,
-                        "year": year,
-                        "esto_product": fuel_key,
-                        "production": float(production_by_year.get(year, 0.0)),
-                        "stock_changes": float(stock_changes_by_year.get(year, 0.0)),
-                    }
+    for scenario in _normalize_supply_scenarios(scenarios):
+        projection_lookup = (
+            None
+            if scenario == "Current Accounts"
+            else _supply_projection_lookup_for_scenario(scenario)
+        )
+        projection_years = (
+            [] if scenario == "Current Accounts" else supply_data_pipeline.PROJECTION_YEAR_RANGE
+        )
+        for economy in economy_list:
+            for fuel_key, entry in sorted(sector_config.items()):
+                production_by_year = supply_data_pipeline.build_supply_value_by_year(
+                    production_data,
+                    production_year_cols,
+                    economy,
+                    entry,
+                    "production",
+                    production_flow_codes["production"],
+                    BASE_YEAR,
+                    FINAL_YEAR,
+                    projection_lookup=projection_lookup,
+                    projection_years=projection_years,
+                    code_to_name_mapping=code_to_name_mapping,
                 )
+                stock_changes_by_year = supply_data_pipeline.build_supply_value_by_year(
+                    data,
+                    year_cols,
+                    economy,
+                    entry,
+                    "stock_changes",
+                    flow_codes.get("stock_changes"),
+                    BASE_YEAR,
+                    FINAL_YEAR,
+                    projection_lookup=projection_lookup,
+                    projection_years=projection_years,
+                    code_to_name_mapping=code_to_name_mapping,
+                )
+                for year in range(BASE_YEAR, FINAL_YEAR + 1):
+                    rows.append(
+                        {
+                            "economy": economy,
+                            "scenario": scenario,
+                            "year": year,
+                            "esto_product": fuel_key,
+                            "production": float(production_by_year.get(year, 0.0)),
+                            "stock_changes": float(stock_changes_by_year.get(year, 0.0)),
+                        }
+                    )
     return pd.DataFrame(rows, columns=output_columns)
 
 
@@ -1330,11 +1372,16 @@ def build_reconciliation_table(
             for value in demand_table["scenario"].dropna().astype(str).tolist()
             if str(value).strip()
         )
-    for constraint_df in (supply_constraints, transformation_constraints):
-        if isinstance(constraint_df, pd.DataFrame) and not constraint_df.empty and "scenario" in constraint_df.columns:
+    for scenario_df in (
+        supply_projection_table,
+        supply_primary_table,
+        supply_constraints,
+        transformation_constraints,
+    ):
+        if isinstance(scenario_df, pd.DataFrame) and not scenario_df.empty and "scenario" in scenario_df.columns:
             scenario_values.extend(
                 str(value).strip()
-                for value in constraint_df["scenario"].dropna().astype(str).tolist()
+                for value in scenario_df["scenario"].dropna().astype(str).tolist()
                 if str(value).strip()
             )
     scenario_values = sorted(dict.fromkeys(scenario_values))
@@ -1370,8 +1417,19 @@ def build_reconciliation_table(
         key_frames.append(expanded)
 
     _expand_non_scenario_keys(transformation_table, "transformation_table")
-    _expand_non_scenario_keys(supply_projection_table, "supply_projection_table")
-    _expand_non_scenario_keys(supply_primary_table, "supply_primary_table")
+
+    def _add_scenario_supply_keys(table: pd.DataFrame | None, table_name: str) -> None:
+        if not isinstance(table, pd.DataFrame) or table.empty:
+            return
+        missing = [column for column in key_columns if column not in table.columns]
+        if missing:
+            raise ValueError(
+                f"{table_name} is stale or scenario-less; missing required columns: {missing}"
+            )
+        key_frames.append(table[key_columns].drop_duplicates().copy())
+
+    _add_scenario_supply_keys(supply_projection_table, "supply_projection_table")
+    _add_scenario_supply_keys(supply_primary_table, "supply_primary_table")
 
     if not key_frames:
         return pd.DataFrame(columns=key_columns)
@@ -1397,13 +1455,13 @@ def build_reconciliation_table(
         how="left",
     ).merge(
         supply_projection_table,
-        on=["economy", "esto_product", "year"],
+        on=["economy", "scenario", "esto_product", "year"],
         how="left",
     )
     if isinstance(supply_primary_table, pd.DataFrame) and not supply_primary_table.empty:
         merged = merged.merge(
             supply_primary_table,
-            on=["economy", "esto_product", "year"],
+            on=["economy", "scenario", "esto_product", "year"],
             how="left",
         )
     if isinstance(supply_constraints, pd.DataFrame) and not supply_constraints.empty:

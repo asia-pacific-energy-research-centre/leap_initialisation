@@ -1,5 +1,24 @@
 # Remaining work queue
 
+## [47] Preserve Reference and Target supply scenarios in baseline seeds
+
+**Status: implemented; 12-economy production rerun pending 2026-08-17.**
+
+Supply preparation now retains the 9th-edition Reference and Target rows and
+allocates each scenario independently onto the ESTO product shape. Current
+Accounts continues to use ESTO through 2022, while Reference and Target use
+their matching 9th scenario from 2023 onward. Scenario is now part of the
+supply projection, primary-supply, reconciliation, export, conventional-balance,
+and typed-cache contracts; stale scenario-less caches are rejected. The
+legacy singular projection lookup remains a Reference-only compatibility view
+and cannot be used as a Target fallback.
+
+Focused scenario/export tests and the broader 123-test supply suite pass. A
+real-data USA smoke check found 23 export products and 13 production products
+with distinct Reference/Target projections. The remaining acceptance step is
+the full-horizon sequential baseline-seed run for the 12 economies with active
+templates, followed by the USA fixed-fuel/year comparison.
+
 ## [46] Provide a portable source-data bundle workflow
 
 **Status: complete and clean-clone verified 2026-08-17.**

@@ -157,6 +157,7 @@ EXCLUDED_ESTO_PREFIXES = ["19", "20", "21"]
 SAVE_PROJECTION_DIAGNOSTICS = False
 PROJECTION_DIAGNOSTICS_PATH = REPO_ROOT / "outputs" / "ninth_supply_projection_fallbacks.csv"
 SUPPLY_PROJECTION_LOOKUP = None
+SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO: dict[str, object] = {}
 # MAJOR_SECTOR_CONFIG uses ESTO labels for filtering, but display names can be
 # filled from sector_fuel_codes_to_names.xlsx (code_to_name) via mapping below.
 #%%
@@ -260,15 +261,16 @@ def prepare_supply_assets(
     supply_assets_module.SAVE_PROJECTION_DIAGNOSTICS = SAVE_PROJECTION_DIAGNOSTICS
     supply_assets_module.PROJECTION_DIAGNOSTICS_PATH = PROJECTION_DIAGNOSTICS_PATH
 
-    assets, projection_lookup = supply_assets_module.prepare_supply_assets(
+    assets, projection_lookups_by_scenario = supply_assets_module.prepare_supply_assets(
         economies=economies,
         aggregate_economy_label=aggregate_economy_label,
         save_subtotal_labeled=save_subtotal_labeled,
         subtotal_output_path=subtotal_output_path,
         return_projection_lookup=True,
     )
-    global SUPPLY_PROJECTION_LOOKUP
-    SUPPLY_PROJECTION_LOOKUP = projection_lookup
+    global SUPPLY_PROJECTION_LOOKUP, SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO
+    SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO = projection_lookups_by_scenario
+    SUPPLY_PROJECTION_LOOKUP = projection_lookups_by_scenario.get("Reference")
     return assets
 
 
@@ -277,6 +279,7 @@ def generate_supply_exports(
     fuel_config,
     code_to_name_mapping,
     projection_lookup=None,
+    projection_lookups_by_scenario=None,
     projection_years=None,
     dataset_key: str = EXPORT_DATASET_KEY,
     economies: list[str] | None = None,
@@ -295,6 +298,11 @@ def generate_supply_exports(
         fuel_config,
         code_to_name_mapping,
         projection_lookup=projection_lookup,
+        projection_lookups_by_scenario=(
+            projection_lookups_by_scenario
+            if projection_lookups_by_scenario is not None
+            else SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO
+        ),
         projection_years=projection_years,
         dataset_key=dataset_key,
         economies=economies,

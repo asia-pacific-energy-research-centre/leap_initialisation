@@ -543,12 +543,23 @@ def _ensure_current_accounts_scenario(scenarios: Iterable[str] | None) -> list[s
 def _get_projection_value_for_flow_product(
     *,
     economy: str,
+    scenario: str,
     flow: object,
     product: object,
     year: int,
 ) -> float:
     """Return the projected value for an ESTO flow/product pair in one year."""
-    lookup = supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP
+    scenario_label = str(scenario or "").strip()
+    lookup = supply_data_pipeline.SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO.get(
+        scenario_label
+    )
+    if lookup is None and scenario_label.lower() == "reference":
+        lookup = supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP
+    if lookup is None and scenario_label.lower() == "target":
+        raise ValueError(
+            "Target supply projection lookup is unavailable; refusing to use "
+            "Reference values in the Target conventional balance."
+        )
     if lookup is None:
         return 0.0
     key = (
@@ -999,6 +1010,7 @@ def build_reference_demand_rows_for_balance(
             )
         return _get_projection_value_for_flow_product(
             economy=str(economy),
+            scenario=str(scenario),
             flow=row.get("esto_flow"),
             product=row.get("esto_product"),
             year=int(year),
@@ -1050,10 +1062,13 @@ def build_reference_conventional_balance_matrix(
 
     supply = supply_primary_table.copy()
     supply["year"] = pd.to_numeric(supply["year"], errors="coerce").astype("Int64")
-    supply = supply[
+    supply_mask = (
         (supply["year"] == year_value)
         & (supply["economy"].astype(str) == economy_value)
-    ].copy()
+    )
+    if "scenario" in supply.columns:
+        supply_mask &= supply["scenario"].astype(str).eq(scenario_value)
+    supply = supply[supply_mask].copy()
 
     demand_grouped = build_reference_demand_rows_for_balance(
         sector_demand_table,

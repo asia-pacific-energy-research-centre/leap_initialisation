@@ -17,12 +17,12 @@ def test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup(monkeypat
     )
     ninth_raw = pd.DataFrame(
         {
-            "scenarios": ["reference"],
-            "economy": ["20_USA"],
-            "fuels": ["01_coal"],
-            "subfuels": ["x"],
-            "subtotal_results": [False],
-            2022: [2.0],
+            "scenarios": ["reference", "target"],
+            "economy": ["20_USA", "20_USA"],
+            "fuels": ["01_coal", "01_coal"],
+            "subfuels": ["x", "x"],
+            "subtotal_results": [False, False],
+            2022: [2.0, 3.0],
         }
     )
     calls = {"aggregate_labels": [], "mapped": False, "loader_kwargs": None}
@@ -72,11 +72,6 @@ def test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup(monkeypat
     )
     monkeypatch.setattr(
         supply_assets,
-        "filter_reference_scenario",
-        lambda df, label: df.copy(),
-    )
-    monkeypatch.setattr(
-        supply_assets,
         "filter_matt_subtotals",
         lambda df: df.copy(),
     )
@@ -105,6 +100,7 @@ def test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup(monkeypat
         mapping_path,
         base_year,
         projection_years,
+        scenario,
         sign_stable_flows,
         strict_conservation,
         fill_missing_ninth_sectors,
@@ -116,7 +112,8 @@ def test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup(monkeypat
         assert strict_conservation is True
         assert fill_missing_ninth_sectors is False
         assert owner_workflow == "supply_workflow"
-        return pd.DataFrame({"value": [1.0]}), pd.DataFrame()
+        assert scenario in {"Reference", "Target"}
+        return pd.DataFrame({"value": [1.0 if scenario == "Reference" else 2.0]}), pd.DataFrame()
 
     monkeypatch.setattr(
         supply_assets,
@@ -153,9 +150,13 @@ def test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup(monkeypat
     assert calls["loader_kwargs"]["filter_ninth_subtotals_flag"] is False
     assert sector_config["01 Coal"]["fuel_name"] == "Coal"
     assert code_to_name_mapping == {"01 Coal": "Coal"}
-    assert dataset_map == {"esto_rows": 2, "ninth_rows": 2}
-    assert projection_lookup == {"rows": 1}
-    assert supply_assets.SUPPLY_PROJECTION_LOOKUP == projection_lookup
+    assert dataset_map == {"esto_rows": 2, "ninth_rows": 3}
+    assert projection_lookup == {
+        "Reference": {"rows": 1},
+        "Target": {"rows": 1},
+    }
+    assert supply_assets.SUPPLY_PROJECTION_LOOKUP == {"rows": 1}
+    assert supply_assets.SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO == projection_lookup
     assert set(ninth_data["economy"]) == {"20_USA", "00_APEC"}
     assert set(esto_data["economy"]) == {"20_USA", "00_APEC"}
 
@@ -164,7 +165,7 @@ def test_supply_data_pipeline_wrapper_preserves_five_tuple_and_updates_lookup(
     monkeypatch,
 ) -> None:
     expected_assets = ("dataset_map", "sector_config", "code_map", "ninth", "esto")
-    expected_lookup = {"lookup": "value"}
+    expected_lookup = {"Reference": {"lookup": "value"}}
 
     def fake_prepare_supply_assets(
         economies,
@@ -186,4 +187,5 @@ def test_supply_data_pipeline_wrapper_preserves_five_tuple_and_updates_lookup(
     assets = supply_data_pipeline.prepare_supply_assets(economies=["20_USA"])
 
     assert assets == expected_assets
-    assert supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP == expected_lookup
+    assert supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP == {"lookup": "value"}
+    assert supply_data_pipeline.SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO == expected_lookup

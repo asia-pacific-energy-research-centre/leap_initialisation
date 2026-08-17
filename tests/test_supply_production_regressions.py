@@ -59,11 +59,17 @@ def test_usa_msw_production_uses_esto_base_year_when_ninth_is_zero(
         "SUPPLY_PROJECTION_LOOKUP",
         None,
     )
+    monkeypatch.setattr(
+        supply_reconciliation_tables.supply_data_pipeline,
+        "SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO",
+        {},
+    )
 
     prepared = supply_reconciliation_tables.prepare_supply_primary_table(
         assets,
         economies=["20_USA"],
         dataset_key="ninth",
+        scenarios=["Reference"],
     )
 
     row = prepared.loc[

@@ -1201,6 +1201,23 @@ def _build_capacity_allocation_process_records(
     return records
 
 
+TRANSFORMATION_SUPPLY_CACHE_SCHEMA_VERSION = 2
+
+
+def _validate_scenario_aware_supply_cache(cache_payload: dict) -> dict:
+    """Reject pre-fix cache bundles that could copy Reference into Target."""
+    for table_name in ("supply_projection_table", "supply_primary_table"):
+        table = cache_payload.get(table_name)
+        if not isinstance(table, pd.DataFrame) or "scenario" not in table.columns:
+            raise ValueError(
+                f"Stale scenario-less {table_name} cannot be reused."
+            )
+    lookups = cache_payload.get("supply_projection_lookups_by_scenario")
+    if not isinstance(lookups, dict) or "Target" not in lookups:
+        raise ValueError("Stale supply cache has no Target projection lookup.")
+    return lookups
+
+
 def run_results_linked_transformation_supply_workflow(
     economies: Iterable[str] | None = None,
     scenario_names: list[str] | None = None,
@@ -1590,6 +1607,7 @@ def run_results_linked_transformation_supply_workflow(
         if _mappings_master.exists():
             _config_mtimes["__outlook_mappings_master__"] = _mappings_master.stat().st_mtime
         _ts_key_payload = _json.dumps({
+            "supply_scenario_schema": TRANSFORMATION_SUPPLY_CACHE_SCHEMA_VERSION,
             "economies": sorted(economy_list),
             "dataset_key": str(export_dataset_key),
             "config_mtimes": _config_mtimes,
@@ -1605,6 +1623,15 @@ def run_results_linked_transformation_supply_workflow(
                 transformation_process_records = _ts["transformation_process_records"]
                 supply_projection_table = _ts["supply_projection_table"]
                 supply_primary_table = _ts["supply_primary_table"]
+                supply_projection_lookups_by_scenario = (
+                    _validate_scenario_aware_supply_cache(_ts)
+                )
+                supply_data_pipeline.SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO = (
+                    supply_projection_lookups_by_scenario
+                )
+                supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP = (
+                    supply_projection_lookups_by_scenario.get("Reference")
+                )
                 assets = _ts["assets"]
                 supply_constraints = _ts["supply_constraints"]
                 transformation_constraints = _ts["transformation_constraints"]
@@ -1621,11 +1648,13 @@ def run_results_linked_transformation_supply_workflow(
         supply_projection_table, assets = prepare_projected_supply_table(
             economies=economy_list,
             dataset_key=export_dataset_key,
+            scenarios=export_scenario_list,
         )
         supply_primary_table = prepare_supply_primary_table(
             assets,
             economies=economy_list,
             dataset_key=export_dataset_key,
+            scenarios=export_scenario_list,
         )
         supply_constraints, transformation_constraints = load_leap_constraint_tables(
             template_paths=CONSTRAINT_TEMPLATE_PATHS,
@@ -1641,6 +1670,9 @@ def run_results_linked_transformation_supply_workflow(
                     "transformation_process_records": transformation_process_records,
                     "supply_projection_table": supply_projection_table,
                     "supply_primary_table": supply_primary_table,
+                    "supply_projection_lookups_by_scenario": (
+                        supply_data_pipeline.SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO
+                    ),
                     "assets": assets,
                     "supply_constraints": supply_constraints,
                     "transformation_constraints": transformation_constraints,
@@ -1904,6 +1936,9 @@ def run_results_linked_transformation_supply_workflow(
             sector_config,
             code_to_name_mapping,
             projection_lookup=supply_data_pipeline.SUPPLY_PROJECTION_LOOKUP,
+            projection_lookups_by_scenario=(
+                supply_data_pipeline.SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO
+            ),
             projection_years=supply_data_pipeline.PROJECTION_YEAR_RANGE,
             dataset_key=export_dataset_key,
             economies=[economy],

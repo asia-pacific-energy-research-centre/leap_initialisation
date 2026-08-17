@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
+import pandas as pd
+
 # Ensure the repository root is importable for scripts executed from any location.
 REPO_ROOT = Path(__file__).resolve().parents[2]
 try:
@@ -19,7 +21,6 @@ from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
 from codebase.functions.esto_data_utils import (
     add_all_economy_total,
     build_dataset_map,
-    filter_reference_scenario,
     normalize_year_columns,
 )
 from codebase.utilities.esto_reference_loader import (
@@ -62,6 +63,7 @@ EXCLUDED_ESTO_PREFIXES = ["19", "20", "21"]
 SAVE_PROJECTION_DIAGNOSTICS = False
 PROJECTION_DIAGNOSTICS_PATH = REPO_ROOT / "outputs" / "ninth_supply_projection_fallbacks.csv"
 SUPPLY_PROJECTION_LOOKUP = None
+SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO: dict[str, object] = {}
 # Keep supply projection splitting identical to transformation: preserve target
 # signs wherever a same-sign base-year pool exists.
 # Conservation severity is no longer a local flag: it is owned repo-wide by
@@ -115,7 +117,10 @@ def prepare_supply_assets(
     ninth_data_raw, ninth_year_cols = normalize_year_columns(ninth_data_raw)
     esto_data_raw, esto_year_cols = normalize_year_columns(esto_data_raw)
 
-    ninth_data = filter_reference_scenario(ninth_data_raw, "9th data")
+    # Keep both projection scenarios. Each is allocated independently onto the
+    # ESTO flow/product shape below; filtering to Reference here previously
+    # caused Reference values to be reused for Target throughout reconciliation.
+    ninth_data = ninth_data_raw.copy()
     if "subtotal_results" in ninth_data.columns:
         ninth_data = ninth_data[ninth_data["subtotal_results"] == False].copy()
     esto_data = filter_matt_subtotals(esto_data_raw)
@@ -135,26 +140,53 @@ def prepare_supply_assets(
             esto_data, esto_year_cols, aggregate_label
         )
 
-    projection_df, projection_diagnostics = build_with_conservation_policy(
-        "supply projection",
-        lambda strict_conservation: build_esto_projection_table(
-            ninth_data=ninth_data,
-            esto_data=esto_data,
-            mapping_path=NINTH_TO_ESTO_MAPPING_PATH,
-            base_year=BASE_YEAR,
-            projection_years=PROJECTION_YEAR_RANGE,
-            sign_stable_flows=PROJECTION_SIGN_STABLE_MODE,
-            strict_conservation=strict_conservation,
-            fill_missing_ninth_sectors=workflow_cfg.FILL_IN_MISSING_9TH_SECTORS,
-            owner_workflow="supply_workflow",
-        ),
-    )
-    projection_lookup = build_projection_lookup(projection_df)
-    global SUPPLY_PROJECTION_LOOKUP
-    SUPPLY_PROJECTION_LOOKUP = projection_lookup
+    available_projection_scenarios = []
+    if "scenarios" in ninth_data.columns:
+        available = {
+            str(value).strip().lower()
+            for value in ninth_data["scenarios"].dropna().tolist()
+        }
+        available_projection_scenarios = [
+            scenario
+            for scenario in ("Reference", "Target")
+            if scenario.lower() in available
+        ]
+    if not available_projection_scenarios:
+        available_projection_scenarios = ["Reference"]
+
+    projection_lookups_by_scenario: dict[str, object] = {}
+    projection_diagnostic_frames: list = []
+    for scenario in available_projection_scenarios:
+        projection_df, projection_diagnostics = build_with_conservation_policy(
+            f"supply projection ({scenario})",
+            lambda strict_conservation, scenario=scenario: build_esto_projection_table(
+                ninth_data=ninth_data,
+                esto_data=esto_data,
+                mapping_path=NINTH_TO_ESTO_MAPPING_PATH,
+                base_year=BASE_YEAR,
+                projection_years=PROJECTION_YEAR_RANGE,
+                scenario=scenario,
+                sign_stable_flows=PROJECTION_SIGN_STABLE_MODE,
+                strict_conservation=strict_conservation,
+                fill_missing_ninth_sectors=workflow_cfg.FILL_IN_MISSING_9TH_SECTORS,
+                owner_workflow="supply_workflow",
+            ),
+        )
+        projection_lookups_by_scenario[scenario] = build_projection_lookup(projection_df)
+        if projection_diagnostics is not None and not projection_diagnostics.empty:
+            projection_diagnostic_frames.append(projection_diagnostics)
+
+    global SUPPLY_PROJECTION_LOOKUP, SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO
+    SUPPLY_PROJECTION_LOOKUPS_BY_SCENARIO = projection_lookups_by_scenario
+    SUPPLY_PROJECTION_LOOKUP = projection_lookups_by_scenario.get("Reference")
     if (
         SAVE_PROJECTION_DIAGNOSTICS or workflow_cfg.FILL_IN_MISSING_9TH_SECTORS
-    ) and projection_diagnostics is not None:
+    ) and projection_diagnostic_frames:
+        projection_diagnostics = pd.concat(
+            projection_diagnostic_frames,
+            ignore_index=True,
+            sort=False,
+        )
         if not projection_diagnostics.empty:
             PROJECTION_DIAGNOSTICS_PATH.parent.mkdir(parents=True, exist_ok=True)
             projection_diagnostics.to_csv(PROJECTION_DIAGNOSTICS_PATH, index=False)
@@ -170,7 +202,7 @@ def prepare_supply_assets(
     )
     assets = dataset_map, sector_config, code_to_name_mapping, ninth_data, esto_data
     if return_projection_lookup:
-        return assets, projection_lookup
+        return assets, projection_lookups_by_scenario
     return assets
 
 
