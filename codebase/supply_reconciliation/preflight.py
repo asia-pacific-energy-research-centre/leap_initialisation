@@ -1667,11 +1667,15 @@ def _build_reduced_preflight_balance_workbook(
     try:
         ebal_years: dict[int, str] = {}
         for name in wb.sheetnames:
-            if not str(name).strip().lower().startswith("ebal|"):
-                continue
+            name_text = str(name).strip()
+            year_text = (
+                name_text.split("|", 1)[1]
+                if name_text.lower().startswith("ebal|")
+                else name_text
+            )
             try:
-                year = int(str(name).split("|", 1)[1])
-            except (ValueError, IndexError):
+                year = int(year_text)
+            except ValueError:
                 continue
             ebal_years[year] = name
     finally:
@@ -1679,13 +1683,13 @@ def _build_reduced_preflight_balance_workbook(
 
     if base_year not in ebal_years:
         raise ValueError(
-            f"Source workbook {source.name} has no EBal|{base_year} sheet; cannot build the "
+            f"Source workbook {source.name} has no EBal|{base_year} or {base_year} sheet; cannot build the "
             f"reduced {scenario_code} preflight workbook."
         )
     future_years = sorted(year for year in ebal_years if year > base_year)
     if not future_years:
         raise ValueError(
-            f"Source workbook {source.name} has no post-base-year EBal|YYYY sheets "
+            f"Source workbook {source.name} has no post-base-year EBal|YYYY or YYYY sheets "
             f"(base_year={base_year}); cannot build a synthetic future balance sheet."
         )
 
@@ -1960,9 +1964,29 @@ def run_preflight_compressed_results_update(
     requested_scenarios = {
         str(scenario or "").strip().lower() for scenario in scenario_list
     }
+    source_ref = (
+        _resolve(BALANCE_DEMAND_REF_WORKBOOK_PATH)
+        if BALANCE_DEMAND_REF_WORKBOOK_PATH is not None
+        else resolve_balance_export_workbook(
+            economy=economy,
+            scenario="REF",
+            date_id=BALANCE_DEMAND_REF_BALANCE_EXPORT_DATE_ID,
+            exports_root=BALANCE_DEMAND_EXPORTS_ROOT,
+        )
+    ) if "reference" in requested_scenarios else None
+    source_tgt = (
+        _resolve(BALANCE_DEMAND_TGT_WORKBOOK_PATH)
+        if BALANCE_DEMAND_TGT_WORKBOOK_PATH is not None
+        else resolve_balance_export_workbook(
+            economy=economy,
+            scenario="TGT",
+            date_id=BALANCE_DEMAND_TGT_BALANCE_EXPORT_DATE_ID,
+            exports_root=BALANCE_DEMAND_EXPORTS_ROOT,
+        )
+    ) if "target" in requested_scenarios else None
     reduced_ref = (
         _build_reduced_preflight_balance_workbook(
-            source_path=BALANCE_DEMAND_REF_WORKBOOK_PATH,
+            source_path=source_ref,
             output_path=(
                 reduced_dir
                 / f"reduced_{economy}_REF_EBal_{base_year}_{synthetic_year}.xlsx"
@@ -1980,7 +2004,7 @@ def run_preflight_compressed_results_update(
     )
     reduced_tgt = (
         _build_reduced_preflight_balance_workbook(
-            source_path=BALANCE_DEMAND_TGT_WORKBOOK_PATH,
+            source_path=source_tgt,
             output_path=(
                 reduced_dir
                 / f"reduced_{economy}_TGT_EBal_{base_year}_{synthetic_year}.xlsx"

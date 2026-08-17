@@ -87,6 +87,38 @@ def test_varying_fuel_columns_union_aligned_not_dropped() -> None:
     assert method == "label_union_aligned"
 
 
+def test_reduced_workbook_accepts_bare_year_sheet_names(tmp_path) -> None:
+    import openpyxl
+
+    source = tmp_path / "bare_years.xlsx"
+    workbook = openpyxl.Workbook()
+    workbook.active.title = "2022"
+    workbook.active.append(["Energy Balance", None])
+    workbook.active.append(["Scenario: Reference", None])
+    workbook.active.append([None, "Gas"])
+    workbook.active.append(["Production", 1.0])
+    future = workbook.create_sheet("2023")
+    future.append(["Energy Balance", None])
+    future.append(["Scenario: Reference", None])
+    future.append([None, "Gas"])
+    future.append(["Production", 2.0])
+    workbook.save(source)
+    workbook.close()
+
+    result = sp._build_reduced_preflight_balance_workbook(
+        source_path=source,
+        output_path=tmp_path / "reduced.xlsx",
+        base_year=2022,
+        synthetic_year=2023,
+        scenario_code="REF",
+        abs_diagnostic_path=tmp_path / "abs.csv",
+    )
+
+    output = openpyxl.load_workbook(result["workbook_path"], read_only=True)
+    assert output.sheetnames == ["EBal|2022", "EBal|2023"]
+    output.close()
+
+
 # --- Reduced workbook build (real source workbooks; opt-in) -------------------
 
 _WORKBOOK_ENABLED = os.environ.get("RUN_PREFLIGHT_RU_WORKBOOK") == "1"

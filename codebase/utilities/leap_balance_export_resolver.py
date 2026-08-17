@@ -19,6 +19,8 @@ BALANCE_EXPORT_FILENAME_PATTERN = re.compile(
     r"full model output all years (?P<date_first>\d{4,8}) (?P<scenario_second>[A-Za-z]+)"
     r"|"
     r"(?P<scenario_first>REF|TGT|Reference|Target) (?P<date_second>\d{4,8})"
+    r"|"
+    r"(?P<date_short_first>\d{4,8}) (?P<scenario_short_second>REF|TGT|Reference|Target)"
     r")"
     r"(?:\s[^.]*)?\.xlsx$",
     re.IGNORECASE,
@@ -367,8 +369,16 @@ def _balance_export_filename_parts(path: Path) -> tuple[str, str] | None:
     match = BALANCE_EXPORT_FILENAME_PATTERN.match(path.name)
     if not match:
         return None
-    date_id = match.group("date_first") or match.group("date_second")
-    scenario = match.group("scenario_first") or match.group("scenario_second")
+    date_id = (
+        match.group("date_first")
+        or match.group("date_second")
+        or match.group("date_short_first")
+    )
+    scenario = (
+        match.group("scenario_first")
+        or match.group("scenario_second")
+        or match.group("scenario_short_second")
+    )
     return date_id, normalize_balance_scenario_code(scenario)
 
 
