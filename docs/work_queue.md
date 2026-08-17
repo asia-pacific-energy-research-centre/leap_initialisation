@@ -2,7 +2,7 @@
 
 ## [46] Provide a portable source-data bundle workflow
 
-**Status: implemented; focused tests and clean-clone verification pending.**
+**Status: complete and clean-clone verified 2026-08-17.**
 
 Provide notebook-friendly `scripts/create_data_bundle.py` and
 `scripts/extract_data_bundle.py` workflows for collaborators who clone this
@@ -13,6 +13,14 @@ validates the embedded path/size manifest and ZIP CRCs, rejects unsafe paths,
 stages files before installation, and refuses to replace different local data
 unless explicitly enabled. The handoff is one ZIP; no separate checksum file,
 Git hook, Drive API, or additional `.gitkeep` files are required.
+
+Verification used a local clone at commit `ad6bc9a`. Its generated bundle held
+32 files (394.2 MB unpacked, 58.9 MB zipped). The extractor restored all files;
+pandas parsed both ESTO and both 9th tables; openpyxl opened a representative
+template and balance export; the resolver found the 12 currently available
+economy templates; and 87 focused bundle, template, ESTO-loader, and balance
+diagnostic tests passed. The clone remained Git-clean because the restored data
+and bundle ZIP are ignored inputs.
 
 ## [45] Simplify baseline-seed consolidated findings for human review
 
