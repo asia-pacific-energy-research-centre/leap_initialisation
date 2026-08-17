@@ -100,6 +100,11 @@ def _context(tmp_path: Path) -> RuntimeContext:
 def test_run_dashboard_from_export_uses_mapping_chain_and_renders(tmp_path, monkeypatch):
     context = _context(tmp_path)
     context.activate_sys_path()
+    detail_selection_audit = tmp_path / "leap_all_demand_detail_selection_audit.csv"
+    detail_selection_audit.write_text(
+        "economy,component_branch,status\n",
+        encoding="utf-8",
+    )
 
     def _fake_run_mapping_chain(ctx, job):
         assert job["economy"] == "12_NZ"
@@ -108,6 +113,7 @@ def test_run_dashboard_from_export_uses_mapping_chain_and_renders(tmp_path, monk
             "comparison_data_path": str(COMPARISON_DATA),
             "common_rows_path": str(COMMON_ROWS),
             "power_interim_audit_path": str(POWER_INTERIM_AUDIT),
+            "demand_detail_selection_audit_path": str(detail_selection_audit),
             "raw_leap_rows": 385_035,
             "converted_rows": 48_068,
             "comparison_rows": 194_694,

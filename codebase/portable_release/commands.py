@@ -15,6 +15,7 @@ Every command follows the same shape:
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 import re
@@ -828,7 +829,11 @@ def _flatten_dashboard_output(run_dir: Path, result: dict[str, Any]) -> dict[str
     return moved
 
 
-def _missing_leap_demand_branches(context: RuntimeContext, economy: str) -> list[str]:
+def _missing_leap_demand_branches(
+    context: RuntimeContext,
+    economy: str,
+    detail_selection_audit_path: Path | None = None,
+) -> list[str]:
     """Ask leap_mappings which demand sectors have no separately modelled detail.
 
     The answer is owned by ``leap_mappings``
@@ -846,7 +851,24 @@ def _missing_leap_demand_branches(context: RuntimeContext, economy: str) -> list
 
     components = load_all_demand_aggregated_components(components_path)
     compact = validation.normalize_economy(economy).replace("_", "")
-    return list(get_demand_sectors_without_detail(components, compact))
+    missing = list(get_demand_sectors_without_detail(components, compact))
+    if detail_selection_audit_path is None or not detail_selection_audit_path.is_file():
+        return missing
+
+    detailed_components: set[str] = set()
+    with detail_selection_audit_path.open(
+        "r", encoding="utf-8-sig", newline=""
+    ) as audit_file:
+        for row in csv.DictReader(audit_file):
+            row_economy = str(row.get("economy", "")).replace("_", "").strip().upper()
+            if row_economy != compact.upper():
+                continue
+            if str(row.get("status", "")).strip() in {
+                "detailed_preferred",
+                "detailed_only_used",
+            }:
+                detailed_components.add(str(row.get("component_branch", "")).strip())
+    return [branch for branch in missing if branch not in detailed_components]
 
 
 def run_dashboard(
@@ -1101,7 +1123,11 @@ def run_dashboard_from_export(
                 chain_job["config"]["synthetic_reference_rows_path"] = str(rules)
         chain_result = mapping_chain_client.run_mapping_chain(context, chain_job)
 
-        missing_branches = _missing_leap_demand_branches(context, economy)
+        missing_branches = _missing_leap_demand_branches(
+            context,
+            economy,
+            Path(chain_result["demand_detail_selection_audit_path"]),
+        )
         progress.begin_step("render")
         result = render_common_esto_dashboard_variants(
             economy=economy_code,
