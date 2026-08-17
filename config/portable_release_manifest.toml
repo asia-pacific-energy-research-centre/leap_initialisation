@@ -263,6 +263,13 @@ description = "Energy-weighted CO2e factors used by the dashboard emissions page
 
 [[config_assets]]
 repository = "leap_mappings"
+path = "config/outlook_mappings_single_axis.xlsx"
+dest = "mappings/outlook_mappings_single_axis.xlsx"
+role = "dashboard_emissions_ninth_fuel_mapping"
+description = "9th-fuel to ESTO-product mapping required by the dashboard emissions page."
+
+[[config_assets]]
+repository = "leap_mappings"
 path = "config/all_demand_aggregated_components.json"
 dest = "mappings/all_demand_aggregated_components.json"
 role = "all_demand_aggregated_components"

@@ -309,6 +309,16 @@ legacy compatibility behavior only if the audit covers every non-provisional
 economy template and every template supports both preferred structures. Confirm
 the mapping and LEAP-area migration before removing the fallback code.
 
+## [39] Keep the Emissions mapping workbook in portable and web dashboards
+
+**Status: completed 2026-08-17.**
+
+The portable release now requires
+`leap_mappings/config/outlook_mappings_single_axis.xlsx`, which supplies the
+`ninth_fuel_to_esto` sheet used by the Emissions page. The manifest regression
+test covers the factor config, factor table, and mapping workbook together so a
+runtime refresh cannot silently suppress Emissions by omitting one of them.
+
 ## [38] Include native-source provenance in portable dashboards
 
 **Status: completed 2026-08-12.**

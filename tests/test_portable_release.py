@@ -274,6 +274,9 @@ def test_shipped_manifest_declares_balance_review_from_export_assets() -> None:
         "leap_results_sheet_map",
         "leap_explicit_reassignments",
         "balance_error_signal_rules",
+        "dashboard_emissions_factor_sets",
+        "dashboard_emissions_factors",
+        "dashboard_emissions_ninth_fuel_mapping",
     } <= config_roles
 
 
