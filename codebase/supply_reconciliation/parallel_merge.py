@@ -38,6 +38,7 @@ import pandas as pd
 import codebase.supply_reconciliation.config as _supply_reconciliation_config
 from codebase.functions.baseline_seed_validation import (
     build_branch_issue_summary,
+    build_consolidated_findings_review,
     build_validation_issue_groups,
 )
 from codebase.supply_reconciliation.parallel_runner import EconomyWorkerResult
@@ -100,6 +101,19 @@ def _read_consolidated_findings_csv(path: Path) -> pd.DataFrame:
         else:
             frame = frame.rename(columns={legacy_column: expectation_column})
     return frame
+
+
+def _read_worker_consolidated_findings(findings_path: Path) -> pd.DataFrame:
+    """Read full worker detail when available, with CSV compatibility fallback."""
+    detail_path = findings_path.with_name(
+        findings_path.name.replace(
+            "_consolidated_rule_findings.csv",
+            "_consolidated_rule_findings_detail.parquet",
+        )
+    )
+    if detail_path.exists():
+        return read_manifested_parquet_file(detail_path)
+    return _read_consolidated_findings_csv(findings_path)
 
 
 def _read_diagnostic_table(path: Path) -> pd.DataFrame:
@@ -236,7 +250,7 @@ def merge_consolidated_baseline_seed_findings(
             / "baseline_seed_validation"
             / f"baseline_seed_{run_stamp}_consolidated_rule_findings.csv"
         )
-        frame = _read_consolidated_findings_csv(findings_path)
+        frame = _read_worker_consolidated_findings(findings_path)
         if frame.empty:
             continue
         frame = frame.copy()
@@ -257,7 +271,16 @@ def merge_consolidated_baseline_seed_findings(
     out_dir = Path(output_dir) / "supporting_files" / "baseline_seed_validation"
     out_dir.mkdir(parents=True, exist_ok=True)
     findings_out = out_dir / f"baseline_seed_{run_stamp}_consolidated_rule_findings.csv"
-    merged.to_csv(findings_out, index=False)
+    findings_detail_out = (
+        out_dir
+        / f"baseline_seed_{run_stamp}_consolidated_rule_findings_detail.parquet"
+    )
+    write_manifested_parquet(
+        merged,
+        findings_detail_out,
+        artifact_type="baseline_seed_consolidated_rule_findings_detail",
+    )
+    build_consolidated_findings_review(merged).to_csv(findings_out, index=False)
 
     issue_groups_out = out_dir / f"baseline_seed_{run_stamp}_consolidated_issue_groups.csv"
     build_validation_issue_groups(merged).to_csv(issue_groups_out, index=False)

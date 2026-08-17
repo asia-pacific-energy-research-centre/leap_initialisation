@@ -130,7 +130,15 @@ def test_merge_normalizes_legacy_description_heading(tmp_path) -> None:
 
     merged = pd.read_csv(findings_path)
     assert "description" not in merged.columns
-    assert merged["violated_rule_expectation"].tolist() == ["test finding"]
+    assert "violated_rule_expectation" not in merged.columns
+    detail_path = findings_path.with_name(
+        findings_path.name.replace(
+            "_consolidated_rule_findings.csv",
+            "_consolidated_rule_findings_detail.parquet",
+        )
+    )
+    detail = merge.read_manifested_parquet_file(detail_path)
+    assert detail["violated_rule_expectation"].tolist() == ["test finding"]
 
 
 def test_merge_orders_rows_by_economies_run_order_then_rule_id(tmp_path) -> None:
