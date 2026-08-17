@@ -15,7 +15,7 @@ separately below.
 
 | Script | Purpose |
 |---|---|
-| `supply_reconciliation_workflow.py` | Main linked supply/reconciliation loop. It compares LEAP balance results with the expected supply/transformation baseline and iteratively adjusts supply, transformation, transfers, and proxy branches. |
+| `supply_reconciliation_workflow.py` | Main baseline-seed orchestrator. It also contains an optional, under-review results-update path that can compare LEAP balances with the expected baseline and adjust supply-side assumptions. |
 | `supply_workflow.py` | Standalone supply export/import wrapper. It delegates to the supply data pipeline and is the simplest way to build supply workbooks without the full reconciliation loop. |
 | `transformation_workflow.py` | Main transformation export workflow for non-hydrogen transformation sectors, including Oil Refining. Builds LEAP-ready workbooks and can optionally import them into LEAP. |
 | `hydrogen_transformation_workflow.py` | Hydrogen-specific transformation workflow. Uses the shared transformation helpers but keeps hydrogen configuration and filenames separate from the main transformation workflow. |
@@ -26,7 +26,7 @@ separately below.
 | `baseline_seed_comparison_workflow.py` | Compares generated baseline seed workbooks with reviewed references and separates structural, metadata, expression, duplicate-key, and share-total differences. |
 | `baseline_seed_artifact_validation_workflow.py` | Validates finished seed artifacts and writes the final artifact findings, summary, and manifest contract. |
 | `baseline_seed_balance_diagnostics_workflow.py` | Builds the cyclical baseline-seed versus LEAP/source balance diagnostics used for review. |
-| `balance_update_workflow.py` | Builds reviewed results-update workbooks from current LEAP balance exports and configured adjustment strategies. |
+| `balance_update_workflow.py` | Optional, under-review tooling that builds results-update workbooks from current LEAP balance exports and configured adjustment strategies; not a required baseline-seed stage. |
 | `aggregated_demand_template_coverage_workflow.py` | Audits aggregated-demand branch coverage against the resolved LEAP templates. |
 | `outlook_mapping_maintenance_workflow.py` | Maintenance workflow for the Outlook mapping workbook. It recomputes audit columns and produces mapping QA outputs. |
 | `transformation_entry.py` | Convenience entrypoint used by the full-model notebook to run transformation-related workflow pieces together. |

@@ -41,8 +41,8 @@ generated pair sheets or repair mappings in copied initialisation workbooks.
 
 ## Main workflow surface
 
-- `supply_reconciliation_workflow.py` — linked baseline-seed/results-update
-  orchestration and per-economy execution.
+- `supply_reconciliation_workflow.py` — baseline-seed orchestration and
+  per-economy execution, plus an optional results-update path under review.
 - `supply_workflow.py` — standalone supply preparation.
 - `transformation_workflow.py` and `hydrogen_transformation_workflow.py` —
   transformation preparation.
@@ -51,7 +51,7 @@ generated pair sheets or repair mappings in copied initialisation workbooks.
 - `electricity_heat_interim_workflow.py` — interim electricity/CHP/heat model.
 - `other_loss_own_use_proxy_workflow.py` — losses and own-use proxy branches.
 - `balance_update_workflow.py` and the baseline-seed diagnostic/validation
-  workflows — review and iterative update support.
+  workflows — review support and optional update tooling.
 
 See `docs/workflow_inventory.md` for the full current classification.
 

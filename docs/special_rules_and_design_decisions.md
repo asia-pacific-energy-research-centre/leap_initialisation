@@ -1,5 +1,11 @@
 # Special rules and design decisions
 
+> **Operating-status note — 2026-08-17:** the normal initialisation path is
+> `baseline_seed`. Entries about `results_update` preserve implemented and
+> historical design decisions, but that path is optional, under review, and
+> may be deactivated. Do not read those entries as a requirement to run an
+> iterative update after every seed.
+
 ## INIT-017: Missing 9th children use base-year carry or parent residuals
 
 **Status:** Decided 2026-08-16; generalized implementation pending

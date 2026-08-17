@@ -1,9 +1,9 @@
 # Process map — for modellers (plain English)
 
-**Written 2026-07-23. This describes how the Python side of the tool works
-right now. If you are reading this much later, ask whoever maintains the
-code whether anything major has changed — this kind of document goes stale
-as the code keeps moving.**
+**Written 2026-07-23; operating status revised 2026-08-17. This describes how
+the Python side of the tool works. The baseline seed is the normal path. The
+implemented results-update path is optional, under review, and may be
+deactivated.**
 
 This document explains what the Python tool in this repo actually does, in
 plain language, so you can follow the process without reading code. It is
@@ -18,12 +18,13 @@ what happens *before* that, in Python, to produce the data LEAP gets fed.
 The tool reads historical energy-balance data (ESTO) and a projection
 (the 9th Outlook), combines them with the mapping rules that translate that
 data into LEAP's branch structure, and writes out spreadsheets ("workbooks")
-that you import into LEAP by hand. After you recalculate LEAP and export its
-results, the tool reads those results back in and produces an updated set of
-workbooks that close whatever gaps showed up. You repeat that loop a few
-times per economy until the model looks right.
+that you import into LEAP by hand as the baseline seed. Imports are written as
+zero so LEAP calculates what it requires. An implemented results-update path
+can read recalculated balances and propose adjustments, but that path is not a
+required part of normal initialisation and should be used only when an explicit
+run plan calls for it.
 
-## Why this loop exists at all
+## Why the baseline seed is structured this way
 
 LEAP does not let you "solve" an energy balance directly — you tell it
 production limits, transformation capacities, efficiencies, and trade
@@ -31,9 +32,10 @@ assumptions, and it works out the consequences (imports, exports, unmet
 demand) by passing fuel requirements upstream through the model. Whether
 those consequences look sensible depends on the whole system, not any one
 branch in isolation. So the practical way to set up a new economy is:
-seed it with a first-guess set of values, see what LEAP does with them, and
-adjust. This tool exists to make each of those adjustment passes fast and
-consistent instead of manual and error-prone.
+seed it with a reviewed first-guess set of values, deliberately leave imports
+at zero, and let LEAP calculate the balancing requirement. The model can then
+be reviewed without hard-coding imports into the seed. Optional automated
+adjustment passes exist in the code, but their continued use is under review.
 
 ## The stages, in order
 
@@ -41,17 +43,14 @@ consistent instead of manual and error-prone.
 flowchart TD
     A["Historical data (ESTO)<br/>+ Projection data (9th Outlook)<br/>+ mapping rules"] --> B["Build each domain's numbers:<br/>demand, transformation, transfers,<br/>losses & own-use, supply/resources"]
     B --> C["Combine everything into one<br/>reconciliation picture per economy,<br/>fuel and year"]
-    C --> D{"First pass, or a later pass?"}
-    D -->|"First pass (baseline seed)"| E["Write starter values.<br/>Imports are left blank on purpose —<br/>LEAP will reveal what's missing."]
-    D -->|"Later pass (results update)"| F["Read LEAP's actual results from<br/>the last import, compare them to what<br/>was expected, and close the gaps —<br/>production, transformation capacity,<br/>or imports as a last resort."]
+    C --> E["Build the baseline seed.<br/>Imports are set to zero on purpose —<br/>LEAP will calculate what is required."]
     E --> G["Write LEAP import workbooks<br/>(one main workbook per economy,<br/>plus a separate 'zeroing' workbook<br/>when a reset is needed)"]
-    F --> G
     G --> H["You import the workbook(s)<br/>into LEAP by hand"]
     H --> I["You recalculate LEAP"]
-    I --> J["You export LEAP's balance results"]
-    J --> K{"Does the result look right?"}
-    K -->|"Not yet — gaps remain"| D
-    K -->|"Close enough, explainable"| L["Done for this economy<br/>(until the next scenario or update)"]
+    I --> K{"Review the recalculated model"}
+    K -->|"Baseline seed accepted"| L["Done for this economy<br/>(until the next scenario or update)"]
+    K -.->|Only if an explicit run plan requires it| F["Optional results update (under review):<br/>export and read LEAP balances,<br/>then propose supply-side adjustments"]
+    F --> G
 ```
 
 ## What each stage means, in more detail
@@ -145,16 +144,16 @@ import yourself, rather than trying to drive LEAP directly.
 3. Export LEAP's balance results (the actual production, trade, and
    transformation numbers LEAP arrived at).
 
-### 7. Check whether it looks right, and loop if not
+### 7. Check whether the baseline seed looks right
 
 After each recalculation, check things like: does final demand look right?
 Are transformation outputs (especially power and refining) plausible? Is
 production close to the intended path? Are imports/exports explainable? Are
 there any "unmet requirements" (LEAP couldn't satisfy something)? If
-anything looks wrong, that's a signal to go back to step 4 in
-"results update" mode and let the tool propose the next adjustment. This
-loop typically runs several times per economy before the numbers are close
-enough to trust.
+anything looks wrong, investigate the source, mapping, ownership, or LEAP
+configuration first. The implemented `results_update` mode may be used only
+when the run plan explicitly selects it. It is under review and must not be
+treated as an automatic or required loop after every baseline seed.
 
 ## What "done" looks like
 
@@ -197,4 +196,3 @@ The process is finished for an economy, not when every number matches the
   balances the fuels once this tool's workbooks are inside it.
 - `docs/check_registry.md` — the full list of automatic checks the tool runs
   on its own output before you ever see it, for anyone who wants the detail.
-

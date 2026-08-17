@@ -1,11 +1,16 @@
 # Supply reconciliation and LEAP initialisation guide
 
-**Verified:** 2026-07-28
+**Verified:** 2026-08-17
 
 **Audience:** analysts, modellers, and maintainers
 
 **Authority:** Level 1 operating guide for LEAP initialisation and supply
 reconciliation
+
+> **Current operating scope:** `baseline_seed` is the normal initialisation
+> path. The implemented `results_update` path is optional, is under review,
+> and may be deactivated. References to it below document available behavior;
+> they do not make it a required follow-on stage.
 
 **Use this when:** preparing, validating, importing, or iterating LEAP seed and
 update workbooks. For cross-repository routing, start at
@@ -21,15 +26,16 @@ validation ownership remains in [`../check_registry.md`](../check_registry.md).
 ## Purpose and repository boundary
 
 This repository prepares historical and projected energy data for LEAP,
-reconciles recalculated LEAP results against expected supply balances, and
-creates import workbooks that preserve the target LEAP area’s identities.
+creates baseline-seed import workbooks that preserve the target LEAP area's
+identities, and contains optional tooling that can reconcile recalculated LEAP
+results against expected supply balances.
 
 Mapping meaning belongs to the sibling `leap_mappings` repository. This
 repository consumes `outlook_mappings_master.xlsx`; it does not redefine
 LEAP/ESTO/9th relationships. Dashboard presentation belongs to
 `leap_dashboard`.
 
-## End-to-end loop
+## End-to-end baseline-seed path
 
 ```mermaid
 flowchart TD
@@ -37,23 +43,25 @@ flowchart TD
     MAP["Canonical mappings"]
     TMP["Economy LEAP template"]
     PREP["Prepare demand, supply, transformation, transfers, losses/own-use"]
-    REC["Reconcile expected and observed balances"]
-    ALLOC["Allocate gaps under production/capacity/trade policy"]
     BOOK["Write module, combined, and per-economy import workbooks"]
     CHECK["Conservation, invariant, ID, and readiness checks"]
-    LEAP["Human import, LEAP recalculate, Energy Balance export"]
-    RESULTS["Results-update pass"]
+    LEAP["Human import and LEAP recalculation"]
+    REVIEW["Review the recalculated model"]
+    RESULTS["Optional results-update pass (under review)"]
 
     SRC --> PREP
     MAP --> PREP
-    PREP --> REC --> ALLOC --> BOOK
+    PREP --> BOOK
     TMP --> BOOK
-    BOOK --> CHECK --> LEAP --> RESULTS --> REC
+    BOOK --> CHECK --> LEAP --> REVIEW
+    REVIEW -.->|Only when an explicit run plan requires it| RESULTS --> BOOK
 ```
 
 Python generation and live LEAP interaction are separate. The normal method is
-a manual import/recalculate/export loop; COM/API helpers are Windows-only and
-are not the default orchestration boundary.
+a manual workbook import followed by LEAP recalculation and review. Exporting a
+balance for the optional results-update path is not assumed to be a required
+part of every initialisation. COM/API helpers are Windows-only and are not the
+default orchestration boundary.
 
 ## Main workflow and supporting producers
 
@@ -83,7 +91,7 @@ stale.
 | 9th Outlook all-economy table | Reference/Target projections | source data / initialisation copy |
 | canonical mapping workbook | maps source sectors/fuels/flows/products | `leap_mappings` |
 | per-economy LEAP export template | branch/variable/scenario/region IDs and metadata | initialisation |
-| recalculated LEAP balance exports | observed results for results-update | LEAP operator/initialisation |
+| recalculated LEAP balance exports | optional results-update input or separate diagnostic/review evidence | LEAP operator/initialisation |
 | reconciliation config and caps | allocation policy and run behavior | initialisation |
 | exception/known-issue configuration | reviewed local validation behavior | initialisation |
 
@@ -96,7 +104,7 @@ not the runtime identity source. Never copy IDs between economies.
 | Run mode/pass | Purpose | Important distinction |
 |---|---|---|
 | `baseline_seed` | build the first complete import seed | uses source targets before reliable recalculated LEAP results exist |
-| `results_update` | reconcile after importing/recalculating/exporting LEAP | uses real LEAP balance activity/results |
+| `results_update` | optional reconciliation path, currently under review and potentially to be deactivated | uses real LEAP balance activity/results; run only when explicitly requested |
 | `patch_baseline_seeds` | regenerate and replace one verified module slice | not every module has a verified patch-equivalence path |
 | compressed projection preflight | exercise source-to-workbook path cheaply | isolated diagnostic, not full production proof |
 | compressed results-update preflight | exercise results-update path cheaply | does not replace a genuine LEAP cycle |
@@ -110,13 +118,13 @@ own-use ratios use absolute auxiliary use where appropriate.
 | Balance item | Treatment |
 |---|---|
 | production | `Maximum Production` on primary resources; production headroom is a primary gap-closing lever |
-| imports | normally final residual/fallback, deliberately visible as a diagnostic |
+| imports | **written as zero in the normal baseline seed**; ESTO/9th imports are retained only as reference series, and LEAP calculates the required imports |
 | exports | projected/preserved; negative-gap policy can pin exports to 9th |
 | bunkers | negative supply-side use |
 | stock changes/statistical differences | generated where source rules require; template support can remain an ID gate |
 | transformation input/output | signed feedstock/output with capacity and conservation checks |
 | transfers | dedicated process modules, not generic imports/exports |
-| losses/own use | proxy using source activity for seed, recalculated LEAP activity for update |
+| losses/own use | proxy using ESTO/9th activity for the normal seed; the optional results-update implementation can use recalculated LEAP activity |
 | demand | detailed models where available; reviewed aggregate branch fallback elsewhere |
 
 Natural gas is configured as a production-only product in capacity-unmet
@@ -223,18 +231,21 @@ paraphrase those rules into ad-hoc lists.
   value is zero (`5544853`); absence of that branch is therefore different from
   an unresolved non-zero template path.
 
-## Manual LEAP cycle
+## Manual LEAP import and review
 
 1. Generate and review the workbook.
 2. Import it into the correct area/scenarios.
 3. Recalculate LEAP.
-4. Export Results → Energy Balance in PJ, normally Level 2 or higher.
-5. Place the export in the resolver’s expected economy directory.
-6. Run `results_update`.
-7. Inspect balance gaps, caps, convergence, conservation, and readiness.
-8. Repeat until remaining gaps are small and explained.
+4. Review the recalculated model and baseline-seed validation findings.
+5. Export Results → Energy Balance only when needed for dashboard/diagnostic
+   review or when an explicit run plan calls for the optional results-update
+   path.
+6. If `results_update` is explicitly selected, place the export in the
+   resolver's expected economy directory, run the update, and inspect its gap,
+   cap, convergence, conservation, and readiness outputs.
 
-A full LEAP export can take 3–4 hours and should not be interrupted.
+A full LEAP export can take 3–4 hours and should not be interrupted. It is not
+automatically required merely because a baseline seed was imported.
 
 ## Where mapping semantics are consumed
 

@@ -7,6 +7,11 @@ code in all three repositories; git state read directly from each.
 
 **Owner of this document:** `leap_initialisation`
 
+> **Operating-status update — 2026-08-17:** baseline-seed generation is the
+> normal initialisation path. Results-update tooling remains implemented but is
+> optional, under review, and may be deactivated. References below preserve
+> contracts and historical findings; they do not require an update loop.
+
 **Parent document:** `leap_mappings/docs/cross_repository_handover_index.md` is
 the programme-level index. It owns repository ownership, the
 `leap_mappings` → `leap_dashboard` contract, the published Common ESTO schemas,
@@ -30,7 +35,7 @@ Everything below was verified against code, not inferred from documentation.
 | LEAP area initialisation: baseline seeds, the supply/transformation/transfers reconciliation, demand aggregation, loss/own-use proxies, refining, interim electricity/heat. | Mapping semantics. `AGENTS.md` routes mapping-only maintenance to `leap_mappings`. |
 | LEAP import/export integrity: per-economy export templates, BranchID/VariableID/ScenarioID/RegionID resolution, the zeroing workbooks, the seed patcher. | Dashboard presentation, chart routing, page layout. |
 | The **raw LEAP Energy Balance exports** — the only copy of what LEAP actually produced. | The Common ESTO comparison dataset and its contract. |
-| The results-update loop: balance diagnostics, allocation preview, adjustment strategies. | The canonical mapping workbook, rollup rules, comparison scopes. |
+| Optional results-update tooling (under review): balance diagnostics, allocation preview, adjustment strategies. | The canonical mapping workbook, rollup rules, comparison scopes. |
 
 ## 2. Files crossing the boundary
 
@@ -162,14 +167,19 @@ actually involve here, which the parent compresses to one line.
    Manual; the LEAP COM API is decommissioned and Excel import/export is the
    supported path.
 4. **Recalculate in LEAP.** Manual.
-5. **Export the Energy Balance** at Level 2 or better into
-   `data/leap balances exports/<economy>/`, using the filename contract in § 2.2.
-6. **Diagnose** — `codebase/baseline_seed_balance_diagnostics_workflow.py`,
-   then the results-update preview.
+5. **Review the recalculated model.** Export the Energy Balance at Level 2 or
+   better into `data/leap balances exports/<economy>/` only when needed for
+   diagnostics/dashboard work or an explicitly selected optional update, using
+   the filename contract in § 2.2.
+6. **Diagnose when needed** —
+   `codebase/baseline_seed_balance_diagnostics_workflow.py`. Run the
+   results-update preview only when an explicit run plan selects that optional,
+   under-review path.
 7. **Downstream** — `leap_mappings` Stages 1–3, then `leap_dashboard`, per the
    parent index § 4.
 
-Steps 3–5 require a human in LEAP. No part of this loop is unattended today.
+Steps 3–4 require a human in LEAP; step 5 does too when an export is requested.
+No live LEAP interaction is unattended today.
 
 **Concurrency.** Per-economy parallelism goes through
 `codebase/supply_reconciliation/parallel_runner.py`, which launches one OS process
@@ -218,9 +228,10 @@ These complement the parent index § 6; they are not repeats of it.
    `data/leap balances exports/` is lost, it cannot be regenerated from code —
    only by redoing the LEAP work. Confirm it is included in whatever backup or
    transfer the handover uses.
-5. **Only 5 of 21 economies have balance exports**, so the results-update loop is
-   exercised for a minority of the fleet. Any claim about update behaviour
-   generalising across economies is untested.
+5. **Only 5 of 21 economies have balance exports**, so the optional
+   results-update implementation has been exercised for a minority of the
+   fleet. Any claim about update behaviour generalising across economies is
+   untested; this is additional evidence for keeping that path under review.
 6. **142 commits of initialisation work exist only on this machine** (201 across
    all three repositories). INITQ-003.
 

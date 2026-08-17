@@ -18,7 +18,13 @@ The word *estimated* is used broadly here. A value can be:
 - calculated from other energy series, such as process efficiency or proxy
   intensity;
 - deliberately set to zero so LEAP reveals the balancing requirement; or
-- left for LEAP to dispatch, then adjusted by the results-update loop.
+- left for LEAP to dispatch.
+
+> **Operational scope:** the main table describes the normal combined
+> **baseline-seed** workflow. The implemented `results_update` process is
+> optional, is under review, and may be deactivated; it is documented
+> separately so it is not mistaken for a required initialisation stage.
+> Standalone producer behavior is mentioned only as an exception.
 
 The normal time boundary is:
 
@@ -40,66 +46,54 @@ not by this document.
 | **Equal-split fallback** | If neither economy nor APEC shares are available, the value is divided equally among eligible mapped targets. Protected gas/coal transformation parents are instead left unallocated and reported when an arbitrary split would be unsafe. |
 | **Derived ratio** | A LEAP parameter is calculated from energy series, for example output divided by feedstock. |
 | **Proxy** | A hard-to-isolate flow is represented as activity multiplied by an intensity calibrated to reproduce its target energy. |
-| **LEAP dispatch / reconciliation** | LEAP calculates the balance; the workflow reads the result and changes permitted production, capacity, or export levers. |
+| **LEAP dispatch** | LEAP calculates the balance from the seeded assumptions, including the imports required when seed imports are zero. |
+| **Optional results update** | Implemented, under-review behavior that reads LEAP results and changes permitted production, capacity, or export levers. It is not part of the normal baseline-seed method. |
 
 For 9th-to-ESTO allocations, every original `(economy, 9th sector, 9th fuel)`
 total is conservation-checked against its allocated children. The allocator
 and its exact fallback labels are in
 [`codebase/functions/ninth_projection_mapping.py`](../codebase/functions/ninth_projection_mapping.py).
 
-## Balance-flow summary
+## Normal baseline-seed flow summary
 
-| Balance flow | Current Accounts method | Reference / Target method | LEAP representation and important rules |
+| Balance flow | External reference series | Normal baseline-seed behavior | Notes / exceptions |
 |---|---|---|---|
-| **01 Production** | Direct ESTO production, converted to a non-negative quantity. | Direct 9th series where the mapping is one-to-one; otherwise ESTO-share allocation, then APEC/equal fallback where allowed. | Written primarily as Resources **Maximum Production**. The economy's actual LEAP template determines whether a fuel sits under primary or secondary resources. Production can subsequently be increased within configured limits by results-update reconciliation. |
-| **02 Imports** | Direct ESTO value in a standalone source export. | 9th import series, with the same mapped allocation rules as production. | Stored as a non-negative Resources **Imports** quantity. In the linked baseline seed and active iterative-balanced loop, imports are deliberately written as zero so LEAP's calculated imports become the error signal; they are not treated as a fixed first-choice input. |
-| **03 Exports** | Direct ESTO value, converted to a non-negative quantity. | 9th export series, using mapped allocation where required. | Written as non-negative Resources **Exports** or as transformation output-fuel **Export Target** where trade is assigned to a transformation module. The current iterative-balanced policy normally pins exports to the projected baseline; if unpinned, a negative import gap may become extra exports. |
-| **04 Marine bunkers** and **05 Aviation bunkers** | Direct ESTO demand-side use for the base year when included in the aggregate placeholder scope. | Direct/mapped 9th demand projections, allocated to detailed ESTO products when a 9th fuel is coarser. | Treated as positive demand magnitude after taking the absolute balance value. They are demand/bunker requirements, not negative resource exports. They disappear from the aggregate placeholder when their source scope is owned by an active detailed demand branch. |
-| **06 Stock changes** | Direct ESTO base-year value with its balance sign retained. | Zero by design. | Written only when the economy template contains the separate **Stock Changes** branch. No projection method is asserted because there is no maintained projection basis. |
-| **07 Total primary energy supply** | Source/checking aggregate, not independently estimated. | Source/checking aggregate, not independently estimated. | Not written as a separate LEAP assumption. Reconciliation reconstructs and compares the balance boundary from component flows; writing the source subtotal as well would double count it. |
-| **08 Transfers** and children | Direct signed ESTO transfer rows; active subflows `08.01`, `08.02`, `08.03`, and `08.99` are preferred over the aggregate. | Signed 9th transfer projections are allocated with base-year product profiles and conservation checking. A generic `08 Transfers` projection is routed to the economy's largest active base-year subflow. | Modelled as transformation-style processes. Negative products are feedstocks and positive products are outputs. Economy configuration divides them into upstream liquids, refining/blending, or unallocated processes. |
-| **08.04 Gas separation** | Not selected by the active transfer workflow. | Not selected by the active transfer workflow. | The flow exists in the source catalog and balance-result comparison code, but it is absent from `TRANSFER_FLOW_CODES`; there is currently no seed estimation method for it. |
-| **09 Transformation inputs** | Direct negative ESTO transformation rows, converted to positive feedstock quantities. | Signed 9th transformation series allocated to the mapped ESTO process/product context. | Feedstock Fuel Share is each input divided by total feedstock. The default is one multi-feedstock process, not one process per fuel. Auxiliary fuel is kept outside the process-efficiency denominator. |
-| **09 Transformation outputs** | Direct positive ESTO transformation rows. | Signed 9th transformation projections after mapped allocation. | Output fuels, output shares, Historical Production and Exogenous Capacity are built from the resulting positive output series. Process Efficiency is `total output / total exported feedstock`, capped by configured safeguards. |
-| **09 transformation parent/subtotal rows** | Filtering and allocation context, not additional process energy. | Filtering and allocation context, not additional process energy. | Parents such as `09 Total transformation sector`, `09.01`, `09.02`, `09.06`, and `09.08` are not added on top of their active children. Parent projections are disaggregated only under the explicit child-profile rules described below. |
-| **10.01 Energy-sector own use** | Direct target energy from the ESTO child flow. The representation is either transformation Auxiliary Fuel Use or a demand proxy, according to the ownership table below. | Direct/mapped 9th child-flow target. Proxy-owned flows use activity from ESTO+9th in the baseline seed or from a LEAP balance in results-update. | A proxy writes `Activity Level` and `Final Energy Intensity`, where initialisation intensity is `abs(target energy) / proxy activity`. Transformation-owned flows become auxiliary ratios relative to process output. A flow must have one owner to avoid double counting. |
-| **10.02 Transmission and distribution losses** | Direct ESTO target energy by fuel. | Direct/mapped 9th loss target by fuel, including projection-only fuels where configured. | Demand proxy. Default activity is total positive production including electricity. If that entire process activity is unavailable, a fuel-specific total-demand series is tried. Initialisation intensity matches target energy year by year. |
-| **10 Losses & own use** and **10.01 Own Use** parents | Source/checking subtotals, not independently estimated. | Source/checking subtotals, not independently estimated. | Values come from the owned `10.01.*` children and `10.02`; adding the parent rows would duplicate them. |
-| **11 Statistical discrepancy** | Direct ESTO base-year value with the sign reversed for LEAP **Statistical Differences** semantics. | Zero by design. | Written only when the economy template contains the separate **Statistical Differences** branch. |
-| **12 Total final consumption** and **13 Total final energy consumption** | Source/checking subtotals, not independently estimated. | Source/checking subtotals, not independently estimated. | Excluded from aggregate-demand value construction. Demand is built from the `04`, `05`, and `14–17` components so these parent totals are not added a second time. |
-| **14–17 Final demand families** | Absolute ESTO base-year demand, grouped to the maintained placeholder sector and LEAP fuel. | 9th demand values allocated within the same mapped sector/fuel context using economy ESTO shares, then APEC/equal fallback. | Written under `Demand\All demand aggregated`. Source sectors owned by active detailed demand models are excluded, so the placeholder is a residual by source scope; detailed LEAP results are not subtracted. |
-| **18 Electricity output in GWh** and **19 Heat output in PJ** | Accounting/output checks, not transformation feedstock estimates. | Accounting/output checks, not transformation feedstock estimates. | The interim power builder explicitly prohibits these output-accounting sectors as inputs and derives energy outputs from signed `09.*` transformation rows. This avoids mixing GWh accounting rows with the energy-balance process representation. |
-| **Unmet requirements** | Normally not seeded as an energy estimate. | Normally not seeded as an energy estimate. | Supply policy is generally **MeetWithImports**. Unmet requirements are a LEAP result/diagnostic, not a source-data flow that this repository projects. |
+| **01 Production** | ESTO base-year production; direct or allocated 9th production for projection years. | Write the non-negative series primarily as Resources **Maximum Production**. | The economy's LEAP template determines whether the fuel is a primary or secondary resource. |
+| **02 Imports** | ESTO base-year and 9th projection imports are retained as reference series. | **Write imports as zero in every seeded scenario/year.** LEAP then calculates the imports required to balance the seeded model. | Source imports are comparison data, not seeded import assumptions. The standalone supply exporter can write them, but that is not the normal combined baseline-seed method. |
+| **03 Exports** | ESTO base-year exports; direct or allocated 9th exports for projection years. | Write the non-negative projected export series to Resources **Exports**, or to transformation output-fuel **Export Target** where that module owns the trade. | Unlike imports, exports are preserved in the normal baseline seed. |
+| **04 Marine bunkers** and **05 Aviation bunkers** | ESTO base-year use and direct/mapped 9th demand projections. | Write positive demand magnitudes within the aggregate placeholder when that source scope is not owned by a detailed branch. | These are demand/bunker requirements, not resource exports. |
+| **06 Stock changes** | ESTO base-year stock change with its balance sign retained. | Write the Current Accounts value where the template has **Stock Changes**; write zero in Reference/Target. | There is no maintained projection method. |
+| **07 Total primary energy supply** | Source/checking aggregate. | Do not write it as a separate LEAP assumption. | It is reconstructed from component flows; adding the subtotal would double count it. |
+| **08 Transfers** and children | Signed ESTO base-year rows and signed, allocated 9th projections. | Build transformation-style transfer processes: negative products are feedstocks and positive products are outputs. | Active `08.01`, `08.02`, `08.03`, and `08.99` subflows are preferred over the parent and assigned to configured upstream, refining/blending, or unallocated processes. |
+| **08.04 Gas separation** | Present in the source vocabulary. | Do not write it; there is currently no seed estimation method. | It is absent from active `TRANSFER_FLOW_CODES`. |
+| **09 Transformation inputs** | Negative ESTO/9th process rows after mapped projection allocation. | Write their absolute values as feedstocks; calculate each Feedstock Fuel Share against total feedstock. | The default is one multi-feedstock process. Auxiliary energy is outside the efficiency denominator. |
+| **09 Transformation outputs** | Positive ESTO/9th process rows after mapped projection allocation. | Build output fuels, output shares, Historical Production, Process Efficiency, and initial Exogenous Capacity where supported. | Process Efficiency is `total output / total exported feedstock`, subject to configured safeguards. |
+| **09 transformation parent/subtotal rows** | Filtering and allocation context. | Do not add parents on top of active children. | Parent projections are disaggregated only under explicit child-profile rules. |
+| **10.01 Energy-sector own use** | ESTO child-flow targets in the base year and direct/mapped 9th child-flow targets in projections. | Write each flow through its single current owner: transformation Auxiliary Fuel Use or an enabled demand proxy. Proxy activity comes from ESTO plus 9th data. | Proxy intensity is `abs(target energy) / proxy activity`, so the seed matches target energy year by year. See the ownership table below. |
+| **10.02 Transmission and distribution losses** | ESTO base-year target by fuel and direct/mapped 9th projection targets. | Write an enabled demand proxy using total positive production, including electricity, as the normal activity series. | If the whole process activity is unavailable, try fuel-specific total demand. |
+| **10 Losses & own use** and **10.01 Own Use** parents | Source/checking subtotals. | Do not write the parents separately. | Values come from the owned `10.01.*` children and `10.02`. |
+| **11 Statistical discrepancy** | ESTO base-year statistical discrepancy. | Write the sign-reversed Current Accounts value where the template has **Statistical Differences**; write zero in Reference/Target. | There is no maintained projection method. |
+| **12 Total final consumption** and **13 Total final energy consumption** | Source/checking subtotals. | Do not write the parent totals. | Demand is built from `04`, `05`, and `14–17` components. |
+| **14–17 Final demand families** | Absolute ESTO base-year demand and allocated 9th projections. | Write the maintained `Demand\All demand aggregated` residual branches after excluding source sectors owned by active detailed demand models. | Detailed LEAP results are not subtracted; ownership is controlled by source-scope exclusion. |
+| **18 Electricity output in GWh** and **19 Heat output in PJ** | Output-accounting/checking rows. | Do not use them as transformation inputs; derive interim power energy output from signed `09.*` rows. | This avoids mixing accounting rows and units with the energy-balance process representation. |
+| **Unmet requirements** | No external seed estimate. | Do not seed it as an energy flow; use the normal **MeetWithImports** policy where configured. | Unmet requirements are a LEAP result/diagnostic. |
 
 The supply sign rules and the special base-year-only treatment of stock changes
 and statistical differences are implemented in
 [`supply_value_series.py`](../codebase/functions/supply_value_series.py) and
 [`supply_export_builder.py`](../codebase/functions/supply_export_builder.py).
 
-## Supply and trade in the linked reconciliation runs
+## Supply and trade in the normal baseline seed
 
-The standalone supply workflow can export projected imports, exports, and
-production. The combined reconciliation workflow intentionally changes how
-those values are used:
+The combined baseline seed keeps projected production and exports but writes
+imports as zero. LEAP therefore receives the domestic supply and export
+assumptions while retaining responsibility for calculating whatever imports
+are needed to balance the model.
 
-1. **Baseline seed:** imports are written as zero, while projected exports and
-   initial production/capacity are retained. LEAP recalculates the balance.
-2. **Observed gap:** the results-update pass compares LEAP imports with the
-   projected import baseline. The primary signal is
-   `observed imports - projected imports`.
-3. **Positive gap:** eligible primary-fuel Maximum Production headroom is used
-   first; eligible transformation Exogenous Capacity is used next; any
-   permitted residual falls through to imports.
-4. **Negative gap:** it may become an explicit export adjustment, but the
-   current pinned-export setting keeps exports at their 9th projection instead.
-5. **Production-only products:** products such as natural gas can be configured
-   to skip transformation capacity and use production headroom only.
-
-This is why a generated zero import is not evidence that projected imports are
-unknown. It is an experimental control used to measure LEAP's endogenous
-requirement. See
-[`supply_reconciliation/allocation.py`](../codebase/supply_reconciliation/allocation.py)
-and the [workflow guide](supply_reconciliation_workflow_guide.md).
+The source import series is still built and retained for comparison and audit.
+It is not the value written into the normal baseline seed. This distinction is
+easy to miss because the standalone supply exporter can write source imports;
+standalone capability does not define the combined baseline-seed behavior.
 
 ## Transformation methods by flow family
 
@@ -181,7 +175,7 @@ corresponding module's Auxiliary Fuel Use rather than a separate demand proxy.
 
 | ESTO / 9th flow | Current owner/status | Activity or estimation method |
 |---|---|---|
-| `10.01.01` Electricity, CHP and heat plants | **Proxy enabled** | Positive electricity plus heat output from electricity, CHP and heat plants; results-update reads the matching LEAP balance rows. |
+| `10.01.01` Electricity, CHP and heat plants | **Proxy enabled** | Positive electricity plus heat output from electricity, CHP and heat plants. The optional results-update implementation can instead read matching LEAP balance rows. |
 | `10.01.02` Gas works plants | Proxy disabled; **transformation auxiliary configured** | If the proxy were enabled, its activity would be positive gas-works-gas output. The active transformation configuration instead assigns this target flow to Gas works Auxiliary Fuel Use. |
 | `10.01.03` Liquefaction/regasification plants | **Proxy enabled** | Positive natural-gas and LNG output/throughput. If unavailable, configured ESTO/9th trade/production fallback tiers are tried; LEAP-balance mode uses liquefaction and regasification output rows. |
 | `10.01.04` Gas-to-liquids plants | Proxy disabled; no target loss flow configured on the transformation record | The disabled proxy definition would use positive petroleum-product output from GTL. The code comment identifies auxiliary use as the intended representation, but the current GTL transformation configuration has an empty `loss_flow_codes` list. |
@@ -224,15 +218,14 @@ The hierarchy is:
    nonzero projection activity can be copied to the base year. Only the scale
    is borrowed; the target-matching formula still exactly matches base-year
    target energy.
-4. **Results-update activity:** the same proxy is rebuilt from selected rows
-   and fuels in a LEAP balance export.
-5. **Consistency gate:** positive target energy with zero activity at or after
+4. **Consistency gate:** positive target energy with zero activity at or after
    the export base year is an error in strict mode.
 
-Both baseline-seed and results-update are *target-matching initialisation*:
-intensity changes by year to reproduce the external target. The separate
-post-initialisation mode holds the first valid calibrated intensity constant;
-it is not the normal seed/update behavior.
+The baseline seed uses *target-matching initialisation*: intensity changes by
+year to reproduce the external target. The separate post-initialisation mode
+holds the first valid calibrated intensity constant; it is not the normal
+baseline-seed behavior. The optional results-update implementation also uses
+target-matching intensity when it is explicitly run.
 
 The authoritative configuration and formulas are in
 [`other_loss_own_use_proxy_workflow.py`](../codebase/other_loss_own_use_proxy_workflow.py)
@@ -265,10 +258,17 @@ International transport, Industry, Other sector, and Buildings.
 See
 [`codebase/aggregated_demand_workflow.py`](../codebase/aggregated_demand_workflow.py).
 
-## Results-update-specific re-estimation
+## Optional results-update process — under review
 
-The results-update pass does not replace every source method. It updates the
-parts that depend on LEAP's recalculated system:
+`results_update` is implemented, but its continued use is under review and it
+may be deactivated. It is **not assumed to be part of the normal
+initialisation method** in this document. Do not run it merely because a
+baseline seed has been produced; use it only when the run plan explicitly
+calls for it.
+
+The behavior below is retained as implementation and maintenance reference. If
+the optional process is run, it updates the parts that depend on LEAP's
+recalculated system:
 
 | Item | Results-update method |
 |---|---|

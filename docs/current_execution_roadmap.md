@@ -4,6 +4,11 @@ Status: active, revalidated 2026-07-28. This is the operational roadmap for the
 initialisation workflow. It complements the detailed thread briefs; where an
 older handoff describes a prior state, this document is the current authority.
 
+**Operating-status update 2026-08-17:** `baseline_seed` is the normal
+initialisation path. The implemented `results_update` path is optional, under
+review, and may be deactivated; run it only when an explicit run plan requests
+it.
+
 ## Run policy and verification boundary
 
 - Use a **single-economy, contiguous two-year horizon** (`BASE_YEAR` through

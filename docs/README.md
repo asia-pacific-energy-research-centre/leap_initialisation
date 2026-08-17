@@ -41,19 +41,19 @@ and [`process_map_agent.md`](process_map_agent.md).
 
 | File | What it covers |
 |---|---|
-| [`initialisation_flow_estimation_methods.md`](initialisation_flow_estimation_methods.md) | Consolidated flow-by-flow reference for source values, projection allocation, transformation formulas, own-use/loss proxies, and results-update estimation. |
+| [`initialisation_flow_estimation_methods.md`](initialisation_flow_estimation_methods.md) | Consolidated baseline-seed flow reference for source values, projection allocation, transformation formulas, and own-use/loss proxies; records the optional results-update implementation separately as under review. |
 | [`supply_reconciliation_workflow_guide.md`](supply_reconciliation_workflow_guide.md) | The modeller-facing guide: how to run it, the LEAP export procedure (§ 9b), surplus/shortfall rules (§ 12b), and the seven supporting scripts. |
 | [`special_rules_and_design_decisions.md`](special_rules_and_design_decisions.md) | The decision log — `INIT-*`, `SEED-*`, `CROSS-*`. Check here before assuming odd behaviour is a bug. |
 | [`check_registry.md`](check_registry.md) | Directory of every readiness check across five families (F1–F5), with boundary-vs-local and gateability rules. Enforced by `tests/test_check_registry.py`. |
 | [`aggregate_preflight_source_routing_contract.md`](aggregate_preflight_source_routing_contract.md) | How the `00_APEC` compressed preflight selects its source files. |
 
-## Baseline seeds and the results-update loop
+## Baseline seeds and optional results-update tooling
 
 | File | What it covers |
 |---|---|
 | [`baseline_seed_rule_inventory.md`](baseline_seed_rule_inventory.md) | The SEED-C rule detail behind the baseline-seed validator. |
 | [`baseline_seed_balance_diagnostics.md`](baseline_seed_balance_diagnostics.md) | Design and notebook usage for the cyclical LEAP balance diagnostics (`[21]`). |
-| [`results_update_dry_run_preview.md`](results_update_dry_run_preview.md) | Update-strategy configuration and per-cycle execution history. |
+| [`results_update_dry_run_preview.md`](results_update_dry_run_preview.md) | Reference for the implemented optional update strategy, currently under review and potentially to be deactivated. |
 | [`baseline_seed_unit_review.md`](baseline_seed_unit_review.md) | Unit-metadata checks on generated LEAP import rows. |
 | [`supply_conservation_checks.md`](supply_conservation_checks.md), [`balance_demand_conservation_check.md`](balance_demand_conservation_check.md) | The conservation check families. |
 

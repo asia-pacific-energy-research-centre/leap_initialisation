@@ -9,8 +9,13 @@ Build a short feedback loop for LEAP initialisation:
 3. recalculate LEAP;
 4. export a small set of Energy Balance years;
 5. compare the exported values with ESTO and the 9th Outlook;
-6. preview and later apply corrections through the existing results-update path;
-7. repeat until the remaining differences are understood or within tolerance.
+6. investigate structural, mapping, ownership, or LEAP-configuration issues;
+7. optionally preview the implemented results-update corrections only when an
+   explicit run plan selects that under-review path.
+
+The diagnostic comparison is useful independently of `results_update`.
+Results update is optional, is under review, and may be deactivated; this
+document does not make it a required feedback loop after baseline seed.
 
 The limited-year path is intended to make structural and mapping mistakes cheap
 to find before a full-horizon, data-heavy run.

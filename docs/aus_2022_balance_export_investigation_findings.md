@@ -1,5 +1,11 @@
 # AUS 2022 balance-export investigation findings
 
+> **Operating-status note — 2026-08-17:** this dated investigation preserves
+> the July results-update recommendation as historical evidence. The current
+> normal path is baseline seed; results update is optional, under review, and
+> may be deactivated. Do not treat the older recommendation below as current
+> run instruction.
+
 ## Scope and provenance
 
 This investigation used the read-only workbook:
@@ -97,7 +103,7 @@ Unlisted row-level differences remain `unresolved` in the review CSV.
 | --- | --- | --- | --- | --- |
 | 1 | Anthracite imports and TPES are each about `+985.171 PJ`; Other bituminous production is `-657.521 PJ`; Other bituminous TPES is `-616.478 PJ`; Sub-bituminous production and TPES are each `-387.480 PJ` | `baseline_seed_generation_bug` | Electricity/heat interim producer | The pre-fix seed wrote 47.010% of Electricity interim feedstock to Anthracite and 0% to the two real coal products. Current code preserves the real ESTO products. Regenerate/import/recalculate/export to verify. |
 | 2 | Ten material flow-13 rows, led by Natural gas `+424.163 PJ`, Electricity `+175.954 PJ`, and Gas/diesel oil `+125.943 PJ` | `diagnostic_bug` | Mapping/comparison boundary | LEAP `Total Final Energy Demand` equals `All demand aggregated + Other loss and own use`; it is not a direct comparator for ESTO flow 13. Define a rollup-aware boundary before updates. |
-| 3 | LPG exports `-169.504 PJ`, LPG imports `+157.551 PJ`, electricity imports `+60.981 PJ`, electricity exports `-57.664 PJ`, plus associated TPES rows | `leap_model_behavior` (confirmed first-pass semantics) | Supply plus transformation dispatch | The seed inputs match their intended baseline-seed rules: imports are deliberately zero, export targets match ESTO, and production is a cap. LEAP then closes shortfalls and exports transformation surpluses. Run the results-update loop before changing source targets. |
+| 3 | LPG exports `-169.504 PJ`, LPG imports `+157.551 PJ`, electricity imports `+60.981 PJ`, electricity exports `-57.664 PJ`, plus associated TPES rows | `leap_model_behavior` (confirmed first-pass semantics) | Supply plus transformation dispatch | The seed inputs match their intended baseline-seed rules: imports are deliberately zero, export targets match ESTO, and production is a cap. LEAP then closes shortfalls and exports transformation surpluses. Investigate the model behavior before changing source targets; use the optional results-update tooling only if an explicit run plan calls for it. |
 | 4 | Coke oven coke imports `+115.211 PJ`, Coke oven coke TPES `+85.403 PJ`, and Coking coal TPES `+80.464 PJ` | `confirmed_formula_defect_fixed_code_side_plus_scope_decision` | Transformation methodology | LEAP defines efficiency as output/feedstock and excludes auxiliary fuels. The shared process-record builder now enforces that formula for every transformation module. A fresh seed/import/recalculation is still required; the remaining decision is which ESTO rows belong to each process/module. |
 | 5 | Crude-oil TPES `+174.680 PJ`, crude-oil imports `+170.737 PJ`, refinery crude input `-81.152 PJ`, and refinery product differences | `unresolved` | Refining plus LEAP dispatch | Compare the Current Accounts refining producer record, post-boundary seed, and recalculated output; decide whether the capacity heuristic should reproduce raw 2022 throughput exactly. |
 | 6 | All seven `10.01.17 Non-specified own uses` rows had the correct magnitude but appeared with the opposite sign in the diagnostic | `confirmed_diagnostic_sign_defect_fixed` | Balance extraction | This label alone was missing from the own-use sign-normalization set. Both label variants are now normalized as consumption and all seven rows match. The separate live-LEAP 1/100 scale issue was already corrected by clearing the leaf Scale unit. |
@@ -126,11 +132,12 @@ supply_leap_imports_01_AUS_CurrentAccounts.xlsx
 
 Therefore the prominent production/import/export differences are not evidence
 that ESTO values were copied incorrectly into this baseline seed. They are the
-expected first-pass balancing signal: Resources imports meet unresolved
+expected baseline-seed balancing behavior: Resources imports meet unresolved
 requirements, production dispatches below its ceiling where appropriate, and
-transformation surplus settings can add exports. The next correction mechanism
-is the normal `results_update` pass, which allocates observed gaps to production,
-transformation capacity, or configured import fallback.
+transformation surplus settings can add exports. The implemented
+`results_update` pass can allocate observed gaps to production, transformation
+capacity, or configured import fallback, but it is now optional and under
+review rather than the normal next step.
 
 ## Transformation efficiency and own-use finding
 

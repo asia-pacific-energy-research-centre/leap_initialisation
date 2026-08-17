@@ -1,6 +1,10 @@
 # Supply reconciliation agent guide
 
-**Verified:** 2026-07-28
+**Verified:** 2026-08-17
+
+> **Operating status:** `baseline_seed` is the normal path. The implemented
+> `results_update` path is optional, under review, and may be deactivated. Do
+> not run it unless the active run plan explicitly requests it.
 
 Read `AGENTS.md`, `docs/work_queue.md`, the
 [reader guide](supply_reconciliation_guide.md), and
@@ -10,7 +14,7 @@ Read `AGENTS.md`, `docs/work_queue.md`, the
 
 | Workflow | Entry | Inputs | Outputs | Canonical mutation | Downstream |
 |---|---|---|---|---|---|
-| full seed/update | `codebase/supply_reconciliation_workflow.py` | source tables, mappings, templates, optional LEAP results | run-labelled workbooks/tables/diagnostics | generated files; live LEAP only if enabled | LEAP |
+| baseline seed / optional update | `codebase/supply_reconciliation_workflow.py` | source tables, mappings, templates; LEAP results only for an explicit optional update | run-labelled workbooks/tables/diagnostics | generated files; live LEAP only if enabled | LEAP |
 | patch | orchestrator `RUN_MODE="patch_baseline_seeds"` | existing seed and selected module | patched seed and validation | generated seed | LEAP |
 | supply producer | `codebase/supply_workflow.py` | ESTO/9th/mappings | resource/trade rows | generated | orchestrator |
 | transformation | `codebase/transformation_workflow.py` | signed transformation sources/mappings | capacity/efficiency/input/output rows | generated | orchestrator |
@@ -35,8 +39,9 @@ Do not use the repository `.venv` from PowerShell or a bare `python` alias.
 4. Verify no same-economy reconciliation process is active.
 5. Inspect locks and confirm PIDs before considering stale-lock removal.
 6. Close relevant Excel workbooks.
-7. Verify templates, balance exports, source vintages, and canonical mapping
-   path.
+7. Verify templates, source vintages, and the canonical mapping path. Verify
+   balance exports only for diagnostics or an explicitly selected optional
+   `results_update` run.
 8. Set a unique dated output label for a retained repeated scope.
 9. Record commit, dirty state, economy/scenario/year scope, mode, and template.
 
@@ -48,10 +53,10 @@ Do not use the repository `.venv` from PowerShell or a bare `python` alias.
 | `SCENARIOS` | normally Target, Reference, Current Accounts |
 | `RUN_MODE` | full or patch orchestration |
 | `RUN_OUTPUT_LABEL` | run-root identity; identical `auto` scope can collide |
-| `CAPACITY_UNMET_PASS_MODE` | baseline seed or results update behavior |
+| `CAPACITY_UNMET_PASS_MODE` | use `baseline_seed` normally; `results_update` is optional and under review |
 | `RUN_PREFLIGHT_COMPRESSED_PROJECTION` | isolated projection preflight |
 | `RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE` | isolated update preflight |
-| `TEST_HORIZON_BASE_YEAR_PLUS_ONE` | normal two-year iteration horizon when true |
+| `TEST_HORIZON_BASE_YEAR_PLUS_ONE` | normal two-year development/production-check horizon when true |
 | `RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT` | reset behavior, preset-controlled |
 | `RUN_ELECTRICITY_HEAT_INTERIM` | placeholder power modules |
 | `RUN_OTHER_LOSS_OWN_USE_PROXY` / stage | proxy activity source |
@@ -183,7 +188,10 @@ For aggregated demand, verify the values before diagnosing an absent generated
 branch: the workflow intentionally omits branches whose selected modelled
 values are all zero (`5544853`).
 
-## Results-update loop
+## Optional results-update loop — under review
+
+Do not treat this as a required continuation of baseline seed. Use it only
+when the active run plan explicitly selects `results_update`.
 
 1. Review/import seed.
 2. Recalculate correct LEAP area.
@@ -193,7 +201,7 @@ values are all zero (`5544853`).
 6. Inspect product/year gaps and allocation ledger.
 7. Check caps, production-only products, transformation order, import fallback,
    exports, conservation, and convergence.
-8. Repeat.
+8. Repeat only while that explicit optional update plan remains active.
 
 ## Symptom routing
 

@@ -21,6 +21,11 @@ line by line, the correct current behaviour is just stated directly.
 > LOC counts and line numbers are also 2026-07-23 evidence rather than stable
 > API coordinates.
 
+> **2026-08-17 operating status:** `baseline_seed` is the normal initialisation
+> path. The `results_update` branches shown below document implemented code,
+> but that path is optional, under review, and may be deactivated. It must not
+> be inferred as a required stage from the technical control-flow diagrams.
+
 This is the technical companion to `docs/process_map_human.md`. It exists so
 a coding agent picking up this repo cold can find, in one place: which file
 owns which stage, what each stage reads and writes, and where the extracted

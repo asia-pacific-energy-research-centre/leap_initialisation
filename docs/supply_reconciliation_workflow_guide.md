@@ -8,6 +8,12 @@
 
 This guide is based on the documented workflow logic. It should be checked against the current Python file before being treated as a complete code reference.
 
+> **Operating status — 2026-08-17:** `baseline_seed` is the normal
+> initialisation path. The implemented `results_update` path is optional, is
+> under review, and may be deactivated. Sections describing its gap allocation,
+> preflight, iteration, or balance-export requirements are implementation
+> reference only; they do not prescribe a required stage after baseline seed.
+
 ## Contents
 
 ### Overview
@@ -17,9 +23,9 @@ This guide is based on the documented workflow logic. It should be checked again
 
 ### How it works
 
-- [2. What the workflow does conceptually](#2-what-the-workflow-does-conceptually)
-- [3. The main error signal](#3-the-main-error-signal)
-- [4. Active mode: `capacity_unmet_iterative_balanced`](#4-active-mode-capacity_unmet_iterative_balanced)
+- [2. What the optional results-update process does](#2-what-the-optional-results-update-process-does)
+- [3. The optional results-update error signal](#3-the-optional-results-update-error-signal)
+- [4. Implemented optional mode: `capacity_unmet_iterative_balanced`](#4-implemented-optional-mode-capacity_unmet_iterative_balanced)
 - [4a. The three run modes: `baseline_seed`, `results_update`, `patch_baseline_seeds`](#4a-the-three-run-modes-baseline_seed-results_update-patch_baseline_seeds)
 - [4c. Other settings with real operational impact](#4c-other-settings-with-real-operational-impact)
 - [4d. Major sub-workflows this file drives](#4d-major-sub-workflows-this-file-drives)
@@ -35,9 +41,9 @@ This guide is based on the documented workflow logic. It should be checked again
 
 ### Running the workflow
 
-- [9. Manual run loop](#9-manual-run-loop)
+- [9. Manual baseline-seed import and optional update](#9-manual-baseline-seed-import-and-optional-update)
 - [10. Why the LEAP API is not used as the main method](#10-why-the-leap-api-is-not-used-as-the-main-method)
-- [11. How many iterations are expected](#11-how-many-iterations-are-expected)
+- [11. Iterations apply only to the optional update path](#11-iterations-apply-only-to-the-optional-update-path)
 - [Concurrent runs](#concurrent-runs)
 
 ### Interpreting results
@@ -65,8 +71,8 @@ This guide is based on the documented workflow logic. It should be checked again
 ## 0. Where this fits in
 
 This workflow is one part of the **LEAP initialisation process**: building and
-reconciling a new economy/scenario area before it is handed over for scenario
-work in LEAP. Start with the maintained
+validating a new economy/scenario baseline seed before it is handed over for
+scenario work in LEAP. Start with the maintained
 [supply reconciliation handover guide](handover/supply_reconciliation_guide.md)
 for the end-to-end repository picture. This document then explains the
 supply/transformation reconciliation step in detail.
@@ -114,7 +120,13 @@ Before supply reconciliation can begin, the LEAP area must be populated with ini
 | `transformation_workflow.py` | Transformation sector data — including Oil Refining, LNG regasification, gas liquefaction, coal transformation, coke ovens, blast furnaces, patent fuel plants, non-specified transformation, and related modules — with shared output, auxiliary-fuel, capacity, and process-efficiency handling. |
 | `transfers_workflow.py` | Transfers data for the upstream liquids, refinery and blending, and transfers unallocated modules. |
 
-`supply_reconciliation_workflow.py` then uses the outputs of `supply_workflow.py` and `transformation_workflow.py` as its baseline reference and iteratively adjusts them based on LEAP results. The other scripts (`aggregated_demand_workflow.py`, `electricity_heat_interim_workflow.py`, `other_loss_own_use_proxy_workflow.py`) are run once at initialisation and are not part of the reconciliation loop.
+`supply_reconciliation_workflow.py` combines these producer outputs into the
+normal baseline seed. Its optional `results_update` implementation can later
+adjust supply/transformation assumptions from LEAP results, but that path is
+under review and is not assumed to follow every seed. The other scripts
+(`aggregated_demand_workflow.py`, `electricity_heat_interim_workflow.py`,
+`other_loss_own_use_proxy_workflow.py`) provide baseline-seed inputs; their
+second-stage behavior matters only if the optional update path is selected.
 
 The final baseline seed combines the current run's supply, transformation
 (including oil refining), transfers, interim electricity/CHP/heat,
@@ -172,9 +184,16 @@ For example:
 - losses and own-use create extra upstream fuel requirements;
 - LEAP may allocate balancing gaps to imports, exports, or unmet requirements.
 
-`supply_reconciliation_workflow.py` is designed to help reduce these unintended gaps.
+`supply_reconciliation_workflow.py` is designed first to build and validate the
+baseline seed that exposes this behavior without hard-coding imports. Its
+optional, under-review results-update path can try to reduce selected gaps.
 
-## 2. What the workflow does conceptually
+## 2. What the optional results-update process does
+
+The normal baseline-seed path ends after generating, validating, importing,
+recalculating, and reviewing the seed. The iterative process described in this
+section is available in the code but is under review and should run only when
+an explicit run plan selects `results_update`.
 
 At a high level, the workflow compares what LEAP is doing with what the supply projection expected.
 
@@ -194,11 +213,17 @@ flowchart TD
     A --> B --> C --> D --> E --> F --> G --> H --> I --> J --> B
 ```
 
-The workflow is iterative. It is not expected to solve the whole system perfectly in one run.
+The optional results-update implementation is iterative. The normal baseline
+seed is not defined as the first mandatory pass of that loop.
 
 The key idea is that demand is taken as given, then the workflow watches how much import LEAP needs to satisfy that demand after recalculation. Imports are therefore treated as an observable signal of imbalance, not as a number to hard-code upfront.
 
-On the first pass (`baseline_seed`), the workflow does not try to solve that imbalance directly. It writes the supply export with imports set to zero, lets LEAP recalculate, and uses the resulting import requirement as the signal for where domestic supply or transformation output is missing. On later passes (`results_update`), the workflow reads LEAP's balance results back and compares the observed import/export pattern with the expected 9th Outlook / ESTO baseline, then adjusts the supply-side levers accordingly.
+In `baseline_seed`, the workflow writes imports as zero so LEAP calculates the
+imports required to balance the model. The ESTO/9th import series remains
+reference data and is not written as the seed assumption. If the optional
+`results_update` path is explicitly selected, it can read LEAP's balance
+results, compare observed trade with that reference, and adjust permitted
+supply-side levers.
 
 ```mermaid
 flowchart TD
@@ -208,14 +233,14 @@ flowchart TD
     D[LEAP recalculates]
     E[Read balance tables]
     F[Observed import gap]
-    G[results_update]
+    G[Optional results_update under review]
     H[Adjust production, capacity, or exports]
     I[Next import workbook]
 
     A --> B --> C --> D --> E --> F --> G --> H --> I --> D
 ```
 
-## 3. The main error signal
+## 3. The optional results-update error signal
 
 The main error signal is the difference between:
 
@@ -234,9 +259,9 @@ A simple way to interpret this is:
 
 In the current documented setup, positive import gaps are especially important because they indicate cases where LEAP is importing more fuel than intended. The update pass does not rewrite demand to make that disappear; it changes supply-side settings so the same demand can be met with a smaller unexplained import gap.
 
-## 4. Active mode: `capacity_unmet_iterative_balanced`
+## 4. Implemented optional mode: `capacity_unmet_iterative_balanced`
 
-The documented active mode is:
+The implemented results-update allocation mode is:
 
 ```text
 capacity_unmet_iterative_balanced
@@ -257,11 +282,17 @@ This means the workflow is mainly trying to answer:
 
 > If LEAP is importing more than expected, where should extra domestic production or transformation output be added so the model can satisfy the same demand with less unexplained importing?
 
-One important nuance: the workflow does not assume imports are always an error in the real-world sense. It uses the difference between expected and observed imports as a reconciliation signal. If your detailed interim or placeholder sectors change demand, fuel inputs, or transformation output, the next `results_update` pass should respond to those new values, but only by adjusting the supply-side levers that the workflow controls.
+One important nuance: this optional mode does not assume imports are always an
+error in the real-world sense. It uses the difference between expected and
+observed imports as a reconciliation signal. Do not invoke it automatically
+after a baseline seed; its continued role is under review.
 
 ## 4a. The three run modes: `baseline_seed`, `results_update`, `patch_baseline_seeds`
 
-`supply_reconciliation_workflow.py` runs in one of three modes. The first two are full runs of the supply/transformation/transfers pipeline, distinguished by `CAPACITY_UNMET_PASS_MODE`; the third bypasses that pipeline entirely and edits existing seed files in place.
+`supply_reconciliation_workflow.py` implements three modes. `baseline_seed` is
+the normal full initialisation run. `results_update` is an optional full run
+under review and should be selected only by an explicit run plan. The patch
+mode bypasses that full pipeline and edits existing seed files in place.
 
 Choose the mode from the state of the economy and the scope of the intended
 change:
@@ -476,7 +507,7 @@ The workflow supports the same control variables used in the modeller guide.
 | `Maximum Production` | Primary resources | Controls domestic production and prevents unlimited over-production. |
 | `Exogenous Capacity` | Transformation processes | Controls how much secondary fuel can be produced by transformation. |
 | Exports | Resources | Can absorb surplus or preserve intended trade assumptions. |
-| Imports | Resources | Usually treated as a residual signal rather than the first thing to hard-code. |
+| Imports | Resources | Written as zero in the normal baseline seed so LEAP calculates the balancing requirement; ESTO/9th imports remain reference data. |
 | Reserves | Primary resources | Can be used to increase domestic production if the primary fuel is a reserve-based resource. NOT IMPLEMENTED YET |
 
 ## 6. Why production and transformation are linked
@@ -492,29 +523,33 @@ Example:
 
 So a change in one part of the chain can change the apparent need for another part of the chain.
 
-This is why the workflow should not treat supply and transformation independently. It needs to consider both domestic production and transformation capacity when trying to reduce import/export gaps.
+This is why supply and transformation must be reviewed together. The optional
+results-update implementation considers both domestic production and
+transformation capacity when trying to reduce import/export gaps; the normal
+baseline seed does not require that iterative adjustment.
 
 ## 7. Expected inputs
 
-The exact file names and paths should be checked against the current script. Conceptually, the workflow needs:
+The exact file names and paths should be checked against the current script. Conceptually, the normal baseline-seed workflow needs:
 
-1. **LEAP results exports**  
-   Energy balance outputs exported from LEAP after recalculation.
-
-2. **9th Outlook / ESTO supply projection baseline**  
+1. **9th Outlook / ESTO supply projection baseline**
    Expected domestic production, imports, exports, and supply-side totals.
 
-3. **Transformation input/output mappings**  
+2. **Transformation input/output mappings**
    Information showing which transformation modules produce and consume which fuels. The canonical definitions of how LEAP branches, ESTO flows, and 9th Outlook sectors correspond are maintained in `leap_mappings` — see `leap_mappings/docs/mappings_system.md`. Workflow scripts should use those mappings rather than defining fuel or sector relationships internally.
 
-4. **Losses and own-use data**  
+3. **Losses and own-use data**
    Energy-sector own-use and losses that affect upstream requirements.
 
-5. **Production and capacity caps**  
+4. **Production and capacity caps**
    Optional per-module and per-product limits to prevent unrealistic production or transformation output. These are configured in `codebase/supply_reconciliation/config.py`.
 
-6. **LEAP import workbook template or structure**  
+5. **LEAP import workbook template or structure**
    The workbook format needed to import updated expressions back into LEAP.
+
+6. **LEAP results exports — optional path only**
+   Recalculated Energy Balance outputs are required for an explicitly selected
+   `results_update` run, not for normal baseline-seed generation.
 
 ### Source data files
 
@@ -565,13 +600,17 @@ Treat `-1` as an unresolved-ID sentinel, not a valid ordinary branch ID. Nonzero
 
 ## 8. Expected outputs
 
-The exact output file names should be checked against the current script. Conceptually, the workflow should produce:
+The exact output file names should be checked against the current script. Conceptually, the normal workflow should produce:
 
-1. **Updated LEAP import workbook**  
-   A workbook containing revised `Maximum Production`, `Exogenous Capacity`, exports, or other relevant values.
+1. **Baseline-seed LEAP import workbooks**
+   Validated per-economy workbooks containing the initial demand, supply,
+   transformation, transfers, losses/own-use, and reset rows. Imports are zero
+   in the normal seed.
 
-2. **Reconciliation table**  
-   A table showing observed LEAP results, expected supply values, calculated gaps, and allocated adjustments.
+2. **Preparation and comparison tables**
+   Tables showing the source/reference values and the values prepared for the
+   seed. If the optional results-update path is run, additional tables include
+   observed LEAP results, calculated gaps, and allocated adjustments.
 
 3. **Diagnostic outputs**  
    Tables that help identify fuels, years, and scenarios where gaps remain large.
@@ -579,25 +618,28 @@ The exact output file names should be checked against the current script. Concep
 4. **Optional logs/checks**  
    Information showing whether caps, eligibility rules, or allocation settings affected the result.
 
-## 9. Manual run loop
+## 9. Manual baseline-seed import and optional update
 
-The workflow currently relies on a manual LEAP import/recalculate/export loop.
+The normal initialisation path is a manual baseline-seed import and LEAP
+recalculation:
 
 ```text
-1. Run supply_reconciliation_workflow.py.
-2. Open the generated LEAP import workbook.
+1. Run supply_reconciliation_workflow.py in baseline_seed mode.
+2. Review the generated workbook and validation findings.
 3. Import the workbook into the correct LEAP area.
-4. Recalculate LEAP.
-5. Export the LEAP energy balance results again.
-6. Re-run supply_reconciliation_workflow.py.
-7. Repeat until import/export gaps are small and explainable.
+4. Recalculate and review LEAP.
 ```
 
-This loop is needed because the script cannot reliably force LEAP to recalculate and export results automatically.
+An Energy Balance export can still be used for dashboard review, diagnostics,
+or other analysis. Export and rerun in `results_update` mode only when an
+explicit run plan selects that optional path. Results update is under review
+and may be deactivated; it is not an automatic continuation of baseline seed.
 
 ## 9b. How to export LEAP energy balance results
 
-Exporting results is required before every reconciliation pass. Results must be re-exported after each LEAP recalculation before re-running the workflow.
+Exporting results is required before an explicitly selected results-update
+pass, but not to generate the normal baseline seed. Results must be re-exported
+after recalculation before each optional update pass.
 
 1. Open LEAP and ensure the area has been fully recalculated.
 2. Navigate to the **Results** view and select **Energy Balance**.
@@ -663,13 +705,19 @@ A fast approximation of the **results-update** integration path.
 > inputs. It is therefore a strong structural and integration test, not a numerical
 > reproduction of a genuine two-year LEAP run.
 
-### Recommended order before full runs
+### Recommended order before normal baseline-seed runs
 
 ```text
 Compressed projection preflight
-→ compressed results-update preflight
 → full baseline_seed when needed
-→ import / recalculate / export in LEAP
+→ import / recalculate / review in LEAP
+```
+
+Only when an explicit run plan selects the optional update path:
+
+```text
+export the recalculated LEAP balance
+→ compressed results-update preflight
 → full results_update
 ```
 
@@ -733,8 +781,9 @@ always restores normal state. Unresolved demand-relevant leaf mapping rows keep 
 results-update preflight failing whenever `BALANCE_DEMAND_FAIL_ON_MAPPING_ISSUES` is
 `True`.
 
-> Together these are the recommended fast integration checks before the long-running
-> full baseline-seed and results-update runs. They verify most major code paths, but
+> The compressed projection preflight is the recommended fast integration check
+> before a normal full baseline-seed run. The results-update preflight applies only
+> when that optional path has been explicitly selected. Together they verify most major code paths, but
 > they do **not** prove every economy, year, economy-specific rule, LEAP import, or
 > iterative convergence behaviour.
 
@@ -752,11 +801,14 @@ For now, the safer process is:
 
 This is slower, but more transparent and less risky.
 
-## 11. How many iterations are expected
+## 11. Iterations apply only to the optional update path
 
-A single run will usually not be enough.
+The normal baseline-seed method does not prescribe repeated results-update
+iterations. Generate, validate, import, recalculate, and review the baseline
+seed first.
 
-For each economy, expect several passes:
+If an explicit run plan selects the optional results-update implementation,
+that process may require several passes:
 
 - the first pass identifies large gaps;
 - the second pass checks whether the first set of adjustments worked;
@@ -884,8 +936,10 @@ Do not use the LEAP API for direct writes unless the team has explicitly decided
 
 Before running the script:
 
-- Confirm the LEAP area has been recalculated.
-- Export the latest energy balance results.
+- Confirm whether the run is the normal `baseline_seed`, a verified patch, or
+  an explicitly approved optional `results_update` pass.
+- For `results_update` only, confirm the LEAP area has been recalculated and
+  export the latest energy balance results.
 - Confirm the expected supply baseline is up to date.
 - Confirm the correct economy and scenario are selected in the script settings.
 - Confirm any hard caps or override dictionaries are intentional.
@@ -896,15 +950,17 @@ Before running the script:
 
 After running the script:
 
-- Open the reconciliation outputs.
-- Identify the largest remaining import/export gaps by fuel and year.
-- Check whether the allocated adjustment went to the expected place.
-- Check whether any cap prevented the expected allocation.
+- Open the generated workbooks and validation outputs.
+- For an optional results-update run, identify the largest remaining trade
+  gaps, confirm the allocated adjustment went to the expected place, and check
+  whether any cap prevented the expected allocation.
 - Import the generated workbook into LEAP;
 - Recalculate LEAP.
-- Export the new balances.
-- Compare whether gaps improved.
-- consider using the `leap_dashboard` to check whether adjustments are working, whether remaining differences are deliberate, and whether converged values look plausible over the projection period.
+- Review the recalculated model; consider using `leap_dashboard` to check
+  whether remaining differences are deliberate and whether projected values
+  look plausible.
+- Export new balances and compare gap closure only if the optional update path
+  is explicitly continuing.
 
 ## 16. When the process is finished
 
@@ -1037,10 +1093,11 @@ Main settings in supply_reconciliation_workflow.py
 - ECONOMIES: list of economies to run (defaults via workflow_common.normalize_economies).
 - SCENARIOS: ["Target", "Current Accounts"].
 - RUN_MODE: "full" by default; "patch_baseline_seeds" is a separate preset path.
-- ACTIVE_SUPPLY_LINK_METHOD: "capacity_unmet_iterative_balanced".
-- CAPACITY_UNMET_PASS_MODE: "baseline_seed" (first run, imports zeroed so LEAP reveals
-  the gap) or "results_update" (later runs, reads LEAP balance tables and computes the
-  gap directly).
+- ACTIVE_SUPPLY_LINK_METHOD: "capacity_unmet_iterative_balanced" (the
+  implemented linkage strategy; its iterative results-update use is under review).
+- CAPACITY_UNMET_PASS_MODE: "baseline_seed" (normal run, imports zeroed so LEAP
+  calculates the required balance) or "results_update" (optional, under-review
+  run that reads LEAP balance tables and computes the gap directly).
 - CAPACITY_UNMET_PIN_EXPORTS_TO_9TH_PROJECTIONS: True by default — negative import gaps
   are NOT routed to extra exports unless this is set to False.
 - CAPACITY_UNMET_MODULE_CAPACITY_UPPER_LIMITS / CAPACITY_UNMET_PRODUCTION_UPPER_LIMITS:

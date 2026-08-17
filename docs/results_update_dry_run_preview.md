@@ -1,8 +1,13 @@
 # Results-update dry-run preview
 
+> **Operating status — 2026-08-17:** `results_update` remains implemented but
+> is optional, under review, and may be deactivated. This document is retained
+> as implementation/reference material. It does not prescribe a required step
+> after baseline seed.
+
 ## Purpose
 
-The active `results_update` method uses observed LEAP-versus-baseline import
+The implemented `results_update` method uses observed LEAP-versus-baseline import
 gaps as an unmet-energy proxy. It then proposes one or more of:
 
 - primary-production increases;
