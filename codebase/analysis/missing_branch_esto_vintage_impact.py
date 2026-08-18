@@ -251,6 +251,7 @@ def load_seed_presence(keys: pd.DataFrame) -> pd.DataFrame:
             header = [cell.value for cell in next(sheet.iter_rows(min_row=3, max_row=3))]
             index = {str(value): position for position, value in enumerate(header) if value is not None}
             branch_index = index.get("Branch Path")
+            variable_index = index.get("Variable")
             year_indices = {
                 year: index.get(str(year))
                 for year in range(BASE_YEAR, 2061)
@@ -264,10 +265,14 @@ def load_seed_presence(keys: pd.DataFrame) -> pd.DataFrame:
                 matching.setdefault(str(branch_path), []).append(values)
             for branch_path in keys.loc[keys["economy"] == economy, "branch_path"].unique():
                 values = matching.get(branch_path, [])
-                base_nonzero = any(nonzero(row[year_indices[BASE_YEAR]]) for row in values)
+                activity_rows = [
+                    row for row in values
+                    if variable_index is not None and str(row[variable_index]).strip() == "Activity Level"
+                ]
+                base_nonzero = any(nonzero(row[year_indices[BASE_YEAR]]) for row in activity_rows)
                 projected_nonzero = any(
                     nonzero(row[year_index])
-                    for row in values
+                    for row in activity_rows
                     for year, year_index in year_indices.items()
                     if year > BASE_YEAR
                 )
@@ -276,6 +281,7 @@ def load_seed_presence(keys: pd.DataFrame) -> pd.DataFrame:
                         "economy": economy,
                         "branch_path": branch_path,
                         "seed_matching_rows": len(values),
+                        "seed_activity_rows": len(activity_rows),
                         "seed_base_nonzero_any": base_nonzero,
                         "seed_projected_nonzero_any": projected_nonzero,
                     }
@@ -299,17 +305,26 @@ def build_report(output_path: Path) -> pd.DataFrame:
         or (column.startswith("ninth_") and column.endswith("projected_sum"))
     ]
     report["nonzero_in_any_vintage"] = report[value_columns].abs().gt(1e-12).any(axis=1)
+    base_columns = [column for column in report if column.startswith("esto_") and "_base_" in column]
+    exact_projection = report["ninth_match_mode"].eq("exact_subfuel")
+    projection_columns = [column for column in report if column.startswith("ninth_") and column.endswith("projected_sum")]
+    report["actionable_source_nonzero"] = (
+        report[base_columns].abs().gt(1e-12).any(axis=1)
+        | (exact_projection & report[projection_columns].abs().gt(1e-12).any(axis=1))
+    )
     report["base_year_convention"] = "ESTO 2024=2022; ESTO 2025=2023; ESTO 2026=2024"
     report["interpretation"] = report["nonzero_in_any_vintage"].map(
         {True: "ESTO has nonzero source value; investigate omission", False: "ESTO source is zero across reported vintage windows"}
     )
     report["seed_impact"] = report.apply(
         lambda row: (
-            "Rows retained in seed with nonzero values but unresolved IDs"
-            if row["seed_matching_rows"] and (row["seed_base_nonzero_any"] or row["seed_projected_nonzero_any"])
-            else "Rows retained but all seed values are zero"
+            "No matching seed rows; nonzero source energy omitted"
+            if not row["seed_matching_rows"] and row["actionable_source_nonzero"]
+            else "Rows retained in seed with nonzero source energy but unresolved IDs"
+            if row["seed_matching_rows"] and row["actionable_source_nonzero"]
+            else "Rows retained but source energy is zero; suppress metadata/activity-only rows"
             if row["seed_matching_rows"]
-            else "No matching seed rows; data omitted from seed"
+            else "No matching seed rows; source energy is zero"
         ),
         axis=1,
     )
@@ -318,7 +333,9 @@ def build_report(output_path: Path) -> pd.DataFrame:
 
 
 def build_creation_instructions(report: pd.DataFrame, output_path: Path) -> pd.DataFrame:
-    instructions = report.copy()
+    instructions = report[
+        report["actionable_source_nonzero"]
+    ].copy()
     instructions["parent_path"] = instructions["branch_path"].str.rsplit("\\", n=1).str[0]
     instructions["branch_label"] = instructions["branch_path"].str.rsplit("\\", n=1).str[-1]
     instructions["branch_kind"] = instructions["branch_path"].map(
@@ -340,7 +357,7 @@ def build_creation_instructions(report: pd.DataFrame, output_path: Path) -> pd.D
     )
     columns = [
         "economy", "branch_path", "parent_path", "branch_label", "branch_kind",
-        "source_flow", "esto_product", "seed_impact", "seed_matching_rows",
+        "source_flow", "esto_product", "actionable_source_nonzero", "seed_impact", "seed_matching_rows", "seed_activity_rows",
         "esto_2024_base_2022", "esto_2025_base_2023", "esto_2026_base_2024",
         "ninth_2024_projected_sum", "ninth_2025_projected_sum", "ninth_2026_projected_sum",
         "ninth_match_mode", "create_instruction",
