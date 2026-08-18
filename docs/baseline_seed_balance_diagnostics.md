@@ -20,6 +20,14 @@ document does not make it a required feedback loop after baseline seed.
 The limited-year path is intended to make structural and mapping mistakes cheap
 to find before a full-horizon, data-heavy run.
 
+The integrated supply-reconciliation baseline-seed run also records lightweight
+process-memory telemetry. It samples RSS every 10 seconds and writes
+`baseline_seed_resource_usage.json` beside the run's runtime log, including
+average, minimum, and peak RSS plus the raw samples. The sampler performs one
+small process-memory query per interval in a daemon thread; it does not alter
+workflow scheduling or data processing. If `psutil` is unavailable, the output
+records `psutil_unavailable` and the run continues normally.
+
 ## Step 1: read-only source differences
 
 `codebase/baseline_seed_balance_diagnostics_workflow.py` is the notebook entry

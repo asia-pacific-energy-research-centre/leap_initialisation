@@ -48,6 +48,7 @@ import sys
 import copy
 import shutil
 import time
+import threading
 from pathlib import Path
 from typing import Iterable
 
@@ -1145,6 +1146,79 @@ def _workflow_log_path() -> Path:
     return Path(RESULTS_RUNTIME_DIR) / "supply_reconciliation_workflow.log"
 
 
+def _workflow_resource_usage_path() -> Path:
+    """Return the run-scoped resource-usage summary path."""
+    pass_mode = _resolve_capacity_unmet_pass_mode(CAPACITY_UNMET_PASS_MODE)
+    label = "baseline_seed" if pass_mode == "baseline_seed" else "results_update"
+    return Path(RESULTS_RUNTIME_DIR) / f"{label}_resource_usage.json"
+
+
+class _ResourceUsageMonitor:
+    """Sample workflow RSS periodically with negligible work per sample."""
+
+    def __init__(self, output_path: Path, interval_seconds: float = 10.0):
+        self.output_path = output_path
+        self.interval_seconds = interval_seconds
+        self.samples: list[dict[str, object]] = []
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        try:
+            import psutil
+        except ImportError:
+            psutil = None
+        self._process = psutil.Process(os.getpid()) if psutil else None
+
+    def _sample(self) -> None:
+        if self._process is None:
+            return
+        self.samples.append({
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            "rss_bytes": int(self._process.memory_info().rss),
+        })
+
+    def _run(self) -> None:
+        while not self._stop.wait(self.interval_seconds):
+            self._sample()
+
+    def __enter__(self):
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        if self._process is not None:
+            self._sample()
+            self._thread = threading.Thread(
+                target=self._run,
+                name="baseline-seed-resource-monitor",
+                daemon=True,
+            )
+            self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=self.interval_seconds + 1)
+        self._sample()
+        values = [int(item["rss_bytes"]) for item in self.samples]
+        summary = {
+            "status": "recorded" if self._process is not None else "psutil_unavailable",
+            "sampling_interval_seconds": self.interval_seconds,
+            "sample_count": len(values),
+            "average_rss_bytes": round(sum(values) / len(values)) if values else None,
+            "peak_rss_bytes": max(values) if values else None,
+            "minimum_rss_bytes": min(values) if values else None,
+            "samples": self.samples,
+        }
+        self.output_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        if values:
+            print(
+                "[resource] RSS average: "
+                f"{summary['average_rss_bytes'] / 1024**3:.2f} GB; "
+                f"peak: {summary['peak_rss_bytes'] / 1024**3:.2f} GB; "
+                f"samples: {len(values)}"
+            )
+        else:
+            print("[resource] RSS sampling unavailable; install psutil to enable it.")
+
+
 class _TeeWriter:
     def __init__(self, file_obj, stream):
         self._file = file_obj
@@ -1294,8 +1368,9 @@ def run_with_config() -> dict[str, object]:
     _refresh_output_paths_for_current_pass_mode()
     with _log_to_file(_workflow_log_path()) as log_path:
         print(f"[LOG] Writing output to: {log_path}")
-        with _keep_windows_pc_awake(enabled=bool(KEEP_PC_AWAKE_WHILE_RUNNING)):
-            return _run_with_config_inner()
+        with _ResourceUsageMonitor(_workflow_resource_usage_path()):
+            with _keep_windows_pc_awake(enabled=bool(KEEP_PC_AWAKE_WHILE_RUNNING)):
+                return _run_with_config_inner()
 
 
 def run_results_update_with_config(
