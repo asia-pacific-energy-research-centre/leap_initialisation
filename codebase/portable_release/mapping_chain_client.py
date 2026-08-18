@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +48,10 @@ class MappingChainError(RuntimeError):
 
 
 def _run_streaming(
-    command: list[str], cwd: Path | None, job: dict[str, Any]
+    command: list[str],
+    cwd: Path | None,
+    job: dict[str, Any],
+    cancellation_check: Any = None,
 ) -> tuple[list[str], str, int]:
     """Run the worker, reporting its steps as they happen.
 
@@ -90,6 +94,23 @@ def _run_streaming(
                 f"Could not start the mapping-chain worker: {exc}"
             ) from exc
 
+        stop_watcher = threading.Event()
+
+        def terminate_when_cancelled() -> None:
+            while not stop_watcher.wait(0.25):
+                if callable(cancellation_check) and cancellation_check():
+                    try:
+                        worker.terminate()
+                    except OSError:
+                        pass
+                    return
+
+        watcher = threading.Thread(
+            target=terminate_when_cancelled,
+            name="mapping-chain-cancel-watcher",
+            daemon=True,
+        )
+        watcher.start()
         with worker:
             assert worker.stdin is not None and worker.stdout is not None
             try:
@@ -105,6 +126,8 @@ def _run_streaming(
                 if line.startswith(PROGRESS_PREFIX):
                     progress.begin_step(line[len(PROGRESS_PREFIX) :].strip())
             returncode = worker.wait()
+        stop_watcher.set()
+        watcher.join(timeout=1)
     finally:
         if stderr_file is not subprocess.DEVNULL:
             stderr_file.close()
@@ -158,7 +181,11 @@ def locate_worker(context: RuntimeContext) -> tuple[list[str], Path | None]:
     )
 
 
-def run_mapping_chain(context: RuntimeContext, job: dict[str, Any]) -> dict[str, Any]:
+def run_mapping_chain(
+    context: RuntimeContext,
+    job: dict[str, Any],
+    cancellation_check: Any = None,
+) -> dict[str, Any]:
     """Invoke the mapping-chain worker with *job* and return its parsed result.
 
     Raises :class:`MappingChainError` with a plain-language message on any
@@ -167,7 +194,9 @@ def run_mapping_chain(context: RuntimeContext, job: dict[str, Any]) -> dict[str,
     the worker process.
     """
     command, cwd = locate_worker(context)
-    stdout_lines, stderr_text, returncode = _run_streaming(command, cwd, job)
+    stdout_lines, stderr_text, returncode = _run_streaming(
+        command, cwd, job, cancellation_check=cancellation_check
+    )
 
     if stderr_text:
         try:

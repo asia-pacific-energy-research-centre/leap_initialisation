@@ -1048,6 +1048,7 @@ def run_dashboard_from_export(
     max_year: int | None = 2060,
     include_ninth_pre_base_year_data: bool = False,
     run_label: str | None = None,
+    cancellation_check: Callable[[], bool] | None = None,
 ) -> CommandResult:
     """Go from a LEAP balance export to a rendered dashboard in one run.
 
@@ -1153,7 +1154,11 @@ def run_dashboard_from_export(
                 chain_job["config"]["synthetic_reference_rows_path"] = str(rules)
         if selected_extended is not None:
             chain_job["config"]["esto_extended_table_path"] = str(selected_extended)
-        chain_result = mapping_chain_client.run_mapping_chain(context, chain_job)
+        chain_result = mapping_chain_client.run_mapping_chain(
+            context,
+            chain_job,
+            cancellation_check=cancellation_check,
+        )
 
         missing_branches = _missing_leap_demand_branches(
             context,
