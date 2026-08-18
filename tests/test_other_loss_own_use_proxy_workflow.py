@@ -122,14 +122,47 @@ def test_load_ninth_data_preserves_filters_without_mutating_cached_source(tmp_pa
         },
     ]).to_csv(source, index=False)
 
-    loaded = workflow.load_ninth_data(source)
+    loaded = workflow.load_ninth_data(source, scenario="target")
+    loaded_reference = workflow.load_ninth_data(source, scenario="reference")
     cached_source = load_ninth_outlook_csv(source)
 
     assert loaded["economy_key"].tolist() == ["01_AUS"]
     assert loaded[2023].tolist() == [1.0]
+    assert loaded_reference["economy_key"].tolist() == ["01_AUS"]
+    assert loaded_reference[2023].tolist() == [2.0]
     assert "economy_key" not in cached_source.columns
     assert len(cached_source) == 3
     clear_csv_cache()
+
+
+def test_proxy_log_rows_use_matching_ninth_scenario(monkeypatch) -> None:
+    """Reference rows must not be relabelled copies of Target rows."""
+    detail_by_scenario = {
+        "target": pd.DataFrame([{"source_marker": "target value"}]),
+        "reference": pd.DataFrame([{"source_marker": "reference value"}]),
+    }
+
+    def fake_build_proxy_log_rows(detail_df, *, scenario, measure_units):
+        return [
+            {
+                "Scenario": scenario,
+                "Expression": detail_df.iloc[0]["source_marker"],
+            }
+        ]
+
+    monkeypatch.setattr(workflow, "build_proxy_log_rows", fake_build_proxy_log_rows)
+
+    rows = workflow._build_proxy_log_rows_by_scenario(
+        detail_by_ninth_scenario=detail_by_scenario,
+        scenario_list=["Target", "Reference", "Current Accounts"],
+        measure_units=None,
+    )
+
+    assert rows == [
+        {"Scenario": "Target", "Expression": "target value"},
+        {"Scenario": "Reference", "Expression": "reference value"},
+        {"Scenario": "Current Accounts", "Expression": "reference value"},
+    ]
 
 
 def test_export_key_workbook_resolves_for_economy_when_not_overridden(monkeypatch, tmp_path) -> None:

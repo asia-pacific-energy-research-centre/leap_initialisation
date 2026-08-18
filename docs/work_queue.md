@@ -1,5 +1,20 @@
 # Remaining work queue
 
+## [48] Preserve Reference and Target scenarios in other-loss/own-use proxies
+
+**Status: implemented and tested 2026-08-18.**
+
+The other-loss/own-use baseline-seed producer previously loaded only the 9th
+Target scenario, built one proxy detail table, and copied those expressions to
+Target, Reference, and Current Accounts. It now filters 9th data explicitly by
+scenario and builds each LEAP scenario from its matching detail table. Current
+Accounts maps explicitly to Reference but remains limited to the ESTO-based
+historical/base-year expression.
+
+The focused 80-test workflow suite passes. A real USA workbook smoke test
+produced 164 comparable Target/Reference row pairs, with 41 distinct
+expressions, while all 164 Current Accounts rows remained 2022-only.
+
 ## [47] Preserve Reference and Target supply scenarios in baseline seeds
 
 **Status: implemented, tested, and production-rerun verified 2026-08-18.**

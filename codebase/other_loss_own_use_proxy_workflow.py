@@ -791,7 +791,12 @@ def load_esto_data(path: Path | str = ESTO_DATA_PATH, *, economy: str | None = N
     return df
 
 
-def load_ninth_data(path: Path | str = NINTH_DATA_PATH, *, economy: str | None = None) -> pd.DataFrame:
+def load_ninth_data(
+    path: Path | str = NINTH_DATA_PATH,
+    *,
+    economy: str | None = None,
+    scenario: str = NINTH_SCENARIO,
+) -> pd.DataFrame:
     """Load the 9th Outlook merged energy table.
 
     ``economy``, when given, scopes the read to that one economy instead of
@@ -805,7 +810,10 @@ def load_ninth_data(path: Path | str = NINTH_DATA_PATH, *, economy: str | None =
     if "economy" in df.columns:
         df["economy_key"] = df["economy"].apply(_normalize_economy)
     if "scenarios" in df.columns:
-        df = df[df["scenarios"].astype(str).str.lower() == NINTH_SCENARIO].copy()
+        normalized_scenario = str(scenario).strip().lower()
+        df = df[
+            df["scenarios"].astype(str).str.strip().str.lower() == normalized_scenario
+        ].copy()
     return _drop_ninth_subtotals(df)
 
 
@@ -1417,6 +1425,41 @@ def _normalize_scenarios(value: str | Sequence[str] | None) -> list[str]:
     return [str(item) for item in value]
 
 
+def _ninth_scenario_for_export_scenario(scenario: str) -> str:
+    """Map a LEAP export scenario to its 9th Outlook projection scenario."""
+    normalized = str(scenario).strip().lower().replace("_", " ")
+    if normalized == "current accounts":
+        # Current Accounts only exports the historical/base year. Reference is
+        # explicit here so a mixed-scenario workbook never inherits Target by
+        # virtue of its position in the requested scenario list.
+        return "reference"
+    return normalized
+
+
+def _build_proxy_log_rows_by_scenario(
+    *,
+    detail_by_ninth_scenario: Mapping[str, pd.DataFrame],
+    scenario_list: Sequence[str],
+    measure_units: Mapping[str, Mapping[str, object]] | None,
+) -> list[dict[str, object]]:
+    """Build each LEAP scenario from its matching 9th Outlook detail table."""
+    rows: list[dict[str, object]] = []
+    for scenario_name in scenario_list:
+        ninth_scenario = _ninth_scenario_for_export_scenario(scenario_name)
+        if ninth_scenario not in detail_by_ninth_scenario:
+            raise KeyError(
+                f"No proxy detail table was built for 9th scenario {ninth_scenario!r}."
+            )
+        rows.extend(
+            build_proxy_log_rows(
+                detail_by_ninth_scenario[ninth_scenario],
+                scenario=scenario_name,
+                measure_units=measure_units,
+            )
+        )
+    return rows
+
+
 def _normalize_output_fuel_scope(value: str | None) -> str:
     text = str(value or "economy").strip().lower()
     if text in {"economy", "selected_economy", "individual_economy", "current_economy"}:
@@ -1513,7 +1556,11 @@ def assemble_proxy_workbook(
     # sum afterwards below, so it is not scoped.
     scope_economy = economy if not is_aggregate else None
     esto_data = load_esto_data(economy=scope_economy)
-    ninth_data = load_ninth_data(economy=scope_economy)
+    primary_ninth_scenario = _ninth_scenario_for_export_scenario(scenario_list[0])
+    ninth_data = load_ninth_data(
+        economy=scope_economy,
+        scenario=primary_ninth_scenario,
+    )
     if is_aggregate:
         esto_data = _append_aggregate_economy_rows(
             esto_data,
@@ -1743,17 +1790,43 @@ def assemble_proxy_workbook(
         .to_csv(summary_path, index=False)
     )
 
-    base_rows = build_proxy_log_rows(
-        detail_df,
-        scenario=scenario_list[0],
+    detail_by_ninth_scenario = {primary_ninth_scenario: detail_df}
+    for scenario_name in scenario_list[1:]:
+        ninth_scenario = _ninth_scenario_for_export_scenario(scenario_name)
+        if ninth_scenario in detail_by_ninth_scenario:
+            continue
+        scenario_ninth_data = load_ninth_data(
+            economy=scope_economy,
+            scenario=ninth_scenario,
+        )
+        if is_aggregate:
+            scenario_ninth_data = _append_aggregate_economy_rows(
+                scenario_ninth_data,
+                economy_label=aggregate_label,
+            )
+        scenario_detail_df = build_proxy_detail_table(
+            esto_data=esto_data,
+            ninth_data=scenario_ninth_data,
+            economy=economy,
+            configs=configs,
+            leap_balance_activity=leap_balance_activity,
+            activity_source_mode=activity_source_mode,
+            intensity_mode=intensity_mode,
+            strict_proxy_activity_target_consistency=False,
+            base_year=EXPORT_BASE_YEAR,
+            final_year=EXPORT_FINAL_YEAR,
+        )
+        if scenario_detail_df.empty:
+            raise ValueError(
+                "No proxy detail rows were generated for 9th scenario "
+                f"{ninth_scenario!r}; check config and source data."
+            )
+        detail_by_ninth_scenario[ninth_scenario] = scenario_detail_df
+    rows = _build_proxy_log_rows_by_scenario(
+        detail_by_ninth_scenario=detail_by_ninth_scenario,
+        scenario_list=scenario_list,
         measure_units=measure_units,
     )
-    rows = []
-    for scenario_name in scenario_list:
-        for row in base_rows:
-            copied = row.copy()
-            copied["Scenario"] = scenario_name
-            rows.append(copied)
     log_df = pd.DataFrame(rows)
     import_scenarios = _resolve_proxy_import_scenarios(
         scenario_list,
