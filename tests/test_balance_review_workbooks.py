@@ -14,6 +14,7 @@ from codebase.functions.balance_review_workbook_builder import (
     LEAP_SHEET_NAME,
     NO_COMPARATOR_FILL,
     RED_FILL,
+    YELLOW_FILL,
     build_balance_structure_review_workbook,
 )
 from codebase.functions.balance_review_workbooks import (
@@ -246,3 +247,53 @@ def test_public_builder_no_longer_requires_node(tmp_path: Path) -> None:
     )
 
     assert Path(result[0]["outputWorkbook"]).exists()
+
+
+def test_python_builder_marks_non_reconstructing_diagnostic_collision_yellow(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.xlsx"
+    diagnostics = tmp_path / "diagnostics"
+    output = tmp_path / "review.xlsx"
+    _write_source_workbook(source)
+    _write_diagnostics(diagnostics)
+
+    review_path = diagnostics / "leap_balance_source_review.csv"
+    reviews = list(csv.DictReader(review_path.open(encoding="utf-8")))
+    duplicate = reviews[0].copy()
+    duplicate["esto_flow"] = "01 Alternative production"
+    duplicate["source_value_pj"] = "7"
+    duplicate["difference_pj"] = "3"
+    reviews.append(duplicate)
+    _write_csv(review_path, reviews)
+
+    differences_path = diagnostics / "leap_balance_source_differences.csv"
+    differences = list(csv.DictReader(differences_path.open(encoding="utf-8")))
+    duplicate_difference = differences[0].copy()
+    duplicate_difference["esto_flow"] = "01 Alternative production"
+    duplicate_difference["source_value_pj"] = "7"
+    duplicate_difference["difference_pj"] = "3"
+    differences.append(duplicate_difference)
+    _write_csv(differences_path, differences)
+
+    result = build_balance_structure_review_workbook(
+        economy="20_USA",
+        source_workbook=source,
+        source_sheet_name="2022",
+        diagnostics_directory=diagnostics,
+        output_workbook=output,
+    )
+
+    workbook = load_workbook(output, data_only=False)
+    assert workbook[ERROR_SHEET_NAME]["B4"].value == '=""'
+    assert workbook[FULL_EXPECTED_SHEET_NAME]["B4"].value == '=""'
+    assert workbook[ERROR_SHEET_NAME]["B4"].fill.fgColor.rgb.endswith(YELLOW_FILL)
+    assert result["diagnosticCollisions"] == [
+        {
+            "address": "B4",
+            "visibleLeapValue": 10.0,
+            "diagnosticLeapValueSum": 20.0,
+            "componentCount": 2,
+        }
+    ]
+    workbook.close()

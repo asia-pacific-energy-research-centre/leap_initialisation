@@ -469,6 +469,7 @@ def build_balance_structure_review_workbook(
     no_comparator_keys: set[str] = set()
     affected_supply_keys: set[str] = set()
     reconciliation_samples: list[dict[str, object]] = []
+    diagnostic_collisions: list[dict[str, object]] = []
     parent_child_mismatch_rows = [
         row
         for row in projection_diagnostics
@@ -646,8 +647,19 @@ def build_balance_structure_review_workbook(
         )
         tolerance = 1e-6 * max(1, abs(visible or 0))
         if visible is None or abs(float(state["leap_value"]) - visible) > tolerance:
-            raise ValueError(
-                f"Multiple diagnostics for {address} do not reconstruct the visible LEAP value."
+            # Two independently mapped ESTO comparisons can occasionally point
+            # to one visible Level-2 LEAP balance cell. Do not add their values:
+            # that would present a fabricated source/error value. Keep the
+            # source LEAP value visible and mark both diagnostic sheets yellow
+            # so the workbook remains usable while the mapping is reviewed.
+            yellow_keys.add(address)
+            diagnostic_collisions.append(
+                {
+                    "address": address,
+                    "visibleLeapValue": visible,
+                    "diagnosticLeapValueSum": state["leap_value"],
+                    "componentCount": state["component_count"],
+                }
             )
 
     for review in reviews:
@@ -823,6 +835,7 @@ def build_balance_structure_review_workbook(
             "error sheet intentionally displays within-tolerance differences as zero."
         ),
         "reconciliationSamples": reconciliation_samples,
+        "diagnosticCollisions": diagnostic_collisions,
         "renders": {},
     }
 
