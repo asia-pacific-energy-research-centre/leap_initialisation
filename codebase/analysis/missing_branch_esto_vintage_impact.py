@@ -317,8 +317,44 @@ def build_report(output_path: Path) -> pd.DataFrame:
     return report
 
 
+def build_creation_instructions(report: pd.DataFrame, output_path: Path) -> pd.DataFrame:
+    instructions = report.copy()
+    instructions["parent_path"] = instructions["branch_path"].str.rsplit("\\", n=1).str[0]
+    instructions["branch_label"] = instructions["branch_path"].str.rsplit("\\", n=1).str[-1]
+    instructions["branch_kind"] = instructions["branch_path"].map(
+        lambda path: "transformation feedstock fuel leaf"
+        if "\\Feedstock Fuels\\" in path
+        else "transformation output fuel leaf"
+        if "\\Output Fuels\\" in path
+        else "demand loss/own-use fuel leaf"
+        if path.startswith("Demand\\")
+        else "transformation/process branch"
+    )
+    instructions["create_instruction"] = instructions.apply(
+        lambda row: (
+            f"Create '{row['branch_label']}' under '{row['parent_path']}' in the {row['economy']} LEAP area and export template; "
+            "copy the parent/sibling variable, scenario, region, unit, and expression configuration; assign a real BranchID; "
+            "then rerun baseline-seed generation and the missing-branch source-value check."
+        ),
+        axis=1,
+    )
+    columns = [
+        "economy", "branch_path", "parent_path", "branch_label", "branch_kind",
+        "source_flow", "esto_product", "seed_impact", "seed_matching_rows",
+        "esto_2024_base_2022", "esto_2025_base_2023", "esto_2026_base_2024",
+        "ninth_2024_projected_sum", "ninth_2025_projected_sum", "ninth_2026_projected_sum",
+        "ninth_match_mode", "create_instruction",
+    ]
+    instructions = instructions[columns].sort_values(["economy", "branch_path"])
+    instructions.to_csv(output_path, index=False, float_format="%.12g")
+    return instructions
+
+
 if __name__ == "__main__":
     output = REPO_ROOT / "outputs" / "leap_exports" / "supply_reconciliation" / "baseline_seed_missing_branch_esto_vintage_impact_20260818.csv"
     result = build_report(output)
+    instructions_output = REPO_ROOT / "outputs" / "leap_exports" / "supply_reconciliation" / "missing_branch_creation_instructions_20260818.csv"
+    build_creation_instructions(result, instructions_output)
     print(f"Wrote {len(result)} rows to {output}")
+    print(f"Wrote branch creation instructions to {instructions_output}")
     print(result["nonzero_in_any_vintage"].value_counts(dropna=False).to_string())
