@@ -849,13 +849,17 @@ See [baseline_seed_postprocess_rules.md](baseline_seed_postprocess_rules.md).
 
 ## [22] Three-batch real-template baseline-seed run
 
-**Status: execution prompt ready; production run pending.**
+**Status: completed 2026-08-18 at commit `5521f03`.**
 
-Run the 11 economies with real, non-`_COMP_GEN` templates as three strictly
-sequential full-horizon batches. Batch 1 is AUS/USA/PRC, followed by
-BD/MAS/MEX/NZ and PNG/PHL/THA/VN. Use the 30-minute scheduled monitoring and
-batch verification gates in
-`docs/prompts/run_real_template_baseline_seeds_in_three_sequential_batches.md`.
+All 12 economies with real, non-`_COMP_GEN` templates were run in three
+strictly sequential full-horizon batches using the pinned `5521f03` worktree.
+The seeds cover 2022-2060 and Current Accounts/Reference/Target. Batch labels
+were `SEED_5521F03_BATCH1_AUS_USA_PRC_20260818_100306`,
+`SEED_5521F03_BATCH2_BD_MAS_MEX_NZ_20260818_115901`, and
+`SEED_5521F03_BATCH3_PNG_PHL_RUS_THA_VN_20260818_145954`. All 12 final
+workbooks and accepted artifact manifests were produced. Known
+`missing_branch` and export-readiness findings remain reportable; affected
+workbooks were retained as unverified where applicable.
 
 ## [21] Cyclical baseline-seed LEAP balance diagnostics
 
