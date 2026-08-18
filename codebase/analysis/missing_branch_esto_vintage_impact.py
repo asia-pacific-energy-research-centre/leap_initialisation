@@ -13,10 +13,11 @@ from openpyxl import load_workbook
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BASE_YEAR = 2022
 VINTAGES = {
-    "2024": REPO_ROOT / "data" / "00APEC_2024_low_with_subtotals.csv",
-    "2025": REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv",
-    "2026": REPO_ROOT / "data" / "00APEC_2026_low_with_subtotals_PRELIMINARY.csv",
+    "2024": (REPO_ROOT / "data" / "00APEC_2024_low_with_subtotals.csv", 2022),
+    "2025": (REPO_ROOT / "data" / "00APEC_2025_low_with_subtotals.csv", 2023),
+    "2026": (REPO_ROOT / "data" / "00APEC_2026_low_with_subtotals_PRELIMINARY.csv", 2024),
 }
+NINTH_DATA_PATH = REPO_ROOT / "data" / "merged_file_energy_ALL_20251106.csv"
 BATCH_FINDINGS = [
     REPO_ROOT
     / "outputs/leap_exports/supply_reconciliation/baseline_seed/runs/"
@@ -56,8 +57,46 @@ FLOW_BY_SECTOR = {
     "LNG regasification": "09.06.02 Liquefaction/regasification plants",
     "NG liquefaction": "09.06.02 Liquefaction/regasification plants",
     "NG Liquefaction": "09.06.02 Liquefaction/regasification plants",
-    "Heat plant interim": "09.01.03 Heat plants",
-    "Coke ovens": "09.08.01 Coke ovens",
+    "Heat plant interim": "09_x_heat_plants",
+    "Coke ovens": "09_08_01_coke_ovens",
+}
+NINTH_SECTOR_LEVEL = {
+    "Coal mines": ("sub2sectors", "10_01_06_coal_mines"),
+    "Electricity CHP and heat plants": ("sub2sectors", "10_01_01_electricity_chp_and_heat_plants"),
+    "Oil and gas extraction": ("sub2sectors", "10_01_12_oil_and_gas_extraction"),
+    "Non specified own uses": ("sub2sectors", "10_01_17_nonspecified_own_uses"),
+    "Transmission and distribution loss": ("sub1sectors", "10_02_transmission_and_distribution_losses"),
+    "Non specified transformation": ("sub1sectors", "09_12_nonspecified_transformation"),
+    "LNG regasification": ("sub2sectors", "09_06_02_liquefaction_regasification_plants"),
+    "NG Liquefaction": ("sub2sectors", "09_06_02_liquefaction_regasification_plants"),
+    "Heat plant interim": ("sub1sectors", "09_x_heat_plants"),
+    "Coke ovens": ("sub2sectors", "09_08_01_coke_ovens"),
+}
+NINTH_FUEL = {
+    "Anthracite": ("01_coal", "01_04_anthracite"),
+    "BKB and PB": ("02_coal_products", "02_08_bkb_pb"),
+    "Lignite": ("01_coal", "01_05_lignite"),
+    "Bitumen": ("07_petroleum_products", "07_14_bitumen"),
+    "Blast furnace gas": ("02_coal_products", "02_04_blast_furnace_gas"),
+    "Lubricants": ("07_petroleum_products", "07_13_lubricants"),
+    "Other recovered gases": ("02_coal_products", "02_05_other_recovered_gases"),
+    "Petroleum coke": ("07_petroleum_products", "07_16_petroleum_coke"),
+    "Refinery gas not liquefied": ("07_petroleum_products", "07_10_refinery_gas_not_liquefied"),
+    "Patent fuel": ("02_coal_products", "02_06_patent_fuel"),
+    "Kerosene type jet fuel": ("07_petroleum_products", "07_05_kerosene_type_jet_fuel"),
+    "Coal tar": ("02_coal_products", "02_07_coal_tar"),
+    "Coking coal": ("01_coal", "01_01_coking_coal"),
+    "Gas works gas": ("08_gas", "08_03_gas_works_gas"),
+    "Paraffin waxes": ("07_petroleum_products", "07_15_paraffin_waxes"),
+    "Natural gas liquids": ("06_crude_oil_and_ngl", "06_02_natural_gas_liquids"),
+    "Coke oven coke": ("02_coal_products", "02_01_coke_oven_coke"),
+    "White spirit sbp": ("07_petroleum_products", "07_12_white_spirit_sbp"),
+    "Other bituminous coal": ("01_coal", "01_02_other_bituminous_coal"),
+    "Peat": ("03_peat", "x"),
+    "Additives and oxygenates": ("06_crude_oil_and_ngl", "06_04_additives_oxygenates"),
+    "Refinery feedstocks": ("06_crude_oil_and_ngl", "06_03_refinery_feedstocks"),
+    "Gas": ("08_gas", "x"),
+    "Crude oil": ("06_crude_oil_and_ngl", "06_01_crude_oil"),
 }
 PRODUCT_BY_FUEL = {
     "Anthracite": "01.04 Anthracite",
@@ -123,7 +162,7 @@ def load_missing_branch_rows() -> pd.DataFrame:
     return output.reset_index(drop=True)
 
 
-def load_esto_values(path: Path, keys: pd.DataFrame, vintage: str) -> pd.DataFrame:
+def load_esto_values(path: Path, keys: pd.DataFrame, vintage: str, base_year: int) -> pd.DataFrame:
     years = pd.read_csv(path, nrows=0).columns.tolist()
     year_columns = [column for column in years if column.isdigit()]
     data = pd.read_csv(
@@ -138,17 +177,62 @@ def load_esto_values(path: Path, keys: pd.DataFrame, vintage: str) -> pd.DataFra
         right_on=["economy", "flows", "products"],
         how="left",
     )
-    base_column = f"esto_{vintage}_base_2022"
-    projected_column = f"esto_{vintage}_projected_sum"
-    available_projected = [year for year in year_columns if int(year) > BASE_YEAR]
-    joined[base_column] = pd.to_numeric(joined.get("2022"), errors="coerce").fillna(0.0)
-    if available_projected:
-        joined[projected_column] = joined[available_projected].apply(
-            pd.to_numeric, errors="coerce"
-        ).fillna(0.0).sum(axis=1)
-    else:
-        joined[projected_column] = 0.0
-    return joined[["economy", "branch_path", base_column, projected_column]]
+    base_column = f"esto_{vintage}_base_{base_year}"
+    available_projected = [year for year in year_columns if int(year) > base_year]
+    projected_column = f"ninth_{vintage}_projected_sum"
+    joined[base_column] = pd.to_numeric(joined.get(str(base_year)), errors="coerce").fillna(0.0)
+    return joined[["economy", "branch_path", base_column]]
+
+
+def load_ninth_projection_values(keys: pd.DataFrame) -> pd.DataFrame:
+    year_columns = [str(year) for year in range(2023, 2061)]
+    usecols = [
+        "scenarios", "economy", "sectors", "sub1sectors", "sub2sectors",
+        "fuels", "subfuels", "subtotal_layout", "subtotal_results", *year_columns,
+    ]
+    economies = set(keys["economy"])
+    chunks = []
+    for chunk in pd.read_csv(NINTH_DATA_PATH, usecols=usecols, chunksize=200_000):
+        chunk = chunk[chunk["economy"].isin(economies)]
+        if not chunk.empty:
+            chunks.append(chunk)
+    ninth = pd.concat(chunks, ignore_index=True)
+    ninth = ninth[
+        ninth["scenarios"].eq("reference")
+        & ninth["subtotal_layout"].eq(False)
+        & ninth["subtotal_results"].eq(False)
+    ].copy()
+    rows = []
+    for _, key in keys.iterrows():
+        level, sector_code = NINTH_SECTOR_LEVEL[key["sector"]]
+        fuel_code, subfuel_code = NINTH_FUEL[key["fuel"]]
+        subset = ninth[
+            (ninth["economy"] == key["economy"])
+            & ninth[level].eq(sector_code)
+            & ninth["fuels"].eq(fuel_code)
+        ]
+        match_mode = "exact_subfuel"
+        exact = subset[subset["subfuels"].eq(subfuel_code)]
+        if exact.empty and subfuel_code != "x":
+            exact = subset[subset["subfuels"].eq("x")]
+            match_mode = "fuel_aggregate_fallback"
+        if exact.empty:
+            match_mode = "no_9th_match"
+        values = exact[year_columns].apply(pd.to_numeric, errors="coerce").fillna(0.0).sum(axis=0)
+        rows.append(
+            {
+                "economy": key["economy"],
+                "branch_path": key["branch_path"],
+                "ninth_2024_projected_sum": float(values.loc[[year for year in year_columns if int(year) > 2022]].sum()),
+                "ninth_2025_projected_sum": float(values.loc[[year for year in year_columns if int(year) > 2023]].sum()),
+                "ninth_2026_projected_sum": float(values.loc[[year for year in year_columns if int(year) > 2024]].sum()),
+                "ninth_match_mode": match_mode,
+                "ninth_sector_code": sector_code,
+                "ninth_fuel_code": fuel_code,
+                "ninth_subfuel_code": subfuel_code,
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def load_seed_presence(keys: pd.DataFrame) -> pd.DataFrame:
@@ -203,18 +287,19 @@ def load_seed_presence(keys: pd.DataFrame) -> pd.DataFrame:
 def build_report(output_path: Path) -> pd.DataFrame:
     keys = load_missing_branch_rows()
     report = keys.copy()
-    for vintage, path in VINTAGES.items():
-        values = load_esto_values(path, keys, vintage)
+    for vintage, (path, base_year) in VINTAGES.items():
+        values = load_esto_values(path, keys, vintage, base_year)
         report = report.merge(values, on=["economy", "branch_path"], how="left")
+    report = report.merge(load_ninth_projection_values(keys), on=["economy", "branch_path"], how="left")
     report = report.merge(load_seed_presence(keys), on=["economy", "branch_path"], how="left")
     value_columns = [
         column
         for column in report
-        if column.startswith("esto_")
-        and ("base_" in column or "projected_" in column)
+        if (column.startswith("esto_") and "_base_" in column)
+        or (column.startswith("ninth_") and column.endswith("projected_sum"))
     ]
     report["nonzero_in_any_vintage"] = report[value_columns].abs().gt(1e-12).any(axis=1)
-    report["base_year"] = BASE_YEAR
+    report["base_year_convention"] = "ESTO 2024=2022; ESTO 2025=2023; ESTO 2026=2024"
     report["interpretation"] = report["nonzero_in_any_vintage"].map(
         {True: "ESTO has nonzero source value; investigate omission", False: "ESTO source is zero across reported vintage windows"}
     )
