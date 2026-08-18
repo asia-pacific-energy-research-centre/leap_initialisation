@@ -1,14 +1,20 @@
-name: leap_utilities
+# Shared colleague environment. Keep this file byte-identical in:
+# leap_initialisation, leap_mappings, leap_dashboard, and leap_review_tools.
+name: leap-review
 channels:
   - conda-forge
 dependencies:
   - python=3.11
-  - pandas
+  - pandas>=2.0,<3.0
+  - numpy>=1.26,<3.0
   - pyarrow
-  - openpyxl
+  - openpyxl>=3.1
   - matplotlib
-  - psutil
-  - pywin32  # required for LEAP COM on Windows
+  - plotly>=5.20
+  - jinja2
+  - psutil>=5.9
+  - pytest
   - pip
   - pip:
-      - -e .
+      - "gradio>=5.0,<7.0"
+      - "pywin32; platform_system == 'Windows'"
