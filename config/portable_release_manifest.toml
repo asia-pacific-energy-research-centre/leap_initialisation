@@ -451,6 +451,30 @@ description = "Published ESTO component provenance for Common ESTO rows."
 allow_untracked = true
 
 [[data_assets]]
+repository = "leap_mappings"
+path = "data/esto_extended_vintage_registry.csv"
+dest = "mapping_chain/esto_extended_vintage_registry.csv"
+role = "mapping_chain_esto_extended_vintage_registry"
+description = "Registry selecting the ESTO Extended artifact matching each raw ESTO vintage."
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_mappings"
+path = "data/esto_extended_2024_low_with_subtotals.parquet"
+dest = "mapping_chain/esto_extended_2024_low_with_subtotals.parquet"
+role = "mapping_chain_esto_extended_2024"
+description = "Parquet ESTO Extended table generated from the 2024 ESTO issue."
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_mappings"
+path = "data/esto_extended_2025_low_with_subtotals.parquet"
+dest = "mapping_chain/esto_extended_2025_low_with_subtotals.parquet"
+role = "mapping_chain_esto_extended_2025"
+description = "Parquet ESTO Extended table generated from the 2025 ESTO issue."
+allow_untracked = true
+
+[[data_assets]]
 repository = "leap_initialisation"
 path = "data/00APEC_2024_low_with_subtotals.csv"
 dest = "balance_review/00APEC_2024_low_with_subtotals.csv"

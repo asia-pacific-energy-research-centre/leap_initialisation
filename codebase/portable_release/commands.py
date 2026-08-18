@@ -1002,12 +1002,36 @@ MAPPING_CHAIN_DATA_ROLES = (
     "mapping_chain_common_esto_rows",
     "mapping_chain_source_to_common_map",
     "mapping_chain_esto_to_common_map",
+    "mapping_chain_esto_extended_vintage_registry",
+    "mapping_chain_esto_extended_2024",
+    "mapping_chain_esto_extended_2025",
 )
 MAPPING_CHAIN_CONFIG_ROLES = (
     "outlook_mappings_master",
     "source_branch_fallback_rules",
     "all_demand_aggregated_components",
 )
+
+
+def _matching_esto_extended_table(
+    context: RuntimeContext,
+    *,
+    esto_table: Path,
+) -> Path | None:
+    """Select the packaged Extended table matching an ESTO source issue."""
+    registry_path = context.data_asset("mapping_chain_esto_extended_vintage_registry")
+    if registry_path is None or not registry_path.is_file():
+        return None
+    vintage = esto_vintage.infer_esto_vintage(esto_table)
+    registry = csv.DictReader(registry_path.open("r", encoding="utf-8-sig", newline=""))
+    for row in registry:
+        if int(row["base_year"]) != vintage.base_year:
+            continue
+        issue = str(row["vintage"]).strip()
+        candidate = context.data_asset(f"mapping_chain_esto_extended_{issue}")
+        if candidate is not None and candidate.is_file():
+            return candidate
+    return None
 
 
 def run_dashboard_from_export(
@@ -1087,6 +1111,12 @@ def run_dashboard_from_export(
     supplied_esto = (
         _resolve_user_path(context, esto_table_path) if esto_table_path else None
     )
+    selected_esto = supplied_esto or context.data_asset("esto_base_table")
+    selected_extended = (
+        _matching_esto_extended_table(context, esto_table=selected_esto)
+        if selected_esto is not None
+        else None
+    )
 
     def work(run_dir: Path) -> dict[str, Any]:
         from common_esto_dashboard_portable import render_common_esto_dashboard_variants
@@ -1121,6 +1151,8 @@ def run_dashboard_from_export(
             rules = context.config_asset("synthetic_reference_rows")
             if rules is not None:
                 chain_job["config"]["synthetic_reference_rows_path"] = str(rules)
+        if selected_extended is not None:
+            chain_job["config"]["esto_extended_table_path"] = str(selected_extended)
         chain_result = mapping_chain_client.run_mapping_chain(context, chain_job)
 
         missing_branches = _missing_leap_demand_branches(

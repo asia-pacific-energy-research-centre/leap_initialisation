@@ -91,7 +91,7 @@ MAX_CONFIG_ASSET_BYTES = 8 * 1024 * 1024
 #: They are still hashed into every run manifest.
 MAX_DATA_ASSET_BYTES = 512 * 1024 * 1024
 
-ALLOWED_DATA_SUFFIXES = frozenset({".csv", ".gz", ".xlsx"})
+ALLOWED_DATA_SUFFIXES = frozenset({".csv", ".gz", ".xlsx", ".parquet"})
 
 #: What a command input actually is. "value" exists because economy, scenario
 #: and year are not paths — declaring them as files was the only option and
