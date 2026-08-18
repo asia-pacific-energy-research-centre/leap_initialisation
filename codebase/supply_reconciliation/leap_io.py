@@ -80,6 +80,10 @@ from codebase.functions.baseline_seed_validation import (
     prepare_seed_rows_for_write,
     validate_seed_rows,
 )
+from codebase.analysis.missing_branch_esto_vintage_impact import (
+    CREATION_INSTRUCTION_COLUMNS,
+    build_creation_instructions_for_run,
+)
 from codebase.utilities.typed_storage import write_manifested_parquet
 from codebase import (
     electricity_heat_interim_workflow,
@@ -2488,6 +2492,28 @@ def write_per_economy_combined_workbooks(
             consolidated_path,
             index=False,
         )
+        # Keep a narrow, modeller-facing repair list beside the consolidated
+        # findings.  It is source-energy aware: metadata/activity-only rows
+        # and parent-fuel aggregate fallbacks are not instructed for creation.
+        creation_instructions_path = diagnostics_dir / "missing_branch_creation_instructions.csv"
+        try:
+            creation_instructions = build_creation_instructions_for_run(
+                consolidated,
+                seed_rows_by_economy=artifact_expected_rows,
+                output_path=creation_instructions_path,
+            )
+            print(
+                f"[INFO] Missing-branch creation instructions: {len(creation_instructions)} "
+                f"actionable row(s); diagnostics={creation_instructions_path}"
+            )
+        except Exception as exc:
+            # The repair list is diagnostic-only and must never strand a
+            # baseline run.  Preserve a stable empty schema if source files
+            # are unavailable, while surfacing the failure loudly.
+            print(f"[WARN] Could not build missing-branch creation instructions: {exc!r}")
+            pd.DataFrame(columns=CREATION_INSTRUCTION_COLUMNS).to_csv(
+                creation_instructions_path, index=False
+            )
         proxy_warnings = consolidated[
             consolidated.get("rule_id", pd.Series(dtype=object)).eq("SEED-014")
             & consolidated.get("status", pd.Series(dtype=object)).eq("warn")
@@ -2606,6 +2632,10 @@ def write_per_economy_combined_workbooks(
             / "supporting_files"
             / "baseline_seed_validation"
             / f"baseline_seed_{run_stamp}_consolidated_rule_findings.csv",
+            out_dir
+            / "supporting_files"
+            / "baseline_seed_validation"
+            / "missing_branch_creation_instructions.csv",
             *[
                 out_dir
                 / "supporting_files"

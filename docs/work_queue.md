@@ -1,5 +1,16 @@
 # Remaining work queue
 
+## [49] Emit source-energy-filtered missing-branch creation instructions
+
+**Status: implemented and tested 2026-08-18.**
+
+Every validated baseline-seed run now writes
+`supporting_files/baseline_seed_validation/missing_branch_creation_instructions.csv`.
+The stable-schema CSV uses the three ESTO vintages (2024/2025/2026) and the
+9th-edition projection table, and includes only missing branches with nonzero
+source energy. Metadata/activity-only rows and parent-fuel aggregate fallbacks
+remain visible in the consolidated findings but are not repair instructions.
+
 ## [48] Preserve Reference and Target scenarios in other-loss/own-use proxies
 
 **Status: implemented and tested 2026-08-18.**

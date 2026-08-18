@@ -124,6 +124,14 @@ PRODUCT_BY_FUEL = {
     "Refinery feedstocks": "06.03 Refinery feedstocks",
     "Gas": "08 Gas",
 }
+CREATION_INSTRUCTION_COLUMNS = [
+    "economy", "branch_path", "parent_path", "branch_label", "branch_kind",
+    "source_flow", "esto_product", "actionable_source_nonzero", "seed_impact",
+    "seed_matching_rows", "seed_activity_rows", "esto_2024_base_2022",
+    "esto_2025_base_2023", "esto_2026_base_2024", "ninth_2024_projected_sum",
+    "ninth_2025_projected_sum", "ninth_2026_projected_sum", "ninth_match_mode",
+    "create_instruction",
+]
 
 
 def _normalise_economy(value: object) -> str:
@@ -136,7 +144,18 @@ def load_missing_branch_rows() -> pd.DataFrame:
     if len(frames) != len(BATCH_FINDINGS):
         missing = [str(path) for path in BATCH_FINDINGS if not path.exists()]
         raise FileNotFoundError(f"Missing findings files: {missing}")
-    findings = pd.concat(frames, ignore_index=True)
+    return load_missing_branch_rows_from_findings(pd.concat(frames, ignore_index=True))
+
+
+def load_missing_branch_rows_from_findings(findings: pd.DataFrame) -> pd.DataFrame:
+    """Extract distinct missing-branch keys from one baseline-run findings frame."""
+    required = {"rule_id", "status", "economy", "Branch Path"}
+    missing_columns = required.difference(findings.columns)
+    if missing_columns:
+        raise ValueError(f"Findings frame is missing required columns: {sorted(missing_columns)}")
+    findings = findings.copy()
+    if findings.empty:
+        return pd.DataFrame(columns=["economy", "sector", "fuel", "branch_path", "source_flow", "esto_product"])
     findings = findings[(findings["rule_id"] == "SEED-011") & (findings["status"] == "fail")]
     rows = []
     for _, row in findings[["economy", "Branch Path"]].drop_duplicates().iterrows():
@@ -162,6 +181,72 @@ def load_missing_branch_rows() -> pd.DataFrame:
     return output.reset_index(drop=True)
 
 
+def _seed_presence_from_frames(keys: pd.DataFrame, seed_rows_by_economy: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """Summarise actual in-memory seed rows without reopening Excel files."""
+    def nonzero(value: object) -> bool:
+        try:
+            return abs(float(value)) > 1e-12
+        except (TypeError, ValueError):
+            return False
+
+    rows = []
+    for economy, branch_path in keys[["economy", "branch_path"]].drop_duplicates().itertuples(index=False):
+        frame = seed_rows_by_economy.get(str(economy), pd.DataFrame())
+        matching = frame[frame.get("Branch Path", pd.Series(dtype=object)).astype(str).eq(str(branch_path))] if not frame.empty else frame
+        activity = matching[matching.get("Variable", pd.Series(dtype=object)).astype(str).str.strip().eq("Activity Level")] if not matching.empty else matching
+        year_columns = {int(str(column)): column for column in matching.columns if str(column).isdigit()}
+        rows.append({
+            "economy": economy,
+            "branch_path": branch_path,
+            "seed_matching_rows": len(matching),
+            "seed_activity_rows": len(activity),
+            "seed_base_nonzero_any": any(nonzero(row.get(year_columns.get(2022))) for _, row in activity.iterrows()) if year_columns else False,
+            "seed_projected_nonzero_any": any(
+                nonzero(row.get(column)) for _, row in activity.iterrows()
+                for year, column in year_columns.items() if year > 2022
+            ) if year_columns else False,
+        })
+    return pd.DataFrame(rows)
+
+
+def build_creation_instructions_for_run(
+    findings: pd.DataFrame,
+    *,
+    seed_rows_by_economy: dict[str, pd.DataFrame],
+    output_path: Path,
+    esto_vintages: dict[str, tuple[Path, int]] | None = None,
+    ninth_data_path: Path | None = None,
+) -> pd.DataFrame:
+    """Write the standard, source-energy-filtered branch creation CSV for a run."""
+    keys = load_missing_branch_rows_from_findings(findings)
+    if keys.empty:
+        empty = pd.DataFrame(columns=CREATION_INSTRUCTION_COLUMNS)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        empty.to_csv(output_path, index=False)
+        return empty
+    report = keys.copy()
+    for vintage, (path, base_year) in (esto_vintages or VINTAGES).items():
+        report = report.merge(load_esto_values(path, keys, vintage, base_year), on=["economy", "branch_path"], how="left")
+    report = report.merge(
+        load_ninth_projection_values(keys, ninth_data_path),
+        on=["economy", "branch_path"], how="left",
+    )
+    report = report.merge(_seed_presence_from_frames(keys, seed_rows_by_economy), on=["economy", "branch_path"], how="left")
+    base_columns = [column for column in report if column.startswith("esto_") and "_base_" in column]
+    projection_columns = [column for column in report if column.startswith("ninth_") and column.endswith("projected_sum")]
+    report["actionable_source_nonzero"] = (
+        report[base_columns].abs().gt(1e-12).any(axis=1)
+        | (report["ninth_match_mode"].eq("exact_subfuel") & report[projection_columns].abs().gt(1e-12).any(axis=1))
+    )
+    report["seed_impact"] = report.apply(
+        lambda row: "No matching seed rows; nonzero source energy omitted" if not row["seed_matching_rows"] and row["actionable_source_nonzero"]
+        else "Rows retained in seed with nonzero source energy but unresolved IDs" if row["seed_matching_rows"] and row["actionable_source_nonzero"]
+        else "Rows retained but source energy is zero; suppress metadata/activity-only rows" if row["seed_matching_rows"]
+        else "No matching seed rows; source energy is zero", axis=1,
+    )
+    return build_creation_instructions(report, output_path)
+
+
 def load_esto_values(path: Path, keys: pd.DataFrame, vintage: str, base_year: int) -> pd.DataFrame:
     years = pd.read_csv(path, nrows=0).columns.tolist()
     year_columns = [column for column in years if column.isdigit()]
@@ -184,7 +269,7 @@ def load_esto_values(path: Path, keys: pd.DataFrame, vintage: str, base_year: in
     return joined[["economy", "branch_path", base_column]]
 
 
-def load_ninth_projection_values(keys: pd.DataFrame) -> pd.DataFrame:
+def load_ninth_projection_values(keys: pd.DataFrame, data_path: Path | None = None) -> pd.DataFrame:
     year_columns = [str(year) for year in range(2023, 2061)]
     usecols = [
         "scenarios", "economy", "sectors", "sub1sectors", "sub2sectors",
@@ -192,7 +277,8 @@ def load_ninth_projection_values(keys: pd.DataFrame) -> pd.DataFrame:
     ]
     economies = set(keys["economy"])
     chunks = []
-    for chunk in pd.read_csv(NINTH_DATA_PATH, usecols=usecols, chunksize=200_000):
+    source_path = NINTH_DATA_PATH if data_path is None else Path(data_path)
+    for chunk in pd.read_csv(source_path, usecols=usecols, chunksize=200_000):
         chunk = chunk[chunk["economy"].isin(economies)]
         if not chunk.empty:
             chunks.append(chunk)
