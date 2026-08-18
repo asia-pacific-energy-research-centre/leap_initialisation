@@ -57,8 +57,8 @@ FLOW_BY_SECTOR = {
     "LNG regasification": "09.06.02 Liquefaction/regasification plants",
     "NG liquefaction": "09.06.02 Liquefaction/regasification plants",
     "NG Liquefaction": "09.06.02 Liquefaction/regasification plants",
-    "Heat plant interim": "09_x_heat_plants",
-    "Coke ovens": "09_08_01_coke_ovens",
+    "Heat plant interim": "09.01.03 Heat plants",
+    "Coke ovens": "09.08.01 Coke ovens",
 }
 NINTH_SECTOR_LEVEL = {
     "Coal mines": ("sub2sectors", "10_01_06_coal_mines"),
