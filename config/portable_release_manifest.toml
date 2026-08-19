@@ -481,7 +481,7 @@ allow_untracked = true
 repository = "leap_mappings"
 path = "data/esto_extended_2026_low_with_subtotals_PRELIMINARY.parquet"
 dest = "mapping_chain/esto_extended_2026_low_with_subtotals_PRELIMINARY.parquet"
-role = "mapping_chain_esto_extended_2026_preliminary"
+role = "mapping_chain_esto_extended_2026"
 description = "Parquet ESTO Extended table generated from the 2026 ESTO issue. Preliminary: the issue is still missing economies or carries backfilled/proxy figures."
 sha256 = "7aeb0685f32fd9ecfd578dc0583035528ed13c707bc17436c1c0193f6af76215"
 allow_untracked = true
@@ -493,6 +493,24 @@ dest = "balance_review/00APEC_2024_low_with_subtotals.csv"
 role = "esto_base_table"
 sha256 = "5a5787914491008c562b0398bf6ee14cd5eedcaa13e2d11d6de1a5ebf1d6ae1d"
 description = "Configured 2024 ESTO base table used by balance diagnostics."
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_initialisation"
+path = "data/00APEC_2025_low_with_subtotals.csv"
+dest = "balance_review/00APEC_2025_low_with_subtotals.csv"
+role = "esto_base_table_2025"
+sha256 = "b8685b566f348a90d3d8fa8279decb909f04abfb5140fcb9563e04cdec54e8c3"
+description = "Configured 2025 ESTO base table used by balance diagnostics."
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_initialisation"
+path = "data/00APEC_2026_low_with_subtotals_PRELIMINARY.csv"
+dest = "balance_review/00APEC_2026_low_with_subtotals_PRELIMINARY.csv"
+role = "esto_base_table_2026_preliminary"
+sha256 = "a222ca3daa7025dc3a508626f6ca5f499a65175ef9da8ca062c9cc926f3c1a79"
+description = "Configured 2026 ESTO base table used by balance diagnostics. Preliminary: the issue is still missing economies or carries backfilled/proxy figures."
 allow_untracked = true
 
 [[data_assets]]

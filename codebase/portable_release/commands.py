@@ -1005,6 +1005,7 @@ MAPPING_CHAIN_DATA_ROLES = (
     "mapping_chain_esto_extended_vintage_registry",
     "mapping_chain_esto_extended_2024",
     "mapping_chain_esto_extended_2025",
+    "mapping_chain_esto_extended_2026",
 )
 MAPPING_CHAIN_CONFIG_ROLES = (
     "outlook_mappings_master",
