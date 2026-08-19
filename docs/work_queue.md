@@ -1,5 +1,64 @@
 # Remaining work queue
 
+## [52] Pilot the 2026 preliminary ESTO vintage end to end: baseline seed → LEAP → web review
+
+**Status: planned — scope and provenance gates required before execution.**
+
+Prove that the 2026 preliminary ESTO vintage functions through the complete
+initialisation and review path, rather than treating source-file registration or
+a dashboard vintage dropdown as sufficient evidence. The pilot must establish
+an auditable chain from the configured 2026 input through a baseline seed,
+isolated LEAP use/results export, Common ESTO/dashboard preparation, and the
+web app's rendered review output.
+
+Start with **one template-backed economy** whose 2026 input, export template,
+and LEAP sandbox area are all available (prefer `01_AUS` unless the preflight
+shows another economy is more complete). Do not overwrite a colleague's model,
+replace a production seed, or run an all-economy batch before the single-economy
+pilot passes.
+
+Required sequence:
+1. **Input and mapping-chain preflight.** Confirm the selected vintage is the
+   maintained `00APEC_2026_low_with_subtotals_PRELIMINARY` asset, retains its
+   preliminary identity in filenames/manifests, normalises the economy code
+   correctly, and is selected deliberately rather than falling back to 2025.
+   Record coverage, base-year alignment, subtotal handling, and any 2026-only
+   source/mapping gaps before generating a seed.
+2. **Baseline-seed creation.** Build a uniquely labelled seed for the selected
+   economy using the 2026 vintage. Preserve Current Accounts, Reference, and
+   Target semantics; validate against that economy's exact LEAP template; and
+   retain narrow validation/provenance artifacts. A seed with unresolved
+   `UNVERIFIED` findings may be inspected but must not be described as
+   import-ready.
+3. **Isolated LEAP use.** Import only into a copied/sandbox LEAP area on
+   Windows, never into the production area. Confirm the import is accepted,
+   scenarios resolve, and the required calculations/results export complete.
+   Record the LEAP area/version, template identity, import result, and exported
+   balance path. If Windows COM/LEAP is unavailable, stop here with a named
+   external dependency rather than simulating this stage.
+4. **Dashboard and web-app review.** Use the generated results and the matching
+   2026 mapping/output identity to render the representative dashboard through
+   the review app. Confirm the 2026 preliminary vintage is visible and selected,
+   historical/base-year behavior is coherent, Reference/Target remain distinct
+   where the inputs differ, and expected categories (including Industry
+   non-energy ownership) reach the intended pages. Run the normal
+   publication-readiness, page-noise, routing, and generated-runtime checks;
+   do not hand-edit the prepared runtime.
+5. **Cross-stage reconciliation.** Compare a compact set of declared anchor
+   values (historical, base year, and projection years) across ESTO input,
+   seed expression, LEAP export, dashboard supporting data, and rendered chart.
+   Explain every expected transformation, unit conversion, scenario choice, or
+   aggregation. Any unexplained change, silent vintage fallback, missing
+   artifact, or stale-manifest hash is a pilot failure.
+
+**Complete when:** one dated pilot record names the exact source and mapping
+run identities, seed label, sandbox LEAP area, results export, dashboard/web
+output, checks run, and accepted/rejected findings. It must conclude either
+`2026_VINTAGE_PILOT_PASSED` with reproducible instructions for a second economy,
+or `2026_VINTAGE_PILOT_BLOCKED` with the first failing boundary, evidence, owner,
+and next action. This pilot is separate from periodic full mapping refresh and
+does not authorize production deployment.
+
 ## [49] Emit source-energy-filtered missing-branch creation instructions
 
 **Status: implemented and tested 2026-08-18.**
