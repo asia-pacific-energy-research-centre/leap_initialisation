@@ -5,14 +5,13 @@
 Hand colleagues a safe, evidence-backed release decision rather than a large
 set of unrelated code changes:
 
-1. MAPQ-052 has either a committed and measured first-pass memory reduction,
-   or an honest stop report that identifies the phase which prevents a safe
-   mapping refresh.
-2. WEBQ-002 and initialisation queue item [50] each have a short reproducible
+1. WEBQ-002 and initialisation queue item [50] each have a short reproducible
    diagnosis and a recommended next implementation decision.
-3. If, and only if, the mapping validation gate is green, one clean-checkout
-   dashboard/review-app rehearsal has a recorded result. Otherwise the
-   downstream release is explicitly held with its exact dependency named.
+2. One clean-checkout dashboard/review-app rehearsal against the *currently
+   pinned mapping baseline* has a recorded result, including every missing
+   colleague prerequisite.
+3. MAPQ-052 is explicitly deferred as periodic mapping-maintenance work, with
+   its safety plan preserved for the next intentional mapping refresh.
 
 This is a handover pack. Each numbered task file is independent enough to
 give to a colleague or agent. Do not combine the code work into one commit.
@@ -20,28 +19,28 @@ give to a colleague or agent. Do not combine the code work into one commit.
 ## Priority and dependency graph
 
 ```text
-MAPQ-052 measured first pass ── green, equivalent ──> fresh mapping output
-                                                      │
-                                                      └─> DASHQ-007 / DASHQ-017
-                                                           + review-app release gate
-
 WEBQ-002 rollup diagnosis ──────────────────────────> later baseline-seed fix
 Item [50] transfer decision ─────────────────────────> later baseline-seed fix
+
+Current pinned mapping baseline ─────────────────────> DASHQ-017 clean-checkout
+                                                      + review-app readiness rehearsal
+
+Deferred MAPQ-052 memory first pass ─────────────────> a future mapping refresh
+                                                      └> then DASHQ-007 data-refresh rerender
 ```
 
-The two baseline-seed items are research-only today. They must not launch a
-baseline-seed run while MAPQ-052 deep validation is running: the mapping queue
-records a 17.9 GB Stage 3 incident and explicitly requires its bounded run to
-run alone.
+The two baseline-seed items are research-only today. A future MAPQ-052 run
+must run alone—the mapping queue records a 17.9 GB Stage 3 incident—but it is
+not part of this three-hour block.
 
 ## Suggested allocation
 
 | Role | Time box | Handoff file | Deliverable |
 |---|---:|---|---|
-| Mapping owner | Full three hours | `01_mapq_052_stage3_memory_first_pass.md` | One focused commit plus RSS/equivalence evidence, or a stop report |
 | Seed investigator A | 75–90 min | `02_webq_002_synthetic_own_use_rollup_diagnosis.md` | Reproducer and go/no-go design recommendation |
 | Seed investigator B | 75–90 min | `03_transfer_projection_fallback_decision.md` | Scenario coverage table and explicit policy recommendation |
-| Dashboard/review release owner | Prep in first 60 min; execute after the mapping gate | `04_dashboard_and_review_release_gate.md` | Rehearsal result or blocked release record |
+| Dashboard/review release owner | Full three hours | `04_dashboard_and_review_release_gate.md` | Current-baseline rehearsal result and prerequisite log |
+| Future mapping owner | Deferred | `01_mapq_052_stage3_memory_first_pass.md` | Use only before the next mapping refresh |
 
 ## Clock and coordinator decisions
 
@@ -51,13 +50,12 @@ run alone.
   mapping helper/test files; dashboard has a user-owned `code_colors.json`
   edit; the review runtime is substantially dirty and has an untracked
   integration checklist.
-- **T+75 min:** mapping owner reports phase markers, current peak RSS, focused
-  test result, and whether an equivalent bounded run is still credible. The
-  seed investigators return their first evidence tables.
-- **T+135 min:** coordinator chooses the downstream route. Only a completed,
-  equivalent MAPQ-052 bounded validation permits mapping-output regeneration
-  and dashboard/review rehearsal. A failed, incomplete, or memory-killed run
-  is a release hold, not a reason to bypass checks.
+- **T+75 min:** seed investigators return their first evidence tables. The
+  dashboard/review owner reports whether the clean-checkout rehearsal can use
+  the current pinned artifacts without undocumented local state.
+- **T+135 min:** coordinator decides whether either seed diagnosis is clear
+  enough to hand immediately to an implementation agent, and records every
+  dashboard/review prerequisite that is still missing.
 - **T+180 min:** collect four concise evidence notes: commit/hash (if any),
   tests run, output/run identifier, and the next owner/action. Move no active
   prompt to `docs/archive/` today; these tasks are not complete merely because
@@ -65,8 +63,8 @@ run alone.
 
 ## Explicitly not today
 
-- Do not start the broader streaming Stage 3 redesign described after MAPQ-052
-  until its narrow first pass has passed equivalence.
+- Do not start MAPQ-052 or its broader streaming Stage 3 redesign today. Keep
+  its plan for the next intentional mapping refresh.
 - Do not implement a transfer fallback before the projection semantics are
   chosen from evidence.
 - Do not alter dashboard-owned mapping logic, enable DASHQ-047 during the

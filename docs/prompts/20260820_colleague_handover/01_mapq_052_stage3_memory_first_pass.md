@@ -1,5 +1,11 @@
 # MAPQ-052 — Stage 3 deep-validation memory first pass
 
+> **Scheduling status, 2026-08-20:** deferred. This is a periodic mapping
+> maintenance task, not part of the current three-hour readiness block. Keep
+> this card intact and assign it immediately before the next intentional fresh
+> mapping run; do not use its deferral as permission to run an unmeasured
+> refresh.
+
 ## Objective
 
 Make one narrow, evidence-led change to the mapping pipeline that reduces the
