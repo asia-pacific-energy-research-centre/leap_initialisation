@@ -456,7 +456,7 @@ path = "data/esto_extended_vintage_registry.csv"
 dest = "mapping_chain/esto_extended_vintage_registry.csv"
 role = "mapping_chain_esto_extended_vintage_registry"
 description = "Registry selecting the ESTO Extended artifact matching each raw ESTO vintage."
-sha256 = "a091c2f9a50db96d38512002caeeedc3cdbcaff50f0db02846673658ada48c1c"
+sha256 = "d0d6187d6506d752f053ee16f6c4f7e8b68700e19c0fcef0a1936c8ade540efc"
 allow_untracked = true
 
 [[data_assets]]
@@ -475,6 +475,15 @@ dest = "mapping_chain/esto_extended_2025_low_with_subtotals.parquet"
 role = "mapping_chain_esto_extended_2025"
 description = "Parquet ESTO Extended table generated from the 2025 ESTO issue."
 sha256 = "bc20d0515947124e9b1ddeffaa7d0419061b664dbc7f4a85ae3e61126bb0e448"
+allow_untracked = true
+
+[[data_assets]]
+repository = "leap_mappings"
+path = "data/esto_extended_2026_low_with_subtotals_PRELIMINARY.parquet"
+dest = "mapping_chain/esto_extended_2026_low_with_subtotals_PRELIMINARY.parquet"
+role = "mapping_chain_esto_extended_2026_preliminary"
+description = "Parquet ESTO Extended table generated from the 2026 ESTO issue. Preliminary: the issue is still missing economies or carries backfilled/proxy figures."
+sha256 = "7aeb0685f32fd9ecfd578dc0583035528ed13c707bc17436c1c0193f6af76215"
 allow_untracked = true
 
 [[data_assets]]
