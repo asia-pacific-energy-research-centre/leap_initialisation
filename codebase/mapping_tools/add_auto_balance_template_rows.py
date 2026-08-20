@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+from copy import deepcopy
 from pathlib import Path
 from xml.etree import ElementTree
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -18,7 +19,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE_ROOT = REPO_ROOT / "data" / "leap_export_templates"
 TARGET_ECONOMIES = [
-    "AUS", "BD", "PRC", "MAS", "MEX", "NZ", "PNG", "PHL", "THA", "USA", "VN",
+    "AUS", "BD", "PRC", "MAS", "MEX", "NZ", "PNG", "PHL", "RUS", "THA", "USA", "VN",
 ]
 AUTO_BALANCE_LABEL = "AUTO BALANCE"
 AUTO_BALANCE_PLACEHOLDER_BRANCH_ID = 100
@@ -29,6 +30,18 @@ AUTO_BALANCE_TRANSFER_ROOTS = (
     "Transformation\\Refinery and blending transfers\\",
     "Transformation\\Upstream liquids transfers\\",
 )
+AUTO_BALANCE_VARIABLES = {
+    "Output Fuels": {
+        "Shortfall Rule",
+        "Surplus Rule",
+        "Usage Rule",
+        "Priority Output",
+        "Output Share",
+        "Import Target",
+        "Export Target",
+    },
+    "Feedstock Fuels": {"Feedstock Fuel Share"},
+}
 
 
 def _find_target_template(economy: str) -> Path:
@@ -40,7 +53,7 @@ def _find_target_template(economy: str) -> Path:
 
 
 def _cell_value(cell) -> str:
-    """Return a cell's inline string or numerical value from the sheet XML."""
+    """Return an inline/numeric cell value; shared strings are resolved by caller."""
     return "".join(cell.itertext())
 
 
@@ -50,39 +63,61 @@ def _column_name(cell) -> str:
     return match.group(0) if match is not None else ""
 
 
-def _auto_balance_rows(template_path: Path) -> list[tuple[int, str]]:
-    """Return (row number, BranchID) for the existing AUTO BALANCE rows."""
+def _read_template_xml(template_path: Path):
+    """Read sheet XML plus the workbook's optional shared-string table."""
     with ZipFile(template_path) as archive:
         root = ElementTree.fromstring(archive.read(SHEET_XML_PATH))
+        shared_strings = []
+        if "xl/sharedStrings.xml" in archive.namelist():
+            shared_root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
+            shared_strings = [
+                "".join(item.itertext())
+                for item in shared_root.iter(f"{NAMESPACE}si")
+            ]
+    return root, shared_strings
+
+
+def _resolved_cell_value(cell, shared_strings: list[str]) -> str:
+    """Return a cell value, including a value stored through sharedStrings.xml."""
+    if cell is None:
+        return ""
+    value_node = cell.find(f"{NAMESPACE}v")
+    if cell.attrib.get("t") == "s" and value_node is not None:
+        return shared_strings[int(value_node.text)]
+    return _cell_value(cell)
+
+
+def _auto_balance_rows(template_path: Path) -> list[tuple[int, str]]:
+    """Return (row number, BranchID) for the existing AUTO BALANCE rows."""
+    root, shared_strings = _read_template_xml(template_path)
     rows = []
     for row in root.iter(f"{NAMESPACE}row"):
         cells = {_column_name(cell): cell for cell in row}
-        path = _cell_value(cells.get("E")) if cells.get("E") is not None else ""
+        path = _resolved_cell_value(cells.get("E"), shared_strings)
         if path.endswith(AUTO_BALANCE_LABEL):
             row_number = int(row.attrib["r"])
-            branch_id = _cell_value(cells.get("A")) if cells.get("A") is not None else ""
+            branch_id = _resolved_cell_value(cells.get("A"), shared_strings)
             rows.append((row_number, branch_id))
     return rows
 
 
 def _validate_auto_balance_structure(template_path: Path) -> None:
     """Require the expected transfer-only set and populated non-branch IDs."""
-    with ZipFile(template_path) as archive:
-        root = ElementTree.fromstring(archive.read(SHEET_XML_PATH))
+    root, shared_strings = _read_template_xml(template_path)
     rows = []
     for row in root.iter(f"{NAMESPACE}row"):
         cells = {_column_name(cell): cell for cell in row}
-        path = _cell_value(cells.get("E")) if cells.get("E") is not None else ""
+        path = _resolved_cell_value(cells.get("E"), shared_strings)
         if path.endswith(AUTO_BALANCE_LABEL):
             rows.append(
                 {
                     "path": path,
-                    "variable": _cell_value(cells.get("F")) if cells.get("F") is not None else "",
-                    "scenario": _cell_value(cells.get("G")) if cells.get("G") is not None else "",
-                    "region": _cell_value(cells.get("H")) if cells.get("H") is not None else "",
-                    "variable_id": _cell_value(cells.get("B")) if cells.get("B") is not None else "",
-                    "scenario_id": _cell_value(cells.get("C")) if cells.get("C") is not None else "",
-                    "region_id": _cell_value(cells.get("D")) if cells.get("D") is not None else "",
+                    "variable": _resolved_cell_value(cells.get("F"), shared_strings),
+                    "scenario": _resolved_cell_value(cells.get("G"), shared_strings),
+                    "region": _resolved_cell_value(cells.get("H"), shared_strings),
+                    "variable_id": _resolved_cell_value(cells.get("B"), shared_strings),
+                    "scenario_id": _resolved_cell_value(cells.get("C"), shared_strings),
+                    "region_id": _resolved_cell_value(cells.get("D"), shared_strings),
                 }
             )
     if len(rows) != 72:
@@ -131,6 +166,134 @@ def _migrate_existing_rows(template_path: Path, apply_changes: bool) -> dict[str
     return {"template": template_path.name, "rows_migrated": len(target_rows)}
 
 
+def _header_columns(root, shared_strings: list[str]) -> dict[str, str]:
+    """Return workbook header names keyed to their Excel column letters."""
+    for row in root.iter(f"{NAMESPACE}row"):
+        cells = {_column_name(cell): cell for cell in row}
+        values = {
+            _resolved_cell_value(cell, shared_strings): column
+            for column, cell in cells.items()
+        }
+        if "Branch Path" in values and "Variable" in values:
+            return values
+    raise ValueError("Could not locate the LEAP export header row")
+
+
+def _set_inline_string(cell, value: str) -> None:
+    """Set one XML cell to an inline string without extending sharedStrings.xml."""
+    cell.attrib["t"] = "inlineStr"
+    for child in list(cell):
+        cell.remove(child)
+    inline = ElementTree.SubElement(cell, f"{NAMESPACE}is")
+    text = ElementTree.SubElement(inline, f"{NAMESPACE}t")
+    text.text = value
+
+
+def _set_numeric_value(cell, value: int) -> None:
+    """Set one XML cell to a numeric placeholder value."""
+    cell.attrib.pop("t", None)
+    for child in list(cell):
+        cell.remove(child)
+    numeric = ElementTree.SubElement(cell, f"{NAMESPACE}v")
+    numeric.text = str(value)
+
+
+def _new_auto_balance_paths() -> list[str]:
+    """Return the six reviewed transfer AUTO BALANCE paths."""
+    paths = []
+    for root in AUTO_BALANCE_TRANSFER_ROOTS:
+        sector_name = root.rstrip("\\").split("\\")[-1]
+        paths.extend(
+            [
+                f"{root}Output Fuels\\{AUTO_BALANCE_LABEL}",
+                f"{root}Processes\\{sector_name}\\Feedstock Fuels\\{AUTO_BALANCE_LABEL}",
+            ]
+        )
+    return paths
+
+
+def _insert_missing_auto_balance_rows(template_path: Path, apply_changes: bool) -> dict[str, object]:
+    """Add the standard 72 local-placeholder rows where a template has none.
+
+    Each new row clones its own area's matching transfer fuel row, retaining its
+    VariableID, ScenarioID, RegionID, formats, and surrounding metadata.  Only
+    the leaf path and the deliberately non-real BranchID=100 are changed.
+    """
+    root, shared_strings = _read_template_xml(template_path)
+    existing_rows = _auto_balance_rows(template_path)
+    if existing_rows:
+        validate_auto_balance_rows(template_path)
+        return {"template": template_path.name, "rows_added": 0}
+
+    headers = _header_columns(root, shared_strings)
+    required_headers = {"BranchID", "Branch Path", "Variable", "Scenario", "Region"}
+    if not required_headers.issubset(headers):
+        raise ValueError(f"{template_path.name} lacks required LEAP export columns")
+
+    sheet_data = root.find(f"{NAMESPACE}sheetData")
+    if sheet_data is None:
+        raise ValueError(f"{template_path.name} has no sheet data")
+    template_rows = list(sheet_data)
+    next_row = max(int(row.attrib["r"]) for row in template_rows) + 1
+    rows_to_add = []
+    for target_path in _new_auto_balance_paths():
+        branch_kind = "Output Fuels" if "\\Output Fuels\\" in target_path else "Feedstock Fuels"
+        prefix = target_path.rsplit("\\", 1)[0] + "\\"
+        candidates = []
+        for row in template_rows:
+            cells = {_column_name(cell): cell for cell in row}
+            source_path = _resolved_cell_value(cells.get(headers["Branch Path"]), shared_strings)
+            variable = _resolved_cell_value(cells.get(headers["Variable"]), shared_strings)
+            if source_path.startswith(prefix) and variable in AUTO_BALANCE_VARIABLES[branch_kind]:
+                candidates.append(row)
+        expected_count = 21 if branch_kind == "Output Fuels" else 3
+        if len(candidates) < expected_count:
+            raise ValueError(
+                f"{template_path.name} has only {len(candidates)} suitable rows for {target_path}; "
+                f"expected at least {expected_count}"
+            )
+        source_leaf = _resolved_cell_value(
+            {_column_name(cell): cell for cell in candidates[0]}.get(headers["Branch Path"]),
+            shared_strings,
+        )
+        matching_leaf_rows = []
+        for row in candidates:
+            cells = {_column_name(cell): cell for cell in row}
+            source_path = _resolved_cell_value(cells.get(headers["Branch Path"]), shared_strings)
+            if source_path == source_leaf:
+                matching_leaf_rows.append(row)
+        if len(matching_leaf_rows) != expected_count:
+            raise ValueError(f"{template_path.name} does not have one complete source leaf for {target_path}")
+        rows_to_add.extend((row, target_path) for row in matching_leaf_rows)
+
+    if len(rows_to_add) != 72:
+        raise ValueError(f"{template_path.name} would add {len(rows_to_add)} rows, expected 72")
+    if apply_changes:
+        for source_row, target_path in rows_to_add:
+            new_row = deepcopy(source_row)
+            new_row.attrib["r"] = str(next_row)
+            cells = {_column_name(cell): cell for cell in new_row}
+            for column, cell in cells.items():
+                cell.attrib["r"] = f"{column}{next_row}"
+            _set_numeric_value(cells[headers["BranchID"]], AUTO_BALANCE_PLACEHOLDER_BRANCH_ID)
+            _set_inline_string(cells[headers["Branch Path"]], target_path)
+            for index, part in enumerate(target_path.split("\\"), start=1):
+                level_column = headers.get(f"Level {index}")
+                if level_column in cells:
+                    _set_inline_string(cells[level_column], part)
+            sheet_data.append(new_row)
+            next_row += 1
+        temporary_path = template_path.with_suffix(".tmp.xlsx")
+        with ZipFile(template_path) as source_archive, ZipFile(temporary_path, "w", ZIP_DEFLATED) as destination_archive:
+            updated_xml = ElementTree.tostring(root, encoding="utf-8", xml_declaration=True)
+            for item in source_archive.infolist():
+                content = updated_xml if item.filename == SHEET_XML_PATH else source_archive.read(item.filename)
+                destination_archive.writestr(item, content)
+        os.replace(temporary_path, template_path)
+        validate_auto_balance_rows(template_path)
+    return {"template": template_path.name, "rows_added": len(rows_to_add)}
+
+
 def validate_auto_balance_rows(template_path: Path) -> None:
     """Confirm the added set is complete, key-unique, and explicitly unresolved."""
     _validate_auto_balance_structure(template_path)
@@ -142,12 +305,14 @@ def validate_auto_balance_rows(template_path: Path) -> None:
 
 
 def update_all_templates(apply_changes: bool = False) -> list[dict[str, object]]:
-    """Dry-run or migrate the complete existing set in every active template."""
+    """Dry-run or add/migrate the complete set in every active template."""
     results = []
     for economy in TARGET_ECONOMIES:
         template_path = _find_target_template(economy)
+        added = _insert_missing_auto_balance_rows(template_path, apply_changes=apply_changes)
         result = _migrate_existing_rows(template_path, apply_changes=apply_changes)
-        if apply_changes or result["rows_migrated"] == 0:
+        result.update(added)
+        if apply_changes or (result["rows_migrated"] == 0 and result["rows_added"] == 0):
             validate_auto_balance_rows(template_path)
         results.append(result)
         print(result)
