@@ -301,7 +301,7 @@ placeholder, and replaceable by real modelling.
 The 9th maintainers' answer is still worth having — it would let the classifier
 read a maintained fact instead of a data pattern — but nothing waits on it.
 
-Implementation is now fully specified: §6.1 (scenario plumbing), §6.2
+Implementation was completed in `5c304fd`: §6.1 (scenario plumbing), §6.2
 (classification diagnostic, computed upstream of the `fillna(0.0)`), §5 (the
 criterion selecting where carry-forward applies), §7 (three regression cases).
 The `05_PRC`/`13_PNG` base-year defect in §2 is a prerequisite for those two
@@ -309,4 +309,4 @@ economies and must land first. The method and its intended long-term replacement
 are recorded in
 [`initialisation_flow_estimation_methods.md`](initialisation_flow_estimation_methods.md#projection-availability-and-the-base-year-carry-forward).
 
-READY_FOR_NARROW_IMPLEMENTATION
+IMPLEMENTED_AND_FOCUSED_TESTED

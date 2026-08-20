@@ -2,15 +2,16 @@
 
 Written 2026-08-20 for a fresh agent picking this up. Branch
 `claude/baseline-seed-transfer-fallback-5b0e5e`, worktree
-`.claude/worktrees/baseline-seed-transfer-fallback-5b0e5e`. Everything below is
-**uncommitted**.
+`.claude/worktrees/baseline-seed-transfer-fallback-5b0e5e`. The completed work
+is committed as `dd20a4c` (ESTO preparation and one-sided transfers) and
+`5c304fd` (scenario-aware fallback).
 
 ## What this session was, in one paragraph
 
 Started as a read-only design review of work-queue item `[50]` (scenario-aware
 transfer projection fallback). The review found the queue's premise was half
-wrong, and then uncovered three separate defects underneath it. Two are fixed
-and verified; one is designed-and-decided but not built; one is blocked on a
+wrong, and then uncovered three separate defects underneath it. The code-side
+defects are fixed and verified. The remaining operational prerequisite is a
 LEAP-area change the maintainer is doing by hand.
 
 ## Decisions the maintainer made (do not relitigate)
@@ -66,25 +67,26 @@ economies byte-identical.
 Tests: `tests/test_transfer_one_sided_balance.py` (11),
 `tests/test_prepare_new_esto_data.py` (9). Full local set: **32 passing**.
 
-### DECIDED, NOT BUILT
+### DONE and verified
 
-**C. Scenario-aware carry-forward — work-queue `[50]`.** Fully specified in
-`docs/decision_transfer_projection_fallback_20260820.md` §5-§7. Three parts:
+**C. Scenario-aware carry-forward — work-queue `[50]`.** Implemented in
+`5c304fd`, with the three parts originally specified in
+`docs/decision_transfer_projection_fallback_20260820.md` §5-§7:
 
-1. Thread the run scenario through `_collect_transformation_and_transfer_rows`
+1. The run scenario is threaded through `_collect_transformation_and_transfer_rows`
    (`codebase/supply_reconciliation/tables.py:182-206`). `build_transfer_process_records`
    needs a `scenario` parameter (or swap that call site to `build_transfer_rows`);
    `collect_transformation_rows` needs `projection_scenario`; **both balance tables
    need a `scenario` column** — that is the structural part, not just an unpassed arg.
-2. Classify `(economy, scenario)` into `projection_supplied` /
+2. `(economy, scenario)` is classified into `projection_supplied` /
    `projection_unavailable` / `structural_zero` / `no_ninth_rows`, **upstream of
    the `fillna(0.0)` at `codebase/functions/ninth_projection_mapping.py:1957`** —
    after that line, "supplied zero" and "no projection" are indistinguishable.
    Emit as a seed-run diagnostic.
-3. Apply carry-forward only to `projection_unavailable`. Affects `02_BD`,
+3. Carry-forward applies only to `projection_unavailable`. It affects `02_BD`,
    `11_MEX`, `12_NZ`, `21_VN`, plus `05_PRC` and `13_PNG` now that B is fixed.
 
-Three regression cases are specified in §7 of that decision record.
+The three focused regression cases pass as part of the 56-test verification set.
 
 ### BLOCKED on the maintainer
 
@@ -152,16 +154,19 @@ so the existing `-1` path handles them.
   Run from the main repo root, not the worktree — the worktree has no
   `data/leap_export_templates`, so `transfers_workflow` fails at import.
 
-## Files touched (all uncommitted)
+## Files touched
 
-Modified: `codebase/mapping_tools/prepare_new_esto_data.py`,
+Committed in `dd20a4c`: `codebase/mapping_tools/prepare_new_esto_data.py`,
 `codebase/transfers_workflow.py`, `codebase/mapping_tools/build_apec_2026_preliminary.py`,
 `docs/README.md`, `docs/initialisation_flow_estimation_methods.md`,
 `docs/work_queue.md`, `tests/test_prepare_new_esto_data.py`.
 
-New: `docs/decision_transfer_projection_fallback_20260820.md`,
+Committed in `dd20a4c`: `docs/decision_transfer_projection_fallback_20260820.md`,
 `docs/esto_vintage_onboarding.md`, `tests/test_transfer_one_sided_balance.py`,
 this file.
+
+Committed in `5c304fd`: `codebase/supply_reconciliation/{tables.py,leap_io.py,results_saver.py}`,
+`codebase/transfers_workflow.py`, and the transfer projection regression tests.
 
 Regenerated (gitignored): `data/00APEC_2026_low_with_subtotals_PRELIMINARY.csv`.
 
