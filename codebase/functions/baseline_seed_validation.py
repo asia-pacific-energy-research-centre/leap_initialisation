@@ -43,6 +43,12 @@ OPTIONAL_ZERO_ONLY_TEMPLATE_BRANCH_PREFIXES: tuple[str, ...] = (
 SOURCE_WORKFLOW_COLUMN = "source_workflow"
 SOURCE_FILE_COLUMN = "source_file"
 PROVENANCE_COLUMNS = {SOURCE_WORKFLOW_COLUMN, SOURCE_FILE_COLUMN, "source_excel_row"}
+AUTO_BALANCE_PLACEHOLDER_BRANCH_ID = 100
+AUTO_BALANCE_PLACEHOLDER_ROOTS = (
+    "transformation\\transfers unallocated\\",
+    "transformation\\refinery and blending transfers\\",
+    "transformation\\upstream liquids transfers\\",
+)
 SHARE_VARIABLE_RULE_IDS = {
     "Output Share": "SEED-006",
     "Process Share": "SEED-007",
@@ -830,7 +836,33 @@ def _id_valid(value: object) -> bool:
 
 
 def _row_has_all_valid_ids(row: pd.Series) -> bool:
-    return all(column in row.index and _id_valid(row[column]) for column in ID_COLUMNS)
+    return not _invalid_id_columns(row)
+
+
+def _is_auto_balance_placeholder_branch(row: pd.Series) -> bool:
+    """Recognise the reviewed transfer AUTO BALANCE placeholder convention.
+
+    ``100`` is deliberately reserved as an audit-only BranchID; it is not a
+    real LEAP branch identifier and must not make the row look import-ready.
+    """
+    branch_id = _int_or_none(row.get("BranchID"))
+    path = _normalized(row.get("Branch Path")).lower()
+    source = _normalized(row.get(SOURCE_WORKFLOW_COLUMN)).lower()
+    return (
+        branch_id == AUTO_BALANCE_PLACEHOLDER_BRANCH_ID
+        and source == "transfers_workflow"
+        and path.endswith("\\auto balance")
+        and any(path.startswith(root) for root in AUTO_BALANCE_PLACEHOLDER_ROOTS)
+        and all(_id_valid(row.get(column)) for column in ["VariableID", "ScenarioID", "RegionID"])
+    )
+
+
+def _invalid_id_columns(row: pd.Series) -> list[str]:
+    """Return unresolved ID fields, including approved branch placeholders."""
+    invalid = [column for column in ID_COLUMNS if not _id_valid(row.get(column))]
+    if _is_auto_balance_placeholder_branch(row) and "BranchID" not in invalid:
+        invalid.append("BranchID")
+    return invalid
 
 
 def _is_warning_only_aggregated_demand_branch(row: pd.Series) -> bool:
@@ -921,11 +953,15 @@ def drop_zero_only_optional_unmatched_rows(
 
 
 def _is_warning_only_missing_id_branch(row: pd.Series) -> bool:
-    return _is_warning_only_aggregated_demand_branch(row)
+    return (
+        _is_warning_only_aggregated_demand_branch(row)
+        or _is_auto_balance_placeholder_branch(row)
+    )
 
 
 def _row_sort_signature(row: pd.Series) -> tuple[object, ...]:
-    id_validity = tuple(0 if _id_valid(row.get(column)) else 1 for column in ID_COLUMNS)
+    invalid_columns = set(_invalid_id_columns(row))
+    id_validity = tuple(1 if column in invalid_columns else 0 for column in ID_COLUMNS)
     ids = tuple(_normalized(row.get(column)) for column in ID_COLUMNS)
     expression = _expression_signature(row.get("Expression"))
     metadata = tuple(
@@ -2140,14 +2176,14 @@ def validate_seed_rows(
         findings.append(_finding("SEED-003", "fail", "Workbook is missing required ID columns.", evidence="|".join(missing_id_columns)))
     else:
         for _, row in resolved.iterrows():
-            invalid_columns = [column for column in ID_COLUMNS if not _id_valid(row[column])]
+            invalid_columns = _invalid_id_columns(row)
             if not invalid_columns:
                 continue
             context = _row_context(row)
             warning_only = _is_warning_only_missing_id_branch(row)
             findings.append(_finding(
                 "SEED-003", "warn" if warning_only else "fail",
-                "Aggregate-demand placeholder branch is absent from LEAP; row retained with BranchID=-1."
+                "Approved placeholder branch is absent from LEAP; row retained for audit only."
                 if warning_only
                 else "Resolved row has one or more missing IDs.",
                 evidence="|".join(invalid_columns), **context,
@@ -2159,7 +2195,7 @@ def validate_seed_rows(
                 detail = "unparseable" if is_zero is None else "nonzero"
                 findings.append(_finding(
                     "SEED-004", "warn" if warning_only else "fail",
-                    "Nonzero aggregate-demand placeholder cannot import because BranchID=-1."
+                    "Nonzero approved placeholder cannot import because it has no real LEAP BranchID."
                     if warning_only
                     else "Missing-ID row contains a nonzero or unparseable expression.",
                     evidence=f"{detail}; ids={'|'.join(invalid_columns)}", **context,

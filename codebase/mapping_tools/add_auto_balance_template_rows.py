@@ -1,47 +1,34 @@
 #%%
-"""Append validated AUTO BALANCE rows to the active per-economy LEAP templates.
+"""Migrate existing transfer AUTO BALANCE template rows to BranchID 100.
 
-The supplied AUS workbook is a row-pattern reference only.  Each target gets
-its own Region and its own VariableID/ScenarioID/RegionID values copied from a
-matching existing fuel row; BranchID remains -1 because the new branch does
-not yet exist in that area's exported LEAP template.
+Every active template already contains the same validated 72 transfer AUTO
+BALANCE rows.  BranchID 100 is the explicit placeholder convention; it is not
+a LEAP branch ID.  This module deliberately edits only those 72 XML values and
+re-packs the XLSX archive, avoiding an expensive full-workbook rebuild.
 """
 
 from __future__ import annotations
 
 import os
-import shutil
-from copy import copy
+import re
 from pathlib import Path
-
-from openpyxl import load_workbook
-
+from xml.etree import ElementTree
+from zipfile import ZIP_DEFLATED, ZipFile
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE_ROOT = REPO_ROOT / "data" / "leap_export_templates"
-EXAMPLE_PATH = Path(r"C:\Users\Work\OneDrive - APERC\new rows transfers AUS.xlsx")
 TARGET_ECONOMIES = [
     "AUS", "BD", "PRC", "MAS", "MEX", "NZ", "PNG", "PHL", "THA", "USA", "VN",
 ]
-SHEET_NAME = "Export"
-HEADER_ROW = 3
 AUTO_BALANCE_LABEL = "AUTO BALANCE"
-ID_COLUMNS = ("BranchID", "VariableID", "ScenarioID", "RegionID")
-KEY_COLUMNS = ("Branch Path", "Variable", "Scenario", "Region")
-
-
-def _header_lookup(sheet) -> dict[str, int]:
-    """Return one-based column indexes for the fixed LEAP header row."""
-    headers = {
-        str(cell.value).strip(): cell.column
-        for cell in sheet[HEADER_ROW]
-        if cell.value is not None
-    }
-    required = set(ID_COLUMNS) | set(KEY_COLUMNS)
-    missing = sorted(required - set(headers))
-    if missing:
-        raise ValueError(f"{sheet.title} is missing LEAP columns: {missing}")
-    return headers
+AUTO_BALANCE_PLACEHOLDER_BRANCH_ID = 100
+SHEET_XML_PATH = "xl/worksheets/sheet1.xml"
+NAMESPACE = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+AUTO_BALANCE_TRANSFER_ROOTS = (
+    "Transformation\\Transfers unallocated\\",
+    "Transformation\\Refinery and blending transfers\\",
+    "Transformation\\Upstream liquids transfers\\",
+)
 
 
 def _find_target_template(economy: str) -> Path:
@@ -52,159 +39,115 @@ def _find_target_template(economy: str) -> Path:
     return candidates[0]
 
 
-def _read_example_rows() -> tuple[list[object], list[dict[str, object]]]:
-    """Read the 72 AUTO BALANCE reference rows without trusting their IDs."""
-    workbook = load_workbook(EXAMPLE_PATH, read_only=True, data_only=False)
-    try:
-        sheet = workbook[workbook.sheetnames[0]]
-        headers = [cell.value for cell in sheet[HEADER_ROW]]
-        lookup = _header_lookup(sheet)
-        rows = []
-        for values in sheet.iter_rows(min_row=HEADER_ROW + 1, values_only=True):
-            row = dict(zip(headers, values))
-            if AUTO_BALANCE_LABEL in str(row.get("Branch Path") or ""):
-                rows.append(row)
-    finally:
-        workbook.close()
+def _cell_value(cell) -> str:
+    """Return a cell's inline string or numerical value from the sheet XML."""
+    return "".join(cell.itertext())
+
+
+def _column_name(cell) -> str:
+    """Extract the Excel column letters from a cell reference such as ``AZ11252``."""
+    match = re.match(r"[A-Z]+", cell.attrib.get("r", ""))
+    return match.group(0) if match is not None else ""
+
+
+def _auto_balance_rows(template_path: Path) -> list[tuple[int, str]]:
+    """Return (row number, BranchID) for the existing AUTO BALANCE rows."""
+    with ZipFile(template_path) as archive:
+        root = ElementTree.fromstring(archive.read(SHEET_XML_PATH))
+    rows = []
+    for row in root.iter(f"{NAMESPACE}row"):
+        cells = {_column_name(cell): cell for cell in row}
+        path = _cell_value(cells.get("E")) if cells.get("E") is not None else ""
+        if path.endswith(AUTO_BALANCE_LABEL):
+            row_number = int(row.attrib["r"])
+            branch_id = _cell_value(cells.get("A")) if cells.get("A") is not None else ""
+            rows.append((row_number, branch_id))
+    return rows
+
+
+def _validate_auto_balance_structure(template_path: Path) -> None:
+    """Require the expected transfer-only set and populated non-branch IDs."""
+    with ZipFile(template_path) as archive:
+        root = ElementTree.fromstring(archive.read(SHEET_XML_PATH))
+    rows = []
+    for row in root.iter(f"{NAMESPACE}row"):
+        cells = {_column_name(cell): cell for cell in row}
+        path = _cell_value(cells.get("E")) if cells.get("E") is not None else ""
+        if path.endswith(AUTO_BALANCE_LABEL):
+            rows.append(
+                {
+                    "path": path,
+                    "variable": _cell_value(cells.get("F")) if cells.get("F") is not None else "",
+                    "scenario": _cell_value(cells.get("G")) if cells.get("G") is not None else "",
+                    "region": _cell_value(cells.get("H")) if cells.get("H") is not None else "",
+                    "variable_id": _cell_value(cells.get("B")) if cells.get("B") is not None else "",
+                    "scenario_id": _cell_value(cells.get("C")) if cells.get("C") is not None else "",
+                    "region_id": _cell_value(cells.get("D")) if cells.get("D") is not None else "",
+                }
+            )
     if len(rows) != 72:
-        raise ValueError(f"Expected 72 example AUTO BALANCE rows, found {len(rows)}")
-    if len({tuple(row[column] for column in KEY_COLUMNS) for row in rows}) != len(rows):
-        raise ValueError("Example AUTO BALANCE rows have duplicate LEAP keys.")
-    return headers, rows
+        raise ValueError(f"{template_path.name} has {len(rows)} AUTO BALANCE rows, expected 72")
+    if len({(row["path"], row["variable"], row["scenario"], row["region"]) for row in rows}) != 72:
+        raise ValueError(f"{template_path.name} has duplicate AUTO BALANCE keys")
+    if any(not row[key] for row in rows for key in ("variable_id", "scenario_id", "region_id")):
+        raise ValueError(f"{template_path.name} has an AUTO BALANCE row without a non-branch ID")
+    if any(not row["path"].startswith(AUTO_BALANCE_TRANSFER_ROOTS) for row in rows):
+        raise ValueError(f"{template_path.name} has an AUTO BALANCE row outside the approved transfer branches")
 
 
-def _target_region(sheet, lookup: dict[str, int]) -> str:
-    """Require a single target region instead of guessing from a filename."""
-    regions = {
-        str(sheet.cell(row=row, column=lookup["Region"]).value).strip()
-        for row in range(HEADER_ROW + 1, sheet.max_row + 1)
-        if sheet.cell(row=row, column=lookup["Region"]).value not in (None, "")
-    }
-    if len(regions) != 1:
-        raise ValueError(f"{sheet.title} must have one region; found {sorted(regions)}")
-    return regions.pop()
-
-
-def _matching_target_row_index(sheet, lookup: dict[str, int]) -> dict[tuple[str, object, object], int]:
-    """Index existing non-AUTO-BALANCE fuel rows by process side/variable/scenario."""
-    matches: dict[tuple[str, object, object], int] = {}
-    for row in range(HEADER_ROW + 1, sheet.max_row + 1):
-        path = str(sheet.cell(row=row, column=lookup["Branch Path"]).value or "")
-        if not path or path.endswith(AUTO_BALANCE_LABEL):
-            continue
-        key = (
-            path.rsplit("\\", 1)[0] + "\\",
-            sheet.cell(row=row, column=lookup["Variable"]).value,
-            sheet.cell(row=row, column=lookup["Scenario"]).value,
-        )
-        matches.setdefault(key, row)
-    return matches
-
-
-def _append_missing_rows(
-    template_path: Path,
-    headers: list[object],
-    example_rows: list[dict[str, object]],
-    apply_changes: bool,
-) -> dict[str, object]:
-    """Append only absent keys, atomically replacing the workbook when requested."""
-    workbook = load_workbook(template_path)
-    try:
-        sheet = workbook[SHEET_NAME]
-        lookup = _header_lookup(sheet)
-        target_region = _target_region(sheet, lookup)
-        existing_keys = {
-            tuple(sheet.cell(row=row, column=lookup[column]).value for column in KEY_COLUMNS)
-            for row in range(HEADER_ROW + 1, sheet.max_row + 1)
-        }
-        target_row_index = _matching_target_row_index(sheet, lookup)
-        planned_rows = []
-        for example_row in example_rows:
-            row = dict(example_row)
-            row["Region"] = target_region
-            key = tuple(row[column] for column in KEY_COLUMNS)
-            if key in existing_keys:
-                continue
-            match_key = (
-                str(row["Branch Path"]).rsplit("\\", 1)[0] + "\\",
-                row["Variable"],
-                row["Scenario"],
-            )
-            matched_row = target_row_index.get(match_key)
-            if matched_row is None:
-                raise ValueError(f"No target row matches AUTO BALANCE key {match_key}")
-            for column in ("VariableID", "ScenarioID", "RegionID"):
-                row[column] = sheet.cell(row=matched_row, column=lookup[column]).value
-            row["BranchID"] = -1
-            planned_rows.append((row, matched_row))
-
-        if len(planned_rows) not in {0, 72}:
-            raise ValueError(
-                f"{template_path.name} has a partial AUTO BALANCE set: "
-                f"would append {len(planned_rows)} rows, not 0 or 72."
-            )
-        if apply_changes and planned_rows:
-            destination_row = sheet.max_row + 1
-            for row, matched_row in planned_rows:
-                for column_index, header in enumerate(headers, start=1):
-                    source_cell = sheet.cell(row=matched_row, column=column_index)
-                    destination_cell = sheet.cell(row=destination_row, column=column_index)
-                    destination_cell._style = copy(source_cell._style)
-                    if source_cell.number_format:
-                        destination_cell.number_format = source_cell.number_format
-                    destination_cell.value = row.get(header)
-                destination_row += 1
+def _migrate_existing_rows(template_path: Path, apply_changes: bool) -> dict[str, object]:
+    """Change only approved -1 placeholders to 100, using an atomic archive replace."""
+    _validate_auto_balance_structure(template_path)
+    rows = _auto_balance_rows(template_path)
+    if len(rows) != 72:
+        raise ValueError(f"{template_path.name} has {len(rows)} AUTO BALANCE rows, expected 72")
+    ids = {branch_id for _, branch_id in rows}
+    if not ids.issubset({"-1", "#N/A", str(AUTO_BALANCE_PLACEHOLDER_BRANCH_ID)}):
+        raise ValueError(f"{template_path.name} has unexpected AUTO BALANCE BranchIDs: {sorted(ids)}")
+    target_rows = [
+        row_number
+        for row_number, branch_id in rows
+        if branch_id in {"-1", "#N/A"}
+    ]
+    if apply_changes and target_rows:
+        with ZipFile(template_path) as source_archive:
+            sheet_xml = source_archive.read(SHEET_XML_PATH).decode("utf-8")
+            for row_number in target_rows:
+                pattern = rf'(<c r="A{row_number}"[^>]*><v>)(?:-1|#N/A)(</v></c>)'
+                sheet_xml, substitutions = re.subn(
+                    pattern,
+                    rf"\g<1>{AUTO_BALANCE_PLACEHOLDER_BRANCH_ID}\g<2>",
+                    sheet_xml,
+                    count=1,
+                )
+                if substitutions != 1:
+                    raise ValueError(f"Could not safely update BranchID at A{row_number} in {template_path.name}")
             temporary_path = template_path.with_suffix(".tmp.xlsx")
-            workbook.save(temporary_path)
-            os.replace(temporary_path, template_path)
-        return {
-            "template": template_path.name,
-            "region": target_region,
-            "rows_added": len(planned_rows),
-        }
-    finally:
-        workbook.close()
+            with ZipFile(temporary_path, "w", ZIP_DEFLATED) as destination_archive:
+                for item in source_archive.infolist():
+                    content = sheet_xml.encode("utf-8") if item.filename == SHEET_XML_PATH else source_archive.read(item.filename)
+                    destination_archive.writestr(item, content)
+        os.replace(temporary_path, template_path)
+    return {"template": template_path.name, "rows_migrated": len(target_rows)}
 
 
 def validate_auto_balance_rows(template_path: Path) -> None:
     """Confirm the added set is complete, key-unique, and explicitly unresolved."""
-    workbook = load_workbook(template_path, read_only=True, data_only=False)
-    try:
-        sheet = workbook[SHEET_NAME]
-        lookup = _header_lookup(sheet)
-        rows = []
-        for row_number in range(HEADER_ROW + 1, sheet.max_row + 1):
-            path = str(sheet.cell(row=row_number, column=lookup["Branch Path"]).value or "")
-            if path.endswith(AUTO_BALANCE_LABEL):
-                rows.append({
-                    column: sheet.cell(row=row_number, column=lookup[column]).value
-                    for column in (*ID_COLUMNS, *KEY_COLUMNS)
-                })
-        if len(rows) != 72:
-            raise ValueError(f"{template_path.name} has {len(rows)} AUTO BALANCE rows, expected 72")
-        if len({tuple(row[column] for column in KEY_COLUMNS) for row in rows}) != 72:
-            raise ValueError(f"{template_path.name} has duplicate AUTO BALANCE keys")
-        if {row["BranchID"] for row in rows} != {-1}:
-            raise ValueError(f"{template_path.name} AUTO BALANCE rows must keep BranchID=-1")
-        if any(row[column] in (None, "") for row in rows for column in ("VariableID", "ScenarioID", "RegionID")):
-            raise ValueError(f"{template_path.name} has missing non-branch IDs")
-    finally:
-        workbook.close()
+    _validate_auto_balance_structure(template_path)
+    rows = _auto_balance_rows(template_path)
+    if len(rows) != 72:
+        raise ValueError(f"{template_path.name} has {len(rows)} AUTO BALANCE rows, expected 72")
+    if {branch_id for _, branch_id in rows} != {str(AUTO_BALANCE_PLACEHOLDER_BRANCH_ID)}:
+        raise ValueError(f"{template_path.name} AUTO BALANCE rows must keep BranchID=100")
 
 
 def update_all_templates(apply_changes: bool = False) -> list[dict[str, object]]:
-    """Dry-run or append the complete row set to every active economy template."""
-    headers, example_rows = _read_example_rows()
+    """Dry-run or migrate the complete existing set in every active template."""
     results = []
     for economy in TARGET_ECONOMIES:
         template_path = _find_target_template(economy)
-        result = _append_missing_rows(
-            template_path,
-            headers=headers,
-            example_rows=example_rows,
-            apply_changes=apply_changes,
-        )
-        if apply_changes or result["rows_added"] == 0:
+        result = _migrate_existing_rows(template_path, apply_changes=apply_changes)
+        if apply_changes or result["rows_migrated"] == 0:
             validate_auto_balance_rows(template_path)
         results.append(result)
         print(result)
