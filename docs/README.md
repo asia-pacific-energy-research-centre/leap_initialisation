@@ -46,6 +46,7 @@ and [`process_map_agent.md`](process_map_agent.md).
 | [`special_rules_and_design_decisions.md`](special_rules_and_design_decisions.md) | The decision log — `INIT-*`, `SEED-*`, `CROSS-*`. Check here before assuming odd behaviour is a bug. |
 | [`check_registry.md`](check_registry.md) | Directory of every readiness check across five families (F1–F5), with boundary-vs-local and gateability rules. Enforced by `tests/test_check_registry.py`. |
 | [`aggregate_preflight_source_routing_contract.md`](aggregate_preflight_source_routing_contract.md) | How the `00_APEC` compressed preflight selects its source files. |
+| [`esto_vintage_onboarding.md`](esto_vintage_onboarding.md) | Turning a raw ESTO extract into a usable source table: canonical flow/product labels, `is_subtotal` labelling, and structurally-required rows. Run this when a new vintage file arrives. |
 
 ## Baseline seeds and optional results-update tooling
 

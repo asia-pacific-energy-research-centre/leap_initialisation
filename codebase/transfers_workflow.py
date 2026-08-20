@@ -717,6 +717,126 @@ def _normalize_transfer_process_name(process_config: dict, flow_code: str) -> st
     return text
 
 
+def balance_one_sided_transfer_flow(
+    flow_rows: pd.DataFrame,
+    year_cols: list[int],
+    economy: str,
+    flow_code: str,
+    policy: dict | None = None,
+) -> tuple[pd.DataFrame, dict | None]:
+    """Add a nominal counterpart to a transfer flow that only has one sign.
+
+    A transfer flow whose products all leave (or all arrive) cannot become a
+    LEAP process, because a process needs both a feedstock and an output. Where
+    that happens, append one row carrying ``counterpart_value`` on the empty
+    side in every year that is one-sided, leaving every measured value exactly
+    as ESTO records it.
+
+    Returns ``(rows, diagnostic)``. ``diagnostic`` is ``None`` when the flow was
+    already two-sided or the policy is disabled, so callers can report only the
+    flows they actually changed.
+    """
+    policy = policy if policy is not None else ONE_SIDED_TRANSFER_BALANCE_POLICY
+    if not isinstance(policy, dict) or not policy.get("enabled", False):
+        return flow_rows, None
+    if flow_rows is None or flow_rows.empty:
+        return flow_rows, None
+
+    present_years = [year for year in year_cols if year in flow_rows.columns]
+    if not present_years:
+        return flow_rows, None
+
+    values = flow_rows[present_years].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+    negative_by_year = values.clip(upper=0.0).sum(axis=0)
+    positive_by_year = values.clip(lower=0.0).sum(axis=0)
+
+    # A year needs a counterpart only when it has mass on exactly one side.
+    has_negative = negative_by_year.abs() > 1e-9
+    has_positive = positive_by_year.abs() > 1e-9
+    needs_output = has_negative & ~has_positive
+    needs_input = has_positive & ~has_negative
+    if not bool(needs_output.any() or needs_input.any()):
+        return flow_rows, None
+
+    input_year_list = [year for year in present_years if needs_input.get(year, False)]
+    counterpart_value = _auto_balance_value(
+        positive_by_year[input_year_list] if input_year_list else None, policy
+    )
+    product = str(policy.get("product") or AUTO_BALANCE_PRODUCT_LABEL)
+
+    template = flow_rows.iloc[0].copy()
+    for column in present_years:
+        template[column] = 0.0
+    for column, value in (("products", product), ("subfuels", "x")):
+        if column in flow_rows.columns:
+            template[column] = value
+    if "fuels" in flow_rows.columns:
+        template["fuels"] = product
+    for column in ("is_subtotal", "subtotal_layout", "subtotal_results"):
+        if column in flow_rows.columns:
+            template[column] = False
+
+    for year in present_years:
+        if bool(needs_output.get(year, False)):
+            template[year] = counterpart_value
+        elif bool(needs_input.get(year, False)):
+            template[year] = -counterpart_value
+
+    balanced = pd.concat(
+        [flow_rows, pd.DataFrame([template], columns=flow_rows.columns)],
+        ignore_index=True,
+    )
+    input_years = input_year_list
+    max_implied_efficiency_percent = None
+    if input_years and counterpart_value:
+        max_implied_efficiency_percent = float(
+            positive_by_year[input_years].abs().max() / abs(counterpart_value) * 100.0
+        )
+    diagnostic = {
+        "economy": economy,
+        "flow_code": flow_code,
+        "counterpart_product": product,
+        "counterpart_value": counterpart_value,
+        "output_years_added": sorted(int(y) for y in present_years if needs_output.get(y, False)),
+        "input_years_added": sorted(int(y) for y in input_years),
+        "measured_side": "outflow_only" if bool(needs_output.any()) else "inflow_only",
+        "max_implied_efficiency_percent": max_implied_efficiency_percent,
+    }
+    return balanced, diagnostic
+
+
+def _report_one_sided_transfer_balance(diagnostic: dict) -> None:
+    """Print a synthesized-counterpart notice, including the efficiency risk."""
+    years = diagnostic["output_years_added"] or diagnostic["input_years_added"]
+    span = f"{years[0]}-{years[-1]}" if years else "none"
+    print(
+        f"[INFO] One-sided transfer flow {diagnostic['flow_code']} for "
+        f"{diagnostic['economy']} ({diagnostic['measured_side']}): added "
+        f"{diagnostic['counterpart_value']:,.4g} PJ of "
+        f"'{diagnostic['counterpart_product']}' for {span} so the flow can form a "
+        "LEAP process. Measured values are unchanged."
+    )
+    # Inflow-only counterparts are sized against the efficiency ceiling rather
+    # than left at the floor, so this should never exceed it. Report it anyway:
+    # if it ever does, the sizing is wrong and the measured output gets clipped.
+    implied_percent = diagnostic.get("max_implied_efficiency_percent")
+    if implied_percent is None:
+        return
+    ceiling = float(
+        getattr(workflow_cfg, "TRANSFORMATION_PROCESS_EFFICIENCY_MAX_PERCENT", 1000.0)
+    )
+    clipping_on = bool(
+        getattr(workflow_cfg, "TRANSFORMATION_CLIP_PROCESS_EFFICIENCY_TO_MAX", True)
+    )
+    if clipping_on and implied_percent > ceiling + 1e-6:
+        print(
+            f"[WARN] {diagnostic['economy']} {diagnostic['flow_code']}: implied process "
+            f"efficiency {implied_percent:,.0f}% still exceeds the ceiling of "
+            f"{ceiling:,.0f}% after auto-sizing the counterpart. The measured output "
+            "will be clipped — this indicates a sizing bug, not a data problem."
+        )
+
+
 def _build_template_processes(
     flow_rows: pd.DataFrame,
     year_cols: list[int],
@@ -826,6 +946,14 @@ def build_transfer_rows(
     combined_processes = economy_config.get(TRANSFER_COMBINED_FLOW_KEY)
     if combined_processes:
         combined_rows = _combine_flow_rows(data, economy, flow_codes)
+        # Same one-sided guard as the per-flow branch below. Economies with a
+        # `transfer_flows_combined` config never reach that loop, so without
+        # this they keep the silent no-process behaviour (e.g. 13_PNG).
+        combined_rows, combined_one_sided = balance_one_sided_transfer_flow(
+            combined_rows, year_cols, economy, TRANSFER_COMBINED_FLOW_KEY
+        )
+        if combined_one_sided is not None:
+            _report_one_sided_transfer_balance(combined_one_sided)
         if not combined_rows.empty:
             for process_cfg in combined_processes:
                 records.extend(
@@ -850,6 +978,13 @@ def build_transfer_rows(
         flow_rows = core.select_flow_rows(data, economy, flow_code)
         if flow_rows.empty:
             continue
+        # A one-sided flow cannot form a process; give it a nominal counterpart
+        # before any process config or template sees it.
+        flow_rows, one_sided_diagnostic = balance_one_sided_transfer_flow(
+            flow_rows, year_cols, economy, flow_code
+        )
+        if one_sided_diagnostic is not None:
+            _report_one_sided_transfer_balance(one_sided_diagnostic)
         flow_processes = economy_config.get(flow_code)
         if not flow_processes:
             flow_processes = _build_template_processes(flow_rows, year_cols, start_year)
@@ -1335,6 +1470,69 @@ DEFAULT_TRANSFER_UNALLOCATED_POLICY = {
     "max_efficiency_ratio": 50.0,
     "merge_all_when_triggered": True,
 }
+
+# One-sided transfer flows -------------------------------------------------
+#
+# Some economies record a transfer flow with products leaving and nothing
+# arriving (or the reverse). `05_PRC` is the largest: 5,228 PJ of products
+# transferred out in 2022 with no receiving product in the 2024/2025 ESTO
+# vintages (the 2026 vintage adds it as `06.05 Other hydrocarbons`). A LEAP
+# transformation process needs both an input and an output, so such a flow
+# produces no process at all and the economy's transfers silently vanish.
+#
+# Policy: keep the measured side exactly as ESTO records it and add a nominal
+# counterpart on the empty side. That is the smallest addition that makes a
+# valid LEAP process while leaving the ESTO balance untouched — the imbalance
+# ESTO already carries surfaces as process loss rather than being papered over
+# with an invented quantity.
+# The counterpart is carried on a dedicated fuel rather than a real product, so
+# it is always identifiable as synthetic wherever it surfaces. `99` sits outside
+# the ESTO product vocabulary (which runs 01-21), and the all-caps name makes it
+# unmistakable in LEAP branch listings and balance outputs.
+AUTO_BALANCE_PRODUCT_CODE = "99"
+AUTO_BALANCE_PRODUCT_LABEL = "99 AUTO BALANCE"
+AUTO_BALANCE_LEAP_FUEL_NAME = "AUTO BALANCE"
+
+ONE_SIDED_TRANSFER_BALANCE_POLICY = {
+    "enabled": True,
+    # Floor for the counterpart, in the source's energy units (PJ). The actual
+    # value is raised above this only when needed to keep the implied process
+    # efficiency within the configured ceiling — see `_auto_balance_value`.
+    "minimum_counterpart_value": 1.0,
+    # Synthetic fuel carrying the counterpart. Deliberately not a real product:
+    # attributing the balancing quantity to (say) refinery feedstocks would put
+    # invented energy on a fuel that downstream balances treat as real.
+    "product": AUTO_BALANCE_PRODUCT_LABEL,
+}
+
+
+def _auto_balance_value(measured_output_by_year, policy: dict) -> float:
+    """Return the counterpart magnitude to use for a one-sided transfer flow.
+
+    For an *inflow-only* flow the counterpart becomes the process feedstock, so
+    the implied efficiency is ``measured_output / counterpart``. Sizing the
+    counterpart against the configured ceiling keeps every synthesized process
+    inside it by construction, instead of relying on an operator noticing a
+    warning and raising the ceiling by hand.
+
+    Outflow-only flows have the counterpart on the output side, where the
+    implied efficiency is very small rather than very large, so they simply take
+    the floor.
+    """
+    floor = float(policy.get("minimum_counterpart_value", 1.0))
+    if measured_output_by_year is None or len(measured_output_by_year) == 0:
+        return floor
+    peak = float(abs(measured_output_by_year).max())
+    if peak <= 0.0:
+        return floor
+    ceiling_percent = float(
+        getattr(workflow_cfg, "TRANSFORMATION_PROCESS_EFFICIENCY_MAX_PERCENT", 1000.0)
+    )
+    if not getattr(workflow_cfg, "TRANSFORMATION_CLIP_PROCESS_EFFICIENCY_TO_MAX", True):
+        return floor
+    if ceiling_percent <= 0.0:
+        return floor
+    return max(floor, peak / (ceiling_percent / 100.0))
 LEAP_API_AVAILABLE = leap_api.is_available()
 
 

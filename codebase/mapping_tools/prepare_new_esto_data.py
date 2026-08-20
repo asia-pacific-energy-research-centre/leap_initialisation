@@ -1,9 +1,13 @@
 """New ESTO vintage data preparation.
 
 When a fresh ESTO source extract arrives (e.g. a new economy/year vintage
-such as ``12NZ_2026.csv``), two things are typically missing before it can be
+such as ``12NZ_2026.csv``), three things are typically wrong before it can be
 used in the baseline seed process:
 
+0. Flow/product labels drift — the same ESTO code arrives under a different
+   name (a typo, stray whitespace, or an outright wrong word). Much of the
+   codebase matches these labels by exact string, so a drifted label drops
+   the rows silently instead of erroring. See ``CANONICAL_FLOW_LABELS``.
 1. ``is_subtotal`` — the extract usually has no subtotal flag at all.
 2. A handful of structurally-required rows that recent ESTO vintages split
    out but a raw extract sometimes omits:
@@ -38,6 +42,47 @@ COMPLETION_CONFIG = {
     # already rolled out as an always-zero placeholder across every economy
     # in the current APEC vintage — kept structurally present here too.
     "always_required_products": ["16.12 Hydrogen"],
+}
+
+# Reviewed canonical labels, keyed by ESTO code. A fresh extract sometimes
+# reuses a code under a different name; downstream code matches many of these
+# labels by exact string (e.g. `TRANSFER_FLOW_CODES` in transfers_workflow.py),
+# so an unrepaired rename drops the rows silently rather than erroring.
+#
+# EVERY repair is listed here explicitly, including whitespace-only ones. There
+# is deliberately no general "collapse the spacing" rule: a silent normalisation
+# is exactly the kind of unreviewed edit to source data this table exists to
+# prevent. If a new vintage arrives with a drifted label and no entry here,
+# `normalise_esto_labels` raises rather than guessing.
+#
+# Target spelling is the one this repository's ESTO data tables and mapping
+# sheets already use (the 2024/2025 aggregates), which is not always the one in
+# `all_products_and_flows.ESTO_PRODUCT_LIST` — that list carries two LEAP-side
+# spellings (`15.04 Black liqour`, `07.15 Paraffin  waxes`) documented in
+# `configuration/known_leap_label_exceptions.py`. Entries for those two codes
+# are therefore expected to differ from the canonical list, and are what stops
+# the divergence check firing on them.
+#
+# Only add an entry after confirming the code's *meaning* is unchanged and the
+# extract's label is wrong. A genuine new flow deserves a new code, not a
+# rename entry here.
+CANONICAL_FLOW_LABELS = {
+    # 2026 extract renamed a transfers subflow to a transformation one. The
+    # code is unambiguously a transfer; the name is not. Six economies keep
+    # their whole base-year transfer mass under this code.
+    "08.99": "08.99 Transfers nonspecified",
+    # 2026 extract typo: "Transmision".
+    "10.02": "10.02 Transmission and distribution losses",
+}
+
+CANONICAL_PRODUCT_LABELS = {
+    # 2026 extract doubles the space after the slash.
+    "06.04": "06.04 Additives/ oxygenates",
+    # 2026 extract (and ESTO_PRODUCT_LIST) double the space before "waxes".
+    "07.15": "07.15 Paraffin waxes",
+    # 2026 extract (and ESTO_PRODUCT_LIST) use the typo "Black liqour". The
+    # mapping sheets use "Black liquor"; see known_leap_label_exceptions.py.
+    "15.04": "15.04 Black liquor",
 }
 
 LNG_SPLIT_CONFIG = {
@@ -141,6 +186,140 @@ def _require_esto_columns(df: pd.DataFrame) -> None:
     missing = [column for column in REQUIRED_ESTO_COLUMNS if column not in df.columns]
     if missing:
         raise ValueError(f"ESTO data is missing required columns: {missing}")
+
+
+# --------------------------------------------------------------------------
+# Step 0 — canonical flow/product labels
+# --------------------------------------------------------------------------
+def _canonical_vocabulary() -> dict[str, dict[str, str]]:
+    """Return ``{column: {code: expected label}}`` for the maintained vocabulary.
+
+    `all_products_and_flows` is the repository's maintained ESTO vocabulary. It
+    agrees exactly with the 2024/2025 production tables on every code except the
+    two spellings carried by `CANONICAL_PRODUCT_LABELS`, which override it.
+    """
+    from codebase.configuration.all_products_and_flows import (
+        ESTO_PRODUCT_LIST,
+        ESTO_SECTORS,
+    )
+
+    vocabulary: dict[str, dict[str, str]] = {}
+    for column, labels, overrides in (
+        ("flows", ESTO_SECTORS, CANONICAL_FLOW_LABELS),
+        ("products", ESTO_PRODUCT_LIST, CANONICAL_PRODUCT_LABELS),
+    ):
+        expected = {}
+        for label in labels:
+            code = extract_simple_esto_code(label)
+            if code:
+                expected[code] = str(label).strip()
+        expected.update(overrides)
+        vocabulary[column] = expected
+    return vocabulary
+
+
+def normalise_esto_labels(
+    esto_df: pd.DataFrame,
+    reference_dfs: list[pd.DataFrame] | None = None,
+    strict: bool = True,
+) -> tuple[pd.DataFrame, dict]:
+    """Return ``esto_df`` with canonical ``flows``/``products`` labels.
+
+    Every repair is an explicit entry in ``CANONICAL_FLOW_LABELS`` /
+    ``CANONICAL_PRODUCT_LABELS``, keyed by ESTO code — including whitespace-only
+    ones. There is no general normalisation rule, so nothing is rewritten
+    without a reviewed decision behind it.
+
+    A label that differs from the maintained vocabulary and has no entry raises
+    ``UnreviewedEstoLabelError`` (set ``strict=False`` to collect instead). That
+    is the signal that a new vintage has changed something: confirm the meaning
+    is unchanged, then add an entry.
+
+    A code absent from the vocabulary entirely is reported but does not raise —
+    ESTO adds codes between issues, and the 2024/2025 tables already carry ten
+    the vocabulary has not caught up with.
+    """
+    _require_esto_columns(esto_df)
+    working = esto_df.copy()
+    renames: list[dict] = []
+
+    for column, canonical in (
+        ("flows", CANONICAL_FLOW_LABELS),
+        ("products", CANONICAL_PRODUCT_LABELS),
+    ):
+        original = working[column].astype(str)
+        codes = original.map(extract_simple_esto_code)
+        resolved = pd.Series(
+            [canonical.get(code, label) for code, label in zip(codes, original)],
+            index=working.index,
+        )
+        changed = resolved.ne(original)
+        for before, after in (
+            pd.DataFrame({"before": original[changed], "after": resolved[changed]})
+            .drop_duplicates()
+            .itertuples(index=False)
+        ):
+            renames.append({"column": column, "before": before, "after": after})
+        working[column] = resolved
+
+    divergences, unknown_codes = _check_labels_against_vocabulary(working)
+    if divergences and strict:
+        raise UnreviewedEstoLabelError(divergences)
+
+    summary = {
+        "label_renames": renames,
+        "label_renames_applied": int(len(renames)),
+        "unreviewed_label_divergences": divergences,
+        "codes_absent_from_vocabulary": unknown_codes,
+    }
+    return working, summary
+
+
+class UnreviewedEstoLabelError(ValueError):
+    """A vintage uses an unreviewed label for a known ESTO code."""
+
+    def __init__(self, divergences: list[dict]) -> None:
+        self.divergences = divergences
+        detail = "\n".join(
+            f"  {item['column']} {item['code']}: vintage has {item['vintage_label']!r}, "
+            f"expected {item['expected_label']!r}"
+            for item in divergences
+        )
+        super().__init__(
+            f"{len(divergences)} ESTO label(s) differ from the maintained vocabulary "
+            f"with no reviewed entry:\n{detail}\n"
+            "Confirm the code's meaning is unchanged, then add it to "
+            "CANONICAL_FLOW_LABELS / CANONICAL_PRODUCT_LABELS in "
+            "prepare_new_esto_data.py. Do not normalise it silently."
+        )
+
+
+def _check_labels_against_vocabulary(
+    esto_df: pd.DataFrame,
+) -> tuple[list[dict], list[dict]]:
+    """Return (divergences, codes absent from the vocabulary)."""
+    vocabulary = _canonical_vocabulary()
+    divergences: list[dict] = []
+    unknown: list[dict] = []
+    for column in ("flows", "products"):
+        if column not in esto_df.columns:
+            continue
+        expected_by_code = vocabulary[column]
+        for label in sorted({str(value).strip() for value in esto_df[column].unique()}):
+            code = extract_simple_esto_code(label)
+            if not code:
+                continue
+            expected = expected_by_code.get(code)
+            if expected is None:
+                unknown.append({"column": column, "code": code, "vintage_label": label})
+            elif label != expected:
+                divergences.append({
+                    "column": column,
+                    "code": code,
+                    "vintage_label": label,
+                    "expected_label": expected,
+                })
+    return divergences, unknown
 
 
 # --------------------------------------------------------------------------
@@ -624,9 +803,12 @@ def prepare_new_esto_data(
     esto_df: pd.DataFrame,
     reference_dfs: list[pd.DataFrame] | None = None,
     ninth_df: pd.DataFrame | None = None,
+    strict_labels: bool = True,
 ) -> tuple[pd.DataFrame, dict]:
     """Prepare a freshly-received ESTO vintage for the baseline seed process.
 
+    0. Repair drifted flow/product labels so every later step (and every
+       downstream label match) sees canonical names.
     1. Append missing ``16.01.99`` completion rows and ``09.06.02`` LNG split
        rows (computed directly from ``esto_df``'s own data).
     2. Label ``is_subtotal`` for every row (original and newly added),
@@ -641,6 +823,9 @@ def prepare_new_esto_data(
     added and how ``is_subtotal`` was resolved (for manual review).
     """
     _require_esto_columns(esto_df)
+    # Step 0 first: the builders below match flows/products by label, so they
+    # must see canonical names.
+    esto_df, label_summary = normalise_esto_labels(esto_df, reference_dfs, strict=strict_labels)
     completion_product_codes = _reference_product_codes(
         reference_dfs,
         flow_code=extract_simple_esto_code(COMPLETION_CONFIG["completion_flow"]),
@@ -664,6 +849,7 @@ def prepare_new_esto_data(
         "commercial_services_unallocated_rows_added": len(completion_rows),
         "lng_split_rows_added": len(lng_rows),
         "output_rows": len(labelled),
+        **label_summary,
         **subtotal_summary,
     }
     return labelled, summary

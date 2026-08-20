@@ -46,6 +46,7 @@ not by this document.
 | **Equal-split fallback** | If neither economy nor APEC shares are available, the value is divided equally among eligible mapped targets. Protected gas/coal transformation parents are instead left unallocated and reported when an arbitrary split would be unsafe. |
 | **Derived ratio** | A LEAP parameter is calculated from energy series, for example output divided by feedstock. |
 | **Proxy** | A hard-to-isolate flow is represented as activity multiplied by an intensity calibrated to reproduce its target energy. |
+| **Base-year carry-forward** | The base-year value is held flat across the projection horizon because the source supplies no projection for that flow. It is a deliberate placeholder, not an estimate of how the flow evolves. |
 | **LEAP dispatch** | LEAP calculates the balance from the seeded assumptions, including the imports required when seed imports are zero. |
 | **Optional results update** | Implemented, under-review behavior that reads LEAP results and changes permitted production, capacity, or export levers. It is not part of the normal baseline-seed method. |
 
@@ -172,6 +173,109 @@ All transfer projections use sign-stable allocation. See
 [`codebase/transfers_workflow.py`](../codebase/transfers_workflow.py) and
 [`codebase/functions/transfers_utils.py`](../codebase/functions/transfers_utils.py).
 
+### One-sided transfer flows
+
+Some economies record a transfer flow with products leaving and nothing
+arriving, or the reverse. A LEAP transformation process needs both a feedstock
+and an output, so such a flow used to produce **no process at all** — silently,
+with no error. `05_PRC` lost 5,228 PJ of 2022 transfers this way.
+
+**Method: keep the measured side exactly as ESTO records it and add a
+counterpart on the empty side, carried on a dedicated synthetic fuel, in each
+year that is one-sided.** This is the smallest addition that makes a valid LEAP
+process while leaving every measured value untouched. The imbalance ESTO already
+carries then surfaces as process loss instead of being papered over.
+
+The counterpart fuel is **`99 AUTO BALANCE`** — a real LEAP fuel named
+`AUTO BALANCE`, but deliberately *not* a real ESTO product. Code `99` sits
+outside the ESTO product vocabulary (which runs `01`–`21`), and the all-caps
+name makes it unmistakable in branch listings and balance outputs. Attributing
+the balancing quantity to a real product such as refinery feedstocks would put
+invented energy onto a fuel that downstream balances treat as genuine; keeping
+it on its own fuel means every consumer can identify and exclude it.
+
+**Sizing.** The counterpart is 1 PJ (the floor) except where that would push a
+process past the efficiency ceiling. For an *inflow-only* flow the counterpart
+becomes the feedstock, so the implied efficiency is
+`measured_output / counterpart` — at a fixed 1 PJ that exceeds the default
+`TRANSFORMATION_PROCESS_EFFICIENCY_MAX_PERCENT` of 1000% for any flow above
+10 PJ, and clipping is on by default. The counterpart is therefore raised to
+`peak_measured_output / (ceiling / 100)` whenever that exceeds the floor, so
+the ceiling holds by construction rather than by an operator noticing a warning.
+Outflow-only flows put the counterpart on the output side, where the implied
+efficiency is very small rather than very large, and always take the floor.
+
+Configuration is `ONE_SIDED_TRANSFER_BALANCE_POLICY` in
+[`transfers_workflow.py`](../codebase/transfers_workflow.py); every synthesized
+counterpart is announced on the run log with its value and year span.
+
+Affected base years in the active 2024 vintage: `05_PRC` (outflow-only, both
+`08.02` and `08.03`) and `13_PNG` (outflow-only). `21_VN` is inflow-only in
+1998-2016 but two-sided in the base year. Outside seed scope, `04_CHL` is
+inflow-only in 2024 only, and `07_INA` becomes outflow-only from the 2025
+vintage. Rolling up to the `08 Transfers` parent does not resolve any of them —
+the one-sidedness is present at leaf, subflow-sum and parent level alike.
+
+### Projection availability and the base-year carry-forward
+
+The 9th Outlook supplies post-base-year transfer values for only four APEC
+economies — `01_AUS`, `03_CDA`, `09_ROK` and `20_USA`. For every other economy
+with real base-year transfers the 9th holds exactly `0.0` in all projection
+years, in both scenarios. Measured across the eleven active seed economies as of
+2026-08-20: `01_AUS` and `20_USA` have projections; `02_BD`, `05_PRC`, `11_MEX`,
+`12_NZ`, `13_PNG` and `21_VN` have a non-zero base year and an all-zero
+projection; `19_THA` is zero in the base year too; `10_MAS` and `15_PHL` have no
+9th transfer rows at all.
+
+**Method: where the 9th supplies a projection it is used as-is, including
+genuine zeros. Where it supplies none, the ESTO base-year value is carried
+forward flat across the horizon** (see the **Base-year carry-forward** label).
+Current Accounts remains base-year only and is unaffected.
+
+The state is decided per `(economy, scenario)` before the projection is merged
+into ESTO, because the merge in
+[`ninth_projection_mapping.py`](../codebase/functions/ninth_projection_mapping.py)
+fills unmatched projection years with `0.0` and after that point an absent
+projection is indistinguishable from a supplied zero:
+
+```text
+projection_unavailable :=
+      ESTO base-year transfer mass for the economy  >  tolerance
+  AND 9th rows exist for (economy, scenario)
+  AND every 9th projection year is exactly 0.0   (not NaN, not near-zero)
+```
+
+with `projection_supplied` (any non-zero projection year), `structural_zero`
+(the base year is itself zero, so there is nothing to carry) and `no_ninth_rows`
+as the complementary states. The "exactly `0.0`" test is deliberate — a
+near-zero tolerance here would reclassify small real forecasts as missing.
+
+**Why carry-forward rather than zero.** Zero is definitely wrong: it asserts
+that transfers cease the year after the base year, which no source claims. The
+honest reading of an all-zero projection is that the 9th has no transfer
+projection for that economy, and this repository has neither the information nor
+the remit to estimate how transfers should evolve — that belongs in the detailed
+modelling. A flat carry-forward is the placeholder that looks reasonable in the
+seed, keeps the base-year boundary continuous, and can be replaced by real
+modelling later. It is recorded as a placeholder precisely so it is visible as
+one.
+
+This is the opposite treatment from stock changes and statistical differences,
+which stay zero outside Current Accounts. Those are balancing residuals with no
+projection meaning; transfers are a real physical flow that four economies do
+project.
+
+**Nice to have — proxy-based transfer projections.** The better long-term method
+is the one already used for own-use and losses: drive each transfer process from
+a related activity series rather than holding it flat. The natural pairing is
+upstream transfers on fossil-fuel production, refinery and blending transfers on
+refinery and petrochemical activity, and transfers unallocated on a mix of the
+two. That would need its own activity configuration, fallback tiers and
+conservation treatment, so it is out of scope for now and recorded here as a
+future improvement rather than a planned change. See
+[Proxy formula and source hierarchy](#proxy-formula-and-source-hierarchy) for
+the pattern it would follow.
+
 ## Own-use and loss flow ownership
 
 This table covers every configured `10.01` child, including disabled proxies.
@@ -293,7 +397,13 @@ recalculated system:
 - `10.01.18 CCS` remains unestimated rather than receiving an invented
   fallback.
 - Stock changes and statistical differences have no maintained projection
-  method and therefore remain zero outside Current Accounts.
+  method and therefore remain zero outside Current Accounts. Transfers are
+  deliberately treated differently: they carry the base year forward rather than
+  going to zero, because they are a real flow rather than a balancing residual.
+- The transfer base-year carry-forward is a placeholder, not a projection. The
+  intended replacement is activity-driven proxies on the own-use/loss pattern
+  (fossil-fuel production, refinery and petrochemical activity, and a mix for
+  the unallocated process). Revisit when detailed transfer modelling exists.
 - Protected gas/coal aggregate transformation projections can remain
   unallocated when there is no economy history. Diagnostics are preferred to
   an arbitrary split.
