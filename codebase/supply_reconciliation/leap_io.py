@@ -80,6 +80,9 @@ from codebase.functions.baseline_seed_validation import (
     prepare_seed_rows_for_write,
     validate_seed_rows,
 )
+from codebase.functions.baseline_seed_structure_migration import (
+    build_missing_branch_validation_exceptions,
+)
 from codebase.analysis.missing_branch_esto_vintage_impact import (
     CREATION_INSTRUCTION_COLUMNS,
     build_creation_instructions_for_run,
@@ -1126,9 +1129,18 @@ def save_combined_supply_transformation_export(
         diagnostic_stem=diagnostic_stem,
         required_years_by_scenario=required_years_by_scenario,
         required_scenarios_by_source=required_scenarios_by_source,
+        exceptions=build_missing_branch_validation_exceptions(),
         blocking_findings_are_warnings=blocking_findings_are_warnings,
         economy=str(economy_label),
         run_id=diagnostic_stem,
+        template_branch_paths=(
+            leap_export_template_resolver.resolve_template_branch_paths_or_apec_union(economy_label)
+            if leap_export_template_resolver.is_aggregate_economy(economy_label)
+            else None
+        ),
+        validate_template_ids=not leap_export_template_resolver.is_aggregate_economy(economy_label),
+        validate_template_share_completeness=not leap_export_template_resolver.is_aggregate_economy(economy_label),
+        missing_template_branches_are_warnings=leap_export_template_resolver.is_aggregate_economy(economy_label),
     )
     leap_data = validation.resolved_rows.drop(
         columns=[SOURCE_WORKFLOW_COLUMN, SOURCE_FILE_COLUMN, "source_excel_row"],
@@ -1899,7 +1911,10 @@ def write_per_economy_combined_workbooks(
             f"Baseline-seed validation_final_year ({coverage_end}) precedes "
             f"validation_base_year ({coverage_start})."
         )
-    configured_exceptions = list(validation_exceptions or [])
+    configured_exceptions = [
+        *build_missing_branch_validation_exceptions(),
+        *(validation_exceptions or []),
+    ]
     blocking_findings_are_warnings = bool(
         getattr(workflow_cfg, "BASELINE_SEED_VALIDATION_BLOCKING_FINDINGS_ARE_WARNINGS", False)
     )
@@ -2097,6 +2112,11 @@ def write_per_economy_combined_workbooks(
                 artifact_producer_workbooks.setdefault(econ_token, {}).setdefault(
                     source_workflow, []
                 ).append(source_path)
+                is_aggregate_economy = leap_export_template_resolver.is_aggregate_economy(econ_token)
+                aggregate_template_paths = (
+                    leap_export_template_resolver.resolve_template_branch_paths_or_apec_union(econ_token)
+                    if is_aggregate_economy else None
+                )
                 rows_for_validation = enrich_seed_ids_from_template(
                     producer_rows,
                     id_lookup_resolved,
@@ -2128,6 +2148,10 @@ def write_per_economy_combined_workbooks(
                         validate_share_groups=False,
                         exceptions=configured_exceptions,
                         allow_exact_duplicate_resolution=False,
+                        template_branch_paths=aggregate_template_paths,
+                        validate_template_ids=not is_aggregate_economy,
+                        validate_template_share_completeness=not is_aggregate_economy,
+                        missing_template_branches_are_warnings=is_aggregate_economy,
                     ),
                 ))
 
@@ -2257,6 +2281,14 @@ def write_per_economy_combined_workbooks(
                 raise_on_blocking=False,
                 economy=econ_token,
                 run_id=diagnostic_stem,
+                template_branch_paths=(
+                    leap_export_template_resolver.resolve_template_branch_paths_or_apec_union(econ_token)
+                    if leap_export_template_resolver.is_aggregate_economy(econ_token)
+                    else None
+                ),
+                validate_template_ids=not leap_export_template_resolver.is_aggregate_economy(econ_token),
+                validate_template_share_completeness=not leap_export_template_resolver.is_aggregate_economy(econ_token),
+                missing_template_branches_are_warnings=leap_export_template_resolver.is_aggregate_economy(econ_token),
             )
             validation_results.append((econ_token, validation))
             zero_scope_columns = [

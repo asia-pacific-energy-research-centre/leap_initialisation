@@ -2142,6 +2142,10 @@ def validate_seed_rows(
     zero_tolerance: float = 1e-12,
     exceptions: Iterable[dict[str, object]] | None = None,
     allow_exact_duplicate_resolution: bool = False,
+    template_branch_paths: Iterable[str] | None = None,
+    validate_template_ids: bool = True,
+    validate_template_share_completeness: bool = True,
+    missing_template_branches_are_warnings: bool = False,
 ) -> ValidationResult:
     """Run focused baseline-seed rules without requiring a reference workbook.
 
@@ -2172,9 +2176,9 @@ def validate_seed_rows(
         ))
 
     missing_id_columns = [column for column in ID_COLUMNS if column not in resolved.columns]
-    if missing_id_columns:
+    if validate_template_ids and missing_id_columns:
         findings.append(_finding("SEED-003", "fail", "Workbook is missing required ID columns.", evidence="|".join(missing_id_columns)))
-    else:
+    elif validate_template_ids:
         for _, row in resolved.iterrows():
             invalid_columns = _invalid_id_columns(row)
             if not invalid_columns:
@@ -2283,12 +2287,17 @@ def validate_seed_rows(
                     source_workflow=source_workflow,
                 ))
 
-    if template_path is not None:
-        path = Path(template_path)
-        template_rows = load_template_rows(path)
-        if validate_share_groups:
+    if template_path is not None or template_branch_paths is not None:
+        template_rows = pd.DataFrame()
+        valid_paths = {
+            _text(path).lower() for path in (template_branch_paths or []) if _text(path)
+        }
+        path = Path(template_path) if template_path is not None else None
+        if path is not None:
+            template_rows = load_template_rows(path)
+            valid_paths = valid_paths or _load_template_paths(path)
+        if validate_share_groups and validate_template_share_completeness:
             findings.extend(_validate_canonical_share_completeness(resolved, template_rows))
-        valid_paths = _load_template_paths(path)
         for _, row in resolved.iterrows():
             branch_path = _text(row.get("Branch Path"))
             if _is_ignored_full_model_export_branch_path(branch_path):
@@ -2297,11 +2306,11 @@ def validate_seed_rows(
                 warning_only = _is_warning_only_missing_id_branch(row)
                 findings.append(_finding(
                     "SEED-011",
-                    "warn" if warning_only else "fail",
+                    "warn" if warning_only or missing_template_branches_are_warnings else "fail",
                     "Aggregate-demand placeholder branch is absent from the canonical full-model export."
                     if warning_only
                     else "Branch path is absent from the canonical full-model export.",
-                    evidence=str(path),
+                    evidence=str(path or "APEC template branch-path union"),
                     **_row_context(row),
                 ))
 
@@ -2346,6 +2355,10 @@ def prepare_seed_rows_for_write(
     raise_on_blocking: bool = True,
     economy: str = "",
     run_id: str = "",
+    template_branch_paths: Iterable[str] | None = None,
+    validate_template_ids: bool = True,
+    validate_template_share_completeness: bool = True,
+    missing_template_branches_are_warnings: bool = False,
 ) -> ValidationResult:
     """Complete, enrich, classify, validate, and persist diagnostics before write.
 
@@ -2363,6 +2376,10 @@ def prepare_seed_rows_for_write(
         share_tolerance=share_tolerance,
         exceptions=exceptions,
         allow_exact_duplicate_resolution=True,
+        template_branch_paths=template_branch_paths,
+        validate_template_ids=validate_template_ids,
+        validate_template_share_completeness=validate_template_share_completeness,
+        missing_template_branches_are_warnings=missing_template_branches_are_warnings,
     )
     completed_rows = initial.resolved_rows
     completion_findings = pd.DataFrame()
@@ -2381,6 +2398,10 @@ def prepare_seed_rows_for_write(
         share_tolerance=share_tolerance,
         exceptions=exceptions,
         allow_exact_duplicate_resolution=True,
+        template_branch_paths=template_branch_paths,
+        validate_template_ids=validate_template_ids,
+        validate_template_share_completeness=validate_template_share_completeness,
+        missing_template_branches_are_warnings=missing_template_branches_are_warnings,
     )
     initial_duplicate_findings = initial.findings[
         initial.findings.get("rule_id", pd.Series("", index=initial.findings.index)).isin({"SEED-001", "SEED-002"})
