@@ -558,6 +558,12 @@ def clip_value_by_year_range(value_by_year, start_year, end_year):
         raise
 
 
+def _is_auto_balance_placeholder(value):
+    """Return whether a label/path is the synthetic transfer balancing fuel."""
+    leaf = str(value or "").strip().split("\\")[-1].casefold()
+    return leaf in {"auto balance", "99 auto balance"}
+
+
 def normalize_feedstock_shares_for_export(feedstock_shares, base_year, final_year):
     """Normalize per-fuel shares so each process-year sums to exactly 100%."""
     try:
@@ -734,11 +740,16 @@ def prepare_feedstock_shares_for_export(
 
         process_used = any(usage_total > usage_tolerance for usage_total in usage_totals.values())
         if not process_used:
-            # Process branch exists but is unused: spread 100% equally to avoid LEAP share errors.
-            equal_share = 100.0 / float(len(labels))
+            # Process branch exists but is unused: use a real fuel as the inert
+            # 100% anchor.  AUTO BALANCE is synthetic and must never imply a
+            # physical transfer unless a one-sided record explicitly uses it.
+            anchor_labels = [label for label in labels if not _is_auto_balance_placeholder(label)]
+            if not anchor_labels:
+                return prepared_shares
+            equal_share = 100.0 / float(len(anchor_labels))
             for label in labels:
-                prepared_shares[label] = {year: equal_share for year in years}
-            anchor_label = labels[0]
+                prepared_shares[label] = {year: equal_share if label in anchor_labels else 0.0 for year in years}
+            anchor_label = anchor_labels[0]
             for year in years:
                 residual = 100.0 - sum(prepared_shares[label][year] for label in labels)
                 prepared_shares[anchor_label][year] += residual
@@ -1696,9 +1707,13 @@ def _normalize_output_shares_for_export(output_shares, base_year, final_year):
         # validates capacity and can replace this profile when a genuine or
         # donor-scenario profile is available.
         if not genuine_profiles:
+            anchor_labels = [label for label in labels if not _is_auto_balance_placeholder(label)]
+            if not anchor_labels:
+                return normalized
+            anchor_label = anchor_labels[0]
             return {
                 label: {
-                    year: 100.0 if label == labels[0] else 0.0
+                    year: 100.0 if label == anchor_label else 0.0
                     for year in years
                 }
                 for label in labels
@@ -2602,39 +2617,38 @@ def build_aux_fuel_zero_rows(
                             }
                         )
 
-            if is_feedstock:
-                for prefix, branches in process_branch_map.items():
-                    # any_already_set is True when at least one catalog branch was written
-                    # OR when any row for this process prefix was written (even branches
-                    # absent from the catalog — e.g. Lignite for BKB when only Other
-                    # bituminous coal is catalogued). Without the second check, the first
-                    # catalog branch incorrectly receives the 100.0 anchor.
-                    any_already_set = (
-                        any(already_set for _, already_set in branches)
-                        or prefix in written_prefixes_by_scenario.get(scenario, set())
-                    )
-                    first_unset = True
-                    for branch_path, already_set in branches:
-                        if already_set:
-                            continue
-                        if not any_already_set and first_unset:
-                            value = 100.0
-                            first_unset = False
-                        else:
-                            value = 0.0
-                        for year in years:
-                            zero_rows.append(
-                                {
-                                    "Branch_Path": branch_path,
-                                    "Scenario": scenario,
-                                    "Measure": measure,
-                                    "Units": units,
-                                    "Scale": scale,
-                                    "Per...": per,
-                                    "Date": year,
-                                    "Value": value,
-                                }
-                            )
+                if is_feedstock:
+                    for prefix, branches in process_branch_map.items():
+                        # any_already_set is True when at least one catalog branch was written
+                        # OR when any row for this process prefix was written (even branches
+                        # absent from the catalog — e.g. Lignite for BKB when only Other
+                        # bituminous coal is in the catalog).
+                        any_already_set = (
+                            any(already_set for _, already_set in branches)
+                            or prefix in written_prefixes_by_scenario.get(scenario, set())
+                        )
+                        anchor_branches = [
+                            branch_path for branch_path, already_set in branches
+                            if not already_set and not _is_auto_balance_placeholder(branch_path)
+                        ]
+                        anchor_branch = anchor_branches[0] if anchor_branches else None
+                        for branch_path, already_set in branches:
+                            if already_set:
+                                continue
+                            value = 100.0 if not any_already_set and branch_path == anchor_branch else 0.0
+                            for year in years:
+                                zero_rows.append(
+                                    {
+                                        "Branch_Path": branch_path,
+                                        "Scenario": scenario,
+                                        "Measure": measure,
+                                        "Units": units,
+                                        "Scale": scale,
+                                        "Per...": per,
+                                        "Date": year,
+                                        "Value": value,
+                                    }
+                                )
 
     # Tier-2: clear branches for in-scope sectors where we had no data this run.
     # These are sectors this workflow owns but produced no process records for.
@@ -2693,8 +2707,10 @@ def build_aux_fuel_zero_rows(
 
                 if is_feedstock:
                     for prefix, branches in tier2_process_map.items():
-                        for i, branch_path in enumerate(branches):
-                            value = 100.0 if i == 0 else 0.0
+                        anchor_branches = [branch_path for branch_path in branches if not _is_auto_balance_placeholder(branch_path)]
+                        anchor_branch = anchor_branches[0] if anchor_branches else None
+                        for branch_path in branches:
+                            value = 100.0 if branch_path == anchor_branch else 0.0
                             for year in years:
                                 zero_rows.append(
                                     {
@@ -2835,12 +2851,12 @@ def build_aux_fuel_zero_rows(
                     sector_branch_map.setdefault(sector, []).append(branch_path)
 
                 for _sector, branches in sector_branch_map.items():
-                    first_unset = True
+                    anchor_branches = [branch_path for branch_path in branches if not _is_auto_balance_placeholder(branch_path)]
+                    anchor_branch = anchor_branches[0] if anchor_branches else None
                     for branch_path in branches:
                         if (output_share_measure, scenario, branch_path) in existing:
                             continue
-                        value = 100.0 if first_unset else 0.0
-                        first_unset = False
+                        value = 100.0 if branch_path == anchor_branch else 0.0
                         for year in years:
                             zero_rows.append(
                                 {
