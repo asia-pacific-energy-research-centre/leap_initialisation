@@ -1,9 +1,9 @@
 #%%
 """Build a reviewed, GUI-agent batch register for LEAP seed imports and balance exports.
 
-The register deliberately separates discovered clean-slate files, installed LEAP
-areas, and generated baseline seeds. It never chooses a similarly named area
-silently: a human sets each job's area and import policy before GUI execution.
+The normal route stages a clean-slate backup outside LEAP's managed folders,
+then opens it through LEAP. The register never writes to or scans C:\\LEAP_Areas
+unless an operator explicitly requests an existing-area lookup.
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ if str(REPO_ROOT) not in sys.path:
 DEFAULT_CLEAN_SLATE_SOURCE = Path(
     r"C:\Users\Work\APERC\Outlook 10 - LEAP modelling_2026\Clean leap models - DO NOT OVERWRITE\Integrated LEAP areas - clean slates"
 )
-DEFAULT_INSTALLED_AREAS_ROOT = Path(r"C:\LEAP_Areas")
 DEFAULT_SEED_RUNS_ROOT = (
     REPO_ROOT / "outputs" / "leap_exports" / "supply_reconciliation" / "baseline_seed" / "runs"
 )
@@ -89,27 +88,6 @@ def discover_clean_slate_candidates(clean_slate_source: Path) -> list[AreaCandid
     return sorted(candidates, key=lambda candidate: candidate.modified_at, reverse=True)
 
 
-def discover_installed_area_candidates(installed_areas_root: Path) -> list[AreaCandidate]:
-    """Return top-level LEAP area directories; settings and backups are excluded."""
-    if not installed_areas_root.is_dir():
-        return []
-
-    candidates = []
-    for path in installed_areas_root.iterdir():
-        if not path.is_dir() or path.name.startswith("_"):
-            continue
-        candidates.append(
-            AreaCandidate(
-                path=str(path),
-                name=path.name,
-                source="installed_area_directory",
-                modified_at=_timestamp(datetime.fromtimestamp(path.stat().st_mtime).astimezone()),
-                size_bytes=None,
-            )
-        )
-    return sorted(candidates, key=lambda candidate: candidate.modified_at, reverse=True)
-
-
 def _matching_candidates(candidates: Iterable[AreaCandidate], economy: str) -> list[dict[str, object]]:
     token = _safe_area_token(economy)
     pattern = re.compile(rf"(?<![A-Z]){re.escape(token)}(?![A-Z])", flags=re.IGNORECASE)
@@ -159,7 +137,6 @@ def _job_status(seed: dict[str, object], clean_slate_candidates: list[dict[str, 
 def build_batch_register(
     economies: list[str],
     clean_slate_source: Path | str = DEFAULT_CLEAN_SLATE_SOURCE,
-    installed_areas_root: Path | str = DEFAULT_INSTALLED_AREAS_ROOT,
     seed_runs_root: Path | str = DEFAULT_SEED_RUNS_ROOT,
     export_detail_level: int = DEFAULT_EXPORT_DETAIL_LEVEL,
 ) -> dict[str, object]:
@@ -168,16 +145,13 @@ def build_batch_register(
         raise ValueError("Energy Balance exports must use Level 2 or deeper.")
 
     clean_slate_source = _resolve(clean_slate_source)
-    installed_areas_root = _resolve(installed_areas_root)
     seed_runs_root = _resolve(seed_runs_root)
     clean_slate_candidates = discover_clean_slate_candidates(clean_slate_source)
-    installed_candidates = discover_installed_area_candidates(installed_areas_root)
 
     jobs = []
     for sequence, economy in enumerate(economies, start=1):
         seed_path = _find_latest_seed(seed_runs_root, economy)
         matching_clean_slates = _matching_candidates(clean_slate_candidates, economy)
-        matching_installed_areas = _matching_candidates(installed_candidates, economy)
         jobs.append(
             {
                 "sequence": sequence,
@@ -190,8 +164,8 @@ def build_batch_register(
                     "selected_source": None,
                     "selected_path": None,
                     "clean_slate_candidates": matching_clean_slates,
-                    "installed_area_candidates": matching_installed_areas,
                     "required_title_match": None,
+                    "normal_route": "STAGE_BACKUP_OUTSIDE_LEAP_AREAS_AND_OPEN_IN_LEAP",
                 },
                 "import": {
                     "policy": "REVIEW_REQUIRED",
@@ -227,20 +201,22 @@ def build_batch_register(
         "execution_rule": "SEQUENTIAL_GUI_ONLY_ONE_ACTIVE_LEAP_AND_EXCEL_JOB",
         "sources": {
             "clean_slate_source": str(clean_slate_source),
-            "installed_areas_root": str(installed_areas_root),
             "seed_runs_root": str(seed_runs_root),
         },
         "jobs": jobs,
     }
 
 
-def stage_reviewed_clean_slate_files(register: dict[str, object], staging_root: Path | str) -> dict[str, object]:
+def stage_reviewed_backup_files(register: dict[str, object], staging_root: Path | str) -> dict[str, object]:
     """Copy only operator-selected clean-slate files into a new staging folder.
 
-    The function refuses installed-area directories and never overwrites a file.
-    Call it only after setting each selected source/path in the saved register.
+    The staging root must be outside LEAP's managed `C:\\LEAP_Areas` location.
+    The function never overwrites a file. Call it only after setting each
+    selected source/path in the saved register.
     """
     staging_root = _resolve(staging_root)
+    if staging_root.drive.upper() == "C:" and staging_root.parts[:2] == ("C:\\", "LEAP_Areas"):
+        raise ValueError("Never stage backup files inside C:\\LEAP_Areas.")
     staged_jobs = []
     for job in register["jobs"]:
         selection = job["area_selection"]
@@ -271,7 +247,7 @@ def write_batch_register(register: dict[str, object], output_directory: Path | s
             file_handle,
             fieldnames=[
                 "sequence", "economy", "status", "seed_status", "seed_path",
-                "clean_slate_candidates", "installed_area_candidates", "import_policy",
+                "clean_slate_candidates", "import_policy",
                 "export_detail_level", "export_wait_policy",
             ],
         )
@@ -285,7 +261,6 @@ def write_batch_register(register: dict[str, object], output_directory: Path | s
                     "seed_status": job["baseline_seed"]["status"],
                     "seed_path": job["baseline_seed"]["path"],
                     "clean_slate_candidates": " | ".join(candidate["name"] for candidate in job["area_selection"]["clean_slate_candidates"]),
-                    "installed_area_candidates": " | ".join(candidate["name"] for candidate in job["area_selection"]["installed_area_candidates"]),
                     "import_policy": job["import"]["policy"],
                     "export_detail_level": job["export"]["detail_level"],
                     "export_wait_policy": job["export"]["wait_policy"],
