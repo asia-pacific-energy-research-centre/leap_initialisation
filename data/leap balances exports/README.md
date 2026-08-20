@@ -47,6 +47,11 @@ petajoules, then mapped to ESTO flow/product pairs using `config/leap_mappings.x
 The mapped long table is used by `codebase/leap_balance_to_esto_long_workflow.py`,
 the dashboard workflows, and `codebase/supply_reconciliation_workflow.py`.
 
+For the complete supervised LEAP GUI procedure — import, calculate, open Energy
+Balance, verify Level 2+ detail and scenario, export all years, upload to the
+online review app, and retain the ZIP archive — see
+[`docs/leap_gui_balance_export_dashboard_runbook.md`](../../docs/leap_gui_balance_export_dashboard_runbook.md).
+
 ## Expected Filename Format
 
 Active workbooks should use this filename pattern:
@@ -61,6 +66,10 @@ Examples:
 full model output all years 04092026 REF.xlsx
 full model output all years 04092026 TGT.xlsx
 ```
+
+For new exports, prefer the unambiguous ISO form `YYYYMMDD`, for example
+`full model output all years 20260820 REF.xlsx`. Existing recognised filenames
+remain supported.
 
 Scenario codes are resolved as:
 
