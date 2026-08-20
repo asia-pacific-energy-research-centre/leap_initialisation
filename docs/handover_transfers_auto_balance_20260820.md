@@ -88,11 +88,11 @@ Tests: `tests/test_transfer_one_sided_balance.py` (11),
 
 The three focused regression cases pass as part of the 56-test verification set.
 
-### BLOCKED on the maintainer
+### Template rows added 2026-08-20
 
-**D. AUTO BALANCE branches in the LEAP areas.** The maintainer is inserting them
-by hand from `C:\Users\Work\OneDrive - APERC\new rows transfers AUS.xlsx`
-(72 rows; 6 branch paths × 8 variables × 3 scenarios, under
+**D. AUTO BALANCE template rows.** The supplied AUS example was applied to all
+11 active economy templates (72 rows per template; 6 branch paths × 8 variables
+× 3 scenarios, under
 `Transformation\{Transfers unallocated | Refinery and blending transfers |
 Upstream liquids transfers}\{Output Fuels | Processes\...\Feedstock Fuels}\AUTO BALANCE`).
 
@@ -106,12 +106,16 @@ prevent; the latter deliberately keeps `BranchID=-1` rather than borrowing.
 (Also note the AUS file gives one BranchID `1188` to three distinct branch paths,
 which cannot be right for three separate branches — treat its IDs as placeholders.)
 
-Correct sequence: maintainer adds the fuel in each LEAP area → **re-export each
-area's Analysis view** into `data/leap_export_templates/` → each template then
-carries its own IDs. Hand-insertion is only safe with the ID columns left blank
-so the existing `-1` path handles them.
+Rows retain `BranchID=-1`; their `VariableID`, `ScenarioID`, and `RegionID` are
+copied from each target template's matching existing fuel row. This avoids
+borrowing AUS branch IDs. The template directory is gitignored, so these are
+local source-data updates rather than repository-tracked files.
 
-### AFTER D LANDS
+The remaining LEAP-area task is to ensure the `AUTO BALANCE` fuel/branches exist
+in each real area. Re-exporting each area later remains the route to replacing
+the deliberately unresolved BranchIDs with LEAP-owned IDs.
+
+### Next implementation work
 
 1. **Code→name mapping.** `map_code_label` falls back to the raw label, so the
    workbook currently emits the branch as `99 AUTO BALANCE`. If the LEAP fuel is
