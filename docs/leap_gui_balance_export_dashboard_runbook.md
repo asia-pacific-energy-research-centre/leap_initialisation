@@ -37,7 +37,8 @@ Store the canonical workbook directly in:
 data/leap balances exports/<ECONOMY>/
 ```
 
-Use this filename, with an ISO date to avoid day/month ambiguity:
+For resolver-managed source exports, use this filename, with an ISO date to
+avoid day/month ambiguity:
 
 ```text
 full model output all years YYYYMMDD REF.xlsx
@@ -56,6 +57,25 @@ Move superseded exports into that economy's `archive/` folder so they cannot be
 selected accidentally. See [the raw-export README](../data/leap%20balances%20exports/README.md)
 for the full resolver contract.
 
+For a GUI-agent export intended for immediate upload to the review website, use
+the visible, agent-attributed filename:
+
+```text
+<ECONOMY_SHORT> <SCENARIO_CODE> <YYYYMMDD> CHATGPT.xlsx
+```
+
+For example:
+
+```text
+data/leap balances exports/01_AUS/AUS TGT 20260820 CHATGPT.xlsx
+```
+
+The review website reads the economy and scenario from the workbook sheets, so
+this descriptive filename is safe for an upload. It is *not* a resolver-managed
+canonical input name: move it to `archive/` after the website run, or rename a
+verified copy to the resolver-safe `full model output all years ...` pattern if
+another workflow must discover it automatically.
+
 ## Before starting
 
 Record the following in the run log or handover note before touching LEAP:
@@ -67,20 +87,37 @@ Record the following in the run log or handover note before touching LEAP:
 | Imported workbook | `leap_import_baseline_seed_01_AUS_20260820.xlsx` |
 | Scenario to export | `Reference` (`REF`) |
 | Review year(s) | `2022, 2030, 2040` |
-| Export destination | `data/leap balances exports/01_AUS/` |
+| Export destination | `data/leap balances exports/01_AUS/AUS TGT 20260820 CHATGPT.xlsx` |
 
-Close the workbook in Excel before importing it into LEAP. Confirm that no
-calculation, import, or export is already running. A stale or half-loaded LEAP
-screen is not a safe starting point.
+Confirm that no calculation, import, or export is already running. A stale or
+half-loaded LEAP screen is not a safe starting point.
+
+### Excel focus rule (critical)
+
+LEAP uses the **last Excel workbook clicked/activated** for both Excel imports
+and Energy Balance exports. Treat the active workbook, not merely an open
+workbook, as part of the command.
+
+- Before an import, open the declared baseline seed, click it to make it the
+  active Excel workbook, then start the LEAP import. Do not click another open
+  workbook between that activation and the import command.
+- Before an export, close the baseline seed. Create and save a **new blank
+  workbook** in the intended economy folder with the complete final filename,
+  for example `AUS TGT 20260820 CHATGPT.xlsx`. Click that workbook's `LEAP`
+  worksheet tab (shown in the supplied example) or otherwise activate it last.
+  Do not click another workbook until LEAP finishes exporting.
+- If more than one Excel workbook is open and the last active workbook is not
+  known with certainty, stop and re-establish the intended one. Never export
+  into the baseline seed and then try to recover it by copying sheets.
 
 ## GUI procedure
 
 ### 1. Import the workbook into LEAP
 
-1. Open the declared workbook in Excel **before** starting the LEAP import.
-   LEAP discovers the workbook through the open Excel session; do not use
-   **Area → Install from File**, which is for a LEAP area rather than a seed
-   workbook.
+1. Open the declared workbook in Excel **before** starting the LEAP import and
+   click it to make it the last active workbook. LEAP discovers the workbook
+   through the open Excel session; do not use **Area → Install from File**,
+   which is for a LEAP area rather than a seed workbook.
 2. Open the declared LEAP area and confirm its name in the title bar or area
    selector against the run log.
 3. In LEAP's top navigation, select **Analysis → Import from Excel Template**.
@@ -140,28 +177,31 @@ rows, uses fuel columns, and visibly shows the declared scenario.
 
 ### 3. Export all Energy Balance years
 
-1. Click the small green Excel/export button on the right side of the Energy
+1. In Excel, close the baseline seed. Create a blank workbook, save it directly
+   in the destination economy folder using the agreed `CHATGPT` filename, and
+   activate that destination workbook last. Verify its full path in Excel's
+   title bar. This is required because LEAP writes to the last Excel workbook
+   clicked.
+2. Click the small green Excel/export button on the right side of the Energy
    Balance view, then choose **All** (not **One**). LEAP's status bar describes
    this action as exporting all energy balances to Excel, one sheet per year and
    region.
 
    ![Green Excel export menu with All selected](assets/leap_gui_balance_runbook/06_export_all.png)
 
-2. Do not export only the current table/year when the dashboard needs a time
+3. Do not export only the current table/year when the dashboard needs a time
    series.
-3. In the save dialog, use the filename contract above and save first to a known
-   temporary location if LEAP does not allow the final destination directly.
-4. Wait until LEAP has completed writing the workbook. Completion means the save
-   dialog is closed and the file exists with a stable size; it is not merely that
-   the export button became clickable again.
-5. Move/copy the completed workbook into its canonical economy folder. Do not
-   overwrite a same-date/same-scenario file without checking that it is the
-   intended replacement.
+4. Wait until LEAP has completed writing the active destination workbook.
+   Completion means the export dialog is closed and the file has a stable size;
+   it is not merely that the export button became clickable again.
+5. Confirm that the baseline seed was not modified and that the destination
+   workbook contains the exported year sheets. Do not overwrite a same-date /
+   same-scenario file without checking that it is the intended replacement.
 
 Example final path:
 
 ```text
-data/leap balances exports/01_AUS/full model output all years 20260820 REF.xlsx
+data/leap balances exports/01_AUS/AUS REF 20260820 CHATGPT.xlsx
 ```
 
 ### 4. Validate the exported workbook before upload
@@ -249,6 +289,7 @@ available scenario or exporting a different area.
 | Details is Level 1 | Change to Level 2, wait for redraw, and confirm indented child rows. Re-export if an earlier file was Level 1. |
 | Scenario dropdown changes but table has not refreshed | Wait until the grid redraw completes, then read the scenario value again. |
 | The intended scenario is absent from Energy Balance | Open the top-toolbar **Scenarios** window and ensure its checkbox is selected. LEAP calculates results only for checked scenarios; close the dialog, wait for calculation, then return to Energy Balance. |
+| LEAP exports into the baseline seed or another workbook | Stop. Do not continue with that file. Close the seed, create and save the correctly named blank destination workbook in the economy folder, activate it last, then restart the export. |
 | Web app says area/economy is unknown | Check the LEAP area title and select the explicitly approved economy override. Do not infer from the filename alone. |
 | Web app refuses the upload for insufficient detail | Re-export from LEAP at Level 2+; do not bypass the check. |
 | Dashboard is not finished after several minutes | Keep the tab open and use the app's refresh control. If it reports failure, save the status/error and ZIP/logs if offered. |

@@ -76,6 +76,23 @@ Scenario codes are resolved as:
 - `REF` or `Reference` -> `REF`
 - `TGT` or `Target` -> `TGT`
 
+## GUI-agent / website-review filename
+
+For an immediate online review run, a GUI agent should create the destination
+workbook in the economy folder before exporting from LEAP and use:
+
+```text
+<ECONOMY_SHORT> <SCENARIO_CODE> <YYYYMMDD> CHATGPT.xlsx
+```
+
+For example: `AUS TGT 20260820 CHATGPT.xlsx`.
+
+This makes agent-created exports obvious to colleagues and is accepted by the
+review web app, which reads economy and scenario from the workbook sheets. It
+is not one of the resolver's recognised active-input names. Archive it after
+the review, or rename a verified copy to the expected filename format above
+before relying on automatic latest-file selection.
+
 ## Date IDs
 
 The resolver accepts compact date IDs for latest-file selection:
