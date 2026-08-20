@@ -77,15 +77,30 @@ screen is not a safe starting point.
 
 ### 1. Import the workbook into LEAP
 
-1. Open the declared LEAP area and confirm its name in the title bar or area
+1. Open the declared workbook in Excel **before** starting the LEAP import.
+   LEAP discovers the workbook through the open Excel session; do not use
+   **Area → Install from File**, which is for a LEAP area rather than a seed
+   workbook.
+2. Open the declared LEAP area and confirm its name in the title bar or area
    selector against the run log.
-2. Use LEAP's Excel import command and select the declared workbook.
-3. Wait for the import to finish. Do not click through a progress dialog or
+3. In LEAP's top navigation, select **Analysis → Import from Excel Template**.
+
+   ![Analysis menu with Import from Excel Template selected](assets/leap_gui_balance_runbook/02_analysis_import_menu.png)
+
+4. In **Import from Excel**, choose **Data**. Leave **Only replace constants,
+   Interp, Step and Smooth expressions** unchecked. Check **Match branches,
+   variables, scenarios & regions by names instead of by IDs**, then select
+   **OK**.
+
+   ![Required Import from Excel settings](assets/leap_gui_balance_runbook/01_import_settings.png)
+
+5. Wait for the import to finish. Do not click through a progress dialog or
    assume a frozen-looking screen has completed.
-4. Read the completion message. If LEAP reports rejected rows, warnings, a
-   different area, or an unexpected scenario, stop and save/capture the message
-   for review.
-5. Recalculate the model if LEAP requires it after the import. Wait until the
+6. A warning that the workbook and LEAP area names differ is expected for this
+   workflow and may be accepted. For any other import error or rejected-row
+   message, stop immediately, leave the error visible for the operator, and do
+   not attempt a workaround or retry.
+7. Recalculate the model if LEAP requires it after the import. Wait until the
    calculation has completed and the interface is responsive.
 
 Success condition: the intended workbook has been accepted into the intended
@@ -94,10 +109,20 @@ LEAP area, without an unresolved warning.
 ### 2. Open and verify Energy Balance
 
 1. Select **Energy Balance** from the left-side results/navigation pane.
+
+   ![Energy Balance selected in the left navigation](assets/leap_gui_balance_runbook/03_energy_balance_navigation.png)
+
 2. Wait for the table to load fully. A table refresh, spinner, disabled controls,
    or blank data grid means it is still loading.
 3. Find the **Details** control. Set it to **Level 2**. If it is already at
    Level 2 or a more detailed setting, leave it there.
+
+   ![Energy Balance controls before changing detail](assets/leap_gui_balance_runbook/04_balance_controls.png)
+
+   In the dropdown, choose **Sectors & Subsectors (Level 2)**.
+
+   ![Detail dropdown with Sectors and Subsectors Level 2 selected](assets/leap_gui_balance_runbook/05_detail_level2.png)
+
 4. Wait again for the balance grid to redraw. Confirm that at least one child
    row is visibly indented beneath a parent row. This is the practical proof of
    `Level 2+` detail.
@@ -116,9 +141,14 @@ rows, uses fuel columns, and visibly shows the declared scenario.
 ### 3. Export all Energy Balance years
 
 1. Click the small green Excel/export button on the right side of the Energy
-   Balance view.
-2. Choose the option that exports **all years**. Do not export only the current
-   table/year when the dashboard needs a time series.
+   Balance view, then choose **All** (not **One**). LEAP's status bar describes
+   this action as exporting all energy balances to Excel, one sheet per year and
+   region.
+
+   ![Green Excel export menu with All selected](assets/leap_gui_balance_runbook/06_export_all.png)
+
+2. Do not export only the current table/year when the dashboard needs a time
+   series.
 3. In the save dialog, use the filename contract above and save first to a known
    temporary location if LEAP does not allow the final destination directly.
 4. Wait until LEAP has completed writing the workbook. Completion means the save
@@ -218,6 +248,7 @@ available scenario or exporting a different area.
 | Energy Balance remains blank or controls are disabled | Wait; if it does not settle, capture the visible state and ask the operator rather than re-clicking repeatedly. |
 | Details is Level 1 | Change to Level 2, wait for redraw, and confirm indented child rows. Re-export if an earlier file was Level 1. |
 | Scenario dropdown changes but table has not refreshed | Wait until the grid redraw completes, then read the scenario value again. |
+| The intended scenario is absent from Energy Balance | Open the top-toolbar **Scenarios** window and ensure its checkbox is selected. LEAP calculates results only for checked scenarios; close the dialog, wait for calculation, then return to Energy Balance. |
 | Web app says area/economy is unknown | Check the LEAP area title and select the explicitly approved economy override. Do not infer from the filename alone. |
 | Web app refuses the upload for insufficient detail | Re-export from LEAP at Level 2+; do not bypass the check. |
 | Dashboard is not finished after several minutes | Keep the tab open and use the app's refresh control. If it reports failure, save the status/error and ZIP/logs if offered. |
@@ -230,3 +261,14 @@ export filename, export folder, app run summary, dashboard URL/title, and ZIP
 archive filename. A short screenshot at the Level-2/scenario check and another
 at the completed Results panel make the run reproducible without retaining a
 screen recording.
+
+## Scenario-calculation setting
+
+If a scenario is missing from the Energy Balance scenario dropdown, open the
+top-toolbar **Scenarios** control. Tick the checkbox beside the required
+scenario (for example, `REF: Reference` or `TAR: Target`). The dialog states
+that results are calculated for checked scenarios; uncheck only when reducing
+calculation time is an explicitly approved choice. Close the dialog, let LEAP
+calculate, and then return to Energy Balance.
+
+![Scenarios dialog showing Reference and Target checked for calculation](assets/leap_gui_balance_runbook/07_scenarios_calculated.png)
