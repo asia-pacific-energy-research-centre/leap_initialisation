@@ -186,39 +186,10 @@ def add_ninth_pair_columns(df: pd.DataFrame) -> pd.DataFrame:
     return working
 
 
-def drop_ninth_parent_fuel_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """Remove a fuel's ``x`` roll-up when the same process has subfuel detail.
-
-    Ninth data may hold both ``08_gas / x`` and its component rows such as
-    ``08_gas / 08_01_natural_gas`` for the identical economy, scenario, and
-    sector path.  The parent is a fuel hierarchy roll-up, not another input or
-    output.  Retain an ``x`` row when it is the only representation of a fuel
-    (for example electricity), and never use sector hierarchy to make this
-    decision.
-    """
-    if df.empty or not {"fuels", "subfuels"}.issubset(df.columns):
-        return df.copy()
-    group_cols = [
-        column
-        for column in [
-            "scenarios", "economy", "sectors", "sub1sectors", "sub2sectors",
-            "sub3sectors", "sub4sectors", "fuels",
-        ]
-        if column in df.columns
-    ]
-    if not group_cols:
-        return df.copy()
-    subfuel_values = df["subfuels"].fillna("").astype(str).str.strip()
-    has_child = subfuel_values.ne("x").groupby(
-        [df[column] for column in group_cols], dropna=False
-    ).transform("any")
-    return df.loc[~(subfuel_values.eq("x") & has_child)].copy()
-
-
 def filter_ninth_projection_rows(
     df: pd.DataFrame, scenario: str = DEFAULT_SCENARIO
 ) -> pd.DataFrame:
-    """Filter 9th data to a scenario, non-subtotals, and leaf fuels."""
+    """Filter 9th data to the reference scenario and non-subtotal rows."""
     working = df.copy()
     if scenario and "scenarios" in working.columns:
         scenario_key = str(scenario).strip().lower()
@@ -235,7 +206,7 @@ def filter_ninth_projection_rows(
             .isin({"1", "true", "yes", "y", "t"})
         )
         working = working[~flag]
-    return drop_ninth_parent_fuel_rows(working)
+    return working
 
 
 def build_ninth_projection_series(
