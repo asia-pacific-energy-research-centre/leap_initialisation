@@ -84,6 +84,46 @@ set of years produces one compact comparison workbook per
 economy/scenario/year, rather than copying the unrelated all-years tabs into
 every review file.
 
+### Agent investigation pattern: use a difference to find a mapping gap
+
+Use a LEAP-versus-source difference as a clue, not as proof that LEAP or a
+mapping is wrong. Work from the reported difference back through the pipeline:
+
+1. **Make the comparison like-for-like.** Fix one economy, scenario, year,
+   flow, fuel, unit, and sign convention. Compare LEAP with ESTO in the base
+   year and with the allocated 9th expectation in projection years. Do not
+   compare a LEAP total with one detailed source row.
+2. **Check whether the expected energy reached LEAP.** If the source/expected
+   value is nonzero but the matching LEAP process or fuel is absent, trace the
+   source code through the owner workflow and the canonical mapping. This is a
+   likely missing mapping, omitted flow, or missing LEAP branch. If the LEAP row
+   exists but has the wrong value, check allocation shares, signs, units, and
+   process ownership before changing a mapping.
+3. **Check the whole sibling set.** An apparent missing child can instead be a
+   parent/child or subtotal issue. For transfers, inspect `08.01`, `08.02`,
+   `08.03`, `08.04`, and `08.99` together with the `08 Transfers` parent. Do
+   not add the parent and children together unless the source contract says
+   they are additive.
+4. **Locate the first boundary where the value changes.** Follow the value from
+   source row → allocated expected row → producer/process record → LEAP export
+   row → LEAP result. The first missing or changed boundary identifies the
+   owner: mapping, source allocation, initialisation workflow, LEAP template,
+   or LEAP model behaviour.
+5. **Make the smallest correct repair.** Mapping relationships belong in
+   `leap_mappings`; workflow inclusion or routing belongs in this repository.
+   Check all sibling coverage and many-to-many effects before adding a
+   relationship. Do not hide a difference by changing a total, disabling a
+   check, or copying an ID.
+6. **Prove the repair.** Add a focused regression test with the missing source
+   case, rerun the narrow comparison, and record whether the LEAP-versus-source
+   difference now closes. Keep any deliberate residual visible and explain it.
+
+For example, a nonzero expected transfer child that never appears in a LEAP
+transfer process points first to the transfer flow list or its mapping coverage,
+not to a demand or import adjustment. The `08.04 Gas separation` review used
+this pattern: check the full transfer sibling set, find the code omitted from
+the active workflow list, add it, and lock the behavior with a regression test.
+
 ### Governing balance-variable contract
 
 The diagnostic must not decide update eligibility by maintaining a list of
