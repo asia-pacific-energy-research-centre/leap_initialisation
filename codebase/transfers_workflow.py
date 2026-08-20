@@ -673,10 +673,16 @@ def classify_transfer_projection_availability(
         ninth = ninth.loc[ninth["subtotal_results"].eq(False)].copy()
     ninth["economy_key"] = ninth["economy"].apply(normalize_economy_key)
     available_years = [year for year in projection_years if year in ninth.columns]
-    nonzero_years = (
-        ninth.groupby("economy_key", dropna=False)[available_years].sum().abs().ne(0.0).sum(axis=1)
-        if available_years else pd.Series(dtype=int)
-    )
+    if available_years:
+        absolute_projection_mass = ninth[available_years].apply(
+            pd.to_numeric, errors="coerce"
+        ).fillna(0.0).abs()
+        absolute_projection_mass["economy_key"] = ninth["economy_key"].to_numpy()
+        nonzero_years = absolute_projection_mass.groupby(
+            "economy_key", dropna=False
+        )[available_years].sum().ne(0.0).sum(axis=1)
+    else:
+        nonzero_years = pd.Series(dtype=int)
     ninth_rows = ninth.groupby("economy_key", dropna=False).size()
     economy_labels = history.groupby("economy_key", dropna=False)["economy"].first()
 

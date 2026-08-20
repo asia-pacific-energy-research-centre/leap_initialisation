@@ -23,6 +23,7 @@ def test_projection_availability_classifies_all_four_states() -> None:
     ])
     ninth = pd.DataFrame([
         {"economy": "01_AUS", "scenarios": "reference", "subtotal_results": False, 2023: 1e-12, 2024: 0.0},
+        {"economy": "01_AUS", "scenarios": "reference", "subtotal_results": False, 2023: -1e-12, 2024: 0.0},
         {"economy": "02_BD", "scenarios": "reference", "subtotal_results": False, 2023: 0.0, 2024: 0.0},
         {"economy": "03_CDA", "scenarios": "reference", "subtotal_results": False, 2023: 0.0, 2024: 0.0},
     ])
