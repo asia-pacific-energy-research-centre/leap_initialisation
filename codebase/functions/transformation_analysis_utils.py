@@ -130,10 +130,9 @@ REFERENCE_CACHE_DIR = REPO_ROOT / "data" / ".cache" / "transformation_reference_
 # A local PROJECTION_STRICT_CONSERVATION used to live here and was the last
 # producer choosing its own severity; do not reintroduce one.
 PROJECTION_SIGN_STABLE_MODE = "all"
-# Opt-in foundation for filling ESTO-active sectors that lack 9th projections.
-# The initial implementation covers only 09.06 gas-processing children and
-# holds their base-year flow/product values constant. Other sector families
-# need their own projection rules before this becomes a general solution.
+# Reconstruct ESTO-active child families with unavailable 9th projections.
+# Direct 9th children are preserved and missing siblings use their signed
+# base-year profile against an inferred or augmented parent total.
 FILL_IN_MISSING_9TH_SECTORS = workflow_cfg.FILL_IN_MISSING_9TH_SECTORS
 SIGN_STABLE_PROJECTION_FLOWS = [
     "09.08.01 Coke ovens",
