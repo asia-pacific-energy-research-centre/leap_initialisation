@@ -1,0 +1,2 @@
+sequence,economy,status,seed_status,seed_path,clean_slate_candidates,import_policy,export_detail_level,export_wait_policy
+1,01_AUS,REQUIRES_OPERATOR_SELECTION,found,C:\Users\Work\github\leap_initialisation\outputs\leap_exports\supply_reconciliation\baseline_seed\runs\SEED_ALL_TEMPLATE_20260820_R3_01_AUS\leap_import_baseline_seed_01_AUS_20260820.xlsx,AUS clean slate 18_08.leap,IMPORT_SEED,2,POLL_VISIBLE_LEAP_COMPLETION_EVERY_10_MINUTES
