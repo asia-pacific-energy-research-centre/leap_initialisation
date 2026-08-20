@@ -868,6 +868,55 @@ def test_lng_projection_comparator_does_not_absorb_demand_owned_own_use() -> Non
     assert indexed.loc["17 Electricity", "status"] == "reference_unavailable"
 
 
+def test_inclusive_coal_comparator_does_not_add_own_use_twice() -> None:
+    """A mapped inclusive rollup already owns its paired 10.01 values."""
+    wide = pd.DataFrame(
+        [
+            {
+                "scenario": "Reference",
+                "year": 2023,
+                "esto_flow": "09.08.01 Coke ovens (including own use)",
+                "esto_product": "17 Electricity",
+                "base": -20.0,
+                "projection": -20.0,
+            }
+        ]
+    )
+    base_df = pd.DataFrame(
+        [
+            {
+                "economy": "01AUS",
+                "flows": "10.01.05 Coke ovens",
+                "products": "17 Electricity",
+                "is_subtotal": False,
+                "2023": -2.0,
+            }
+        ]
+    )
+    projection_tables = pd.DataFrame(
+        [
+            {
+                "scenario": "Reference",
+                "esto_flow": "10.01.05 Coke ovens",
+                "esto_product": "17 Electricity",
+                "2023": -2.0,
+            }
+        ]
+    )
+
+    result = diagnostics._add_transformation_auxiliary_own_use_to_references(
+        wide=wide,
+        base_df=base_df,
+        projection_tables=projection_tables,
+        economy="01_AUS",
+        tolerance_pj=1e-9,
+    )
+
+    assert result.iloc[0]["base"] == pytest.approx(-20.0)
+    assert result.iloc[0]["projection"] == pytest.approx(-20.0)
+    assert result.iloc[0]["transformation_auxiliary_comparison_status"] == ""
+
+
 def test_lng_parent_projection_alias_requires_exactly_one_visible_child() -> None:
     projection = pd.DataFrame(
         [

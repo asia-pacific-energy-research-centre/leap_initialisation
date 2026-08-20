@@ -1884,11 +1884,6 @@ def _transformation_auxiliary_rules() -> list[dict[str, object]]:
         transformation_flows = list(
             config.get("transformation_flow_codes", [])
         )
-        if config_key in {"coal_coke_ovens", "coal_blast_furnaces"}:
-            transformation_flows.extend(
-                f"{flow} (including own use)"
-                for flow in tuple(transformation_flows)
-            )
         rules.append(
             {
                 "config_key": config_key,
