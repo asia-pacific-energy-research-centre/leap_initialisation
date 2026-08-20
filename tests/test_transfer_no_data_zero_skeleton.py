@@ -78,9 +78,7 @@ def test_transfer_override_writer_keeps_no_data_economy(
     preflight_calls: list[dict[str, object]] = []
     projection_scenarios: list[str | None] = []
 
-    def _fake_build_transfer_rows(
-        economy, use_output_targets, scenario=None, projection_availability_out=None
-    ):
+    def _fake_build_transfer_rows(economy, use_output_targets, scenario=None):
         projection_scenarios.append(scenario)
         return []
 
@@ -154,9 +152,7 @@ def test_transfer_override_writer_rejects_legacy_generic_transfer_root(
     monkeypatch,
 ) -> None:
     """Legacy generic Transfers branches must stop before catalog preflight/import."""
-    def _fake_build_transfer_rows(
-        economy, use_output_targets, scenario=None, projection_availability_out=None
-    ):
+    def _fake_build_transfer_rows(economy, use_output_targets, scenario=None):
         return []
 
     def _fake_save(*args, **kwargs):

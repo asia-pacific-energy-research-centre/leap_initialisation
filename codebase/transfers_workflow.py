@@ -733,10 +733,7 @@ def apply_transfer_projection_fallback(
     return working
 
 
-def build_transfer_data_for_scenario(
-    scenario: str,
-    return_projection_availability: bool = False,
-) -> tuple[pd.DataFrame, list[int]] | tuple[pd.DataFrame, list[int], pd.DataFrame]:
+def build_transfer_data_for_scenario(scenario: str) -> tuple[pd.DataFrame, list[int]]:
     """Build transfer-only data with ESTO history and scenario-specific 9th projections."""
     if core.esto_data_raw is None or core.ninth_data_raw is None:
         core.prepare_transformation_assets()
@@ -798,8 +795,6 @@ def build_transfer_data_for_scenario(
         transfer_data, availability, core.BASE_YEAR, core.PROJECTION_YEAR_RANGE
     )
     year_cols = sorted(column for column in transfer_data.columns if str(column).isdigit())
-    if return_projection_availability:
-        return transfer_data, year_cols, availability
     return transfer_data, year_cols
 
 
@@ -1015,18 +1010,12 @@ def build_transfer_rows(
     data_override: pd.DataFrame | None = None,
     year_cols_override: list[int] | None = None,
     scenario: str | None = None,
-    projection_availability_out: list[pd.DataFrame] | None = None,
 ) -> list[dict]:
     """Return transfer rows for the given economy."""
     if data_override is not None:
         data = data_override
     elif scenario is not None:
-        data, year_cols_override, availability = build_transfer_data_for_scenario(
-            scenario,
-            return_projection_availability=True,
-        )
-        if projection_availability_out is not None:
-            projection_availability_out.append(availability)
+        data, year_cols_override = build_transfer_data_for_scenario(scenario)
     else:
         data = core.esto_data
     if DROP_SUBTOTALS_FIRST:
@@ -1459,7 +1448,6 @@ def build_transfer_process_records(
     data_override: pd.DataFrame | None = None,
     year_cols_override: list[int] | None = None,
     scenario: str | None = None,
-    projection_availability_out: list[pd.DataFrame] | None = None,
 ) -> list[dict]:
     return build_transfer_rows(
         economy=economy,
@@ -1470,7 +1458,6 @@ def build_transfer_process_records(
         data_override=data_override,
         year_cols_override=year_cols_override,
         scenario=scenario,
-        projection_availability_out=projection_availability_out,
     )
 
 
