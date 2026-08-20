@@ -147,6 +147,68 @@ def test_transfer_override_writer_keeps_no_data_economy(
     assert all(call["context"] == "transfers_workflow.export_generation" for call in preflight_calls)
 
 
+def test_transfer_override_writer_maps_auto_balance_to_the_template_leaf(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """The reconciliation transfer path must retain the local AUTO BALANCE alias."""
+    captured: dict[str, object] = {}
+    source_mapping = {"07.01": "Motor gasoline"}
+    record = {
+        "economy": "05_PRC",
+        "sector_title": "08.03 Products transferred",
+        "output_values": {"99 AUTO BALANCE": {2022: 1.0}},
+    }
+    monkeypatch.setattr(
+        supply_leap_io.transfers_workflow,
+        "build_transfer_rows",
+        lambda **kwargs: [record],
+    )
+    monkeypatch.setattr(
+        supply_leap_io.transfers_workflow,
+        "merge_transfer_rows",
+        lambda records: records,
+    )
+    monkeypatch.setattr(
+        supply_leap_io,
+        "apply_transformation_target_overrides_for_scenario",
+        lambda records, *args, **kwargs: records,
+    )
+    monkeypatch.setattr(
+        supply_leap_io.transformation_workflow.core,
+        "code_to_name_mapping",
+        source_mapping,
+    )
+
+    def _fake_save(*args, **kwargs):
+        captured["mapping"] = args[4]
+        path = Path(args[5]) / args[6]
+        path.touch()
+        return str(path)
+
+    monkeypatch.setattr(
+        supply_leap_io.transformation_workflow.core,
+        "save_transformation_export",
+        _fake_save,
+    )
+    monkeypatch.setattr(supply_leap_io, "_find_legacy_transfer_branch_paths", lambda path: [])
+    monkeypatch.setattr(
+        supply_leap_io.fuel_catalog_preflight,
+        "run_fuel_catalog_preflight",
+        lambda **kwargs: {"skipped": False},
+    )
+
+    supply_leap_io.save_transfer_exports_with_supply_overrides(
+        reconciliation_table=pd.DataFrame(),
+        economies=["05_PRC"],
+        scenarios=["Reference"],
+        output_dir=tmp_path,
+    )
+
+    assert captured["mapping"]["99 AUTO BALANCE"] == "AUTO BALANCE"
+    assert "99 AUTO BALANCE" not in source_mapping
+
+
 def test_transfer_override_writer_rejects_legacy_generic_transfer_root(
     tmp_path: Path,
     monkeypatch,

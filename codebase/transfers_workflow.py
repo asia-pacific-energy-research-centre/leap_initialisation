@@ -1148,8 +1148,9 @@ def save_transfer_export(
     # templates instead expose the explicit ``AUTO BALANCE`` leaf.  Keep this
     # bridge local to transfer exports: it is an import-name alias, not a
     # canonical ESTO/9th mapping relationship.
-    export_code_to_name_mapping = dict(core.code_to_name_mapping)
-    export_code_to_name_mapping[AUTO_BALANCE_PRODUCT_LABEL] = AUTO_BALANCE_LEAP_FUEL_NAME
+    export_code_to_name_mapping = build_transfer_export_code_to_name_mapping(
+        core.code_to_name_mapping
+    )
     return core.save_transformation_export(
         process_records,
         core.EXPORT_REGION,
@@ -1603,6 +1604,22 @@ DEFAULT_TRANSFER_UNALLOCATED_POLICY = {
 AUTO_BALANCE_PRODUCT_CODE = "99"
 AUTO_BALANCE_PRODUCT_LABEL = "99 AUTO BALANCE"
 AUTO_BALANCE_LEAP_FUEL_NAME = "AUTO BALANCE"
+
+
+def build_transfer_export_code_to_name_mapping(
+    code_to_name_mapping: dict | None = None,
+) -> dict:
+    """Return a private display map for transfer export workbooks.
+
+    ``99 AUTO BALANCE`` is a synthetic ESTO-side counterpart used only for
+    one-sided transfers.  It must resolve to the real LEAP template leaf, but
+    must not become a canonical ESTO/9th fuel mapping or mutate a shared map.
+    """
+    mapping = dict(
+        core.code_to_name_mapping if code_to_name_mapping is None else code_to_name_mapping
+    )
+    mapping[AUTO_BALANCE_PRODUCT_LABEL] = AUTO_BALANCE_LEAP_FUEL_NAME
+    return mapping
 
 ONE_SIDED_TRANSFER_BALANCE_POLICY = {
     "enabled": True,

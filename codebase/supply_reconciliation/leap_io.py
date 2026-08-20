@@ -908,7 +908,9 @@ def save_transfer_exports_with_supply_overrides(
                 transformation_workflow.core.EXPORT_REGION,
                 transformation_workflow.core.EXPORT_BASE_YEAR,
                 transformation_workflow.core.EXPORT_FINAL_YEAR,
-                transformation_workflow.core.code_to_name_mapping,
+                transfers_workflow.build_transfer_export_code_to_name_mapping(
+                    transformation_workflow.core.code_to_name_mapping
+                ),
                 str(output_path),
                 export_filename,
                 transformation_workflow.core.EXPORT_MODEL_NAME,
