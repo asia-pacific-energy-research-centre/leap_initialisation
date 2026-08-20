@@ -17,6 +17,15 @@ STRUCTURE_COMPANION_RULE_IDS = frozenset(
 )
 CLASSIFICATION_COLUMN = "structure_migration_classification"
 MIGRATION_CLASSIFICATIONS = frozenset({"known_missing_branch"})
+REQUIRED_MATERIALITY_COLUMNS = frozenset({
+    "esto_base_year",
+    "esto_base_year_absolute_pj_all_economies",
+    "projection_start_year",
+    "projection_end_year",
+    "projection_year_count",
+    "reference_projection_absolute_average_pj_per_year_all_economies",
+    "target_projection_absolute_average_pj_per_year_all_economies",
+})
 
 
 def normalize_branch_path(value: object) -> str:
@@ -58,6 +67,7 @@ def load_structure_migration_registry(
             raise ValueError(f"Duplicate branch_path in missing-branch registry: {branch_path!r}")
         seen_paths.add(normalized)
         entries.append({
+            **{str(key): str(value or "") for key, value in row.items()},
             "branch_path": branch_path,
             "date_added": date_added,
             "notes": str(row.get("notes", "")),
@@ -69,6 +79,14 @@ def build_missing_branch_validation_exceptions(
     path: Path | str = DEFAULT_REGISTRY_PATH,
 ) -> list[dict[str, str]]:
     """Build precise in-memory exceptions for known absent LEAP branches."""
+    entries = load_structure_migration_registry(path)
+    # An unrefreshed new row is deliberately not an exception yet.  It stays a
+    # normal blocker until its source-based PJ materiality has been recorded,
+    # while unrelated economies can continue to run.
+    entries = [
+        entry for entry in entries
+        if all(str(entry.get(column, "")).strip() for column in REQUIRED_MATERIALITY_COLUMNS)
+    ]
     return [
         {
             "exception_id": f"KNOWN-MISSING-BRANCH-{index:04d}",
@@ -76,7 +94,7 @@ def build_missing_branch_validation_exceptions(
             "Branch Path": entry["branch_path"],
             "reason": f"Known missing LEAP branch; added {entry['date_added']}. {entry['notes']}".strip(),
         }
-        for index, entry in enumerate(load_structure_migration_registry(path), start=1)
+        for index, entry in enumerate(entries, start=1)
         for rule_id in sorted(STRUCTURE_COMPANION_RULE_IDS)
     ]
 

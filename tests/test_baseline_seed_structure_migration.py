@@ -30,8 +30,8 @@ def _finding(rule_id: str, branch: str, *, blocking: bool = True) -> dict[str, o
 
 def _registry(path: Path) -> Path:
     path.write_text(
-        "branch_path,date_added,notes\n"
-        "Demand\\Known pending branch\\Electricity,2026-08-01,Queued for the next area update.\n",
+        "branch_path,date_added,notes,esto_base_year,esto_base_year_absolute_pj_all_economies,projection_start_year,projection_end_year,projection_year_count,reference_projection_absolute_average_pj_per_year_all_economies,target_projection_absolute_average_pj_per_year_all_economies\n"
+        "Demand\\Known pending branch\\Electricity,2026-08-01,Queued for the next area update.,2022,1,2023,2060,38,1,1\n",
         encoding="utf-8",
     )
     return path
