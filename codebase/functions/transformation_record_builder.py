@@ -66,14 +66,6 @@ DEFAULT_AUXILIARY_PER = "Petajoule"
 # Remove this after the transition period once those old values are gone.
 EMIT_BASE_YEAR_HISTORICAL_PRODUCTION = True
 
-# These demand-driven LEAP modules can otherwise collapse to zero or expand to
-# meet unrelated downstream/trade requirements even when the baseline seed has
-# a reviewed projected output path.  Preserve that path explicitly.
-FIXED_PROJECTED_HISTORICAL_PRODUCTION_SECTORS = frozenset({
-    "Blast furnaces",
-    "Coke ovens",
-})
-
 APEC_ECONOMY_TO_LEAP_REGION = {
     "01_AUS": "Australia",
     "02_BD": "Brunei Darussalam",
@@ -1961,26 +1953,20 @@ def build_transformation_log_rows(
                 ["Transformation", sector_title, "Processes", str(process_name)]
             )
             if EMIT_BASE_YEAR_HISTORICAL_PRODUCTION:
-                if str(sector_title) in FIXED_PROJECTED_HISTORICAL_PRODUCTION_SECTORS:
-                    historical_production = _sum_series_map_by_year(
-                        output_values,
-                        range(scenario_base_year, scenario_final_year + 1),
-                    )
-                else:
-                    base_year_output = _sum_series_map_by_year(
-                        output_values,
-                        [scenario_base_year],
-                    ).get(scenario_base_year, 0.0)
-                    historical_production = {
-                        scenario_base_year: base_year_output,
-                        **{
-                            year: 0.0
-                            for year in range(
-                                scenario_base_year + 1,
-                                scenario_final_year + 1,
-                            )
-                        },
-                    }
+                base_year_output = _sum_series_map_by_year(
+                    output_values,
+                    [scenario_base_year],
+                ).get(scenario_base_year, 0.0)
+                historical_production = {
+                    scenario_base_year: base_year_output,
+                    **{
+                        year: 0.0
+                        for year in range(
+                            scenario_base_year + 1,
+                            scenario_final_year + 1,
+                        )
+                    },
+                }
                 rows.extend(
                     build_year_rows(
                         process_branch_path,
