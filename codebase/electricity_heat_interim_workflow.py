@@ -341,11 +341,11 @@ def _drop_esto_subtotals(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _drop_ninth_projection_subtotals(df: pd.DataFrame) -> pd.DataFrame:
-    """Drop 9th subtotals and duplicate fuel-parent roll-ups."""
+    """Drop 9th rows flagged as projection subtotals."""
     out = df.copy()
     if "subtotal_results" in out.columns:
         out = out[~out["subtotal_results"].map(_truthy_flag)].copy()
-    return ninth_alloc.drop_ninth_parent_fuel_rows(out)
+    return out
 
 
 def _map_esto_products_to_ninth_fuels(df: pd.DataFrame) -> pd.DataFrame:
@@ -454,8 +454,7 @@ def _select_ninth_source_for_scenario(scenario: str | None) -> pd.DataFrame:
     ].copy()
     if "subtotal_results" in selected.columns:
         selected = selected[~selected["subtotal_results"].map(_truthy_flag)].copy()
-    selected = core.filter_total_energy_rows(selected)
-    return ninth_alloc.drop_ninth_parent_fuel_rows(selected)
+    return core.filter_total_energy_rows(selected)
 
 
 def _select_esto_module_rows(

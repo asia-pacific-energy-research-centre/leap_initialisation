@@ -18,7 +18,6 @@ from codebase.functions.leap_labels import clean_fuel_label_for_leap
 from codebase.functions.leap_expressions import build_data_expression_from_row
 from codebase.functions.leap_excel_io import read_export_sheet
 from codebase.functions.export_zero_fill import zero_data_expression, zero_fill_unset_rows
-from codebase.functions.ninth_projection_mapping import drop_ninth_parent_fuel_rows
 from codebase.utilities.workflow_utils import (
     _normalize_economy,
     _normalize_year_columns,
@@ -680,8 +679,35 @@ def _matches_exact_values(value: object, allowed_values: Sequence[str]) -> bool:
 
 
 def _drop_ninth_parent_fuel_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """Compatibility wrapper for the shared ninth fuel-hierarchy normalizer."""
-    return drop_ninth_parent_fuel_rows(df)
+    """Drop parent fuel rows where child subfuel rows exist in the same group."""
+    if df.empty or "subfuels" not in df.columns or "fuels" not in df.columns:
+        return df
+    group_cols = [
+        col
+        for col in [
+            "scenarios",
+            "economy",
+            "sectors",
+            "sub1sectors",
+            "sub2sectors",
+            "sub3sectors",
+            "sub4sectors",
+            "fuels",
+        ]
+        if col in df.columns
+    ]
+    if not group_cols:
+        return df
+    out_parts = []
+    for _, group in df.groupby(group_cols, dropna=False):
+        subfuels = group["subfuels"].fillna("").astype(str).str.strip()
+        has_child = (subfuels != "x").any()
+        if has_child:
+            group = group[subfuels != "x"].copy()
+        out_parts.append(group)
+    if not out_parts:
+        return df.iloc[0:0].copy()
+    return pd.concat(out_parts, ignore_index=True)
 
 
 def _drop_ninth_subtotals(df: pd.DataFrame) -> pd.DataFrame:

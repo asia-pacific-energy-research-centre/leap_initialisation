@@ -46,12 +46,6 @@ def test_narrow_reference_loaders_reuse_shared_cache_without_mutating_source(tmp
             "fuels": "01_fuel", "subfuels": "x", "subtotal_results": False,
             "2022": 2.0, "2023": 3.0, "unused": "ignore",
         },
-        {
-            "economy": "01_AUS", "scenarios": "reference", "sectors": "14_industry_sector",
-            "sub1sectors": "x", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x",
-            "fuels": "01_fuel", "subfuels": "01_01_detail", "subtotal_results": False,
-            "2022": 2.0, "2023": 3.0, "unused": "ignore",
-        },
     ]).to_csv(ninth_source, index=False)
 
     esto_loaded = aggregated_demand_workflow._load_esto_base_csv(
@@ -80,8 +74,7 @@ def test_narrow_reference_loaders_reuse_shared_cache_without_mutating_source(tmp
     assert cached_esto["economy"].tolist() == ["01AUS"]
     assert "unused" not in esto_loaded.columns
     assert "unused" not in ninth_loaded.columns
-    assert ninth_loaded["subfuels"].tolist() == ["01_01_detail"]
-    assert cached_ninth["economy"].tolist() == ["01_AUS", "01_AUS"]
+    assert cached_ninth["economy"].tolist() == ["01_AUS"]
     clear_csv_cache()
 
 
