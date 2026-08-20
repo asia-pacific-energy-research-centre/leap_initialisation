@@ -220,24 +220,39 @@ wrong-area, or Level-1 workbook to make it appear valid.
 
 ### 5. Run the online balance-review dashboard
 
-1. Open the online LEAP Review Tools web app and, if useful, select its **Guide**
-   button. The embedded guide includes screenshots of the export detail and
-   fuel-column settings.
-2. Upload the workbook. Upload both `REF` and `TGT` exports for the same economy
-   when the dashboard needs a Reference/Target toggle; upload one export when
-   running a detailed workbook review for one scenario.
-3. Read the upload summary. Confirm the inferred economy, LEAP area, scenario,
-   units, available years, and `Level 2+` detail. Supply an economy override
-   only when the app reports that the area name is ambiguous or unknown.
-4. Enter the agreed review year or comma-separated years, for example
-   `2022, 2030, 2040`.
-5. Keep **Dashboard** selected. Keep **Workbook** selected when a cell-by-cell
-   balance review is also wanted.
-6. Start the run and keep the tab open while it runs. The dashboard can take
-   several minutes because it builds diagnostic data and many charts. If the
-   browser was backgrounded, use the app's refresh control when you return.
-7. Wait for the status to state completion and for the Results section to show
-   the dashboard link and **Complete run archive (.zip)** download.
+For the first post-import AUS review, use the **single-export review path**:
+one scenario export, the detailed workbook, and the dashboard. It gives an
+operator a manageable fix-list before comparing scenarios. Use the multi-export
+dashboard path only after that first pass is understood.
+
+1. Open the online LEAP Review Tools web app and select **Guide** if a screen
+   needs confirming. The guide includes the required Level-2-and-deeper,
+   Petajoule, and fuel-column export settings.
+2. Upload the one `CHATGPT` workbook exported in the preceding step. Wait for
+   its readout rather than pressing Run immediately.
+3. Verify the readout reports the expected economy (`01_AUS`), LEAP area,
+   single scenario, supported Joule-family units, available years, and Level 2+
+   detail. The app reads these from workbook sheets, not the filename. An
+   economy-override box appears only when the area name cannot be identified;
+   use it only with the operator-approved economy code.
+4. Keep both **Workbook** and **Dashboard** selected. The workbook is the
+   detailed, cell-by-cell worklist; the dashboard is the across-years visual
+   review. Enter the agreed workbook year or years, for example
+   `2022, 2030, 2040`. Each requested year creates a workbook.
+5. Start the run and keep the tab open until the Results panel appears. The app
+   first validates the export, then produces diagnostics, the selected
+   workbook(s), dashboard pages, and an archive. This can take several minutes;
+   do not submit the export again while the run is active.
+6. At completion, confirm the technical summary says the workbook and
+   dashboard succeeded, then confirm Results offers the review workbook(s), an
+   **Open dashboard** link, and **Complete run archive (.zip)**. Open the
+   dashboard and confirm its fixed economy/scenario banner before downloading.
+
+The multi-export dashboard path is for a later comparison, not this initial
+pilot: upload the relevant `REF` and `TGT` exports (or exports for several
+economies), deselect **Workbook** because it requires exactly one export, keep
+**Dashboard** selected, and verify each dashboard's economy and available
+scenario toggle after the run.
 
 Success condition: the app exposes the completed dashboard and archive, with
 the expected economy/scenario in the run summary.
@@ -248,7 +263,8 @@ the expected economy/scenario in the run summary.
    describe the intended economy and scenario(s).
 2. Download **Complete run archive (.zip)** and save it in the browser's
    Downloads folder. Keep the supplied filename unless the team has a separate
-   archive registry.
+   archive registry. The app keeps at most three recent dashboard views in the
+   current browser; those are convenient, not durable records.
 3. Confirm the downloaded ZIP exists and opens. It is the durable output: the
    app's saved dashboard views are browser-local convenience copies, retain only
    a small recent history, and are not a backup.
