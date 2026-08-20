@@ -31,11 +31,10 @@ GAS_CHILD_ESTO_FLOWS = (
     "09.06.03 Natural gas blending plants",
     "09.06.04 Gas-to-liquids plants",
 )
-# Only a reviewed process/flow family may infer or enlarge a parent total.  In
-# particular, broad mapping parents such as ``09 Total transformation sector``
+# Only the reviewed 09.06 and 09.08 process families may infer or enlarge a
+# parent total. Broad mapping parents such as ``09 Total transformation sector``
 # combine unrelated processes and must never become reconstruction families.
 APPROVED_MISSING_NINTH_PARENT_FLOWS = {
-    "08 Transfers",
     COAL_PARENT_ESTO_FLOW,
     GAS_PARENT_ESTO_FLOW,
 }
@@ -634,6 +633,12 @@ def _allocate_gas_parent_residuals(
     for _, parent_row in allocated_rows.loc[parent_mask].iterrows():
         economy_key = str(parent_row["economy_key"])
         product = str(parent_row["esto_product"]).strip()
+        if fill_missing_ninth_sectors:
+            # The shared rule protects direct child projections and can enlarge
+            # an insufficient parent. Retain this row until that reconstruction
+            # step instead of applying the legacy gas-only residual split.
+            generated_rows.append(parent_row.to_dict())
+            continue
         active_children = profile[
             profile["economy_key"].astype(str).eq(economy_key)
             & profile["esto_product"].astype(str).eq(product)

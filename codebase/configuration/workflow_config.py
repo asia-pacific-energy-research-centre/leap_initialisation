@@ -207,10 +207,10 @@ TRANSFORMATION_RUN_NONSPECIFIED_TRANSFORMATION_ANALYSIS = True
 TRANSFORMATION_RUN_OIL_REFINERY_ANALYSIS = True
 TRANSFORMATION_RUN_HYDROGEN_TRANSFORMATION_ANALYSIS = True
 # This is only the first use of the broader missing-9th-sector capability.
-# Reconstruct ESTO-base-year-active child families whose 9th projection is
-# unavailable. Direct 9th children remain authoritative; missing siblings use
-# the inferred or augmented parent rule, with signed net-zero profiles reported
-# for review instead of allocated.
+# Reconstruct only the reviewed 09.06 gas-processing and 09.08 coal-
+# transformation ESTO-base-year-active child families whose 9th projection is
+# unavailable. Direct 9th children remain authoritative; signed net-zero
+# profiles are reported for review instead of allocated.
 FILL_IN_MISSING_9TH_SECTORS = True
 TRANSFORMATION_ALL_ECONOMY_LABEL = GLOBAL_AGGREGATE_ECONOMY_LABEL
 TRANSFORMATION_INCLUDE_ALL_FEEDSTOCKS_AS_AUXILIARY = True
