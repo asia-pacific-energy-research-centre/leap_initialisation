@@ -95,6 +95,11 @@ def _numeric_sum(values: pd.Series) -> tuple[float, float]:
     return float(numeric.sum()), float(numeric.abs().sum())
 
 
+def _is_blank(value: object) -> bool:
+    """Treat CSV blanks and pandas' NaN representation as missing."""
+    return value is None or pd.isna(value) or not str(value).strip()
+
+
 def _esto_base_materiality(keys: pd.DataFrame, *, esto_path: Path, base_year: int) -> dict[str, tuple[float, float]]:
     result = {path: (0.0, 0.0) for path in keys["branch_path"]}
     lookup = {
@@ -176,7 +181,7 @@ def refresh_missing_branch_registry_materiality(
     rows, existing_columns = _read_registry(registry)
     rows_needing_materiality = [
         row for row in rows
-        if any(not str(row.get(column, "")).strip() for column in MATERIALITY_COLUMNS)
+        if any(_is_blank(row.get(column, "")) for column in MATERIALITY_COLUMNS)
     ]
     if not rows_needing_materiality:
         return pd.DataFrame(rows)
@@ -211,7 +216,7 @@ def refresh_missing_branch_registry_materiality(
             derived_values[f"{scenario}_projection_signed_average_pj_per_year_all_economies"] = projection_signed / len(projection_years)
             derived_values[f"{scenario}_projection_absolute_average_pj_per_year_all_economies"] = projection_absolute / len(projection_years)
         for column, value in derived_values.items():
-            if not str(refreshed.at[index, column] if column in refreshed.columns else "").strip():
+            if _is_blank(refreshed.at[index, column] if column in refreshed.columns else ""):
                 refreshed.at[index, column] = value
     column_order = [*BASE_COLUMNS, *MATERIALITY_COLUMNS, *[
         column for column in existing_columns if column not in {*BASE_COLUMNS, *MATERIALITY_COLUMNS}

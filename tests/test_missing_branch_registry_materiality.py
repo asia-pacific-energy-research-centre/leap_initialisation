@@ -59,6 +59,36 @@ def test_refresh_preserves_notes_and_uses_configured_base_and_projection_years(t
     assert float(preserved.at[0, "esto_base_year_absolute_pj_all_economies"]) == 3.0
 
 
+def test_refresh_fills_every_blank_row_not_just_the_first(tmp_path: Path) -> None:
+    registry = tmp_path / "registry.csv"
+    registry.write_text(
+        "branch_path,date_added,notes\n"
+        "Demand\\Other loss and own use\\Coal mines\\BKB and PB,2026-08-20,First.\n"
+        "Demand\\Other loss and own use\\Non specified own uses\\BKB and PB,2026-08-20,Second.\n",
+        encoding="utf-8",
+    )
+    esto = tmp_path / "esto.csv"
+    pd.DataFrame([
+        {"economy": "01AUS", "flows": "10.01.06 Coal mines", "products": "02.08 BKB/PB", "is_subtotal": False, "2022": -1.0},
+        {"economy": "01AUS", "flows": "10.01.17 Non-specified own uses", "products": "02.08 BKB/PB", "is_subtotal": False, "2022": -2.0},
+    ]).to_csv(esto, index=False)
+    ninth = tmp_path / "ninth.csv"
+    pd.DataFrame([
+        {"scenarios": scenario, "sectors": "x", "sub1sectors": "x", "sub2sectors": sector,
+         "fuels": "02_coal_products", "subfuels": "02_08_bkb_pb", "subtotal_layout": False,
+         "subtotal_results": False, "2023": value}
+        for scenario in ("reference", "target")
+        for sector, value in (("10_01_06_coal_mines", -1.0), ("10_01_17_nonspecified_own_uses", -2.0))
+    ]).to_csv(ninth, index=False)
+
+    refreshed = refresh_missing_branch_registry_materiality(
+        registry, esto_path=esto, esto_base_year=2022, ninth_path=ninth,
+        projection_start_year=2023, projection_final_year=2023,
+    )
+
+    assert refreshed["esto_base_year_absolute_pj_all_economies"].notna().all()
+
+
 def test_unrefreshed_registry_entry_cannot_suppress_a_missing_branch(tmp_path: Path) -> None:
     registry = tmp_path / "registry.csv"
     registry.write_text(
