@@ -467,6 +467,7 @@ def _disaggregate_parent_flow_allocations(
     year_cols: Sequence[int],
     parent_flow: str = COAL_PARENT_ESTO_FLOW,
     child_flows: Sequence[str] = COAL_CHILD_ESTO_FLOWS,
+    fill_missing_ninth_sectors: bool = False,
     tolerance: float = 1e-9,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Split projected parent-flow rows into signed, economy-specific children.
@@ -511,6 +512,16 @@ def _disaggregate_parent_flow_allocations(
     for _, parent_row in parent_rows.iterrows():
         economy_key = str(parent_row["economy_key"])
         product = str(parent_row["esto_product"]).strip()
+        if fill_missing_ninth_sectors and not any(
+            abs(float(parent_row[year])) > tolerance for year in year_cols
+        ):
+            # Keep an unavailable aggregate in place for the shared child
+            # reconstruction below.  Splitting zero here would turn every
+            # child into an indistinguishable zero placeholder.
+            retained_parent = parent_row.to_dict()
+            retained_parent["coal_allocation_method"] = "deferred_zero_parent_reconstruction"
+            child_rows.append(retained_parent)
+            continue
         matching = profile[
             profile["economy_key"].astype(str).eq(economy_key)
             & profile["esto_product"].astype(str).eq(product)
@@ -640,44 +651,11 @@ def _allocate_gas_parent_residuals(
             abs(float(parent_row[year])) > tolerance for year in year_cols
         )
         if not parent_has_projection:
-            # A zero-valued parent row is a structural placeholder, not an
-            # aggregate amount to reconcile against its directly projected
-            # children. By default retain the 9th projection exactly.
-            if not fill_missing_ninth_sectors:
-                continue
-            missing_children = active_children[
-                ~active_children["child_flow"].isin(direct_flows)
-            ].copy()
-            for _, profile_row in missing_children.iterrows():
-                child = parent_row.to_dict()
-                child["esto_flow"] = profile_row["child_flow"]
-                child["gas_allocation_method"] = "base_year_constant"
-                for year in year_cols:
-                    child[year] = float(profile_row["base_value"])
-                    diagnostics.append(
-                        {
-                            "economy_key": economy_key,
-                            "esto_product": product,
-                            "parent_flow": GAS_PARENT_ESTO_FLOW,
-                            "child_flow": profile_row["child_flow"],
-                            "base_year_value": float(profile_row["base_value"]),
-                            "direct_ninth_presence": False,
-                            "existing_output_presence": False,
-                            "owner_workflow": "transformation_workflow",
-                            "diagnostic_type": "gas_missing_ninth_child_base_year_fill",
-                            "allocation_method": "base_year_constant",
-                            "year": int(year),
-                            "parent_value": float(parent_row[year]),
-                            "direct_children_value": float(direct_by_flow[year].sum())
-                            if year in direct_by_flow.columns else 0.0,
-                            "residual_value": pd.NA,
-                            "allocation_share": pd.NA,
-                            "conservation_error": pd.NA,
-                            "base_year_continuity_error": 0.0,
-                            "duplicate_output_count": 0,
-                        }
-                    )
-                generated_rows.append(child)
+            # Let the shared reconstruction rule handle a zero/absent parent.
+            # It can use surviving child projections as anchors; the old gas
+            # path could only carry missing children forward unchanged.
+            if fill_missing_ninth_sectors:
+                generated_rows.append(parent_row.to_dict())
             continue
         if not any(abs(value) > tolerance for value in residual.values()):
             continue
@@ -767,16 +745,27 @@ def _fill_general_missing_ninth_children(
     existing_output_pairs: pd.DataFrame | None = None,
     tolerance: float = 1e-9,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Fill non-gas/coal missing children using the approved carry/residual rule."""
+    """Reconstruct base-year-active children without changing direct 9th values.
+
+    A projected parent is a lower-bound aggregate: if protected children have
+    grown beyond their base-year share, the reconstructed parent is enlarged so
+    missing siblings can retain their base-year proportions.  With no projected
+    parent, surviving children provide the scale; with no surviving children,
+    base-year values are carried forward.  Signed net-zero profiles are left
+    unallocated because no meaningful scalar parent scale exists.
+    """
     if allocated_rows.empty or child_profiles is None or child_profiles.empty or not year_cols:
         return allocated_rows, pd.DataFrame()
     owner = str(owner_workflow or "").strip()
-    profile = child_profiles[
-        child_profiles["owner_workflow"].astype(str).eq(owner)
-        & ~child_profiles["profile_parent_flow"].isin(
-            {GAS_PARENT_ESTO_FLOW, COAL_PARENT_ESTO_FLOW}
+    owner_mask = child_profiles["owner_workflow"].astype(str).eq(owner)
+    # Direct callers historically omitted an owner for the dedicated gas
+    # reconstruction. Keep that public behaviour while normal workflows use
+    # their explicit ownership boundary.
+    if not owner:
+        owner_mask |= child_profiles["profile_parent_flow"].astype(str).eq(
+            GAS_PARENT_ESTO_FLOW
         )
-    ].copy()
+    profile = child_profiles[owner_mask].copy()
     if profile.empty:
         return allocated_rows, pd.DataFrame()
 
@@ -819,7 +808,14 @@ def _fill_general_missing_ninth_children(
             & retained["esto_product"].astype(str).eq(product)
             & retained["esto_flow"].map(_esto_flow_code).str.startswith(parent_code + ".")
         ]
-        direct_flows = set(direct["esto_flow"].astype(str))
+        direct_by_flow = direct.groupby("esto_flow", dropna=False)[list(year_cols)].sum()
+        # A child that is present only as zeros is a missing projection, not a
+        # protected child.  A child with any non-zero projected year remains
+        # wholly authoritative, including any genuine zero years within it.
+        direct_flows = {
+            str(flow) for flow, values in direct_by_flow.iterrows()
+            if values.abs().gt(tolerance).any()
+        }
         produced_elsewhere = {
             flow for flow in child_flows
             if (economy, flow, product) in existing_pairs
@@ -829,6 +825,15 @@ def _fill_general_missing_ninth_children(
         ].copy()
         if missing.empty:
             continue
+
+        # Remove all-zero allocated placeholders before emitting reconstructed
+        # rows with the same ESTO keys.
+        missing_flows = set(missing["child_flow"].astype(str))
+        retained = retained.loc[~(
+            retained["economy_key"].astype(str).eq(economy)
+            & retained["esto_product"].astype(str).eq(product)
+            & retained["esto_flow"].astype(str).isin(missing_flows)
+        )].copy()
 
         external_direct = existing_rows[
             existing_rows["economy_key"].astype(str).eq(economy)
@@ -844,16 +849,21 @@ def _fill_general_missing_ninth_children(
         }
         parent_by_year = {year: float(parent_row.get(year, 0.0) or 0.0) for year in year_cols}
         parent_has_projection = any(abs(value) > tolerance for value in parent_by_year.values())
-        profile_total = float(missing["base_value"].sum())
-        if parent_has_projection and abs(profile_total) <= tolerance:
+        active_total = float(active["base_value"].sum())
+        protected_flows = direct_flows | produced_elsewhere
+        protected_base_total = float(
+            active.loc[active["child_flow"].astype(str).isin(protected_flows), "base_value"].sum()
+        )
+        missing_total = float(missing["base_value"].sum())
+        has_protected_children = bool(protected_flows)
+        if abs(active_total) <= tolerance or (has_protected_children and abs(protected_base_total) <= tolerance) or abs(missing_total) <= tolerance:
             for year in year_cols:
-                residual = parent_by_year[year] - direct_by_year[year]
                 diagnostics.append({
                     "economy_key": economy,
                     "esto_product": product,
                     "parent_flow": parent_flow,
                     "child_flow": "",
-                    "base_year_value": profile_total,
+                    "base_year_value": active_total,
                     "direct_ninth_presence": bool(direct_flows),
                     "existing_output_presence": bool(produced_elsewhere),
                     "owner_workflow": owner,
@@ -862,26 +872,48 @@ def _fill_general_missing_ninth_children(
                     "year": int(year),
                     "parent_value": parent_by_year[year],
                     "direct_children_value": direct_by_year[year],
-                    "residual_value": residual,
+                    "residual_value": parent_by_year[year] - direct_by_year[year],
                     "allocation_share": pd.NA,
-                    "conservation_error": residual,
+                    "conservation_error": parent_by_year[year] - direct_by_year[year],
                     "base_year_continuity_error": pd.NA,
                     "duplicate_output_count": 0,
                 })
             continue
 
-        method = "parent_residual_base_year_share" if parent_has_projection else "base_year_constant"
+        if parent_has_projection and has_protected_children:
+            method = "parent_augmented_for_protected_children"
+        elif parent_has_projection:
+            method = "parent_base_year_share"
+        elif has_protected_children:
+            method = "inferred_parent_from_protected_children"
+        else:
+            method = "base_year_constant"
         for _, profile_row in missing.iterrows():
             child = parent_row.to_dict()
             child_flow = str(profile_row["child_flow"])
             child["esto_flow"] = child_flow
             child["missing_ninth_fill_method"] = method
-            share = float(profile_row["base_value"]) / profile_total if parent_has_projection else pd.NA
+            missing_share = float(profile_row["base_value"]) / missing_total
             for year in year_cols:
-                residual = parent_by_year[year] - direct_by_year[year]
+                direct_value = direct_by_year[year]
+                inferred_parent = (
+                    direct_value * active_total / protected_base_total
+                    if has_protected_children else pd.NA
+                )
+                parent_value = parent_by_year[year]
+                reconstructed_parent = parent_value
+                if has_protected_children:
+                    # Do not shrink a supplied parent.  When a protected child
+                    # implies a larger same-sign parent, grow it instead.
+                    if not parent_has_projection or (
+                        float(inferred_parent) * parent_value >= 0
+                        and abs(float(inferred_parent)) > abs(parent_value)
+                    ):
+                        reconstructed_parent = float(inferred_parent)
+                residual = reconstructed_parent - direct_value
                 child_value = (
-                    residual * float(share)
-                    if parent_has_projection
+                    residual * missing_share
+                    if method != "base_year_constant"
                     else float(profile_row["base_value"])
                 )
                 child[year] = child_value
@@ -899,13 +931,15 @@ def _fill_general_missing_ninth_children(
                     "year": int(year),
                     "parent_value": parent_by_year[year],
                     "direct_children_value": direct_by_year[year],
-                    "residual_value": residual if parent_has_projection else pd.NA,
-                    "allocation_share": share,
-                    "conservation_error": 0.0 if parent_has_projection else pd.NA,
+                    "residual_value": residual if method != "base_year_constant" else pd.NA,
+                    "allocation_share": missing_share if method != "base_year_constant" else pd.NA,
+                    "conservation_error": 0.0 if method != "base_year_constant" else pd.NA,
                     "base_year_continuity_error": child_value - float(profile_row["base_value"])
                     if int(year) == min(int(value) for value in year_cols)
                     else pd.NA,
                     "duplicate_output_count": 0,
+                    "inferred_parent_value": inferred_parent,
+                    "reconstructed_parent_value": reconstructed_parent,
                 })
             generated.append(child)
 
@@ -1368,6 +1402,10 @@ def allocate_ninth_projection_to_esto(
         merged,
         child_flow_profiles,
         year_cols,
+        fill_missing_ninth_sectors=(
+            fill_missing_ninth_sectors
+            and str(owner_workflow or "").strip() in {"", "transformation_workflow"}
+        ),
     )
     merged, gas_profile_diagnostics = _allocate_gas_parent_residuals(
         merged,
@@ -1389,7 +1427,7 @@ def allocate_ninth_projection_to_esto(
                     ),
                     "profile_parent_flow",
                 ].astype(str)
-            ) - {GAS_PARENT_ESTO_FLOW, COAL_PARENT_ESTO_FLOW}
+            )
             general_parent_source_keys = set(map(
                 tuple,
                 merged.loc[

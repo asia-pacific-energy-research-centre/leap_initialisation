@@ -712,7 +712,7 @@ def test_zero_gas_parent_does_not_reverse_direct_child_projection_by_default(tmp
     filled_values = filled.set_index("esto_flow")[2023].to_dict()
     assert filled_values["09.06.02 Liquefaction/regasification plants"] == pytest.approx(60.0)
     assert filled_values["09.06.03 Natural gas blending plants"] == pytest.approx(40.0)
-    assert "gas_missing_ninth_child_base_year_fill" in set(diagnostics["diagnostic_type"])
+    assert "missing_ninth_sector_fill_applied" in set(diagnostics["diagnostic_type"])
 
 
 def test_gas_parent_residual_without_any_active_child_profile_is_skipped(tmp_path) -> None:
@@ -766,7 +766,7 @@ def _general_transfer_fill_fixture(tmp_path: Path, *, parent_2023: float = 200.0
     return esto, ninth, mapping_path
 
 
-def test_general_missing_child_uses_parent_residual_and_preserves_direct_child(tmp_path: Path) -> None:
+def test_general_missing_child_augments_parent_and_preserves_direct_child(tmp_path: Path) -> None:
     esto, ninth, mapping_path = _general_transfer_fill_fixture(tmp_path)
 
     projection, diagnostics = build_esto_projection_table(
@@ -782,15 +782,17 @@ def test_general_missing_child_uses_parent_residual_and_preserves_direct_child(t
 
     values = projection.set_index("esto_flow")[2023].to_dict()
     assert values["08.01 Recycled products"] == pytest.approx(80.0)
-    assert values["08.02 Interproduct transfers"] == pytest.approx(120.0)
-    assert sum(values.values()) == pytest.approx(200.0)
+    assert values["08.02 Interproduct transfers"] == pytest.approx(186.66666666666669)
+    assert sum(values.values()) == pytest.approx(266.66666666666669)
     fill = diagnostics[diagnostics["diagnostic_type"].eq("missing_ninth_sector_fill_applied")]
-    assert set(fill["allocation_method"]) == {"parent_residual_base_year_share"}
+    assert set(fill["allocation_method"]) == {"parent_augmented_for_protected_children"}
     assert fill.iloc[0]["owner_workflow"] == "transfers_workflow"
-    assert fill.iloc[0]["residual_value"] == pytest.approx(120.0)
+    assert fill.iloc[0]["residual_value"] == pytest.approx(186.66666666666669)
     assert fill.iloc[0]["allocation_share"] == pytest.approx(1.0)
     assert fill.iloc[0]["conservation_error"] == pytest.approx(0.0)
     assert fill.iloc[0]["duplicate_output_count"] == 0
+    assert fill.iloc[0]["inferred_parent_value"] == pytest.approx(266.66666666666669)
+    assert fill.iloc[0]["reconstructed_parent_value"] == pytest.approx(266.66666666666669)
 
 
 def test_general_missing_child_carries_base_year_when_parent_has_no_projection(tmp_path: Path) -> None:
@@ -815,6 +817,88 @@ def test_general_missing_child_carries_base_year_when_parent_has_no_projection(t
     fill = diagnostics[diagnostics["diagnostic_type"].eq("missing_ninth_sector_fill_applied")]
     assert set(fill["allocation_method"]) == {"base_year_constant"}
     assert set(fill["base_year_continuity_error"]) == {0.0}
+
+
+def test_general_missing_child_infers_parent_from_surviving_child(tmp_path: Path) -> None:
+    esto, ninth, mapping_path = _general_transfer_fill_fixture(tmp_path, parent_2023=0.0)
+    # The parent is unavailable, but one child has a real 9th projection.  It
+    # must remain untouched while its missing sibling scales with it.
+    ninth.loc[ninth["sub1sectors"].eq("08_01_recycled_products"), 2023] = 90.0
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth,
+        esto,
+        mapping_path,
+        base_year=2022,
+        projection_years=[2023],
+        fill_missing_ninth_sectors=True,
+        owner_workflow="transfers_workflow",
+    )
+
+    values = projection.set_index("esto_flow")[2023].to_dict()
+    assert values["08.01 Recycled products"] == pytest.approx(90.0)
+    assert values["08.02 Interproduct transfers"] == pytest.approx(210.0)
+    fill = diagnostics[diagnostics["diagnostic_type"].eq("missing_ninth_sector_fill_applied")]
+    assert set(fill["allocation_method"]) == {"inferred_parent_from_protected_children"}
+    assert fill.iloc[0]["inferred_parent_value"] == pytest.approx(300.0)
+    assert fill.iloc[0]["reconstructed_parent_value"] == pytest.approx(300.0)
+
+
+def test_general_parent_without_projected_children_splits_all_children(tmp_path: Path) -> None:
+    esto, ninth, mapping_path = _general_transfer_fill_fixture(tmp_path, parent_2023=200.0)
+    ninth = ninth[ninth["subtotal_results"].eq(True)].copy()
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth,
+        esto,
+        mapping_path,
+        base_year=2022,
+        projection_years=[2023],
+        fill_missing_ninth_sectors=True,
+        owner_workflow="transfers_workflow",
+    )
+
+    values = projection.set_index("esto_flow")[2023].to_dict()
+    assert values == {
+        "08.01 Recycled products": pytest.approx(60.0),
+        "08.02 Interproduct transfers": pytest.approx(140.0),
+    }
+    fill = diagnostics[diagnostics["diagnostic_type"].eq("missing_ninth_sector_fill_applied")]
+    assert set(fill["allocation_method"]) == {"parent_base_year_share"}
+
+
+def test_coal_zero_parent_uses_surviving_child_to_reconstruct_missing_sibling(tmp_path: Path) -> None:
+    esto = pd.DataFrame([
+        {"economy": "01AUS", "flows": "09.08 Coal transformation", "products": "02.01 Coke oven coke", "is_subtotal": True, "2022": 100.0},
+        {"economy": "01AUS", "flows": "09.08.01 Coke ovens", "products": "02.01 Coke oven coke", "is_subtotal": False, "2022": 30.0},
+        {"economy": "01AUS", "flows": "09.08.02 Blast furnaces", "products": "02.01 Coke oven coke", "is_subtotal": False, "2022": 70.0},
+    ])
+    ninth = pd.DataFrame([
+        {"economy": "01_AUS", "scenarios": "reference", "sectors": "09_total_transformation_sector", "sub1sectors": "09_08_coal_transformation", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x", "fuels": "02_01_coke_oven_coke", "subfuels": "x", "subtotal_results": True, 2023: 0.0},
+        {"economy": "01_AUS", "scenarios": "reference", "sectors": "09_total_transformation_sector", "sub1sectors": "09_08_coal_transformation", "sub2sectors": "09_08_01_coke_ovens", "sub3sectors": "x", "sub4sectors": "x", "fuels": "02_01_coke_oven_coke", "subfuels": "x", "subtotal_results": False, 2023: 90.0},
+    ])
+    mapping_path = tmp_path / "coal_mapping.xlsx"
+    pd.DataFrame([
+        {"ninth_sector": "09_08_coal_transformation", "ninth_fuel": "02_01_coke_oven_coke", "esto_flow": "09.08 Coal transformation", "esto_product": "02.01 Coke oven coke"},
+        {"ninth_sector": "09_08_01_coke_ovens", "ninth_fuel": "02_01_coke_oven_coke", "esto_flow": "09.08.01 Coke ovens", "esto_product": "02.01 Coke oven coke"},
+    ]).to_excel(mapping_path, index=False)
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth,
+        esto,
+        mapping_path,
+        base_year=2022,
+        projection_years=[2023],
+        sign_stable_flows="all",
+        fill_missing_ninth_sectors=True,
+        owner_workflow="transformation_workflow",
+    )
+
+    values = projection.set_index("esto_flow")[2023].to_dict()
+    assert values["09.08.01 Coke ovens"] == pytest.approx(90.0)
+    assert values["09.08.02 Blast furnaces"] == pytest.approx(210.0)
+    fill = diagnostics[diagnostics["diagnostic_type"].eq("missing_ninth_sector_fill_applied")]
+    assert set(fill["allocation_method"]) == {"inferred_parent_from_protected_children"}
 
 
 def test_general_missing_child_flag_off_preserves_direct_ninth_result(tmp_path: Path) -> None:
