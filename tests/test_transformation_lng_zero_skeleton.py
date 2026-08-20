@@ -133,4 +133,50 @@ def test_lng_projection_can_change_direction_after_historical_split() -> None:
     assert regasification["output_values"]["08_01_natural_gas"][2040] == pytest.approx(1267.880593)
 
 
+def test_lng_excludes_parent_gas_rollup_from_malaysia_feedstock_share() -> None:
+    """The 08_gas/x net must not become a second MAS LNG feedstock."""
+    projected_data = _lng_projection_rows(
+        "10_MAS",
+        {2022: -1678.672339},
+        {2022: 1098.783792},
+    )
+    projected_data = pd.concat(
+        [
+            projected_data,
+            pd.DataFrame(
+                [
+                    {
+                        "economy": "10_MAS",
+                        "sub2sectors": "09_06_02_liquefaction_regasification_plants",
+                        "fuels": "08_gas",
+                        "subfuels": "x",
+                        2022: -579.888547,
+                    }
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    process_records: list[dict] = []
+
+    analyze_lng_liquefaction_regas(
+        esto_data=projected_data,
+        year_cols=[2022],
+        start_year=2022,
+        economy="10_MAS",
+        code_to_name_mapping={
+            "08_gas": "Gas",
+            "08_01_natural_gas": "Natural gas",
+            "08_02_lng": "LNG",
+        },
+        loss_data=projected_data,
+        loss_year_cols=[2022],
+        process_records=process_records,
+    )
+
+    liquefaction = _record_for_process(process_records, "Liquefaction")
+    assert set(liquefaction["feedstock_values"]) == {"08_01_natural_gas"}
+    assert liquefaction["feedstock_shares"]["08_01_natural_gas"][2022] == pytest.approx(1.0)
+
+
 #%%

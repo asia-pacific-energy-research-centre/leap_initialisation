@@ -94,6 +94,27 @@ def _sum_series_collection(series_list, year_index):
         raise
 
 
+def _drop_lng_parent_fuel_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Drop 09.06 LNG fuel parents only where detailed children coexist."""
+    if df.empty or not {"fuels", "subfuels"}.issubset(df.columns):
+        return df.copy()
+    group_cols = [
+        column
+        for column in [
+            "economy", "scenarios", "sectors", "sub1sectors", "sub2sectors",
+            "sub3sectors", "sub4sectors", "fuels",
+        ]
+        if column in df.columns
+    ]
+    if not group_cols:
+        return df.copy()
+    subfuels = df["subfuels"].fillna("").astype(str).str.strip()
+    has_child = subfuels.ne("x").groupby(
+        [df[column] for column in group_cols], dropna=False
+    ).transform("any")
+    return df.loc[~(subfuels.eq("x") & has_child)].copy()
+
+
 def _merge_year_value_maps(target_map, updates):
     """Merge dict[label][year] values into target_map by summing overlaps."""
     try:
@@ -329,6 +350,12 @@ def analyze_lng_liquefaction_regas(
                 esto_data,
                 {"economy": component_economy, "sub2sectors": lng_sub2},
             )
+            # This analyser consumes raw 9th-shaped process rows directly.
+            # A parent row such as ``08_gas / x`` is a net roll-up where
+            # detailed gas children coexist, not a second LNG feedstock.
+            # Keep this correction deliberately limited to the proven 09.06
+            # LNG process; do not make it a global ninth-data ingress rule.
+            process_rows = _drop_lng_parent_fuel_rows(process_rows)
             timeseries, _ = summarize_fuel_timeseries(
                 process_rows,
                 year_cols,
