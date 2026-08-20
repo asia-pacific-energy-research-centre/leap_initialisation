@@ -15,6 +15,12 @@ import pytest
 from codebase.supply_reconciliation import parallel_runner as runner
 
 
+@pytest.fixture(autouse=True)
+def _skip_real_registry_materiality_refresh(monkeypatch):
+    """Parallel-runner unit tests must not scan the real source tables."""
+    monkeypatch.setattr(runner, "_refresh_missing_branch_registry_materiality", lambda: 0)
+
+
 def test_build_worker_snapshots_gives_each_economy_a_distinct_label() -> None:
     snapshots = runner.build_worker_snapshots(
         ["01_AUS", "12_NZ"],
@@ -71,6 +77,8 @@ def test_run_economies_in_parallel_reports_one_result_per_snapshot(tmp_path, mon
     fake_script = tmp_path / "fake_worker.py"
     fake_script.write_text(_FAKE_WORKER_SCRIPT, encoding="utf-8")
     monkeypatch.setattr(runner, "WORKFLOW_SCRIPT_PATH", fake_script)
+    refresh_calls: list[object] = []
+    monkeypatch.setattr(runner, "_refresh_missing_branch_registry_materiality", lambda: refresh_calls.append(True) or 0)
 
     snapshots = runner.build_worker_snapshots(
         ["01_AUS", "12_NZ"], base_run_output_label="SMOKE"
@@ -91,6 +99,7 @@ def test_run_economies_in_parallel_reports_one_result_per_snapshot(tmp_path, mon
         contents = result.stdout_log.read_text(encoding="utf-8")
         assert f"worker for {result.economy}" in contents
         assert f"SMOKE_{result.economy}" in contents
+    assert refresh_calls == [True]
 
 
 def test_run_economies_in_parallel_respects_max_workers_of_one(tmp_path, monkeypatch) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import re
 import subprocess
 import sys
@@ -189,6 +190,23 @@ class WorkflowTimer:
         self._year_end: int | None = None
         self._n_years: int | None = None
         self._run_type: str = "full"
+        try:
+            import psutil
+            self._process = psutil.Process(os.getpid())
+            self._last_rss_bytes: int | None = int(self._process.memory_info().rss)
+            self._start_rss_bytes: int | None = self._last_rss_bytes
+        except Exception:
+            self._process = None
+            self._last_rss_bytes = None
+            self._start_rss_bytes = None
+
+    def _current_rss_bytes(self) -> int | None:
+        if self._process is None:
+            return None
+        try:
+            return int(self._process.memory_info().rss)
+        except Exception:
+            return None
 
     def set_metadata(
         self,
@@ -226,8 +244,11 @@ class WorkflowTimer:
         now = datetime.now()
         duration = now_perf - self._last_perf
         stage_started_at = self._last_at
+        stage_start_rss = self._last_rss_bytes
+        stage_end_rss = self._current_rss_bytes()
         self._last_perf = now_perf
         self._last_at = now
+        self._last_rss_bytes = stage_end_rss
         record = {
             "workflow": self.workflow_name,
             "stage_order": len(self._records) + 1,
@@ -237,6 +258,13 @@ class WorkflowTimer:
             "ended_at": now.isoformat(timespec="seconds"),
             "duration_seconds": round(duration, 3),
             "duration_formatted": format_duration(duration),
+            "rss_start_bytes": stage_start_rss,
+            "rss_end_bytes": stage_end_rss,
+            "rss_delta_bytes": (
+                stage_end_rss - stage_start_rss
+                if stage_start_rss is not None and stage_end_rss is not None
+                else None
+            ),
         }
         self._records.append(record)
         if self.print_each:
@@ -253,6 +281,7 @@ class WorkflowTimer:
             return {}
         now = datetime.now()
         duration = time.perf_counter() - self._start_perf
+        end_rss = self._current_rss_bytes()
         record = {
             "workflow": self.workflow_name,
             "stage_order": len(self._records) + 1,
@@ -262,6 +291,13 @@ class WorkflowTimer:
             "ended_at": now.isoformat(timespec="seconds"),
             "duration_seconds": round(duration, 3),
             "duration_formatted": format_duration(duration),
+            "rss_start_bytes": self._start_rss_bytes,
+            "rss_end_bytes": end_rss,
+            "rss_delta_bytes": (
+                end_rss - self._start_rss_bytes
+                if end_rss is not None and self._start_rss_bytes is not None
+                else None
+            ),
         }
         self._records.append(record)
         if self.print_each:

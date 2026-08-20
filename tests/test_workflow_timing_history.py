@@ -33,7 +33,8 @@ def test_timer_history_filename_includes_actual_horizon(tmp_path) -> None:
         year_end=2023,
         n_years=2,
     )
-    timer.lap("setup")
+    record = timer.lap("setup")
+    assert {"rss_start_bytes", "rss_end_bytes", "rss_delta_bytes"}.issubset(record)
     timer.write_csv(output_path)
 
     history_files = list((tmp_path / "history").glob("*.csv"))

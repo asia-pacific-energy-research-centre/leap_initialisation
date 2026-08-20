@@ -2370,6 +2370,24 @@ def run_results_linked_transformation_supply_workflow(
     )
     timer.lap("write per-economy combined workbooks")
 
+    # A direct full workflow has one completion boundary.  Refresh materiality
+    # only after seed assembly, and never in a parallel child: the parallel
+    # runner owns that one shared-registry write after every worker exits.
+    if not os.environ.get("LEAP_WORKER_SNAPSHOT_JSON"):
+        from codebase.mapping_tools.missing_branch_registry_materiality_workflow import (
+            refresh_missing_branch_registry_materiality,
+        )
+
+        try:
+            refreshed_registry = refresh_missing_branch_registry_materiality()
+            print(
+                "[INFO] Missing-branch registry materiality refresh completed: "
+                f"entries={len(refreshed_registry)}."
+            )
+            timer.lap("refresh missing-branch registry materiality")
+        except Exception as exc:
+            print(f"[WARN] Missing-branch registry materiality refresh failed: {exc!r}")
+
     balance_matching_diagnostics_path = checks_dir / RESULTS_BALANCE_MATCHING_DIAGNOSTICS_FILENAME
     balance_matching_diagnostics_path.parent.mkdir(parents=True, exist_ok=True)
     _sort_output_frame_for_csv(

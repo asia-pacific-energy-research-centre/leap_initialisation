@@ -49,6 +49,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_SCRIPT_PATH = REPO_ROOT / "codebase" / "supply_reconciliation_workflow.py"
 
 
+def _refresh_missing_branch_registry_materiality() -> int:
+    """Refresh once in the idle parent process and return registry row count."""
+    from codebase.mapping_tools.missing_branch_registry_materiality_workflow import (
+        refresh_missing_branch_registry_materiality,
+    )
+    return len(refresh_missing_branch_registry_materiality())
+
+
 @dataclass(frozen=True)
 class EconomyWorkerSnapshot:
     """Immutable per-process run snapshot for exactly one economy worker."""
@@ -273,6 +281,22 @@ def run_economies_in_parallel(
             peak_concurrent_workers=peak_concurrent_workers,
             pre_run_system=pre_run_system,
         )
+
+    # Workers deliberately do not write the shared registry: they may run in
+    # parallel and the refresh can read the full ESTO/9th source tables.  The
+    # parent executes it once after the bounded queue is completely idle.
+    try:
+        refreshed_registry_count = _refresh_missing_branch_registry_materiality()
+        print(
+            "[INFO] Missing-branch registry materiality refresh completed after "
+            f"parallel workers: entries={refreshed_registry_count}."
+        )
+    except Exception as exc:
+        # The run results remain intact. An incomplete registry row is still
+        # blocking on the next validation, and this warning makes the source
+        # mapping problem visible without turning a completed queue into an
+        # opaque parent-run failure.
+        print(f"[WARN] Missing-branch registry materiality refresh failed: {exc!r}")
 
     return results
 

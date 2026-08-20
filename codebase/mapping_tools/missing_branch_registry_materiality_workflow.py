@@ -174,7 +174,13 @@ def refresh_missing_branch_registry_materiality(
     source = workflow_cfg.get_energy_source_config()
     registry = Path(registry_path)
     rows, existing_columns = _read_registry(registry)
-    keys = _registry_source_keys(rows)
+    rows_needing_materiality = [
+        row for row in rows
+        if any(not str(row.get(column, "")).strip() for column in MATERIALITY_COLUMNS)
+    ]
+    if not rows_needing_materiality:
+        return pd.DataFrame(rows)
+    keys = _registry_source_keys(rows_needing_materiality)
     base_year = int(esto_base_year if esto_base_year is not None else source.esto_base_year)
     start_year = int(projection_start_year if projection_start_year is not None else source.projection_start_year)
     final_year = int(projection_final_year if projection_final_year is not None else (source.projection_final_year or 2060))
@@ -188,18 +194,25 @@ def refresh_missing_branch_registry_materiality(
         keys, ninth_path=Path(ninth_path or source.ninth_projection_table_path), projection_years=projection_years,
     )
     refreshed = pd.DataFrame(rows)
-    refreshed["esto_base_year"] = base_year
-    refreshed["projection_start_year"] = start_year
-    refreshed["projection_end_year"] = final_year
-    refreshed["projection_year_count"] = len(projection_years)
     for index, row in refreshed.iterrows():
+        if row["branch_path"] not in set(keys["branch_path"]):
+            continue
         signed, absolute = esto_values[row["branch_path"]]
-        refreshed.at[index, "esto_base_year_signed_pj_all_economies"] = signed
-        refreshed.at[index, "esto_base_year_absolute_pj_all_economies"] = absolute
+        derived_values = {
+            "esto_base_year": base_year,
+            "esto_base_year_signed_pj_all_economies": signed,
+            "esto_base_year_absolute_pj_all_economies": absolute,
+            "projection_start_year": start_year,
+            "projection_end_year": final_year,
+            "projection_year_count": len(projection_years),
+        }
         for scenario in ("reference", "target"):
             projection_signed, projection_absolute = projection_values[row["branch_path"]][scenario]
-            refreshed.at[index, f"{scenario}_projection_signed_average_pj_per_year_all_economies"] = projection_signed / len(projection_years)
-            refreshed.at[index, f"{scenario}_projection_absolute_average_pj_per_year_all_economies"] = projection_absolute / len(projection_years)
+            derived_values[f"{scenario}_projection_signed_average_pj_per_year_all_economies"] = projection_signed / len(projection_years)
+            derived_values[f"{scenario}_projection_absolute_average_pj_per_year_all_economies"] = projection_absolute / len(projection_years)
+        for column, value in derived_values.items():
+            if not str(refreshed.at[index, column] if column in refreshed.columns else "").strip():
+                refreshed.at[index, column] = value
     column_order = [*BASE_COLUMNS, *MATERIALITY_COLUMNS, *[
         column for column in existing_columns if column not in {*BASE_COLUMNS, *MATERIALITY_COLUMNS}
     ]]

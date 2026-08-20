@@ -47,6 +47,17 @@ def test_refresh_preserves_notes_and_uses_configured_base_and_projection_years(t
     assert refreshed.at[0, "target_projection_absolute_average_pj_per_year_all_economies"] == 5.0
     assert len(build_missing_branch_validation_exceptions(registry)) == 6
 
+    # A later refresh does not overwrite approved/materialised values.
+    pd.DataFrame([{
+        "economy": "01AUS", "flows": "10.01.06 Coal mines", "products": "02.08 BKB/PB",
+        "is_subtotal": False, "2022": -99.0,
+    }]).to_csv(esto, index=False)
+    preserved = refresh_missing_branch_registry_materiality(
+        registry, esto_path=esto, esto_base_year=2022, ninth_path=ninth,
+        projection_start_year=2023, projection_final_year=2024,
+    )
+    assert float(preserved.at[0, "esto_base_year_absolute_pj_all_economies"]) == 3.0
+
 
 def test_unrefreshed_registry_entry_cannot_suppress_a_missing_branch(tmp_path: Path) -> None:
     registry = tmp_path / "registry.csv"
