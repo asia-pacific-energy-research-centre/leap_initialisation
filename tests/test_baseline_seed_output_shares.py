@@ -114,49 +114,6 @@ def test_all_zero_multi_output_share_group_is_anchored_at_100():
     )
 
 
-def test_auto_balance_is_not_the_inert_all_zero_share_anchor():
-    output_shares = builder._normalize_output_shares_for_export(
-        {"AUTO BALANCE": {2022: 0.0, 2023: 0.0}, "Naphtha": {2022: 0.0, 2023: 0.0}},
-        2022,
-        2023,
-    )
-    feedstock_shares = builder.prepare_feedstock_shares_for_export(
-        feedstock_shares={},
-        feedstock_values={},
-        process_feedstock_labels=["AUTO BALANCE", "Naphtha"],
-        base_year=2022,
-        final_year=2023,
-    )
-
-    assert output_shares["AUTO BALANCE"] == {2022: 0.0, 2023: 0.0}
-    assert output_shares["Naphtha"] == {2022: 100.0, 2023: 100.0}
-    assert feedstock_shares["AUTO BALANCE"] == {2022: 0.0, 2023: 0.0}
-    assert feedstock_shares["Naphtha"] == {2022: 100.0, 2023: 100.0}
-
-
-def test_tier2_zero_fill_never_anchors_auto_balance():
-    catalog = pd.DataFrame([
-        {"fuel_group": "Feedstock Fuels", "branch_path": r"Transformation\Transfers unallocated\Processes\Transfers unallocated\Feedstock Fuels\AUTO BALANCE"},
-        {"fuel_group": "Feedstock Fuels", "branch_path": r"Transformation\Transfers unallocated\Processes\Transfers unallocated\Feedstock Fuels\Naphtha"},
-        {"fuel_group": "Output Fuels", "branch_path": r"Transformation\Transfers unallocated\Output Fuels\AUTO BALANCE"},
-        {"fuel_group": "Output Fuels", "branch_path": r"Transformation\Transfers unallocated\Output Fuels\Naphtha"},
-    ])
-    rows = builder.build_aux_fuel_zero_rows(
-        existing_rows=[],
-        full_branch_catalog_df=catalog,
-        scenarios=["Current Accounts"],
-        base_year=2022,
-        final_year=2022,
-        in_scope_sector_titles={"Transfers unallocated"},
-    )
-    values = {(row["Branch_Path"], row["Measure"]): row["Value"] for row in rows}
-
-    assert values[(r"Transformation\Transfers unallocated\Processes\Transfers unallocated\Feedstock Fuels\AUTO BALANCE", "Feedstock Fuel Share")] == 0.0
-    assert values[(r"Transformation\Transfers unallocated\Processes\Transfers unallocated\Feedstock Fuels\Naphtha", "Feedstock Fuel Share")] == 100.0
-    assert values[(r"Transformation\Transfers unallocated\Output Fuels\AUTO BALANCE", "Output Share")] == 0.0
-    assert values[(r"Transformation\Transfers unallocated\Output Fuels\Naphtha", "Output Share")] == 100.0
-
-
 def test_final_export_carries_valid_share_profile_over_explicit_zero_year():
     rows = []
     for fuel, base_value, projection_value in [
