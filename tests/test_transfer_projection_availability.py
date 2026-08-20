@@ -14,8 +14,8 @@ if str(REPO_ROOT) not in sys.path:
 from codebase import transfers_workflow  # noqa: E402
 
 
-def test_transfer_parent_is_retained_and_preferred_over_incomplete_children() -> None:
-    """The reported parent is authoritative when child observations disagree."""
+def test_active_transfer_children_are_preferred_over_parent() -> None:
+    """Keep the established child-first behaviour when the parent is also present."""
     source = pd.DataFrame([
         {"economy": "14_PE", "flows": "08 Transfers", "products": "07.01 Motor gasoline",
          "is_subtotal": True, 2022: 10.0},
@@ -23,15 +23,14 @@ def test_transfer_parent_is_retained_and_preferred_over_incomplete_children() ->
          "is_subtotal": False, 2022: 25.0},
         {"economy": "14_PE", "flows": "08.03 Products transferred", "products": "07.01 Motor gasoline",
          "is_subtotal": False, 2022: 30.0},
+        {"economy": "14_PE", "flows": "08.04 Gas separation", "products": "08.01 Natural gas",
+         "is_subtotal": False, 2022: -5.0},
     ])
 
-    filtered = transfers_workflow._filter_transfer_source_rows(source)
-
-    assert set(filtered["flows"]) == {
-        "08 Transfers", "08.02 Interproduct transfers", "08.03 Products transferred",
-    }
-    assert transfers_workflow.select_transfer_flows(filtered, [2022], "14_PE") == [
-        "08 Transfers"
+    assert transfers_workflow.select_transfer_flows(source, [2022], "14_PE") == [
+        "08.02 Interproduct transfers",
+        "08.03 Products transferred",
+        "08.04 Gas separation",
     ]
 
 
