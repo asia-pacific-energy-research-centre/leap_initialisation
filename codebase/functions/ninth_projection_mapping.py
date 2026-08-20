@@ -31,6 +31,14 @@ GAS_CHILD_ESTO_FLOWS = (
     "09.06.03 Natural gas blending plants",
     "09.06.04 Gas-to-liquids plants",
 )
+# Only a reviewed process/flow family may infer or enlarge a parent total.  In
+# particular, broad mapping parents such as ``09 Total transformation sector``
+# combine unrelated processes and must never become reconstruction families.
+APPROVED_MISSING_NINTH_PARENT_FLOWS = {
+    "08 Transfers",
+    COAL_PARENT_ESTO_FLOW,
+    GAS_PARENT_ESTO_FLOW,
+}
 NINTH_SECTOR_COLS = [
     "sub4sectors",
     "sub3sectors",
@@ -766,6 +774,11 @@ def _fill_general_missing_ninth_children(
             GAS_PARENT_ESTO_FLOW
         )
     profile = child_profiles[owner_mask].copy()
+    profile = profile[
+        profile["profile_parent_flow"].astype(str).isin(
+            APPROVED_MISSING_NINTH_PARENT_FLOWS
+        )
+    ].copy()
     if profile.empty:
         return allocated_rows, pd.DataFrame()
 
@@ -1427,7 +1440,7 @@ def allocate_ninth_projection_to_esto(
                     ),
                     "profile_parent_flow",
                 ].astype(str)
-            )
+            ) & APPROVED_MISSING_NINTH_PARENT_FLOWS
             general_parent_source_keys = set(map(
                 tuple,
                 merged.loc[
@@ -1839,7 +1852,7 @@ def build_esto_projection_table(
                     ),
                     "profile_parent_flow",
                 ].astype(str)
-            )
+            ) & APPROVED_MISSING_NINTH_PARENT_FLOWS
             eligible_parent_pairs = set(map(
                 tuple,
                 mapping_df.loc[
