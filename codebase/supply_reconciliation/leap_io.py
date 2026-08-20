@@ -2859,7 +2859,12 @@ def build_supply_transformation_zeroing_workbooks(
         selected["Region"] = supply_data_pipeline.get_region_for_economy(economy)
         selected["Expression"] = "0"
         columns = ["Branch Path", "Variable", "Scenario", "Region", "Scale", "Units", "Per...", "Expression"]
-        rows = selected.reindex(columns=columns).fillna("")
+        # Some legacy templates (notably USA) retain many blank trailing
+        # header cells.  ``reindex`` rejects that duplicate source axis even
+        # though none of those cells is needed for this compact import.  Direct
+        # selection is equivalent for the required, unique columns and works
+        # across both legacy and current template layouts.
+        rows = selected.loc[:, columns].fillna("")
         leap_df = add_leap_preamble(prepare_for_leap_sheet_df(rows))
         viewing_df = add_leap_preamble(prepare_for_viewing_sheet_df(rows, base_year=BASE_YEAR, final_year=FINAL_YEAR))
         token = workflow_common.format_filename_segment(economy) or "economy"

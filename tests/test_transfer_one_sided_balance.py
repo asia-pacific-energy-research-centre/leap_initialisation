@@ -19,8 +19,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from codebase.transfers_workflow import (  # noqa: E402
     AUTO_BALANCE_PRODUCT_LABEL,
+    AUTO_BALANCE_LEAP_FUEL_NAME,
     ONE_SIDED_TRANSFER_BALANCE_POLICY,
     balance_one_sided_transfer_flow,
+    save_transfer_export,
 )
 
 YEARS = [2022, 2023]
@@ -151,6 +153,29 @@ def test_outflow_only_has_no_implied_efficiency_risk() -> None:
     )
 
     assert diagnostic["max_implied_efficiency_percent"] is None
+
+
+def test_transfer_export_maps_synthetic_auto_balance_to_the_real_leap_leaf(monkeypatch, tmp_path) -> None:
+    """The source-only counterpart label must be resolvable during export."""
+    from codebase import transfers_workflow as transfers
+
+    captured = {}
+    monkeypatch.setattr(transfers.core, "code_to_name_mapping", {"07.01": "Motor gasoline"})
+    monkeypatch.setattr(
+        transfers.core,
+        "save_transformation_export",
+        lambda *args, **kwargs: captured.setdefault("mapping", args[4]),
+    )
+    monkeypatch.setattr(
+        transfers.leap_export_template_resolver,
+        "resolve_leap_export_template_or_fallback",
+        lambda *args, **kwargs: tmp_path / "prc_template.xlsx",
+    )
+
+    save_transfer_export([{"economy": "05_PRC"}], scenarios=["Target"], output_dir=tmp_path)
+
+    assert captured["mapping"][AUTO_BALANCE_PRODUCT_LABEL] == AUTO_BALANCE_LEAP_FUEL_NAME
+    assert AUTO_BALANCE_PRODUCT_LABEL not in transfers.core.code_to_name_mapping
 
 
 @pytest.mark.parametrize("measured", [0.5, 10.0, 12.7, 5000.0])

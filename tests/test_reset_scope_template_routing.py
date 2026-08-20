@@ -298,3 +298,24 @@ def test_supply_transformation_zeroing_still_writes_real_economy_workbook(monkey
     assert calls == ["20_USA"]
     assert [path.name for path in paths] == ["supply_transformation_zeroing_20_USA.xlsx"]
     assert paths[0].exists()
+
+
+def test_supply_transformation_zeroing_ignores_unused_duplicate_blank_headers(monkeypatch, tmp_path):
+    """USA's legacy template has repeated blank trailing headers."""
+    template = tmp_path / "usa_template.xlsx"
+    raw = pd.DataFrame(
+        [
+            ["LEAP export", None, None, None, None, None, None, None],
+            ["Branch Path", "Variable", "Scenario", "Scale", "Units", "Per...", None, None],
+            ["Resources\\Crude oil", "Imports", "Reference", "PJ", "PJ", "Year", None, None],
+        ]
+    )
+
+    monkeypatch.setattr(supply_leap_io, "_leap_export_template_for_economy", lambda economy: template)
+    monkeypatch.setattr(supply_leap_io.pd, "read_excel", lambda *args, **kwargs: raw)
+
+    paths = supply_leap_io.build_supply_transformation_zeroing_workbooks(
+        scenarios=["Reference"], economies=["20_USA"], output_dir=tmp_path / "zeroing",
+    )
+
+    assert [path.name for path in paths] == ["supply_transformation_zeroing_20_USA.xlsx"]

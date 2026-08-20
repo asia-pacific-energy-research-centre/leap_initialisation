@@ -1143,12 +1143,19 @@ def save_transfer_export(
         economy=core.format_filename_segment(economy),
         scenario=core.format_filename_segment("_".join(scenario_list)),
     )
+    # One-sided transfer balancing deliberately uses a source-only label so it
+    # can never be mistaken for a measured ESTO product.  The active LEAP
+    # templates instead expose the explicit ``AUTO BALANCE`` leaf.  Keep this
+    # bridge local to transfer exports: it is an import-name alias, not a
+    # canonical ESTO/9th mapping relationship.
+    export_code_to_name_mapping = dict(core.code_to_name_mapping)
+    export_code_to_name_mapping[AUTO_BALANCE_PRODUCT_LABEL] = AUTO_BALANCE_LEAP_FUEL_NAME
     return core.save_transformation_export(
         process_records,
         core.EXPORT_REGION,
         core.EXPORT_BASE_YEAR,
         core.EXPORT_FINAL_YEAR,
-        core.code_to_name_mapping,
+        export_code_to_name_mapping,
         output_dir,
         filename,
         core.EXPORT_MODEL_NAME,
