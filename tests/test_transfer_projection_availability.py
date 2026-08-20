@@ -14,6 +14,42 @@ if str(REPO_ROOT) not in sys.path:
 from codebase import transfers_workflow  # noqa: E402
 
 
+def test_transfer_parent_is_retained_and_preferred_over_incomplete_children() -> None:
+    """The reported parent is authoritative when child observations disagree."""
+    source = pd.DataFrame([
+        {"economy": "14_PE", "flows": "08 Transfers", "products": "07.01 Motor gasoline",
+         "is_subtotal": True, 2022: 10.0},
+        {"economy": "14_PE", "flows": "08.02 Interproduct transfers", "products": "07.01 Motor gasoline",
+         "is_subtotal": False, 2022: 25.0},
+        {"economy": "14_PE", "flows": "08.03 Products transferred", "products": "07.01 Motor gasoline",
+         "is_subtotal": False, 2022: 30.0},
+    ])
+
+    filtered = transfers_workflow._filter_transfer_source_rows(source)
+
+    assert set(filtered["flows"]) == {
+        "08 Transfers", "08.02 Interproduct transfers", "08.03 Products transferred",
+    }
+    assert transfers_workflow.select_transfer_flows(filtered, [2022], "14_PE") == [
+        "08 Transfers"
+    ]
+
+
+def test_gas_separation_is_a_transfer_child_fallback() -> None:
+    """08.04 must not be dropped when no reported transfer parent is available."""
+    source = pd.DataFrame([
+        {"economy": "02_BD", "flows": "08.04 Gas separation", "products": "08.01 Natural gas",
+         "is_subtotal": False, 2022: -3.0},
+        {"economy": "02_BD", "flows": "08.04 Gas separation", "products": "08.03 Gas works gas",
+         "is_subtotal": False, 2022: 2.0},
+    ])
+
+    assert "08.04 Gas separation" in transfers_workflow.TRANSFER_SUBFLOWS
+    assert transfers_workflow.select_transfer_flows(source, [2022], "02_BD") == [
+        "08.04 Gas separation"
+    ]
+
+
 def test_projection_availability_classifies_all_four_states() -> None:
     historical = pd.DataFrame([
         {"economy": "01_AUS", "flows": "08.99 Transfers nonspecified", "products": "07.01 Motor gasoline", 2022: 10.0},

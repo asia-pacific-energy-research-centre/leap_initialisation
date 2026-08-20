@@ -76,14 +76,17 @@ TRANSFER_FLOW_CODES = [
     "08.01 Recycled products",
     "08.02 Interproduct transfers",
     "08.03 Products transferred",
+    "08.04 Gas separation",
     "08.99 Transfers nonspecified"
 ]
 
-# Prefer subflows when they have nonzero data.
+# Structural children of the real ESTO ``08 Transfers`` parent.  Keep this list
+# complete even though LEAP allocation is by fuel function rather than child flow.
 TRANSFER_SUBFLOWS = [
     "08.01 Recycled products",
     "08.02 Interproduct transfers",
     "08.03 Products transferred",
+    "08.04 Gas separation",
     "08.99 Transfers nonspecified"
 ]
 
@@ -531,7 +534,19 @@ TRANSFER_ECONOMY_CONFIG_ALIASES = {
 def select_transfer_flows(
     data: pd.DataFrame, year_cols: list[int], economy: str
 ) -> list[str]:
-    """Prefer subflows when they have data; fallback to aggregate."""
+    """Use the reported transfer parent, then fall back to active children.
+
+    ``08 Transfers`` is a real ESTO parent row.  Published child observations
+    do not always add back to it, so processing both would double count while
+    processing only the children can change the reported total.  The parent is
+    therefore the authoritative transfer total whenever it is present.  The
+    complete child list, including gas separation, is used only when the parent
+    has no usable values.
+    """
+    aggregate_rows = core.select_flow_rows(data, economy, "08 Transfers")
+    if _flow_has_nonzero(aggregate_rows, year_cols):
+        return ["08 Transfers"]
+
     subflow_hits = []
     for flow_code in TRANSFER_SUBFLOWS:
         rows = core.select_flow_rows(data, economy, flow_code)
@@ -539,10 +554,26 @@ def select_transfer_flows(
             subflow_hits.append(flow_code)
     if subflow_hits:
         return subflow_hits
-    aggregate_rows = core.select_flow_rows(data, economy, "08 Transfers")
-    if _flow_has_nonzero(aggregate_rows, year_cols):
-        return ["08 Transfers"]
     return []
+
+
+def _filter_transfer_source_rows(data: pd.DataFrame) -> pd.DataFrame:
+    """Remove ordinary subtotals while retaining the real transfer parent row."""
+    if not DROP_SUBTOTALS_FIRST:
+        return core.filter_total_energy_rows(data)
+
+    parent_rows = data.loc[
+        data["flows"].astype(str).str.strip().eq("08 Transfers")
+    ].copy() if "flows" in data.columns else data.iloc[0:0]
+    filtered = core.filter_total_energy_rows(core.filter_matt_subtotals(data))
+    # The source marks every 08 Transfers row as a subtotal because the flow is
+    # a hierarchy parent.  Remove that flag only while filtering aggregate
+    # *products*, otherwise the valid parent product rows would all disappear.
+    parent_product_filter_input = parent_rows.drop(columns=["is_subtotal"], errors="ignore")
+    parent_rows = core.filter_total_energy_rows(parent_product_filter_input)
+    if not parent_rows.empty:
+        filtered = pd.concat([filtered, parent_rows], ignore_index=True)
+    return filtered
 
 
 def _route_transfer_projection_to_historical_flow(
@@ -1017,10 +1048,10 @@ def build_transfer_rows(
     elif scenario is not None:
         data, year_cols_override = build_transfer_data_for_scenario(scenario)
     else:
-        data = core.esto_data
-    if DROP_SUBTOTALS_FIRST:
-        data = core.filter_matt_subtotals(data)
-        data = core.filter_total_energy_rows(data)
+        # ``core.esto_data`` has already dropped subtotal rows, including the
+        # real 08 Transfers parent required to preserve the reported total.
+        data = core.esto_data_raw
+    data = _filter_transfer_source_rows(data)
     year_cols = year_cols_override or core.esto_year_cols
     records: list[dict] = []
     flow_codes = select_transfer_flows(data, year_cols, economy)
