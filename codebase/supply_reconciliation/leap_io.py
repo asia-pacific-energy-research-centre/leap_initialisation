@@ -2058,6 +2058,14 @@ def write_per_economy_combined_workbooks(
         # Resolve this economy's LEAP area before anything reads IDs or
         # reference rows; BranchIDs differ between areas for the same path.
         id_lookup_resolved = _template_for_economy(economy)
+        is_aggregate_economy = leap_export_template_resolver.is_aggregate_economy(econ_token)
+        # The union is a structural catalog for the synthetic APEC preflight,
+        # not an ID source. Build it once per aggregate economy, not once per
+        # producer workbook (each build reads every active template).
+        aggregate_template_paths = (
+            leap_export_template_resolver.resolve_template_branch_paths_or_apec_union(econ_token)
+            if is_aggregate_economy else None
+        )
         artifact_template_paths[econ_token] = id_lookup_resolved
         branch_to_id, variable_to_id, scenario_to_id = _id_lookups_for_template(id_lookup_resolved)
         reference_df = _load_reference_export_data(id_lookup_resolved)
@@ -2112,11 +2120,6 @@ def write_per_economy_combined_workbooks(
                 artifact_producer_workbooks.setdefault(econ_token, {}).setdefault(
                     source_workflow, []
                 ).append(source_path)
-                is_aggregate_economy = leap_export_template_resolver.is_aggregate_economy(econ_token)
-                aggregate_template_paths = (
-                    leap_export_template_resolver.resolve_template_branch_paths_or_apec_union(econ_token)
-                    if is_aggregate_economy else None
-                )
                 rows_for_validation = enrich_seed_ids_from_template(
                     producer_rows,
                     id_lookup_resolved,
@@ -2281,14 +2284,10 @@ def write_per_economy_combined_workbooks(
                 raise_on_blocking=False,
                 economy=econ_token,
                 run_id=diagnostic_stem,
-                template_branch_paths=(
-                    leap_export_template_resolver.resolve_template_branch_paths_or_apec_union(econ_token)
-                    if leap_export_template_resolver.is_aggregate_economy(econ_token)
-                    else None
-                ),
-                validate_template_ids=not leap_export_template_resolver.is_aggregate_economy(econ_token),
-                validate_template_share_completeness=not leap_export_template_resolver.is_aggregate_economy(econ_token),
-                missing_template_branches_are_warnings=leap_export_template_resolver.is_aggregate_economy(econ_token),
+                template_branch_paths=aggregate_template_paths,
+                validate_template_ids=not is_aggregate_economy,
+                validate_template_share_completeness=not is_aggregate_economy,
+                missing_template_branches_are_warnings=is_aggregate_economy,
             )
             validation_results.append((econ_token, validation))
             zero_scope_columns = [
