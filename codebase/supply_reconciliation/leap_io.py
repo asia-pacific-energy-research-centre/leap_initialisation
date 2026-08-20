@@ -872,6 +872,7 @@ def save_transfer_exports_with_supply_overrides(
         ]
     )
     saved_paths: list[Path] = []
+    projection_availability_frames: list[pd.DataFrame] = []
     for scenario in scenario_list:
         projection_scenario = (
             "target" if str(scenario).strip().lower() == "target" else "reference"
@@ -881,6 +882,7 @@ def save_transfer_exports_with_supply_overrides(
                 economy=economy,
                 use_output_targets=False,
                 scenario=projection_scenario,
+                projection_availability_out=projection_availability_frames,
             )
             economy_records = (
                 transfers_workflow.merge_transfer_rows(economy_records)
@@ -937,6 +939,13 @@ def save_transfer_exports_with_supply_overrides(
                     strict_missing=False,
                 )
                 saved_paths.append(export_file)
+    if projection_availability_frames:
+        availability_path = output_path / "transfer_projection_availability.csv"
+        availability = pd.concat(projection_availability_frames, ignore_index=True)
+        availability.drop_duplicates(
+            subset=["economy", "scenario"], keep="last"
+        ).sort_values(["economy", "scenario"]).to_csv(availability_path, index=False)
+        print(f"Saved transfer projection availability diagnostic to {availability_path}")
     return saved_paths
 
 

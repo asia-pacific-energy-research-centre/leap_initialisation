@@ -1609,6 +1609,7 @@ def run_results_linked_transformation_supply_workflow(
         _ts_key_payload = _json.dumps({
             "supply_scenario_schema": TRANSFORMATION_SUPPLY_CACHE_SCHEMA_VERSION,
             "economies": sorted(economy_list),
+            "scenarios": sorted(balance_scenario_list),
             "dataset_key": str(export_dataset_key),
             "config_mtimes": _config_mtimes,
         }, sort_keys=True)
@@ -1640,8 +1641,14 @@ def run_results_linked_transformation_supply_workflow(
             except Exception as _cache_exc:
                 print(f"[WARN] Could not load transformation/supply cache: {_cache_exc}. Recomputing.")
     if not _ts_cache_hit:
-        transformation_table = build_transformation_balance_table(economies=economy_list)
-        transformation_sector_table = build_transformation_sector_table(economies=economy_list)
+        transformation_table = build_transformation_balance_table(
+            economies=economy_list,
+            projection_scenarios=balance_scenario_list,
+        )
+        transformation_sector_table = build_transformation_sector_table(
+            economies=economy_list,
+            projection_scenarios=balance_scenario_list,
+        )
         transformation_target_rows, transformation_process_records = build_transformation_trade_target_rows(
             economies=economy_list,
         )

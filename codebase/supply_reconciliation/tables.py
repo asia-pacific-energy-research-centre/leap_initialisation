@@ -181,10 +181,14 @@ ECONOMIES = list(workflow_cfg.SUPPLY_NOTEBOOK_ECONOMIES)
 
 def _collect_transformation_and_transfer_rows(
     economies: Iterable[str] | None = None,
+    projection_scenario: str | None = None,
 ) -> list[dict]:
     """Return combined process records from transformation and transfers workflows."""
     economy_list = workflow_common.normalize_economies(economies or ECONOMIES)
-    transformation_rows = transformation_workflow.collect_transformation_rows(economies=economy_list)
+    transformation_rows = transformation_workflow.collect_transformation_rows(
+        economies=economy_list,
+        projection_scenario=projection_scenario,
+    )
     if REFRESH_TRANSFORMATION_MEASURES_FROM_LEAP_RESULTS:
         transformation_rows = _refresh_transformation_measures_from_leap_results(
             transformation_rows,
@@ -200,6 +204,7 @@ def _collect_transformation_and_transfer_rows(
                 transfers_workflow.build_transfer_process_records(
                     economy=economy,
                     use_output_targets=False,
+                    scenario=projection_scenario,
                 )
             )
         except Exception as exc:
@@ -1024,19 +1029,21 @@ def build_transformation_balance_table(
     economies: Iterable[str] | None = None,
     base_year: int = BASE_YEAR,
     final_year: int = FINAL_YEAR,
+    projection_scenarios: Iterable[str] | None = None,
 ) -> pd.DataFrame:
     """Aggregate transformation+transfer output/input/loss values by ESTO product."""
     label_to_product = _build_label_to_esto_product_lookup()
-    rows = _collect_transformation_and_transfer_rows(economies=economies)
-    buckets: dict[tuple[str, str, int], dict[str, float]] = {}
+    scenarios = _normalize_supply_scenarios(projection_scenarios)
+    buckets: dict[tuple[str, str, str, int], dict[str, float]] = {}
     unmapped_labels: set[str] = set()
 
-    def _accumulate(economy: str, product: str, year: int, field: str, value: float) -> None:
-        key = (economy, product, year)
+    def _accumulate(scenario: str, economy: str, product: str, year: int, field: str, value: float) -> None:
+        key = (scenario, economy, product, year)
         bucket = buckets.setdefault(
             key,
             {
                 "economy": economy,
+                "scenario": scenario,
                 "esto_product": product,
                 "year": year,
                 "transformation_output": 0.0,
@@ -1046,28 +1053,33 @@ def build_transformation_balance_table(
         )
         bucket[field] += float(value)
 
-    for record in rows:
-        economy = str(record.get("economy") or "").strip()
-        if not economy:
-            continue
-        for label, year, value in _iter_year_value_items(record.get("output_values"), base_year, final_year):
-            product = label_to_product.get(label) or label_to_product.get(label.lower())
-            if not product:
-                unmapped_labels.add(label)
+    for scenario in scenarios:
+        rows = _collect_transformation_and_transfer_rows(
+            economies=economies,
+            projection_scenario=scenario,
+        )
+        for record in rows:
+            economy = str(record.get("economy") or "").strip()
+            if not economy:
                 continue
-            _accumulate(economy, product, year, "transformation_output", value)
-        for label, year, value in _iter_year_value_items(record.get("feedstock_values"), base_year, final_year):
-            product = label_to_product.get(label) or label_to_product.get(label.lower())
-            if not product:
-                unmapped_labels.add(label)
-                continue
-            _accumulate(economy, product, year, "transformation_input", abs(value))
-        for label, year, value in _iter_year_value_items(record.get("loss_values"), base_year, final_year):
-            product = label_to_product.get(label) or label_to_product.get(label.lower())
-            if not product:
-                unmapped_labels.add(label)
-                continue
-            _accumulate(economy, product, year, "transformation_losses", abs(value))
+            for label, year, value in _iter_year_value_items(record.get("output_values"), base_year, final_year):
+                product = label_to_product.get(label) or label_to_product.get(label.lower())
+                if not product:
+                    unmapped_labels.add(label)
+                    continue
+                _accumulate(scenario, economy, product, year, "transformation_output", value)
+            for label, year, value in _iter_year_value_items(record.get("feedstock_values"), base_year, final_year):
+                product = label_to_product.get(label) or label_to_product.get(label.lower())
+                if not product:
+                    unmapped_labels.add(label)
+                    continue
+                _accumulate(scenario, economy, product, year, "transformation_input", abs(value))
+            for label, year, value in _iter_year_value_items(record.get("loss_values"), base_year, final_year):
+                product = label_to_product.get(label) or label_to_product.get(label.lower())
+                if not product:
+                    unmapped_labels.add(label)
+                    continue
+                _accumulate(scenario, economy, product, year, "transformation_losses", abs(value))
 
     if unmapped_labels:
         preview = ", ".join(sorted(unmapped_labels)[:10])
@@ -1079,6 +1091,7 @@ def build_transformation_balance_table(
         return pd.DataFrame(
             columns=[
                 "economy",
+                "scenario",
                 "esto_product",
                 "year",
                 "transformation_output",
@@ -1087,7 +1100,7 @@ def build_transformation_balance_table(
             ]
         )
     return pd.DataFrame(buckets.values()).sort_values(
-        ["economy", "esto_product", "year"]
+        ["economy", "scenario", "esto_product", "year"]
     ).reset_index(drop=True)
 
 
@@ -1095,52 +1108,59 @@ def build_transformation_sector_table(
     economies: Iterable[str] | None = None,
     base_year: int = BASE_YEAR,
     final_year: int = FINAL_YEAR,
+    projection_scenarios: Iterable[str] | None = None,
 ) -> pd.DataFrame:
     """Aggregate transformation+transfer process rows into balance-style sector lines."""
     label_to_product = _build_label_to_esto_product_lookup()
-    rows = _collect_transformation_and_transfer_rows(economies=economies)
-    buckets: dict[tuple[str, str, int, str], float] = {}
+    buckets: dict[tuple[str, str, str, int, str], float] = {}
 
-    def _add(economy: str, scenario: str, year: int, product: str, value: float) -> None:
-        key = (economy, scenario, year, product)
+    def _add(economy: str, scenario: str, sector: str, year: int, product: str, value: float) -> None:
+        key = (economy, scenario, sector, year, product)
         buckets[key] = buckets.get(key, 0.0) + float(value)
 
-    for record in rows:
-        economy = str(record.get("economy") or "").strip()
-        sector_name = _normalize_conventional_sector_name(
-            record.get("sector_title") or record.get("process_name") or ""
+    scenarios = _normalize_supply_scenarios(projection_scenarios)
+    for scenario in scenarios:
+        rows = _collect_transformation_and_transfer_rows(
+            economies=economies,
+            projection_scenario=scenario,
         )
-        if not economy or not sector_name:
-            continue
-        for label, year, value in _iter_year_value_items(record.get("output_values"), base_year, final_year):
-            product = label_to_product.get(label) or label_to_product.get(label.lower())
-            if product:
-                _add(economy, sector_name, year, product, abs(value))
-        for label, year, value in _iter_year_value_items(record.get("feedstock_values"), base_year, final_year):
-            product = label_to_product.get(label) or label_to_product.get(label.lower())
-            if product:
-                _add(economy, sector_name, year, product, -abs(value))
-        for label, year, value in _iter_year_value_items(record.get("loss_values"), base_year, final_year):
-            product = label_to_product.get(label) or label_to_product.get(label.lower())
-            if product:
-                _add(economy, sector_name, year, product, -abs(value))
+        for record in rows:
+            economy = str(record.get("economy") or "").strip()
+            sector_name = _normalize_conventional_sector_name(
+                record.get("sector_title") or record.get("process_name") or ""
+            )
+            if not economy or not sector_name:
+                continue
+            for label, year, value in _iter_year_value_items(record.get("output_values"), base_year, final_year):
+                product = label_to_product.get(label) or label_to_product.get(label.lower())
+                if product:
+                    _add(economy, scenario, sector_name, year, product, abs(value))
+            for label, year, value in _iter_year_value_items(record.get("feedstock_values"), base_year, final_year):
+                product = label_to_product.get(label) or label_to_product.get(label.lower())
+                if product:
+                    _add(economy, scenario, sector_name, year, product, -abs(value))
+            for label, year, value in _iter_year_value_items(record.get("loss_values"), base_year, final_year):
+                product = label_to_product.get(label) or label_to_product.get(label.lower())
+                if product:
+                    _add(economy, scenario, sector_name, year, product, -abs(value))
 
     if not buckets:
         return pd.DataFrame(
-            columns=["economy", "sector", "year", "esto_product", "value"]
+            columns=["economy", "scenario", "sector", "year", "esto_product", "value"]
         )
     output_rows = [
         {
             "economy": economy,
+            "scenario": scenario,
             "sector": sector,
             "year": year,
             "esto_product": product,
             "value": value,
         }
-        for (economy, sector, year, product), value in buckets.items()
+        for (economy, scenario, sector, year, product), value in buckets.items()
     ]
     return pd.DataFrame(output_rows).sort_values(
-        ["economy", "sector", "year", "esto_product"]
+        ["economy", "scenario", "sector", "year", "esto_product"]
     ).reset_index(drop=True)
 
 
@@ -1416,8 +1436,6 @@ def build_reconciliation_table(
         )
         key_frames.append(expanded)
 
-    _expand_non_scenario_keys(transformation_table, "transformation_table")
-
     def _add_scenario_supply_keys(table: pd.DataFrame | None, table_name: str) -> None:
         if not isinstance(table, pd.DataFrame) or table.empty:
             return
@@ -1427,6 +1445,15 @@ def build_reconciliation_table(
                 f"{table_name} is stale or scenario-less; missing required columns: {missing}"
             )
         key_frames.append(table[key_columns].drop_duplicates().copy())
+
+    transformation_has_scenario = (
+        isinstance(transformation_table, pd.DataFrame)
+        and "scenario" in transformation_table.columns
+    )
+    if transformation_has_scenario:
+        _add_scenario_supply_keys(transformation_table, "transformation_table")
+    else:
+        _expand_non_scenario_keys(transformation_table, "transformation_table")
 
     _add_scenario_supply_keys(supply_projection_table, "supply_projection_table")
     _add_scenario_supply_keys(supply_primary_table, "supply_primary_table")
@@ -1449,9 +1476,13 @@ def build_reconciliation_table(
         on=["economy", "scenario", "esto_product", "year"],
         how="left",
     )
+    transformation_keys = (
+        ["economy", "scenario", "esto_product", "year"]
+        if transformation_has_scenario else ["economy", "esto_product", "year"]
+    )
     merged = merged.merge(
         transformation_table,
-        on=["economy", "esto_product", "year"],
+        on=transformation_keys,
         how="left",
     ).merge(
         supply_projection_table,

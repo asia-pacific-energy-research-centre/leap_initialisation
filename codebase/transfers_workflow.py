@@ -640,7 +640,97 @@ def _build_transfer_projection_profile_history(
     return working.drop(columns=["economy_key"])
 
 
-def build_transfer_data_for_scenario(scenario: str) -> tuple[pd.DataFrame, list[int]]:
+def classify_transfer_projection_availability(
+    historical_transfer_data: pd.DataFrame,
+    ninth_transfer_data: pd.DataFrame,
+    scenario: str,
+    base_year: int,
+    projection_years: Sequence[int],
+) -> pd.DataFrame:
+    """Classify raw 9th transfer coverage before missing values become zeroes."""
+    columns = [
+        "economy", "scenario", "esto_base_year_transfer_mass",
+        "ninth_rows_present", "projection_nonzero_year_count",
+        "projection_availability",
+    ]
+    if historical_transfer_data.empty:
+        return pd.DataFrame(columns=columns)
+
+    history = historical_transfer_data.copy()
+    history["economy_key"] = history["economy"].apply(normalize_economy_key)
+    base_column = base_year if base_year in history.columns else str(base_year)
+    history["_base_mass"] = pd.to_numeric(
+        history[base_column], errors="coerce"
+    ).fillna(0.0).abs() if base_column in history.columns else 0.0
+    base_mass = history.groupby("economy_key", dropna=False)["_base_mass"].sum()
+
+    ninth = ninth_transfer_data.copy()
+    if "scenarios" in ninth.columns:
+        ninth = ninth.loc[
+            ninth["scenarios"].astype(str).str.strip().str.lower().eq(str(scenario).strip().lower())
+        ].copy()
+    if "subtotal_results" in ninth.columns:
+        ninth = ninth.loc[ninth["subtotal_results"].eq(False)].copy()
+    ninth["economy_key"] = ninth["economy"].apply(normalize_economy_key)
+    available_years = [year for year in projection_years if year in ninth.columns]
+    nonzero_years = (
+        ninth.groupby("economy_key", dropna=False)[available_years].sum().abs().ne(0.0).sum(axis=1)
+        if available_years else pd.Series(dtype=int)
+    )
+    ninth_rows = ninth.groupby("economy_key", dropna=False).size()
+    economy_labels = history.groupby("economy_key", dropna=False)["economy"].first()
+
+    records: list[dict] = []
+    for economy_key, economy in economy_labels.items():
+        esto_mass = float(base_mass.get(economy_key, 0.0))
+        has_ninth_rows = bool(ninth_rows.get(economy_key, 0) > 0)
+        nonzero_count = int(nonzero_years.get(economy_key, 0))
+        state = (
+            "no_ninth_rows" if not has_ninth_rows else
+            "structural_zero" if esto_mass == 0.0 else
+            "projection_supplied" if nonzero_count > 0 else
+            "projection_unavailable"
+        )
+        records.append({
+            "economy": economy,
+            "scenario": str(scenario),
+            "esto_base_year_transfer_mass": esto_mass,
+            "ninth_rows_present": has_ninth_rows,
+            "projection_nonzero_year_count": nonzero_count,
+            "projection_availability": state,
+        })
+    return pd.DataFrame(records, columns=columns)
+
+
+def apply_transfer_projection_fallback(
+    transfer_data: pd.DataFrame,
+    availability: pd.DataFrame,
+    base_year: int,
+    projection_years: Sequence[int],
+) -> pd.DataFrame:
+    """Carry the ESTO base year forward only when transfer projection is unavailable."""
+    if transfer_data.empty or availability.empty:
+        return transfer_data
+    unavailable = set(availability.loc[
+        availability["projection_availability"].eq("projection_unavailable"), "economy"
+    ].map(normalize_economy_key))
+    if not unavailable:
+        return transfer_data
+    working = transfer_data.copy()
+    base_column = base_year if base_year in working.columns else str(base_year)
+    if base_column not in working.columns:
+        return working
+    mask = working["economy"].map(normalize_economy_key).isin(unavailable)
+    for year in projection_years:
+        if year in working.columns:
+            working.loc[mask, year] = working.loc[mask, base_column]
+    return working
+
+
+def build_transfer_data_for_scenario(
+    scenario: str,
+    return_projection_availability: bool = False,
+) -> tuple[pd.DataFrame, list[int]] | tuple[pd.DataFrame, list[int], pd.DataFrame]:
     """Build transfer-only data with ESTO history and scenario-specific 9th projections."""
     if core.esto_data_raw is None or core.ninth_data_raw is None:
         core.prepare_transformation_assets()
@@ -690,12 +780,20 @@ def build_transfer_data_for_scenario(scenario: str) -> tuple[pd.DataFrame, list[
         historical,
         core.BASE_YEAR,
     )
+    availability = classify_transfer_projection_availability(
+        historical, ninth_transfer_data, scenario, core.BASE_YEAR, core.PROJECTION_YEAR_RANGE
+    )
     transfer_data = core.merge_projection_into_esto(
         historical,
         projection_df,
         core.PROJECTION_YEAR_RANGE,
     )
+    transfer_data = apply_transfer_projection_fallback(
+        transfer_data, availability, core.BASE_YEAR, core.PROJECTION_YEAR_RANGE
+    )
     year_cols = sorted(column for column in transfer_data.columns if str(column).isdigit())
+    if return_projection_availability:
+        return transfer_data, year_cols, availability
     return transfer_data, year_cols
 
 
@@ -911,12 +1009,18 @@ def build_transfer_rows(
     data_override: pd.DataFrame | None = None,
     year_cols_override: list[int] | None = None,
     scenario: str | None = None,
+    projection_availability_out: list[pd.DataFrame] | None = None,
 ) -> list[dict]:
     """Return transfer rows for the given economy."""
     if data_override is not None:
         data = data_override
     elif scenario is not None:
-        data, year_cols_override = build_transfer_data_for_scenario(scenario)
+        data, year_cols_override, availability = build_transfer_data_for_scenario(
+            scenario,
+            return_projection_availability=True,
+        )
+        if projection_availability_out is not None:
+            projection_availability_out.append(availability)
     else:
         data = core.esto_data
     if DROP_SUBTOTALS_FIRST:
@@ -1348,6 +1452,8 @@ def build_transfer_process_records(
     use_output_targets: bool = False,
     data_override: pd.DataFrame | None = None,
     year_cols_override: list[int] | None = None,
+    scenario: str | None = None,
+    projection_availability_out: list[pd.DataFrame] | None = None,
 ) -> list[dict]:
     return build_transfer_rows(
         economy=economy,
@@ -1357,6 +1463,8 @@ def build_transfer_process_records(
         use_output_targets=use_output_targets,
         data_override=data_override,
         year_cols_override=year_cols_override,
+        scenario=scenario,
+        projection_availability_out=projection_availability_out,
     )
 
 
