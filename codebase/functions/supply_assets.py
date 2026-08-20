@@ -30,6 +30,7 @@ from codebase.utilities.esto_reference_loader import (
 from codebase.functions.ninth_projection_mapping import (
     build_esto_projection_table,
     build_projection_lookup,
+    drop_ninth_parent_fuel_rows,
 )
 from codebase.functions.supply_config_builder import (
     apply_code_to_name_mapping,
@@ -123,6 +124,7 @@ def prepare_supply_assets(
     ninth_data = ninth_data_raw.copy()
     if "subtotal_results" in ninth_data.columns:
         ninth_data = ninth_data[ninth_data["subtotal_results"] == False].copy()
+    ninth_data = drop_ninth_parent_fuel_rows(ninth_data)
     esto_data = filter_matt_subtotals(esto_data_raw)
 
     economy_list = workflow_common.normalize_economies(

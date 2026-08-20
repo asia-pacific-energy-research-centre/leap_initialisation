@@ -7,6 +7,36 @@ import pytest
 from codebase import electricity_heat_interim_workflow as workflow
 
 
+def test_power_ninth_cleanup_removes_only_parent_fuel_rollups() -> None:
+    source = pd.DataFrame([
+        {
+            "economy": "10_MAS", "scenarios": "reference",
+            "sectors": "09_total_transformation_sector",
+            "sub1sectors": "09_02_chp_plants", "sub2sectors": "x",
+            "fuels": "08_gas", "subfuels": "x", "subtotal_results": False,
+            2023: -10.0,
+        },
+        {
+            "economy": "10_MAS", "scenarios": "reference",
+            "sectors": "09_total_transformation_sector",
+            "sub1sectors": "09_02_chp_plants", "sub2sectors": "x",
+            "fuels": "08_gas", "subfuels": "08_01_natural_gas", "subtotal_results": False,
+            2023: -10.0,
+        },
+        {
+            "economy": "10_MAS", "scenarios": "reference",
+            "sectors": "09_total_transformation_sector",
+            "sub1sectors": "09_02_chp_plants", "sub2sectors": "x",
+            "fuels": "17_electricity", "subfuels": "x", "subtotal_results": False,
+            2023: 5.0,
+        },
+    ])
+
+    result = workflow._drop_ninth_projection_subtotals(source)
+
+    assert result["subfuels"].tolist() == ["08_01_natural_gas", "x"]
+
+
 def test_interim_modules_select_only_approved_signed_transformation_sectors() -> None:
     configured = {
         module: config["sub1sectors"]

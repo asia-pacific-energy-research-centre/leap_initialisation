@@ -50,6 +50,7 @@ from codebase.functions.ninth_projection_mapping import (
     allocate_ninth_projection_to_esto,
     build_esto_base_year_values,
     build_ninth_projection_series,
+    drop_ninth_parent_fuel_rows,
     normalize_economy_key,
 )
 from codebase.utilities.output_paths import STANDALONE_LEAP_EXPORTS_ROOT
@@ -675,7 +676,7 @@ def _load_demand_csv(
                 f"Use an aggregate sentinel (e.g. '00_APEC') to sum all economies, "
                 f"or check the economy code."
             )
-    return df
+    return drop_ninth_parent_fuel_rows(df)
 
 
 def _load_esto_base_csv(
