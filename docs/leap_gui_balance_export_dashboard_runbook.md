@@ -118,6 +118,13 @@ workbook, as part of the command.
    click it to make it the last active workbook. LEAP discovers the workbook
    through the open Excel session; do not use **Area → Install from File**,
    which is for a LEAP area rather than a seed workbook.
+
+   The source workbook may be read-only: LEAP only needs to read it during this
+   step. The active `LEAP` worksheet tab is the useful visual confirmation that
+   this is the intended import source.
+
+   ![Read-only AUS baseline seed with the LEAP worksheet tab active before import](assets/leap_gui_balance_runbook/08_excel_import_source_active.png)
+
 2. Open the declared LEAP area and confirm its name in the title bar or area
    selector against the run log.
 3. In LEAP's top navigation, select **Analysis → Import from Excel Template**.
