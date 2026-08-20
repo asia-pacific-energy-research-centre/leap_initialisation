@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from codebase.mapping_tools.missing_branch_registry_materiality_workflow import (
+    _registry_source_keys,
     refresh_missing_branch_registry_materiality,
 )
 from codebase.functions.baseline_seed_structure_migration import (
@@ -98,3 +99,36 @@ def test_unrefreshed_registry_entry_cannot_suppress_a_missing_branch(tmp_path: P
     )
 
     assert build_missing_branch_validation_exceptions(registry) == []
+
+
+def test_transformation_leaf_uses_its_module_not_the_fuel_group() -> None:
+    """Deep transfer-style branches still resolve to their transformation sector."""
+    keys = _registry_source_keys([
+        {
+            "branch_path": (
+                "Transformation\\Coke ovens\\Processes\\Coke ovens\\Feedstock Fuels"
+                "\\Coke oven coke"
+            )
+        },
+        {
+            "branch_path": (
+                "Transformation\\Non specified transformation\\Output Fuels"
+                "\\Additives and oxygenates"
+            )
+        },
+    ])
+
+    assert keys[["sector", "fuel", "esto_flow", "esto_product"]].to_dict("records") == [
+        {
+            "sector": "Coke ovens",
+            "fuel": "Coke oven coke",
+            "esto_flow": "09.08.01 Coke ovens",
+            "esto_product": "02.01 Coke oven coke",
+        },
+        {
+            "sector": "Non specified transformation",
+            "fuel": "Additives and oxygenates",
+            "esto_flow": "09.12 Non-specified transformation",
+            "esto_product": "06.04 Additives/ oxygenates",
+        },
+    ]

@@ -66,7 +66,14 @@ def _registry_source_keys(registry_rows: list[dict[str, str]]) -> pd.DataFrame:
         parts = [part.strip() for part in row["branch_path"].split("\\") if part.strip()]
         if len(parts) < 3 or parts[0] not in {"Demand", "Transformation"}:
             raise ValueError(f"Cannot derive source mapping for registry path: {row['branch_path']}")
-        sector = parts[-2]
+        # Demand leaves are ``Demand\\<module>\\<sector>\\<fuel>``;
+        # transformation leaves can be deeper, for example
+        # ``Transformation\\Coke ovens\\Processes\\Coke ovens\\Feedstock
+        # Fuels\\Coke oven coke``.  In both cases the source comparison
+        # sector is the transformation module immediately below the top-level
+        # ``Transformation`` node, not the local ``Output Fuels`` / ``Feedstock
+        # Fuels`` grouping immediately above the fuel.
+        sector = parts[1] if parts[0] == "Transformation" else parts[-2]
         fuel = parts[-1]
         missing = []
         if sector not in FLOW_BY_SECTOR:

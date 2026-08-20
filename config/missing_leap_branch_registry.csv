@@ -4,3 +4,14 @@ Demand\Other loss and own use\Electricity CHP and heat plants\Kerosene type jet 
 Demand\Other loss and own use\Non specified own uses\BKB and PB,2026-08-20,,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
 Demand\Other loss and own use\Non specified own uses\Crude oil,2026-08-20,,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
 Demand\Other loss and own use\Oil and gas extraction\Natural gas liquids,2026-08-20,,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Coal mines\Lignite,2026-08-21,User-approved non-blocking missing leaf; observed USA/NZ/RUS,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Coal mines\Anthracite,2026-08-21,User-approved non-blocking missing leaf; observed USA,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Coal mines\Patent fuel,2026-08-21,User-approved non-blocking missing leaf; observed RUS,2022,0.0,0.0,2023,2060,38,-4.153502928239663,4.153502928239663,-3.624032362017948,3.624032362017948
+Demand\Other loss and own use\Electricity CHP and heat plants\Lignite,2026-08-21,User-approved non-blocking missing leaf; observed RUS,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Transmission and distribution loss\Lignite,2026-08-21,User-approved non-blocking missing leaf; observed RUS,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Transmission and distribution loss\Other bituminous coal,2026-08-21,User-approved non-blocking missing leaf; observed RUS,2022,-0.133298,0.133298,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Transmission and distribution loss\Peat,2026-08-21,User-approved non-blocking missing leaf; observed RUS,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Transmission and distribution loss\Refinery gas not liquefied,2026-08-21,User-approved non-blocking missing leaf; observed RUS,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Transformation\Non specified transformation\Output Fuels\Additives and oxygenates,2026-08-21,User-approved non-blocking missing leaf; observed BD/USA,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Transformation\Non specified transformation\Output Fuels\Refinery feedstocks,2026-08-21,User-approved non-blocking missing leaf; observed BD/USA,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Transformation\Coke ovens\Processes\Coke ovens\Feedstock Fuels\Coke oven coke,2026-08-21,User-approved non-blocking missing leaf; observed MEX,2022,16425.159078,16425.159078,2023,2060,38,0.0,0.0,0.0,0.0
