@@ -182,6 +182,7 @@ def collect_transformation_rows(
             scenario_ninth = scenario_filtered
         if "subtotal_results" in scenario_ninth.columns:
             scenario_ninth = scenario_ninth[scenario_ninth["subtotal_results"] == False].copy()
+        scenario_ninth = core.drop_ninth_parent_fuel_rows(scenario_ninth)
         scenario_ninth = core.filter_total_energy_rows(scenario_ninth)
 
         scenario_esto = core.normalize_esto_economy_codes(core.esto_data_raw.copy())

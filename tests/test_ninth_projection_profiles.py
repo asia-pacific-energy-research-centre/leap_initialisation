@@ -6,9 +6,72 @@ from codebase.functions.ninth_projection_mapping import (
     build_esto_projection_table,
     build_economy_specific_child_flow_profiles,
     build_ninth_projection_series,
+    drop_ninth_parent_fuel_rows,
+    filter_ninth_projection_rows,
     _build_parent_child_reconciliation_diagnostics,
 )
 from codebase.functions.esto_data_utils import add_all_economy_total
+
+
+def test_ninth_fuel_parent_rollup_is_excluded_but_leaf_fuels_and_sector_parents_remain() -> None:
+    common = {
+        "scenarios": "reference",
+        "economy": "10_MAS",
+        "sectors": "09_total_transformation_sector",
+        "sub1sectors": "09_06_gas_processing_plants",
+        "sub2sectors": "09_06_02_liquefaction_regasification_plants",
+        "sub3sectors": "x",
+        "sub4sectors": "x",
+        "subtotal_results": False,
+        2022: 1.0,
+    }
+    ninth = pd.DataFrame([
+        {**common, "fuels": "08_gas", "subfuels": "x", 2022: -579.888547},
+        {**common, "fuels": "08_gas", "subfuels": "08_01_natural_gas", 2022: -1678.672339},
+        {**common, "fuels": "08_gas", "subfuels": "08_02_lng", 2022: 1098.783792},
+        {**common, "fuels": "17_electricity", "subfuels": "x", 2022: -12.0},
+        # A sector parent is a separate hierarchy concern and must be retained.
+        {**common, "sub2sectors": "x", "fuels": "08_gas", "subfuels": "08_01_natural_gas", 2022: -2000.0},
+    ])
+
+    result = drop_ninth_parent_fuel_rows(ninth)
+
+    assert not ((result["fuels"] == "08_gas") & (result["subfuels"] == "x")).any()
+    assert set(result.loc[result["fuels"] == "08_gas", "subfuels"]) == {"08_01_natural_gas", "08_02_lng"}
+    assert (result["fuels"] == "17_electricity").any()
+    assert ((result["sub2sectors"] == "x") & (result["subfuels"] == "08_01_natural_gas")).any()
+
+
+def test_projection_filter_removes_fuel_parent_rollups_after_subtotal_filtering() -> None:
+    ninth = pd.DataFrame([
+        {
+            "scenarios": "reference", "economy": "10_MAS",
+            "sectors": "09_total_transformation_sector",
+            "sub1sectors": "09_06_gas_processing_plants",
+            "sub2sectors": "09_06_02_liquefaction_regasification_plants",
+            "fuels": "08_gas", "subfuels": "x", "subtotal_results": False, 2023: -10.0,
+        },
+        {
+            "scenarios": "reference", "economy": "10_MAS",
+            "sectors": "09_total_transformation_sector",
+            "sub1sectors": "09_06_gas_processing_plants",
+            "sub2sectors": "09_06_02_liquefaction_regasification_plants",
+            "fuels": "08_gas", "subfuels": "08_01_natural_gas", "subtotal_results": False, 2023: -10.0,
+        },
+        {
+            "scenarios": "reference", "economy": "10_MAS",
+            "sectors": "09_total_transformation_sector",
+            "sub1sectors": "09_06_gas_processing_plants",
+            "sub2sectors": "09_06_02_liquefaction_regasification_plants",
+            "fuels": "08_gas", "subfuels": "08_02_lng", "subtotal_results": True, 2023: 10.0,
+        },
+    ])
+
+    result = filter_ninth_projection_rows(ninth)
+
+    assert result[["fuels", "subfuels"]].to_dict("records") == [
+        {"fuels": "08_gas", "subfuels": "08_01_natural_gas"}
+    ]
 
 
 def test_projection_series_accepts_string_year_headers() -> None:

@@ -48,6 +48,7 @@ from codebase.utilities.esto_reference_loader import (
 from codebase.functions.leap_excel_io import finalise_export_df, save_export_files
 from codebase.functions.ninth_projection_mapping import (
     build_esto_projection_table,
+    drop_ninth_parent_fuel_rows,
     merge_projection_into_esto,
 )
 from codebase.configuration import workflow_config as workflow_cfg
@@ -1895,6 +1896,9 @@ def prepare_transformation_assets() -> None:
     ninth_data = filter_reference_scenario(ninth_data, "9th data")
     if "subtotal_results" in ninth_data.columns:
         ninth_data = ninth_data[ninth_data["subtotal_results"] == False].copy()
+    # Retain sector parents for the reviewed 09.06/09.08 reconstruction rules,
+    # but never treat a fuel parent (for example 08_gas / x) as a second fuel.
+    ninth_data = drop_ninth_parent_fuel_rows(ninth_data)
     esto_data_raw = normalize_esto_economy_codes(esto_data_raw)
     esto_data_raw = filter_total_energy_rows(esto_data_raw)
     ninth_data = filter_total_energy_rows(ninth_data)
