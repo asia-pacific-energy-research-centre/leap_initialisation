@@ -1,9 +1,9 @@
 #%%
 """Build a reviewed, GUI-agent batch register for LEAP seed imports and balance exports.
 
-The normal route stages a clean-slate backup outside LEAP's managed folders,
-then opens it through LEAP. The register never writes to or scans C:\\LEAP_Areas
-unless an operator explicitly requests an existing-area lookup.
+The normal route stages a backup from this repository's local LEAP_backups
+folder outside LEAP's managed folders, then opens it through LEAP. The register
+never reads or writes OneDrive sources or C:\\LEAP_Areas.
 """
 
 from __future__ import annotations
@@ -25,9 +25,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-DEFAULT_CLEAN_SLATE_SOURCE = Path(
-    r"C:\Users\Work\APERC\Outlook 10 - LEAP modelling_2026\Clean leap models - DO NOT OVERWRITE\Integrated LEAP areas - clean slates"
-)
+DEFAULT_CLEAN_SLATE_SOURCE = REPO_ROOT / "LEAP_backups"
 DEFAULT_SEED_RUNS_ROOT = (
     REPO_ROOT / "outputs" / "leap_exports" / "supply_reconciliation" / "baseline_seed" / "runs"
 )

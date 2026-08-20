@@ -1,5 +1,6 @@
 #manually added gitignore files:
 node_modules/
+LEAP_backups/
 # input_data/*
 # intermediate_data/*
 # output/*

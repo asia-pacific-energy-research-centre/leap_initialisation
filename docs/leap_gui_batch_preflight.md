@@ -6,13 +6,14 @@ copy an area unless a later notebook cell explicitly requests staging.
 
 The normal preflight discovers two separate facts per economy:
 
-- the latest matching clean-slate `.leap` files in the protected source folder;
+- the latest matching `.leap` backup files in this repository's ignored
+  `LEAP_backups/` folder;
 - the latest final baseline seed under the reconciliation run outputs.
 
-It does **not** scan, select, create, or copy into `C:\LEAP_Areas`. LEAP owns
-that folder: after a backup `.leap` is staged in a temporary folder and opened
-through LEAP, LEAP itself installs/manages the resulting area there. An existing
-area may be used only through a separately reviewed fallback procedure.
+It does **not** scan, select, create, or copy into `C:\LEAP_Areas`, and it does
+not read from OneDrive. LEAP owns its managed folder: after a repository-local
+backup `.leap` is staged in a temporary folder and opened through LEAP, LEAP
+itself installs/manages the resulting area there.
 
 It writes JSON for a GUI agent and a compact review CSV under
 `outputs/leap_gui_batch/preflight_<timestamp>/`. A job remains
