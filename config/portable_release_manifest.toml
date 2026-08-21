@@ -134,7 +134,7 @@ paths = ["config/LEAP_API_helpers.py"]
 # so `codebase/` is stripped when staging. That also keeps this repository's
 # `codebase` package name from colliding with leap_initialisation's.
 [repositories.leap_dashboard]
-commit = "c5a855e3fd0c72dabe4227c4e3b88ba819cf5b60"
+commit = "915dba43971aadb92f7805f4354e8404a980fec1"
 stage_dir = "leap_dashboard"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -150,7 +150,7 @@ paths = [
 # `mapping_tools` has no __init__.py in its own repository either; it works as
 # an implicit namespace package here exactly as it does there.
 [repositories.leap_mappings]
-commit = "d290c2ae21d37d44d81cfce3b06a82fc90283c66"
+commit = "fd60a3ea9b3ee98bdc7918db1fbbb9de24d53671"
 stage_dir = "leap_mappings"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -173,7 +173,7 @@ paths = [
 # packages into the worker to reach one module. Omitted, each becomes an implicit
 # namespace package (PEP 420) and the submodule imports on its own - verified.
 [repositories.leap_mappings_worker]
-commit = "d290c2ae21d37d44d81cfce3b06a82fc90283c66"
+commit = "fd60a3ea9b3ee98bdc7918db1fbbb9de24d53671"
 stage_dir = "leap_mappings_worker"
 source_key = "leap_mappings"
 on_sys_path = true
@@ -420,7 +420,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/esto_results_exact_rows.csv.gz"
 dest = "mapping_chain/esto_results_exact_rows.csv.gz"
 role = "mapping_chain_esto_exact_rows"
-sha256 = "36c5160d5cc658e1ed122692fc92a8efbb4908bc9f833f2a28c2e2d33783690d"
+sha256 = "e191dedf04ae96e4ad2474acd71b082f42b1627cedbd143ee2c8b320d155fee2"
 description = "ESTO exact-row extract the mapping chain converts LEAP output against."
 allow_untracked = true
 
@@ -429,7 +429,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/ninth_results_converted_to_esto.csv.gz"
 dest = "mapping_chain/ninth_results_converted_to_esto.csv.gz"
 role = "mapping_chain_ninth_converted"
-sha256 = "0d85d2217254933caa75a0f8a8d90219081411eec2cc42b779d9de75b5273e61"
+sha256 = "9f6d3459eeb0ed20346ca526960dbaef5e9321bb5957d488c07333327038c578"
 description = "9th-edition results converted to ESTO structure, a mapping-chain source table."
 allow_untracked = true
 
