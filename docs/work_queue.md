@@ -406,7 +406,7 @@ natural-gas exports `3,265.921771 PJ`, and 2030 NGL production
 
 ## [46] Provide a portable source-data bundle workflow
 
-**Status: complete and clean-clone verified 2026-08-17.**
+**Status: complete and clean-clone verified 2026-08-17; colleague preflight fixes added.**
 
 Provide notebook-friendly `scripts/create_data_bundle.py` and
 `scripts/extract_data_bundle.py` workflows for collaborators who clone this
@@ -425,6 +425,12 @@ template and balance export; the resolver found the 12 currently available
 economy templates; and 87 focused bundle, template, ESTO-loader, and balance
 diagnostic tests passed. The clone remained Git-clean because the restored data
 and bundle ZIP are ignored inputs.
+
+The follow-up clean-clone rehearsal also proved two compatibility gaps and fixed
+them in source: the projection preflight now reads the bundled top-level APEC
+9th aggregate without a manual duplicate, and the results-update preflight
+auto-discovers the bundled REF/TGT exports and accepts both `EBal|YYYY` and
+bare `YYYY` LEAP sheet names.
 
 ## [45] Simplify baseline-seed consolidated findings for human review
 

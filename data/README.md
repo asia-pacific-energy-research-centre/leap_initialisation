@@ -53,10 +53,9 @@ documents may still name them when describing older workflows.
 
 - `9th merged_file_energy_00_APEC_20251106.csv`
   - APEC aggregate version of the current 9th projection data.
-  - The filename includes the `9th ` prefix in this checkout. Utilities that
-    expect an `apec_aggregate_sources/merged_file_energy_00_APEC_20251106.csv`
-    path need an explicitly published/routed copy; do not silently assume the
-    two paths are interchangeable.
+  - The filename includes the `9th ` prefix in this checkout. The shared APEC
+    source resolver recognizes this portable-bundle location directly; no
+    manual duplicate under `APEC_aggregates/` is required.
 
 - `merged_file_energy_ALL_20251106 - for chatgpt.csv`
   - Historical review/export filename; not present in this checkout and not a

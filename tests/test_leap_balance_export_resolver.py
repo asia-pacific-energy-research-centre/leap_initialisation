@@ -110,6 +110,22 @@ def test_resolve_balance_export_workbook_accepts_current_scenario_first_name(
     assert resolved == expected
 
 
+def test_resolve_balance_export_workbook_accepts_bundled_date_first_name(
+    tmp_path: Path,
+) -> None:
+    export_dir = tmp_path / "20_USA"
+    expected = export_dir / "0805 REF.xlsx"
+    _touch(expected)
+
+    resolved = resolve_balance_export_workbook(
+        economy="20_USA",
+        scenario="Reference",
+        exports_root=tmp_path,
+    )
+
+    assert resolved == expected
+
+
 def test_resolve_balance_export_workbook_accepts_four_digit_day_month(
     tmp_path: Path,
 ) -> None:

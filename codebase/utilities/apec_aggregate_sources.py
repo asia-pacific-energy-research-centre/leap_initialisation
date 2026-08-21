@@ -94,6 +94,8 @@ def resolve_apec_ninth_aggregate(source_path: Path | str) -> Path:
     candidates = [
         APEC_AGGREGATES_DIR / source.name,
         APEC_AGGREGATES_DIR / "merged_file_energy_00_APEC_20251106.csv",
+        source.parent / "9th merged_file_energy_00_APEC_20251106.csv",
+        source.parent / "merged_file_energy_00_APEC_20251106.csv",
     ]
     for candidate in candidates:
         if candidate.exists():
