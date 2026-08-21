@@ -272,12 +272,14 @@ def test_shipped_manifest_declares_balance_review_from_export_assets() -> None:
     )
     assert "codebase/utilities/leap_export_template_resolver.py" in initialisation_paths
     assert "codebase/mapping_tools/pipeline_profiling.py" in mapping_worker_paths
+    assert "codebase/utilities/source_label_aliases.py" in mapping_worker_paths
     assert {"esto_base_table", "ninth_projection_table"} <= roles
     assert {
         "synthetic_reference_rows",
         "leap_results_sheet_map",
         "leap_explicit_reassignments",
         "balance_error_signal_rules",
+        "mapping_worker_source_label_aliases",
         "dashboard_emissions_factor_sets",
         "dashboard_emissions_factors",
         "dashboard_emissions_ninth_fuel_mapping",

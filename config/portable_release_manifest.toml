@@ -210,6 +210,7 @@ paths = [
     "codebase/utilities/leap_results_dashboard_utils.py",
     "codebase/utilities/leap_results_dashboard_v2/reference_loader.py",
     "codebase/utilities/master_config.py",
+    "codebase/utilities/source_label_aliases.py",
 ]
 
 # ---------------------------------------------------------------------------
@@ -292,6 +293,13 @@ path = "config/source_branch_fallback_rules.csv"
 dest = "mappings/source_branch_fallback_rules.csv"
 role = "source_branch_fallback_rules"
 description = "Interim-branch fallback zeroing rules applied before mapping-chain conversion."
+
+[[config_assets]]
+repository = "leap_mappings"
+path = "config/leap_export_label_aliases.csv"
+dest = "mappings/leap_export_label_aliases.csv"
+role = "mapping_worker_source_label_aliases"
+description = "Reviewed LEAP export labels accepted by the mapping-chain parser."
 
 [[config_assets]]
 repository = "leap_mappings"
