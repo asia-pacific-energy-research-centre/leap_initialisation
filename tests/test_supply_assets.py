@@ -110,7 +110,7 @@ def test_prepare_supply_assets_maps_names_aggregates_and_builds_lookup(monkeypat
         assert "00_APEC" in set(esto_data["economy"])
         assert sign_stable_flows == "all"
         assert strict_conservation is True
-        assert fill_missing_ninth_sectors is False
+        assert fill_missing_ninth_sectors is True
         assert owner_workflow == "supply_workflow"
         assert scenario in {"Reference", "Target"}
         return pd.DataFrame({"value": [1.0 if scenario == "Reference" else 2.0]}), pd.DataFrame()
