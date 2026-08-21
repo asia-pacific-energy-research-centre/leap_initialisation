@@ -59,6 +59,244 @@ or `2026_VINTAGE_PILOT_BLOCKED` with the first failing boundary, evidence, owner
 and next action. This pilot is separate from periodic full mapping refresh and
 does not authorize production deployment.
 
+## [54] Cross-economy 09.06 / 09.08 baseline-seed verification set
+
+**Status: queued after the fresh AUS seed evidence is accepted.**
+
+Use template-backed economies with materially different parent/child patterns,
+not a broad batch:
+
+1. `05_PRC` — strongest mixed case: four active historical coal children, a
+   projected coal parent with projected children absent, plus gas processing
+   with a surviving gas-works child and missing siblings.
+2. `20_USA` — large coal parent-only projection case and a gas-processing
+   parent-only projection case.
+3. `10_MAS` — material liquefaction/regasification and gas-to-liquids
+   historical gas-processing profile, with detailed projected children absent.
+
+For each economy, generate a uniquely labelled workbook-only seed, validate it
+against its exact template, and run the same process/fuel/scenario ledger as
+the AUS review.  Import into an isolated LEAP copy only after the workbook
+evidence is accepted; do not use an area already open for other work.
+
+## [56] Evidence-gated ninth parent-fuel normalisation for 09.06 and related process rows
+
+**Status: narrow LNG correction implemented 2026-08-20; broader normalisation remains deferred.**
+
+Malaysia exposed a source-hierarchy issue in 2022 LNG liquefaction: the ninth
+data contain both `08_gas / x = -579.888547` and detailed child rows
+`08_01_natural_gas = -1678.672339` and `08_02_lng = +1098.783792` at the same
+economy/scenario/process path. The `x` row is the gas parent net
+(`natural gas + LNG`), not an independent fuel. The LNG analysis therefore
+treated it as a second negative feedstock and wrote an invalid `Gas` feedstock
+share (25.675135%) beside `Natural gas`.
+
+The candidate rule is deliberately structural, not a `Gas -> Natural gas`
+mapping: remove a ninth `subfuels == "x"` row only when a non-`x` child exists
+for the same `(economy, scenario, sector hierarchy, fuels)` group. Preserve an
+`x` row when it is the genuine only leaf. Sector parents must remain available
+for the reviewed 09.06/09.08 parent-child reconstruction policy.
+
+The proven narrow correction is implemented in
+`codebase/functions/transformation_sector_analysis.py` for direct 09.06 LNG
+process analysis only: it removes a parent fuel row from that process only
+when detailed children coexist. Regression coverage proves the MAS parent no
+longer becomes a feedstock and Natural gas has a 100% 2022 share. Do not make
+this a default ingress filter yet. It was briefly prototyped in
+mapping projections, transformation, supply, aggregated demand, interim power,
+and other-loss/own-use, then reverted on 2026-08-20 because focused unit tests
+proved the mechanics but did not prove real-economy impact outside the Malaysia
+case.
+
+Required evidence before implementation:
+
+1. Build a source impact ledger from the exact ninth vintage and refreshed
+   mapping master: every removed candidate row, its child rows, values by year,
+   `subtotal_layout`/`subtotal_results`, economy, scenario, and consuming
+   workflow. Flag non-zero rows outside 09.06 and the selected comparison
+   families for review rather than silently accepting them.
+2. First scope an implementation to LNG / 09.06 where the defect is proven;
+   include any economy with the same signed pattern. Review PRC separately:
+   its regasification signs can also expose an unwanted generic-Gas input, but
+   the prior seed stopped at the separate transfer AUTO BALANCE failure.
+3. Decide, from the ledger, whether the canonical mapping projection builder
+   should own the normalisation. Mappings remain responsible for valid leaf
+   correspondence; they cannot globally map `08_gas / x` to nothing because
+   the same code can be a legitimate leaf when no children exist.
+4. Only after the scoped comparison is accepted, consolidate duplicated
+   parent-fuel filtering in other-loss/own-use into the shared implementation
+   and consider aggregated demand, power, and supply ingress one workflow at a
+   time.
+
+Verification protocol:
+
+1. Retain a uniquely labelled **before** baseline seed and produce an **after**
+   seed using the identical source vintage, mapping-master hash, template,
+   economy, scenarios, and horizon. Do not compare against a dashboard or LEAP
+   balance export.
+2. Compare logical seed keys `(Branch Path, Variable, Scenario, Region)` and
+   parsed expressions/years. Require changes to be confined to declared 09.06
+   process rows and their template zero-fill companions; unexplained changes
+   elsewhere fail the test.
+3. For MAS, prove `NG Liquefaction / Feedstock Fuels / Gas` is absent or zero,
+   `Natural gas` retains the full feedstock share, and LNG output/activity and
+   all existing detailed child values are unchanged except for removal of the
+   duplicate parent contribution.
+4. Repeat for PRC, AUS, USA, and PNG after the mapping refresh. Generate the
+   source-derived net-fuel chart for 09.06/09.08 from each seed and compare it
+   with the matching post-import LEAP dashboard only after the workbook checks
+   pass.
+
+## [55] Exclude AUTO BALANCE from inert 100%-share fallbacks
+
+**Status: deferred until 2026-09-03 (two weeks after 2026-08-20).**
+
+Keep the current fallback behaviour until the real `AUTO BALANCE` fuel and
+branches have been applied in every required LEAP area.  In an otherwise inert
+transfer sector, a 100% `AUTO BALANCE` Output Share or Feedstock Fuel Share is
+currently useful evidence that the LEAP-area setup still needs to be completed;
+it is not intended to represent actual energy use.
+
+On or after 2026-09-03, first confirm that rollout is complete for all required
+cases.  Then update the inert zero-share fallback choices so `AUTO BALANCE` is
+excluded as an automatic 100% anchor, while retaining its explicit use for
+genuine one-sided transfer balancing.  Re-enable/add focused tests for output
+shares, feedstock shares, and auxiliary zero-fill anchor selection, then verify
+fresh AUS, PRC, and PNG baseline seeds distinguish explicit balancing from
+inert fallback rows.
+
+## [53] Verify the transformation/refining baseline-seed patch route against a fresh AUS seed
+
+**Status: queued behind `SEED_AUS_CONSOLIDATED_20260820`.**
+
+The historical warning that transformation/refining regeneration is unsafe to
+patch must be tested against the current, workbook-based patch route rather
+than treated as a standing rule.  After the fresh full-horizon AUS seed is
+written, copy it to a controlled test location, run the transformation and
+oil-refineries patch route against that copy, then compare the **post-boundary**
+seed rows exactly.  Do not compare raw producer output with a completed seed.
+
+Acceptance evidence:
+
+1. Compare row keys and `Expression` values for all transformation/refining
+   branches and all scenarios; classify any difference as expected or defect.
+2. Include the coal and gas process families (`09.08`, `09.06`) and oil
+   refining (`09.07` plus `10.01.11` own use), not only the previously tested
+   USA refinery case.
+3. Verify the patched copy retains the fresh seed's template validation result
+   and does not change branches outside the explicit patch ownership scope.
+4. If it passes for AUS, update the old patch-safety warning and define the
+   remaining cross-economy evidence needed before ungating the route.
+
+## [51] Rework 09.08 synthetic own-use rollup handling in baseline-seed diagnostics (WEBQ-002)
+
+**Status: waiting for smarter-agent independent diagnosis.**
+
+The 09.08 parent rollup rows (for example `09.08.01 Coke ovens (including own use)` /
+`09.08.02 Blast furnaces (including own use)`) can still be treated as active
+seed/carry-forward sources when a direct 9th comparator is missing.
+That creates the wrong control path for baseline-seed initialization because those rows are
+aggregate display artifacts, not direct LEAP branch rows.
+
+Requested investigation scope (the next agent must verify from first principles):
+1. Confirm that synthetic rollup rows are detected and excluded from direct write-back
+   seeding unless a reviewed exception explicitly allows them.
+2. Confirm whether child comparators can be resolved automatically from `09.08.01`–`09.08.05`
+   before any fallback logic is applied, and where that fails, require explicit review instead
+   of carrying forward.
+3. Verify that `10.01.*` own-use/loss ownership is not being mistaken for missing 09.08 split
+   evidence during diagnostics.
+4. Reproduce with the original issue context and prove the behavior change with a small
+   pre/post comparison (before/after row set) rather than assumptions.
+
+Proposed design direction (for review, not implementation yet):
+- Add a hard “rollup source blocker” in diagnostics for `(including own use)` process rows:
+  resolve children first, then only allow direct seed usage if a child-level comparator exists.
+- Keep unresolved cases visible as reviewed-required findings (`no_direct_projection_comparator`
+  / `seed_or_carry_forward_process`) without consuming them into seed assumptions.
+- If a safe parent→children split cannot be reconstructed from maintained evidence, leave
+  it blocked for manual review and document exact evidence in the diagnostic trail.
+
+References for investigation:
+- `codebase/functions/baseline_seed_balance_diagnostics.py`
+- `codebase/functions/ninth_projection_mapping.py`
+- `codebase/functions/transformation_analysis_utils.py`
+- `docs/initialisation_flow_estimation_methods.md`
+
+## [50] Add scenario-aware transfer projection fallback for baseline seeds
+
+**Status: design review complete 2026-08-20; policy decided; ready to implement.**
+
+Decision record: [`docs/decision_transfer_projection_fallback_20260820.md`](decision_transfer_projection_fallback_20260820.md).
+Method recorded in [`docs/initialisation_flow_estimation_methods.md`](initialisation_flow_estimation_methods.md#projection-availability-and-the-base-year-carry-forward).
+
+Two corrections to the preliminary evidence below. (a) The seed *workbook* path is
+already scenario-aware — `results_saver.py:1977` →
+`save_transfer_exports_with_supply_overrides` passes `scenario=`, verified in the
+2026-08-05 run. Scenario is lost only on the *reconciliation input* path at
+`supply_reconciliation/tables.py:182-206`, and both balance tables lack a scenario
+column. (b) Passing the scenario does not remove the zeros: the 9th itself stores
+exact `0.0`, and `ninth_projection_mapping.py:1957` `fillna(0.0)` then erases the
+difference between "supplied zero" and "no projection".
+
+Decided policy: use the 9th projection where supplied (including genuine zeros);
+where unavailable, carry the ESTO base year forward flat. Current Accounts stays
+base-year only. Rationale — zero asserts transfers cease, which no source claims,
+and this repo is not the place to estimate transfer trajectories; carry-forward is
+an honest, replaceable placeholder.
+
+Work items, in order:
+
+1. ~~Fix the `05_PRC` / `13_PNG` base-year defect first.~~ **Done 2026-08-20.**
+   The cause was not a missing `TRANSFER_PROCESS_CONFIG` entry (that early
+   reading was wrong): both economies record transfers with products leaving and
+   nothing arriving, so no LEAP process could form. Now handled by
+   `ONE_SIDED_TRANSFER_BALANCE_POLICY` — the measured side is kept exactly and a
+   nominal 1 PJ counterpart is added to the empty side. Verified end to end:
+   `05_PRC` 0 rows → 2 rows, `13_PNG` massless → 1.00 PJ, and no change to the
+   seven already-working economies. Also caught `21_VN` inflow-only in 1998-2016.
+   Prerequisite for the ESTO-vintage label fix, also done — see
+   [`esto_vintage_onboarding.md`](esto_vintage_onboarding.md).
+2. ~~Thread the run scenario through `_collect_transformation_and_transfer_rows`;~~ **Done 2026-08-20.**
+   `build_transfer_process_records` needs a `scenario` parameter (or replace it at
+   that call site with `build_transfer_rows`), `collect_transformation_rows` needs
+   `projection_scenario`, and both balance tables now retain a `scenario` column.
+3. ~~Classify `(economy, scenario)` upstream of the `fillna(0.0)` into
+   `projection_supplied` / `projection_unavailable` / `structural_zero` /
+   `no_ninth_rows`, emit it as a seed-run diagnostic, and apply carry-forward only
+   to `projection_unavailable`.~~ **Done 2026-08-20.** Classification occurs before
+   merge zero-fill and only `projection_unavailable` rows are carried forward.
+4. ~~Three regression cases, specified in §7 of the decision record.~~ **Done 2026-08-20.**
+
+Nice to have, not scheduled: replace the carry-forward with activity-driven proxies
+on the own-use/loss pattern — upstream transfers on fossil-fuel production,
+refinery/blending on refinery and petrochemical activity, unallocated on a mix.
+
+Baseline-seed transfer rows are currently built through
+`_collect_transformation_and_transfer_rows` using `build_transfer_process_records`
+without a projection scenario, so transfer values are sourced from historical rows and
+extended through the full horizon as 0 when future projection years are absent.
+
+Potential coupling risk:
+- This path depends on transfer mapping assumptions (including any canonical
+  mappings coming from `leap_mappings`), and this should be checked before changing
+  fallback semantics. A similar transfer-like behavior was previously noticed in the
+  coal transformation path after mapping assumptions changed.
+
+Requested design decision before coding:
+1. Baseline-seed transfer extraction must always use the corresponding 9th scenario
+   (`Reference` or `Target`) for the run context.
+2. If scenario transfer projection is all-zero or missing after the base year, decide
+   whether to carry forward ESTO base-year values or retain zero-fill for those rows.
+
+Preliminary evidence:
+- In the maintained 9th table (`data/merged_file_energy_ALL_20251106.csv`),
+  transfer rows after 2022 are non-zero for only 4 active economies
+  (`01_AUS`, `20_USA`) under both scenarios; `02_BD`, `05_PRC`, `11_MEX`, `12_NZ`, and
+  `13_PNG` have non-zero 2022 values but no non-zero transfer projection years.
+- `05_PRC` and `13_PNG` are not currently in the `GLOBAL_ECONOMIES` seed scope
+  but are still visible in the 9th table scan.
+
 ## [49] Emit source-energy-filtered missing-branch creation instructions
 
 **Status: implemented and tested 2026-08-18.**
