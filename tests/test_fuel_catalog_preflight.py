@@ -117,6 +117,17 @@ def test_template_source_paths_discovers_arbitrary_names_and_skips_lock_files(tm
     assert [path.name for path in paths] == ["USA clean slate 29_07.xlsx"]
 
 
+def test_template_source_paths_excludes_retired_apec_aggregate_workbook(tmp_path):
+    source_directory = tmp_path / "templates"
+    source_directory.mkdir()
+    (source_directory / "USA clean slate 29_07.xlsx").write_bytes(b"usa")
+    (source_directory / "APEC clean slate 03_08.xlsx").write_bytes(b"apec")
+
+    paths = preflight._template_source_paths(template_directory=source_directory)
+
+    assert [path.name for path in paths] == ["USA clean slate 29_07.xlsx"]
+
+
 def test_empty_catalog_file_is_treated_as_unavailable(tmp_path):
     catalog_path = tmp_path / "empty_catalog.csv"
     catalog_path.write_bytes(b"")

@@ -11,6 +11,8 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from codebase.utilities.leap_export_template_resolver import is_excluded_template_file
+
 
 # --- Stable bundle contract ---
 
@@ -70,6 +72,7 @@ def collect_bundle_files(repo_root: Path = REPO_ROOT) -> list[dict[str, object]]
         (path, "leap_export_template")
         for path in template_root.glob("*.xlsx")
         if _is_active_file(path, template_root)
+        and not is_excluded_template_file(path)
     )
 
     export_root = repo_root / BALANCE_EXPORT_DIRECTORY

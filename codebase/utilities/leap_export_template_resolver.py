@@ -37,6 +37,12 @@ PROVISIONAL_TEMPLATE_MARKER = "COMP_GEN"
 # template can carry their IDs.
 AGGREGATE_ECONOMY_SENTINELS = frozenset({"00_APEC", "ALL_ECONOMIES", "ALL"})
 
+# APEC is an aggregate, not a LEAP area that this initialisation workflow
+# populates. Keep its old clean-slate export out of generic template-directory
+# scans (catalogue construction and portable bundles) without deleting the
+# operator-owned workbook.
+EXCLUDED_TEMPLATE_FILENAMES = frozenset({"apec clean slate 03_08.xlsx"})
+
 # The 21 APEC member economies this pipeline models, in canonical "NN_XXX"
 # form. Hardcoded here deliberately - this is a leaf module with no other
 # codebase imports (see resolve_leap_export_template_or_fallback's docstring)
@@ -137,6 +143,11 @@ def _filename_matches_economy(tokens: list[str], letter_code: str) -> bool:
     unrelated word or a date fragment.
     """
     return letter_code in tokens
+
+
+def is_excluded_template_file(path: Path | str) -> bool:
+    """Return True for retired standalone aggregate template workbooks."""
+    return Path(path).name.casefold() in EXCLUDED_TEMPLATE_FILENAMES
 
 
 def iter_leap_export_templates(

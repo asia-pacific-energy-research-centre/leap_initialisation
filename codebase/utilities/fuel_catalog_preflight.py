@@ -12,6 +12,7 @@ import pandas as pd
 from codebase.functions.analysis_input_write_dispatcher import (
     ensure_analysis_view_api_read_allowed,
 )
+from codebase.utilities.leap_export_template_resolver import is_excluded_template_file
 from codebase.utilities.output_paths import INTEGRATED_LEAP_EXPORTS_ROOT
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -76,6 +77,7 @@ def _template_source_paths(
             path
             for path in directory.glob("*.xlsx")
             if not path.name.startswith("~$")
+            and not is_excluded_template_file(path)
         )
         if directory.exists()
         else []

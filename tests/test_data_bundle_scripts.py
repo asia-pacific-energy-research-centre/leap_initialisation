@@ -20,6 +20,7 @@ def _make_source_repo(root: Path) -> None:
     for relative_path in SOURCE_TABLE_PATHS:
         _write(root / relative_path, relative_path.as_posix().encode("utf-8"))
     _write(root / "data/leap_export_templates/AUS current.xlsx")
+    _write(root / "data/leap_export_templates/APEC clean slate 03_08.xlsx")
     _write(root / "data/leap_export_templates/archive/AUS old.xlsx")
     _write(root / "data/leap balances exports/01_AUS/current.xlsx")
     _write(root / "data/leap balances exports/archive/01_AUS/old.xlsx")
@@ -40,6 +41,7 @@ def test_bundle_round_trip_excludes_archives_and_has_no_hash_sidecar(tmp_path: P
         names = set(archive.namelist())
         manifest = json.loads(archive.read(MANIFEST_NAME))
     assert "data/leap_export_templates/AUS current.xlsx" in names
+    assert "data/leap_export_templates/APEC clean slate 03_08.xlsx" not in names
     assert "data/leap balances exports/01_AUS/current.xlsx" in names
     assert all("archive" not in name.casefold() for name in names)
     assert all("sha256" not in record for record in manifest["files"])
