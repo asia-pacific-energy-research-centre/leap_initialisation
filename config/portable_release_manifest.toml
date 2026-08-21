@@ -86,6 +86,7 @@ paths = [
     "codebase/utilities/esto_reference_loader.py",
     "codebase/utilities/fuel_catalog_preflight.py",
     "codebase/utilities/leap_balance_export_resolver.py",
+    "codebase/utilities/leap_export_template_resolver.py",
     "codebase/utilities/mapping_workbook_resolver.py",
     "codebase/utilities/leap_results_dashboard_balance.py",
     "codebase/utilities/leap_results_dashboard_utils.py",

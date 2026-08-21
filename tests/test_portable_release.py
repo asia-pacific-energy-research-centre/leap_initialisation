@@ -264,10 +264,12 @@ def test_shipped_manifest_declares_balance_review_from_export_assets() -> None:
     manifest = load_release_manifest(SHIPPED_MANIFEST)
     roles = {asset.role for asset in manifest.data_assets}
     config_roles = {asset.role for asset in manifest.config_assets}
+    initialisation_paths = set(manifest.repositories["leap_initialisation"].paths)
 
     assert manifest.command("balance-review-from-export").input_mode == (
         "leap_balance_export"
     )
+    assert "codebase/utilities/leap_export_template_resolver.py" in initialisation_paths
     assert {"esto_base_table", "ninth_projection_table"} <= roles
     assert {
         "synthetic_reference_rows",
