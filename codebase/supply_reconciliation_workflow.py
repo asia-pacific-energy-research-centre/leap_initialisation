@@ -857,18 +857,15 @@ SCENARIOS = ["Target", "Reference", "Current Accounts"]
 # bugs the LEAP developers need to fix; enabling it is likely to silently
 # produce wrong results. Treat True as experimental until further notice.
 #
-# PREFLIGHT — by default run_with_config() first runs
-# preflight_compressed_projection using 00_APEC, the configured ESTO base year,
-# and BASE_YEAR+1 as a signed sum of all ninth projection years/scenarios.
-# This exercises future-only mappings and branch paths quickly before the
-# selected preset runs. Set PREFLIGHT_COMPRESSED_PROJECTION_ONLY=True to stop
-# after the preflight.
+# PREFLIGHT — the historical compressed projection preflight uses the synthetic
+# 00_APEC aggregate. Aggregate filling is retired, so this check is disabled by
+# default. It remains available for a deliberately scoped diagnostic run.
 # ---------------------------------------------------------------------------
 
 _PRESET_BASELINE_SEED = {
     # Set True to run only preflight_compressed_projection for this preset.
     "PREFLIGHT_COMPRESSED_PROJECTION_ONLY": False,
-    "RUN_PREFLIGHT_COMPRESSED_PROJECTION": True,
+    "RUN_PREFLIGHT_COMPRESSED_PROJECTION": False,
     # --- Pass mode ---
     "CAPACITY_UNMET_PASS_MODE": "baseline_seed",  # overrides config default
     "RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT": True,  # overrides config default
@@ -1099,7 +1096,7 @@ SKIP_ECONOMIES_WITH_EXISTING_EXPORTS = False
 # Set False to force a full recompute (e.g. after updating config or data files).
 TRANSFORMATION_SUPPLY_CACHE_ENABLED = True
 KEEP_PC_AWAKE_WHILE_RUNNING = True
-RUN_PREFLIGHT_COMPRESSED_PROJECTION = True
+RUN_PREFLIGHT_COMPRESSED_PROJECTION = False
 PREFLIGHT_COMPRESSED_INCLUDE_CURRENT_ACCOUNTS = True
 PREFLIGHT_COMPRESSED_PROJECTION_ONLY = False
 PREFLIGHT_COMPRESSED_FAIL_FAST = False
