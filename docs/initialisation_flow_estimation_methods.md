@@ -249,6 +249,15 @@ the balancing quantity to a real product such as refinery feedstocks would put
 invented energy onto a fuel that downstream balances treat as genuine; keeping
 it on its own fuel means every consumer can identify and exclude it.
 
+**Template placeholder convention.** Before an `AUTO BALANCE` leaf has been
+created in a real LEAP area, its reviewed transfer-template rows use
+`BranchID` `100` (with legacy `99` also recognised). These are audit-only
+placeholders, not LEAP-owned IDs: seed validation retains them and reports a
+warning, but they never block seed generation. This exception applies only to
+`transfers_workflow` rows on the six approved `AUTO BALANCE` transfer leaves;
+the same numbers remain ordinary IDs everywhere else. Once a real LEAP area has
+the leaf, re-export its template so LEAP supplies the real branch ID.
+
 **Sizing.** The counterpart is 1 PJ (the floor) except where that would push a
 process past the efficiency ceiling. For an *inflow-only* flow the counterpart
 becomes the feedstock, so the implied efficiency is

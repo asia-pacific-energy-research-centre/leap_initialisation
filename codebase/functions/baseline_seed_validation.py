@@ -44,6 +44,7 @@ SOURCE_WORKFLOW_COLUMN = "source_workflow"
 SOURCE_FILE_COLUMN = "source_file"
 PROVENANCE_COLUMNS = {SOURCE_WORKFLOW_COLUMN, SOURCE_FILE_COLUMN, "source_excel_row"}
 AUTO_BALANCE_PLACEHOLDER_BRANCH_ID = 100
+AUTO_BALANCE_PLACEHOLDER_BRANCH_IDS = frozenset({99, AUTO_BALANCE_PLACEHOLDER_BRANCH_ID})
 AUTO_BALANCE_PLACEHOLDER_ROOTS = (
     "transformation\\transfers unallocated\\",
     "transformation\\refinery and blending transfers\\",
@@ -842,14 +843,16 @@ def _row_has_all_valid_ids(row: pd.Series) -> bool:
 def _is_auto_balance_placeholder_branch(row: pd.Series) -> bool:
     """Recognise the reviewed transfer AUTO BALANCE placeholder convention.
 
-    ``100`` is deliberately reserved as an audit-only BranchID; it is not a
-    real LEAP branch identifier and must not make the row look import-ready.
+    ``99`` and ``100`` are deliberately reserved here as audit-only placeholder
+    BranchIDs. They are not real LEAP branch identifiers and must not make the
+    row look import-ready. This exception is deliberately limited to reviewed
+    AUTO BALANCE transfer rows; those numbers can be genuine IDs elsewhere.
     """
     branch_id = _int_or_none(row.get("BranchID"))
     path = _normalized(row.get("Branch Path")).lower()
     source = _normalized(row.get(SOURCE_WORKFLOW_COLUMN)).lower()
     return (
-        branch_id == AUTO_BALANCE_PLACEHOLDER_BRANCH_ID
+        branch_id in AUTO_BALANCE_PLACEHOLDER_BRANCH_IDS
         and source == "transfers_workflow"
         and path.endswith("\\auto balance")
         and any(path.startswith(root) for root in AUTO_BALANCE_PLACEHOLDER_ROOTS)

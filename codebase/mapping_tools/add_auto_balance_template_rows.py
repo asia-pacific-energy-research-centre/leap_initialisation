@@ -222,7 +222,9 @@ def _insert_missing_auto_balance_rows(template_path: Path, apply_changes: bool) 
     root, shared_strings = _read_template_xml(template_path)
     existing_rows = _auto_balance_rows(template_path)
     if existing_rows:
-        validate_auto_balance_rows(template_path)
+        # Existing local rows may still carry -1 before
+        # _migrate_existing_rows() assigns the reviewed 100 placeholder.
+        _validate_auto_balance_structure(template_path)
         return {"template": template_path.name, "rows_added": 0}
 
     headers = _header_columns(root, shared_strings)

@@ -190,6 +190,29 @@ def test_transfer_auto_balance_branch_id_100_is_a_warning_only_placeholder() -> 
     assert not placeholder_findings["blocking"].any()
 
 
+def test_transfer_auto_balance_branch_id_99_is_a_warning_only_placeholder() -> None:
+    row = _row("Data(2022,1, 2023,1)")
+    row.update({
+        "BranchID": 99,
+        "VariableID": 418,
+        "ScenarioID": 2,
+        "RegionID": 1,
+        "Branch Path": r"Transformation\Transfers unallocated\Output Fuels\AUTO BALANCE",
+        "Variable": "Output Share",
+        "Scenario": "Reference",
+        "Region": "Australia",
+        "source_workflow": "transfers_workflow",
+    })
+
+    result = validate_seed_rows(pd.DataFrame([row]))
+    placeholder_findings = result.findings[
+        result.findings["rule_id"].isin(["SEED-003", "SEED-004"])
+    ]
+
+    assert set(placeholder_findings["status"]) == {"warn"}
+    assert not placeholder_findings["blocking"].any()
+
+
 def test_branch_id_100_is_not_a_placeholder_outside_reviewed_transfer_scope() -> None:
     row = _row("1")
     row.update({
