@@ -48,7 +48,7 @@ packages = [
 # behaviour.
 
 [repositories.leap_initialisation]
-commit = "7c3c55748ce704de72b9d99dffd181ff39191aad"
+commit = "ec4011f088b9f3a3788fb6d2a56c706038454c9e"
 stage_dir = "leap_initialisation"
 on_sys_path = true
 paths = [
@@ -123,7 +123,7 @@ paths = [
 # ``import LEAP_API_helpers``. Stage only that reviewed metadata module from
 # config/ on its own sys.path root; do not expose the rest of config/ as code.
 [repositories.leap_initialisation_config]
-commit = "7c3c55748ce704de72b9d99dffd181ff39191aad"
+commit = "ec4011f088b9f3a3788fb6d2a56c706038454c9e"
 source_key = "leap_initialisation"
 stage_dir = "leap_initialisation_config"
 strip_prefix = "config"
@@ -134,7 +134,7 @@ paths = ["config/LEAP_API_helpers.py"]
 # so `codebase/` is stripped when staging. That also keeps this repository's
 # `codebase` package name from colliding with leap_initialisation's.
 [repositories.leap_dashboard]
-commit = "ebdc106c12b13f938a98362c8fbc6f938c57f145"
+commit = "69e896fb71f13a375c5ef928873709507f34d752"
 stage_dir = "leap_dashboard"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -150,7 +150,7 @@ paths = [
 # `mapping_tools` has no __init__.py in its own repository either; it works as
 # an implicit namespace package here exactly as it does there.
 [repositories.leap_mappings]
-commit = "9f102e7d879cede01f5819c40e8e6c3b6ee193c4"
+commit = "9181ba2149514db7574ca1d3c485036a408cfa24"
 stage_dir = "leap_mappings"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -173,7 +173,7 @@ paths = [
 # packages into the worker to reach one module. Omitted, each becomes an implicit
 # namespace package (PEP 420) and the submodule imports on its own - verified.
 [repositories.leap_mappings_worker]
-commit = "9f102e7d879cede01f5819c40e8e6c3b6ee193c4"
+commit = "9181ba2149514db7574ca1d3c485036a408cfa24"
 stage_dir = "leap_mappings_worker"
 source_key = "leap_mappings"
 on_sys_path = true
@@ -519,7 +519,7 @@ repository = "leap_initialisation"
 path = "data/00APEC_2026_low_with_subtotals_PRELIMINARY.csv"
 dest = "balance_review/00APEC_2026_low_with_subtotals_PRELIMINARY.csv"
 role = "esto_base_table_2026_preliminary"
-sha256 = "a222ca3daa7025dc3a508626f6ca5f499a65175ef9da8ca062c9cc926f3c1a79"
+sha256 = "f0e7881d33df3f95469a252d04002f52b31c596d34dbcae13484ae537ebee5d2"
 description = "Configured 2026 ESTO base table used by balance diagnostics. Preliminary: the issue is still missing economies or carries backfilled/proxy figures."
 allow_untracked = true
 
