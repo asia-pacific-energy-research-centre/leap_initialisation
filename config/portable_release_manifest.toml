@@ -134,7 +134,7 @@ paths = ["config/LEAP_API_helpers.py"]
 # so `codebase/` is stripped when staging. That also keeps this repository's
 # `codebase` package name from colliding with leap_initialisation's.
 [repositories.leap_dashboard]
-commit = "e2f2508b23e582c44691585982e26032466cec79"
+commit = "c5a855e3fd0c72dabe4227c4e3b88ba819cf5b60"
 stage_dir = "leap_dashboard"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -420,7 +420,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/esto_results_exact_rows.csv.gz"
 dest = "mapping_chain/esto_results_exact_rows.csv.gz"
 role = "mapping_chain_esto_exact_rows"
-sha256 = "d2ff093e689d8d1793716494faff582c2c7bbf930ba981bab78ed36841972442"
+sha256 = "36c5160d5cc658e1ed122692fc92a8efbb4908bc9f833f2a28c2e2d33783690d"
 description = "ESTO exact-row extract the mapping chain converts LEAP output against."
 allow_untracked = true
 
