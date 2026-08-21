@@ -197,6 +197,7 @@ paths = [
     "codebase/mapping_tools/mapping_sheet_registry.py",
     "codebase/mapping_tools/non_expanding_rollups.py",
     "codebase/mapping_tools/parse_leap_balance_export.py",
+    "codebase/mapping_tools/pipeline_profiling.py",
     "codebase/mapping_tools/result_storage.py",
     "codebase/mapping_tools/typed_output.py",
     "codebase/mapping_tools/rollup_sheet_registry.py",
