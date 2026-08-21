@@ -232,3 +232,7 @@ tmp/
 # Generated portable-release staging, PyInstaller work, and packages.
 # Safe to delete by hand; the builder never creates links inside it.
 release_build/
+
+# Root-local ad-hoc analysis and generated documentation artifacts.
+/.tmp_*
+/docs/docx/*.docx
