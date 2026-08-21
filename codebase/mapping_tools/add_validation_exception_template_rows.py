@@ -17,6 +17,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from xml.etree import ElementTree
 from zipfile import ZIP_DEFLATED, ZipFile
+from xml.sax.saxutils import escape as xml_escape
 
 from openpyxl import load_workbook
 
@@ -115,6 +116,79 @@ def _set_numeric_value(cell, value: int) -> None:
     for child in list(cell):
         cell.remove(child)
     ElementTree.SubElement(cell, f"{NAMESPACE}v").text = str(value)
+
+
+def _raw_source_row_xml(sheet_xml: str, row_number: int) -> str:
+    """Return one original row fragment without reserializing worksheet XML."""
+    row_tag = r"(?:[A-Za-z_][\w.-]*:)?row"
+    match = re.search(
+        rf"(<{row_tag}\b[^>]*\br=\"{row_number}\"[^>]*>.*?</{row_tag}>)",
+        sheet_xml,
+        flags=re.DOTALL,
+    )
+    if match is None:
+        raise ValueError(f"Could not locate source row {row_number} in worksheet XML")
+    return match.group(1)
+
+
+def _replace_raw_cell(row_xml: str, column: str, row_number: int, value: str, *, numeric: bool) -> str:
+    """Replace one populated cell while retaining the source row's XML prefix/style."""
+    cell_tag = r"(?:[A-Za-z_][\w.-]*:)?c"
+    close_tag = r"(?:[A-Za-z_][\w.-]*:)?c"
+    pattern = (
+        rf"(?P<tag><{cell_tag}\b)(?P<attributes>[^>]*\br=\"{column}{row_number}\"[^>]*)>"
+        rf"(?P<content>.*?)</{close_tag}>"
+    )
+    match = re.search(pattern, row_xml, flags=re.DOTALL)
+    if match is None:
+        raise ValueError(f"Source row lacks required cell {column}{row_number}")
+    attributes = re.sub(r'\s+t="[^"]*"', "", match.group("attributes"))
+    if numeric:
+        replacement = f'{match.group("tag")}{attributes}><v>{value}</v></c>'
+    else:
+        replacement = f'{match.group("tag")}{attributes} t="inlineStr"><is><t>{xml_escape(value)}</t></is></c>'
+    return row_xml[:match.start()] + replacement + row_xml[match.end():]
+
+
+def _build_raw_placeholder_row(
+    sheet_xml: str,
+    source_row,
+    target_path: str,
+    headers: dict[str, str],
+    next_row: int,
+) -> str:
+    """Clone a row in raw XML, preserving workbook namespace declarations."""
+    source_row_number = int(source_row.attrib["r"])
+    row_xml = _raw_source_row_xml(sheet_xml, source_row_number)
+    row_xml = re.sub(rf'(\br="){source_row_number}("[^>]*>)', rf'\g<1>{next_row}\g<2>', row_xml, count=1)
+    row_xml = re.sub(
+        rf'([A-Z]+){source_row_number}(?=")',
+        rf'\g<1>{next_row}',
+        row_xml,
+    )
+    row_xml = _replace_raw_cell(
+        row_xml, headers["BranchID"], next_row, str(PLACEHOLDER_BRANCH_ID), numeric=True
+    )
+    row_xml = _replace_raw_cell(row_xml, headers["Branch Path"], next_row, target_path, numeric=False)
+    for index, part in enumerate(target_path.split("\\"), start=1):
+        level_column = headers.get(f"Level {index}")
+        if level_column is not None:
+            row_xml = _replace_raw_cell(row_xml, level_column, next_row, part, numeric=False)
+    return row_xml
+
+
+def _append_raw_rows_to_sheet_xml(sheet_xml: str, rows: list[str], last_row: int) -> str:
+    """Append row fragments before sheetData's closing tag without changing namespaces."""
+    close_match = re.search(r"</(?:[A-Za-z_][\w.-]*:)?sheetData>", sheet_xml)
+    if close_match is None:
+        raise ValueError("Worksheet XML has no closing sheetData tag")
+    updated = sheet_xml[:close_match.start()] + "".join(rows) + sheet_xml[close_match.start():]
+    return re.sub(
+        r'(<(?:[A-Za-z_][\w.-]*:)?dimension\b[^>]*\bref="[^"]*:[A-Z]+)\d+([^"]*")',
+        rf'\g<1>{last_row}\g<2>',
+        updated,
+        count=1,
+    )
 
 
 def _leaf_profile_rows(
@@ -240,23 +314,17 @@ def insert_missing_exception_rows(
     rows_to_add = [(source_row, target_path) for target_path in missing_paths for source_row in _leaf_profile_rows(template_rows, headers, shared_strings, target_path)]
     if apply_changes:
         next_row = max(int(row.attrib["r"]) for row in template_rows) + 1
+        with ZipFile(template_path) as source_archive:
+            original_xml = source_archive.read(sheet_xml_path).decode("utf-8")
+        raw_rows = []
         for source_row, target_path in rows_to_add:
-            new_row = deepcopy(source_row)
-            new_row.attrib["r"] = str(next_row)
-            cells = {_column_name(cell): cell for cell in new_row}
-            for column, cell in cells.items():
-                cell.attrib["r"] = f"{column}{next_row}"
-            _set_numeric_value(cells[headers["BranchID"]], PLACEHOLDER_BRANCH_ID)
-            _set_inline_string(cells[headers["Branch Path"]], target_path)
-            for index, part in enumerate(target_path.split("\\"), start=1):
-                level_column = headers.get(f"Level {index}")
-                if level_column in cells:
-                    _set_inline_string(cells[level_column], part)
-            sheet_data.append(new_row)
+            raw_rows.append(_build_raw_placeholder_row(
+                original_xml, source_row, target_path, headers, next_row,
+            ))
             next_row += 1
+        updated_xml = _append_raw_rows_to_sheet_xml(original_xml, raw_rows, next_row - 1).encode("utf-8")
         temporary_path = template_path.with_suffix(".tmp.xlsx")
         with ZipFile(template_path) as source_archive, ZipFile(temporary_path, "w", ZIP_DEFLATED) as destination_archive:
-            updated_xml = ElementTree.tostring(root, encoding="utf-8", xml_declaration=True)
             for item in source_archive.infolist():
                 content = updated_xml if item.filename == sheet_xml_path else source_archive.read(item.filename)
                 destination_archive.writestr(item, content)

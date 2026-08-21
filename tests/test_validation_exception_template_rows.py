@@ -14,7 +14,11 @@ from codebase.mapping_tools.add_validation_exception_template_rows import (
 )
 
 
-def _write_template(path, sibling_profiles: dict[str, list[tuple[str, str, str]]]) -> None:
+def _write_template(
+    path,
+    sibling_profiles: dict[str, list[tuple[str, str, str]]],
+    worksheet_attributes: str = "",
+) -> None:
     headers = (
         '<row r="3"><c r="A3" t="inlineStr"><is><t>BranchID</t></is></c>'
         '<c r="E3" t="inlineStr"><is><t>Branch Path</t></is></c>'
@@ -44,7 +48,10 @@ def _write_template(path, sibling_profiles: dict[str, list[tuple[str, str, str]]
                 )
             )
             row_number += 1
-    xml = '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>{}</sheetData></worksheet>'.format(headers + "".join(rows))
+    xml = '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"{}><sheetData>{}</sheetData></worksheet>'.format(
+        worksheet_attributes,
+        headers + "".join(rows),
+    )
     with ZipFile(path, "w", ZIP_DEFLATED) as archive:
         archive.writestr(SHEET_XML_PATH, xml)
 
@@ -77,6 +84,29 @@ def test_refuses_ambiguous_largest_sibling_profiles(tmp_path):
 
     with pytest.raises(ValueError, match="Ambiguous sibling profiles"):
         insert_missing_exception_rows(template_path, {r"Demand\Other\Missing fuel"})
+
+
+def test_insertion_preserves_excel_namespace_declarations(tmp_path):
+    template_path = tmp_path / "template.xlsx"
+    _write_template(
+        template_path,
+        {r"Demand\Other\Existing fuel": [("Activity Level", "Reference", "Test")]},
+        ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+        'xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac" '
+        'mc:Ignorable="x14ac"',
+    )
+
+    insert_missing_exception_rows(
+        template_path,
+        {r"Demand\Other\Missing fuel"},
+        apply_changes=True,
+    )
+
+    with ZipFile(template_path) as archive:
+        xml = archive.read(SHEET_XML_PATH).decode("utf-8")
+    assert 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"' in xml
+    assert 'xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac"' in xml
+    assert 'mc:Ignorable="x14ac"' in xml
 
 
 def test_sync_disables_only_paths_real_in_every_template(tmp_path, monkeypatch):
