@@ -59,6 +59,50 @@ or `2026_VINTAGE_PILOT_BLOCKED` with the first failing boundary, evidence, owner
 and next action. This pilot is separate from periodic full mapping refresh and
 does not authorize production deployment.
 
+## [57] Run and verify 2026 ESTO-vintage baseline seeds for every economy
+
+**Status: queued after [52] passes.**
+
+Run the baseline-seed process for every economy using the maintained 2026 ESTO
+vintage, with unique dated run labels and each economy's resolved LEAP export
+template. Validate every resulting seed before import, then import only into
+the corresponding controlled LEAP area/copy and verify that the import,
+calculation, and results export succeed. Do not treat a workbook-only check as
+proof that an economy works in LEAP.
+
+Review the imported results in the LEAP review app and explicitly check
+differences against the corresponding expected ESTO/seed values. Record each
+economy's source identity, template/area identity, seed validation outcome,
+LEAP import outcome, review-app comparison outcome, and any explained or
+unexplained differences. Use the per-economy lock and isolated-output rules;
+do not overwrite a production area or mix output labels between runs.
+
+**Complete when:** every in-scope economy has either a reproducible accepted
+verification record or a specific blocked/failing boundary with evidence,
+owner, and next action. Publish a compact all-economy summary that separates
+accepted expected differences from defects requiring follow-up.
+
+## [58] Comparative detailed-road and Industry-model import test: 2026 vs 2024 baseline seeds
+
+**Status: queued after the relevant seeds from [57] are accepted.**
+
+Test importing the detailed Road and Industry LEAP models using equivalent
+baseline seeds from both the 2026 ESTO vintage and the 2024-vintage baseline.
+Use isolated model copies and matched scenario/horizon settings so the vintage
+is the only intentional input difference. For each vintage, confirm import,
+model calculation, results export, and the normal review-web-app flow.
+
+Compare the web-app outputs and the general end-to-end process between the two
+vintages. Verify that each model is routed and rendered correctly, expected
+historical/base-year differences are visible and explainable, scenario labels
+remain distinct, and no stale source, manifest, or cached runtime is presented
+as the selected vintage. Keep a concise comparison ledger of the declared
+expected differences and every unexpected one.
+
+**Complete when:** the detailed Road and Industry models have a tested result
+for both vintages, with import/review evidence and a clear pass, fail, or
+blocked conclusion for the web app and overall process.
+
 ## [54] Cross-economy 09.06 / 09.08 baseline-seed verification set
 
 **Status: queued after the fresh AUS seed evidence is accepted.**
