@@ -116,6 +116,12 @@ def test_transformation_leaf_uses_its_module_not_the_fuel_group() -> None:
                 "\\Additives and oxygenates"
             )
         },
+        {
+            "branch_path": (
+                "Transformation\\Transfers unallocated\\Output Fuels"
+                "\\Natural gas liquids"
+            )
+        },
     ])
 
     assert keys[["sector", "fuel", "esto_flow", "esto_product"]].to_dict("records") == [
@@ -130,5 +136,11 @@ def test_transformation_leaf_uses_its_module_not_the_fuel_group() -> None:
             "fuel": "Additives and oxygenates",
             "esto_flow": "09.12 Non-specified transformation",
             "esto_product": "06.04 Additives/ oxygenates",
+        },
+        {
+            "sector": "Transfers unallocated",
+            "fuel": "Natural gas liquids",
+            "esto_flow": "08 Transfers",
+            "esto_product": "06.02 Natural gas liquids",
         },
     ]

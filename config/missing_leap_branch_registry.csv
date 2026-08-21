@@ -15,3 +15,31 @@ Demand\Other loss and own use\Transmission and distribution loss\Refinery gas no
 Transformation\Non specified transformation\Output Fuels\Additives and oxygenates,2026-08-21,User-approved non-blocking missing leaf; observed BD/USA,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
 Transformation\Non specified transformation\Output Fuels\Refinery feedstocks,2026-08-21,User-approved non-blocking missing leaf; observed BD/USA,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
 Transformation\Coke ovens\Processes\Coke ovens\Feedstock Fuels\Coke oven coke,2026-08-21,User-approved non-blocking missing leaf; observed MEX,2022,16425.159078,16425.159078,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Coal mines\Bitumen,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Coal mines\Blast furnace gas,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,-0.550146,0.550146,2023,2060,38,-4.153502928239663,4.153502928239663,-3.624032362017948,3.624032362017948
+Demand\Other loss and own use\Coal mines\Lubricants,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Coal mines\Other recovered gases,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,-4.153502928239663,4.153502928239663,-3.624032362017948,3.624032362017948
+Demand\Other loss and own use\Coal mines\Petroleum coke,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,-0.101551,0.101551,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Coal mines\Refinery gas not liquefied,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Electricity CHP and heat plants\Anthracite,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Electricity CHP and heat plants\BKB and PB,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Electricity CHP and heat plants\Bitumen,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Electricity CHP and heat plants\Blast furnace gas,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Electricity CHP and heat plants\Coal tar,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,-0.06029,0.06029,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Electricity CHP and heat plants\Coking coal,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Electricity CHP and heat plants\Gas works gas,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Electricity CHP and heat plants\Lubricants,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Electricity CHP and heat plants\Other recovered gases,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Electricity CHP and heat plants\Paraffin waxes,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Oil and gas extraction\Anthracite,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Oil and gas extraction\BKB and PB,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Oil and gas extraction\Coke oven coke,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Oil and gas extraction\Gas works gas,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Oil and gas extraction\Lignite,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Oil and gas extraction\Lubricants,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Demand\Other loss and own use\Oil and gas extraction\White spirit sbp,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Transformation\Heat plant interim\Processes\Heat plant interim\Feedstock Fuels\Petroleum coke,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,-65.574091,65.574091,2023,2060,38,0.0,0.0,0.0,0.0
+Transformation\Transfers unallocated\Processes\Transfers unallocated\Feedstock Fuels\Petroleum coke,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Transformation\Transfers unallocated\Processes\Transfers unallocated\Feedstock Fuels\Refinery gas not liquefied,2026-08-21,User-approved non-blocking missing leaf; observed PRC,2022,0.0,0.0,2023,2060,38,210.05175600000004,210.05175600000004,210.05175600000004,210.05175600000004
+Demand\Other loss and own use\Transmission and distribution loss\Natural gas liquids,2026-08-21,User-approved non-blocking missing leaf; observed THA,2022,0.0,0.0,2023,2060,38,0.0,0.0,0.0,0.0
+Transformation\Transfers unallocated\Output Fuels\Natural gas liquids,2026-08-21,User-approved non-blocking missing leaf; observed THA,2022,0.0,0.0,2023,2060,38,-7183.419949661827,7183.419949661827,-7171.887544753256,7171.887544753256

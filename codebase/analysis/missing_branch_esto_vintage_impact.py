@@ -58,6 +58,7 @@ FLOW_BY_SECTOR = {
     "NG liquefaction": "09.06.02 Liquefaction/regasification plants",
     "NG Liquefaction": "09.06.02 Liquefaction/regasification plants",
     "Heat plant interim": "09.01.03 Heat plants",
+    "Transfers unallocated": "08 Transfers",
     "Coke ovens": "09.08.01 Coke ovens",
 }
 NINTH_SECTOR_LEVEL = {
@@ -70,6 +71,7 @@ NINTH_SECTOR_LEVEL = {
     "LNG regasification": ("sub2sectors", "09_06_02_liquefaction_regasification_plants"),
     "NG Liquefaction": ("sub2sectors", "09_06_02_liquefaction_regasification_plants"),
     "Heat plant interim": ("sub1sectors", "09_x_heat_plants"),
+    "Transfers unallocated": ("sectors", "08_transfers"),
     "Coke ovens": ("sub2sectors", "09_08_01_coke_ovens"),
 }
 NINTH_FUEL = {
