@@ -19,6 +19,15 @@ files unless `ALLOW_OVERWRITE` is deliberately changed to `True`. The ZIP is
 ignored by Git and is intended to be shared separately through restricted
 storage such as Google Drive.
 
+### Publication checklist
+
+When publishing a code update that changes bundled inputs or their bundle
+contract (normally alongside the Git push), rebuild and validate this ZIP,
+upload it to the restricted Google Drive data-bundles folder, then move the
+superseded ZIP for this repository into that folder's `archive/` subfolder.
+Keep the newest verified ZIP in the top-level folder; do not delete historical
+bundles.
+
 ## Main Reference Tables
 
 These CSVs are the common historical/projection data sources used across
