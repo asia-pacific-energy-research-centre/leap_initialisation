@@ -167,7 +167,7 @@ def test_unlimited_expression_is_not_a_year_coverage_failure() -> None:
     assert not result.findings["rule_id"].eq("SEED-009").any()
 
 
-def test_transfer_auto_balance_branch_id_100_is_a_warning_only_placeholder() -> None:
+def test_branch_id_100_is_always_a_warning_only_placeholder() -> None:
     row = _row("Data(2022,1, 2023,1)")
     row.update({
         "BranchID": 100,
@@ -190,7 +190,7 @@ def test_transfer_auto_balance_branch_id_100_is_a_warning_only_placeholder() -> 
     assert not placeholder_findings["blocking"].any()
 
 
-def test_transfer_auto_balance_branch_id_99_is_a_warning_only_placeholder() -> None:
+def test_branch_id_99_is_always_a_warning_only_placeholder() -> None:
     row = _row("Data(2022,1, 2023,1)")
     row.update({
         "BranchID": 99,
@@ -213,7 +213,7 @@ def test_transfer_auto_balance_branch_id_99_is_a_warning_only_placeholder() -> N
     assert not placeholder_findings["blocking"].any()
 
 
-def test_branch_id_100_is_not_a_placeholder_outside_reviewed_transfer_scope() -> None:
+def test_branch_id_100_is_a_warning_only_placeholder_outside_transfer_scope() -> None:
     row = _row("1")
     row.update({
         "BranchID": 100,
@@ -229,7 +229,12 @@ def test_branch_id_100_is_not_a_placeholder_outside_reviewed_transfer_scope() ->
 
     result = validate_seed_rows(pd.DataFrame([row]))
 
-    assert not result.findings["rule_id"].isin(["SEED-003", "SEED-004"]).any()
+    placeholder_findings = result.findings[
+        result.findings["rule_id"].isin(["SEED-003", "SEED-004"])
+    ]
+
+    assert set(placeholder_findings["status"]) == {"warn"}
+    assert not placeholder_findings["blocking"].any()
 
 
 @pytest.mark.parametrize(

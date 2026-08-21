@@ -44,12 +44,7 @@ SOURCE_WORKFLOW_COLUMN = "source_workflow"
 SOURCE_FILE_COLUMN = "source_file"
 PROVENANCE_COLUMNS = {SOURCE_WORKFLOW_COLUMN, SOURCE_FILE_COLUMN, "source_excel_row"}
 AUTO_BALANCE_PLACEHOLDER_BRANCH_ID = 100
-AUTO_BALANCE_PLACEHOLDER_BRANCH_IDS = frozenset({99, AUTO_BALANCE_PLACEHOLDER_BRANCH_ID})
-AUTO_BALANCE_PLACEHOLDER_ROOTS = (
-    "transformation\\transfers unallocated\\",
-    "transformation\\refinery and blending transfers\\",
-    "transformation\\upstream liquids transfers\\",
-)
+PLACEHOLDER_BRANCH_IDS = frozenset({99, AUTO_BALANCE_PLACEHOLDER_BRANCH_ID})
 SHARE_VARIABLE_RULE_IDS = {
     "Output Share": "SEED-006",
     "Process Share": "SEED-007",
@@ -840,30 +835,21 @@ def _row_has_all_valid_ids(row: pd.Series) -> bool:
     return not _invalid_id_columns(row)
 
 
-def _is_auto_balance_placeholder_branch(row: pd.Series) -> bool:
-    """Recognise the reviewed transfer AUTO BALANCE placeholder convention.
+def _is_placeholder_branch_id(row: pd.Series) -> bool:
+    """Return True when a row uses a reserved, non-LEAP BranchID placeholder.
 
-    ``99`` and ``100`` are deliberately reserved here as audit-only placeholder
-    BranchIDs. They are not real LEAP branch identifiers and must not make the
-    row look import-ready. This exception is deliberately limited to reviewed
-    AUTO BALANCE transfer rows; those numbers can be genuine IDs elsewhere.
+    ``99`` and ``100`` are global audit-only placeholders. They are never
+    treated as LEAP-owned branch IDs, so all associated validation findings are
+    warnings rather than blockers until real IDs are exported from LEAP.
     """
     branch_id = _int_or_none(row.get("BranchID"))
-    path = _normalized(row.get("Branch Path")).lower()
-    source = _normalized(row.get(SOURCE_WORKFLOW_COLUMN)).lower()
-    return (
-        branch_id in AUTO_BALANCE_PLACEHOLDER_BRANCH_IDS
-        and source == "transfers_workflow"
-        and path.endswith("\\auto balance")
-        and any(path.startswith(root) for root in AUTO_BALANCE_PLACEHOLDER_ROOTS)
-        and all(_id_valid(row.get(column)) for column in ["VariableID", "ScenarioID", "RegionID"])
-    )
+    return branch_id in PLACEHOLDER_BRANCH_IDS
 
 
 def _invalid_id_columns(row: pd.Series) -> list[str]:
     """Return unresolved ID fields, including approved branch placeholders."""
     invalid = [column for column in ID_COLUMNS if not _id_valid(row.get(column))]
-    if _is_auto_balance_placeholder_branch(row) and "BranchID" not in invalid:
+    if _is_placeholder_branch_id(row) and "BranchID" not in invalid:
         invalid.append("BranchID")
     return invalid
 
@@ -958,7 +944,7 @@ def drop_zero_only_optional_unmatched_rows(
 def _is_warning_only_missing_id_branch(row: pd.Series) -> bool:
     return (
         _is_warning_only_aggregated_demand_branch(row)
-        or _is_auto_balance_placeholder_branch(row)
+        or _is_placeholder_branch_id(row)
     )
 
 
