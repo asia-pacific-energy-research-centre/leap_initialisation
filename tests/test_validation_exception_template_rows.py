@@ -1,11 +1,15 @@
 from zipfile import ZIP_DEFLATED, ZipFile
+from types import SimpleNamespace
 
 import pytest
+from openpyxl import Workbook, load_workbook
 
+import codebase.mapping_tools.add_validation_exception_template_rows as placeholder_module
 from codebase.mapping_tools.add_validation_exception_template_rows import (
     PLACEHOLDER_BRANCH_ID,
     SHEET_XML_PATH,
     insert_missing_exception_rows,
+    sync_exception_resolution_status,
     validate_exception_placeholder_rows,
 )
 
@@ -73,3 +77,38 @@ def test_refuses_ambiguous_largest_sibling_profiles(tmp_path):
 
     with pytest.raises(ValueError, match="Ambiguous sibling profiles"):
         insert_missing_exception_rows(template_path, {r"Demand\Other\Missing fuel"})
+
+
+def test_sync_disables_only_paths_real_in_every_template(tmp_path, monkeypatch):
+    template_paths = [tmp_path / "one.xlsx", tmp_path / "two.xlsx"]
+    real_path = r"Demand\Other\Existing fuel"
+    placeholder_path = r"Demand\Other\Missing fuel"
+    profile = [("Activity Level", "Reference", "Test")]
+    for template_path in template_paths:
+        _write_template(template_path, {real_path: profile})
+        insert_missing_exception_rows(template_path, {placeholder_path}, apply_changes=True)
+
+    exception_path = tmp_path / "exceptions.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "branch_exceptions"
+    sheet.append(["enabled", "branch_path", "notes"])
+    sheet.append([True, real_path, "Already real everywhere."])
+    sheet.append([True, placeholder_path, "Still represented by ID 99."])
+    workbook.save(exception_path)
+    monkeypatch.setattr(
+        placeholder_module.leap_export_template_resolver,
+        "iter_leap_export_templates",
+        lambda _root: [SimpleNamespace(path=path, economy=f"0{index}_TST") for index, path in enumerate(template_paths, start=1)],
+    )
+
+    status = sync_exception_resolution_status(
+        exception_workbook_path=exception_path,
+        templates_root=tmp_path,
+    )
+
+    assert status == {real_path: True, placeholder_path: False}
+    values = list(load_workbook(exception_path)["branch_exceptions"].values)
+    assert values[0] == ("enabled", "branch_path", "notes", "resolved_in_all_templates")
+    assert values[1][0] is False and values[1][3] is True
+    assert values[2][0] is True and values[2][3] is False

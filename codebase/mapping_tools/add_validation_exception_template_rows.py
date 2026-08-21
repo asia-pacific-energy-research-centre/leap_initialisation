@@ -14,8 +14,11 @@ import os
 import re
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 from xml.etree import ElementTree
 from zipfile import ZIP_DEFLATED, ZipFile
+
+from openpyxl import load_workbook
 
 from codebase.functions.patch_baseline_seeds import load_validation_exception_branch_notes
 from codebase.utilities import leap_export_template_resolver
@@ -30,6 +33,8 @@ NAMESPACE = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 RELATIONSHIP_NAMESPACE = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 PACKAGE_RELATIONSHIP_NAMESPACE = "{http://schemas.openxmlformats.org/package/2006/relationships}"
 REQUIRED_HEADERS = {"BranchID", "Branch Path", "Variable", "Scenario", "Region"}
+EXCEPTION_SHEET_NAME = "branch_exceptions"
+RESOLVED_IN_ALL_TEMPLATES_COLUMN = "resolved_in_all_templates"
 
 
 def _column_name(cell) -> str:
@@ -276,10 +281,79 @@ def update_all_templates(
     return results
 
 
+def _template_presence_status(
+    branch_paths: set[str],
+    templates: list[SimpleNamespace],
+) -> dict[str, bool]:
+    """Return whether each path is a real branch in every supplied template."""
+    status = {path: True for path in branch_paths}
+    for template in templates:
+        rows = _exception_rows(template.path, branch_paths)
+        for branch_path in branch_paths:
+            matching_rows = [row for row in rows if row["path"] == branch_path]
+            has_real_branch = bool(matching_rows) and all(
+                row["branch_id"] != str(PLACEHOLDER_BRANCH_ID)
+                for row in matching_rows
+            )
+            status[branch_path] = status[branch_path] and has_real_branch
+    return status
+
+
+def sync_exception_resolution_status(
+    *,
+    exception_workbook_path: Path = REPO_ROOT / "config" / "baseline_seed_validation_exception_sets.xlsx",
+    templates_root: Path | str = TEMPLATE_ROOT,
+) -> dict[str, bool]:
+    """Record resolved exceptions and disable only those real in every template.
+
+    This is intentionally a separate operation from row insertion.  Run it
+    after refreshed real LEAP exports replace the ID-99 placeholders.  A path
+    that is still absent or has any ID-99 row remains enabled for baseline-seed
+    validation, even when it is real in some economies.
+    """
+    workbook_path = Path(exception_workbook_path)
+    workbook = load_workbook(workbook_path)
+    if EXCEPTION_SHEET_NAME not in workbook.sheetnames:
+        raise ValueError(f"{workbook_path.name} has no {EXCEPTION_SHEET_NAME!r} sheet")
+    sheet = workbook[EXCEPTION_SHEET_NAME]
+    headers = {
+        str(cell.value).strip(): cell.column
+        for cell in sheet[1]
+        if cell.value is not None and str(cell.value).strip()
+    }
+    required = {"enabled", "branch_path", "notes"}
+    missing = required - set(headers)
+    if missing:
+        raise ValueError(f"{workbook_path.name} is missing required columns: {sorted(missing)}")
+    if RESOLVED_IN_ALL_TEMPLATES_COLUMN not in headers:
+        column = sheet.max_column + 1
+        sheet.cell(row=1, column=column, value=RESOLVED_IN_ALL_TEMPLATES_COLUMN)
+        headers[RESOLVED_IN_ALL_TEMPLATES_COLUMN] = column
+
+    path_rows = {
+        str(sheet.cell(row=row, column=headers["branch_path"]).value or "").strip(): row
+        for row in range(2, sheet.max_row + 1)
+    }
+    path_rows = {path: row for path, row in path_rows.items() if path}
+    templates = [SimpleNamespace(path=item.path, economy=item.economy) for item in leap_export_template_resolver.iter_leap_export_templates(templates_root)]
+    if not templates:
+        raise FileNotFoundError(f"No LEAP export templates found under {templates_root}")
+    status = _template_presence_status(set(path_rows), templates)
+    for branch_path, row in path_rows.items():
+        resolved = status[branch_path]
+        sheet.cell(row=row, column=headers[RESOLVED_IN_ALL_TEMPLATES_COLUMN], value=resolved)
+        if resolved:
+            sheet.cell(row=row, column=headers["enabled"], value=False)
+    workbook.save(workbook_path)
+    return status
+
+
 #%%
 APPLY_CHANGES = False
 
 if __name__ == "__main__":
     update_all_templates(apply_changes=APPLY_CHANGES)
+    # Run manually after refreshed real LEAP exports replace ID-99 rows:
+    # sync_exception_resolution_status()
 
 #%%

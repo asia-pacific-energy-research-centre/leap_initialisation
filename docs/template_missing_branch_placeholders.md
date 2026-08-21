@@ -19,3 +19,8 @@ can receive a real BranchID and be used for import.
 If a path already exists as a real branch in one economy template, the tool
 leaves it untouched. If direct siblings have conflicting largest profiles, it
 raises rather than guessing which branch structure should be proposed.
+
+After fresh exports from the LEAP areas replace every `99` placeholder with a
+real local BranchID, run `sync_exception_resolution_status()`. It updates the
+`resolved_in_all_templates` boolean in the exception workbook and sets
+`enabled` to `False` only when the branch is real in every available template.
