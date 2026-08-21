@@ -105,6 +105,12 @@ def test_run_dashboard_from_export_uses_mapping_chain_and_renders(tmp_path, monk
         "economy,component_branch,status\n",
         encoding="utf-8",
     )
+    representation_status = tmp_path / "leap_demand_representation_status.csv"
+    representation_status.write_text(
+        "economy,scenario,year,component_branch,placeholder_branch,detailed_branches,representation_status\n"
+        "12_NZ,reference,2022,Road,All demand aggregated/Road,Freight road;Passenger road,detailed_only_used\n",
+        encoding="utf-8",
+    )
 
     def _fake_run_mapping_chain(ctx, job):
         assert job["economy"] == "12_NZ"
@@ -114,6 +120,7 @@ def test_run_dashboard_from_export_uses_mapping_chain_and_renders(tmp_path, monk
             "common_rows_path": str(COMMON_ROWS),
             "power_interim_audit_path": str(POWER_INTERIM_AUDIT),
             "demand_detail_selection_audit_path": str(detail_selection_audit),
+            "demand_representation_status_path": str(representation_status),
             "raw_leap_rows": 385_035,
             "converted_rows": 48_068,
             "comparison_rows": 194_694,

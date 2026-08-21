@@ -913,7 +913,6 @@ def run_dashboard(
     def work(run_dir: Path) -> dict[str, Any]:
         from common_esto_dashboard_portable import render_common_esto_dashboard_variants
 
-        missing_branches = _missing_leap_demand_branches(context, economy)
         result = render_common_esto_dashboard_variants(
             economy=economy,
             comparison_data_path=comparison_path,
@@ -933,7 +932,6 @@ def run_dashboard(
             min_year=min_year,
             max_year=max_year,
             include_ninth_pre_base_year_data=include_ninth_pre_base_year_data,
-            missing_leap_demand_branches=missing_branches,
             dashboard_updated_label=_dashboard_updated_label(),
             clear_existing=True,
         )
@@ -1161,10 +1159,13 @@ def run_dashboard_from_export(
             cancellation_check=cancellation_check,
         )
 
-        missing_branches = _missing_leap_demand_branches(
-            context,
-            economy,
-            Path(chain_result["demand_detail_selection_audit_path"]),
+        from common_esto_dashboard_data import load_leap_demand_representation_status
+
+        representation_status_df = load_leap_demand_representation_status(
+            Path(chain_result["demand_representation_status_path"]),
+            economy_code,
+            min_year=min_year,
+            max_year=max_year,
         )
         progress.begin_step("render")
         result = render_common_esto_dashboard_variants(
@@ -1189,7 +1190,7 @@ def run_dashboard_from_export(
             min_year=min_year,
             max_year=max_year,
             include_ninth_pre_base_year_data=include_ninth_pre_base_year_data,
-            missing_leap_demand_branches=missing_branches,
+            representation_status_df=representation_status_df,
             dashboard_updated_label=_dashboard_updated_label(),
             clear_existing=True,
         )
