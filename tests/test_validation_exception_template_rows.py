@@ -1,5 +1,6 @@
 from zipfile import ZIP_DEFLATED, ZipFile
 from types import SimpleNamespace
+import re
 
 import pytest
 from openpyxl import Workbook, load_workbook
@@ -107,6 +108,42 @@ def test_insertion_preserves_excel_namespace_declarations(tmp_path):
     assert 'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"' in xml
     assert 'xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac"' in xml
     assert 'mc:Ignorable="x14ac"' in xml
+
+
+def test_insertion_preserves_prefixed_export_sheet_xml(tmp_path):
+    template_path = tmp_path / "template.xlsx"
+    _write_template(
+        template_path,
+        {r"Demand\Other\Existing fuel": [("Activity Level", "Reference", "Test")]},
+    )
+    with ZipFile(template_path) as archive:
+        xml = archive.read(SHEET_XML_PATH).decode("utf-8")
+        contents = {
+            item.filename: archive.read(item.filename)
+            for item in archive.infolist()
+        }
+    xml = re.sub(
+        r"<(/?)(worksheet|sheetData|row|c|v|is|t)(?=[\s>/])",
+        r"<\1s:\2",
+        xml,
+    ).replace(
+        'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"',
+        'xmlns:s="http://schemas.openxmlformats.org/spreadsheetml/2006/main"',
+    )
+    with ZipFile(template_path, "w", ZIP_DEFLATED) as archive:
+        for filename, content in contents.items():
+            archive.writestr(filename, xml.encode("utf-8") if filename == SHEET_XML_PATH else content)
+
+    insert_missing_exception_rows(
+        template_path,
+        {r"Demand\Other\Missing fuel"},
+        apply_changes=True,
+    )
+
+    with ZipFile(template_path) as archive:
+        updated_xml = archive.read(SHEET_XML_PATH).decode("utf-8")
+    assert '<s:c r="A' in updated_xml
+    assert "<s:v>99</s:v>" in updated_xml
 
 
 def test_sync_disables_only_paths_real_in_every_template(tmp_path, monkeypatch):

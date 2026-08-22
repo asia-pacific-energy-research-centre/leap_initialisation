@@ -143,10 +143,26 @@ def _replace_raw_cell(row_xml: str, column: str, row_number: int, value: str, *,
     if match is None:
         raise ValueError(f"Source row lacks required cell {column}{row_number}")
     attributes = re.sub(r'\s+t="[^"]*"', "", match.group("attributes"))
+    qualified_cell_tag = match.group("tag")[1:]
+    namespace_prefix = (
+        qualified_cell_tag.rsplit(":", 1)[0]
+        if ":" in qualified_cell_tag
+        else ""
+    )
+    qualified_value_tag = f"{namespace_prefix + ':' if namespace_prefix else ''}v"
+    qualified_inline_string_tag = f"{namespace_prefix + ':' if namespace_prefix else ''}is"
+    qualified_text_tag = f"{namespace_prefix + ':' if namespace_prefix else ''}t"
     if numeric:
-        replacement = f'{match.group("tag")}{attributes}><v>{value}</v></c>'
+        replacement = (
+            f'{match.group("tag")}{attributes}><{qualified_value_tag}>{value}'
+            f'</{qualified_value_tag}></{qualified_cell_tag}>'
+        )
     else:
-        replacement = f'{match.group("tag")}{attributes} t="inlineStr"><is><t>{xml_escape(value)}</t></is></c>'
+        replacement = (
+            f'{match.group("tag")}{attributes} t="inlineStr"><{qualified_inline_string_tag}>'
+            f'<{qualified_text_tag}>{xml_escape(value)}</{qualified_text_tag}>'
+            f'</{qualified_inline_string_tag}></{qualified_cell_tag}>'
+        )
     return row_xml[:match.start()] + replacement + row_xml[match.end():]
 
 
