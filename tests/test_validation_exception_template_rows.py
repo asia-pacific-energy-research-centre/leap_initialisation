@@ -146,7 +146,7 @@ def test_insertion_preserves_prefixed_export_sheet_xml(tmp_path):
     assert "<s:v>99</s:v>" in updated_xml
 
 
-def test_sync_disables_only_paths_real_in_every_template(tmp_path, monkeypatch):
+def test_sync_records_per_economy_coverage_without_disabling_rows(tmp_path, monkeypatch):
     template_paths = [tmp_path / "one.xlsx", tmp_path / "two.xlsx"]
     real_path = r"Demand\Other\Existing fuel"
     placeholder_path = r"Demand\Other\Missing fuel"
@@ -176,6 +176,9 @@ def test_sync_disables_only_paths_real_in_every_template(tmp_path, monkeypatch):
 
     assert status == {real_path: True, placeholder_path: False}
     values = list(load_workbook(exception_path)["branch_exceptions"].values)
-    assert values[0] == ("enabled", "branch_path", "notes", "resolved_in_all_templates")
-    assert values[1][0] is False and values[1][3] is True
-    assert values[2][0] is True and values[2][3] is False
+    assert values[0][:5] == (
+        "enabled", "branch_path", "notes", "economies_that_need_it",
+        "economies_resolved_in_templates",
+    )
+    assert values[1][0] is True and values[1][4] == "all"
+    assert values[2][0] is True and values[2][3] == "01_TST|02_TST"

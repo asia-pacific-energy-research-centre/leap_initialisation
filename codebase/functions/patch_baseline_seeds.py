@@ -388,35 +388,10 @@ def load_validation_exception_branch_notes(
     workbook_path: Path = VALIDATION_EXCEPTION_WORKBOOK_PATH,
 ) -> dict[str, str]:
     """Load enabled branch-path exceptions and their review notes from Excel."""
-    if not workbook_path.exists():
-        return {}
-    try:
-        exceptions = pd.read_excel(
-            workbook_path,
-            sheet_name=VALIDATION_EXCEPTION_SHEET,
-            dtype=object,
-        ).fillna("")
-    except (FileNotFoundError, ValueError):
-        return {}
-
-    required_columns = {"enabled", "branch_path", "notes"}
-    missing_columns = required_columns.difference(exceptions.columns)
-    if missing_columns:
-        raise ValueError(
-            f"{VALIDATION_EXCEPTION_WORKBOOK_PATH.name} is missing columns: "
-            f"{sorted(missing_columns)}"
-        )
-
-    notes_by_path: dict[str, str] = {}
-    for row in exceptions.itertuples(index=False):
-        values = row._asdict()
-        if not _validation_truthy(values["enabled"]):
-            continue
-        branch_path = str(values["branch_path"] or "").strip()
-        note = str(values["notes"] or "").strip()
-        if branch_path and note:
-            notes_by_path[branch_path] = note
-    return notes_by_path
+    from codebase.functions.baseline_seed_validation_exceptions import (
+        load_enabled_exception_notes,
+    )
+    return load_enabled_exception_notes(workbook_path)
 
 
 def _validation_exception_note(branch_path: str) -> str | None:

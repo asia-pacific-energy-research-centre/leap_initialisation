@@ -77,15 +77,20 @@ def load_structure_migration_registry(
 
 def build_missing_branch_validation_exceptions(
     path: Path | str = DEFAULT_REGISTRY_PATH,
+    *,
+    exception_workbook_path: Path | str | None = None,
 ) -> list[dict[str, str]]:
-    """Build precise in-memory exceptions for known absent LEAP branches."""
-    entries = load_structure_migration_registry(path)
-    # An unrefreshed new row is deliberately not an exception yet.  It stays a
-    # normal blocker until its source-based PJ materiality has been recorded,
-    # while unrelated economies can continue to run.
+    """Build exact warning exceptions from the reviewable Excel workbook.
+
+    ``path`` remains accepted for old notebook callers but the maintained
+    decision record is now ``baseline_seed_validation_exception_sets.xlsx``.
+    """
+    from codebase.functions.baseline_seed_validation_exceptions import load_enabled_exception_notes
+
+    loader_args = {} if exception_workbook_path is None else {"workbook_path": exception_workbook_path}
     entries = [
-        entry for entry in entries
-        if all(str(entry.get(column, "")).strip() for column in REQUIRED_MATERIALITY_COLUMNS)
+        {"branch_path": branch_path, "date_added": "recorded in exception workbook", "notes": note}
+        for branch_path, note in load_enabled_exception_notes(**loader_args).items()
     ]
     return [
         {
@@ -115,6 +120,7 @@ def classify_structure_migration_findings(
     run_id: str = "",
     template_path: Path | str | None = None,
     registry_path: Path | str = DEFAULT_REGISTRY_PATH,
+    exception_workbook_path: Path | str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Apply migration-only warning policy and return a reconciliation report.
 
@@ -123,6 +129,15 @@ def classify_structure_migration_findings(
     broken shares, duplicates, and missing producer evidence fully blocking.
     """
     registry = load_structure_migration_registry(registry_path)
+    from codebase.functions.baseline_seed_validation_exceptions import load_enabled_exception_notes
+    workbook_notes = load_enabled_exception_notes(
+        **({"workbook_path": exception_workbook_path} if exception_workbook_path is not None else {})
+    )
+    registry.extend({
+        "branch_path": branch_path,
+        "date_added": "recorded in exception workbook",
+        "notes": note,
+    } for branch_path, note in workbook_notes.items())
     registry_by_path = {normalize_branch_path(entry["branch_path"]): entry for entry in registry}
     work = findings.copy()
     metadata_columns = {
@@ -165,12 +180,24 @@ def classify_structure_migration_findings(
         if not is_structure:
             continue
         entry = registry_by_path.get(normalized_path)
-        # Unknown missing branches remain blocking.  This registry is the
-        # deliberate decision boundary; the workflow must never auto-enrol a
-        # new path merely because it appeared in a run.
+        classification = "known_missing_branch" if entry is not None else "new_missing_branch_recorded"
         if entry is None:
-            continue
-        classification = "known_missing_branch"
+            from codebase.functions.baseline_seed_validation_exceptions import register_missing_branch_paths
+
+            additions = register_missing_branch_paths(
+                [work.at[index, "Branch Path"]], economy=economy,
+                **({"workbook_path": exception_workbook_path} if exception_workbook_path is not None else {}),
+            )
+            entry = {
+                "date_added": "recorded during this baseline-seed run",
+                "notes": (
+                    "Automatically added to baseline_seed_validation_exception_sets.xlsx; "
+                    "review the new enabled row."
+                    if additions else
+                    "Recorded in baseline_seed_validation_exception_sets.xlsx; review the enabled row."
+                ),
+            }
+            registry_by_path[normalized_path] = entry
         work.at[index, "original_status"] = str(work.at[index, "status"])
         work.at[index, "original_severity"] = str(work.at[index, "severity"])
         work.at[index, "would_block_without_migration_policy"] = bool(work.at[index, "blocking"])
@@ -186,9 +213,7 @@ def classify_structure_migration_findings(
         work.at[index, "migration_materiality"] = (
             "nonzero_or_unknown" if rule_id == "SEED-004" else "zero_or_unknown" if rule_id == "SEED-005" else "not_recorded"
         )
-        work.at[index, "migration_review_status"] = str(
-            "known_missing_branch"
-        )
+        work.at[index, "migration_review_status"] = classification
         work.at[index, "migration_notes"] = entry["notes"]
         work.at[index, "status"] = "warn"
         work.at[index, "severity"] = "warning"

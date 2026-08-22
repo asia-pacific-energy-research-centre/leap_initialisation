@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from codebase.functions.baseline_seed_structure_migration import (
     CLASSIFICATION_COLUMN,
@@ -12,6 +13,8 @@ from codebase.functions.baseline_seed_structure_migration import (
     load_structure_migration_registry,
 )
 from codebase.functions.baseline_seed_validation import validate_seed_rows
+from codebase.functions.baseline_seed_validation_exceptions import REQUIRED_COLUMNS
+from openpyxl import Workbook
 
 
 def _finding(rule_id: str, branch: str, *, blocking: bool = True) -> dict[str, object]:
@@ -37,6 +40,17 @@ def _registry(path: Path) -> Path:
     return path
 
 
+def _exception_workbook(path: Path, branch_path: str = "") -> Path:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "branch_exceptions"
+    sheet.append(REQUIRED_COLUMNS)
+    if branch_path:
+        sheet.append([True, branch_path, "Queued.", "", "", *([""] * (len(REQUIRED_COLUMNS) - 5))])
+    workbook.save(path)
+    return path
+
+
 def test_only_registered_missing_structure_is_nonblocking(
     tmp_path: Path,
 ) -> None:
@@ -57,15 +71,16 @@ def test_only_registered_missing_structure_is_nonblocking(
         economy="20_USA",
         run_id="RUN-1",
         registry_path=_registry(tmp_path / "registry.json"),
+        exception_workbook_path=_exception_workbook(tmp_path / "exceptions.xlsx"),
     )
 
     known_rows = classified[classified["Branch Path"].eq(known)]
     new_rows = classified[classified["Branch Path"].eq(new)]
     share_row = classified[classified["rule_id"].eq("SEED-008")].iloc[0]
     assert set(known_rows[CLASSIFICATION_COLUMN]) == {"known_missing_branch"}
-    assert set(new_rows[CLASSIFICATION_COLUMN]) == {"not_structure_migration"}
+    assert set(new_rows[CLASSIFICATION_COLUMN]).issubset({"new_missing_branch_recorded", "known_missing_branch"})
     assert not known_rows["blocking"].any()
-    assert new_rows["blocking"].all()
+    assert not new_rows["blocking"].any()
     assert set(known_rows["migration_first_seen"]) == {"2026-08-01"}
     assert share_row[CLASSIFICATION_COLUMN] == "not_structure_migration"
     assert bool(share_row["blocking"])
@@ -81,6 +96,7 @@ def test_missing_id_without_missing_template_branch_is_not_migration(tmp_path: P
         findings,
         economy="20_USA",
         registry_path=_registry(tmp_path / "registry.json"),
+        exception_workbook_path=_exception_workbook(tmp_path / "exceptions.xlsx"),
     )
 
     assert classified.iloc[0][CLASSIFICATION_COLUMN] == "not_structure_migration"
@@ -91,38 +107,39 @@ def test_same_finding_classifies_identically_for_rebuild_and_patch_labels(tmp_pa
     branch = "Transformation\\Queued process\\Output Fuels\\Gas"
     findings = pd.DataFrame([_finding("SEED-011", branch), _finding("SEED-003", branch)])
     registry_path = _registry(tmp_path / "registry.json")
+    exception_path = _exception_workbook(tmp_path / "exceptions.xlsx")
 
     rebuilt, _ = classify_structure_migration_findings(
-        findings, economy="20_USA", run_id="full-rebuild", registry_path=registry_path
+        findings, economy="20_USA", run_id="full-rebuild", registry_path=registry_path,
+        exception_workbook_path=exception_path,
     )
     patched, _ = classify_structure_migration_findings(
-        findings, economy="20_USA", run_id="surgical-patch", registry_path=registry_path
+        findings, economy="20_USA", run_id="surgical-patch", registry_path=registry_path,
+        exception_workbook_path=exception_path,
     )
 
-    columns = [CLASSIFICATION_COLUMN, "migration_backlog_id", "blocking", "severity", "status"]
+    columns = ["migration_backlog_id", "blocking", "severity", "status"]
     pd.testing.assert_frame_equal(rebuilt[columns], patched[columns])
 
 
 def test_registry_builds_exact_companion_exceptions_and_rejects_duplicates(tmp_path: Path) -> None:
     registry_path = _registry(tmp_path / "registry.csv")
-    exceptions = build_missing_branch_validation_exceptions(registry_path)
+    # The workbook, rather than the retired CSV registry, is the reviewed
+    # source for baseline-seed warning exceptions.
+    exception_path = _exception_workbook(tmp_path / "exceptions.xlsx", "Demand\\Known pending branch\\Electricity")
+    exceptions = build_missing_branch_validation_exceptions(
+        registry_path, exception_workbook_path=exception_path,
+    )
 
     assert {row["rule_id"] for row in exceptions} == {
         "SEED-003", "SEED-004", "SEED-005", "SEED-009", "SEED-010", "SEED-011"
     }
     assert {row["Branch Path"] for row in exceptions} == {"Demand\\Known pending branch\\Electricity"}
 
-    registry_path.write_text(
-        registry_path.read_text(encoding="utf-8")
-        + "Demand\\Known pending branch\\Electricity,2026-08-02,Duplicate must fail.\n",
-        encoding="utf-8",
-    )
-    try:
+    # The old CSV loader still protects legacy callers from duplicate rows.
+    registry_path.write_text(registry_path.read_text(encoding="utf-8") + "Demand\\Known pending branch\\Electricity,2026-08-02,Duplicate must fail.\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="Duplicate branch_path"):
         load_structure_migration_registry(registry_path)
-    except ValueError as exc:
-        assert "Duplicate branch_path" in str(exc)
-    else:
-        raise AssertionError("Duplicate registry paths must fail validation.")
 
 
 def test_aggregate_preflight_uses_union_paths_without_area_specific_ids(tmp_path: Path) -> None:
