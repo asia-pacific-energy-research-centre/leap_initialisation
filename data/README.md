@@ -48,6 +48,13 @@ mapping, dashboard, demand, supply, and transformation workflows.
     as the default fallback in `codebase/functions/leap_series_comparison.py`.
   - It is not the current shared supply-reconciliation default.
 
+- `00APEC_2026_low_with_subtotals_PRELIMINARY.csv`
+  - **Current shared initialisation default**, owned by
+    `codebase/configuration/workflow_config.py`.
+  - Preliminary 2026 ESTO issue: it may contain missing economies or
+    backfilled/proxy figures. The portable data bundle includes it so a clean
+    collaborator checkout has the configured source table.
+
 The former non-subtotal filenames `00APEC_2024_low.csv` and
 `00APEC_2025_low.csv` are not present in this checkout. Historical and archived
 documents may still name them when describing older workflows.

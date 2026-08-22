@@ -42,6 +42,7 @@ def test_bundle_round_trip_excludes_archives_and_has_no_hash_sidecar(tmp_path: P
         manifest = json.loads(archive.read(MANIFEST_NAME))
     assert "data/leap_export_templates/AUS current.xlsx" in names
     assert "data/leap_export_templates/APEC clean slate 03_08.xlsx" not in names
+    assert "data/00APEC_2026_low_with_subtotals_PRELIMINARY.csv" in names
     assert "data/leap balances exports/01_AUS/current.xlsx" in names
     assert all("archive" not in name.casefold() for name in names)
     assert all("sha256" not in record for record in manifest["files"])

@@ -24,6 +24,7 @@ SCHEMA_VERSION = 1
 SOURCE_TABLE_PATHS = (
     Path("data/00APEC_2024_low_with_subtotals.csv"),
     Path("data/00APEC_2025_low_with_subtotals.csv"),
+    Path("data/00APEC_2026_low_with_subtotals_PRELIMINARY.csv"),
     Path("data/merged_file_energy_ALL_20251106.csv"),
     Path("data/9th merged_file_energy_00_APEC_20251106.csv"),
 )
