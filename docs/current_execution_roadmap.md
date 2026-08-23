@@ -15,6 +15,9 @@ it.
   useful-output runs. Set `TEST_HORIZON_BASE_YEAR_PLUS_ONE=True` explicitly for
   a single-economy, contiguous two-year smoke check (`BASE_YEAR` through
   `BASE_YEAR + 1`).
+- The default economy scope is the set of economies with available
+  economy-specific LEAP export templates; add an economy only after its own
+  template has been exported and validated.
 - Keep `RUN_PREFLIGHT_COMPRESSED_PROJECTION=True` for the final verification of
   an output-affecting change. It is allowed to disable that preflight during a
   deliberately limited implementation iteration, but never for the final

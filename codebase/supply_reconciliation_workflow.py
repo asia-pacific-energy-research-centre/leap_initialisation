@@ -815,10 +815,11 @@ def _refresh_output_paths_for_current_pass_mode() -> None:
 # "08_JPN", "09_ROK", "10_MAS", "11_MEX", "12_NZ", "13_PNG", "14_PE", 
 # "15_PHL", "16_RUS", "17_SGP", "18_CT", "19_THA", "20_USA", "21_VN"---------------------------------------------------------------------------
 ECONOMIES_RUN_ORDER = [
+    # Default to economies with an economy-specific LEAP export template.
+    # Economies whose templates have not yet been exported are intentionally
+    # excluded from the default run and can be added after template delivery.
     "21_VN", "20_USA", "19_THA", "05_PRC", "13_PNG", "15_PHL",
-    "12_NZ", "11_MEX", "10_MAS", "02_BD", "01_AUS", "03_CDA",
-    "04_CHL", "06_HKC", "07_INA", "08_JPN", "09_ROK", "14_PE",
-    "16_RUS", "17_SGP", "18_CT",
+    "12_NZ", "11_MEX", "10_MAS", "02_BD", "01_AUS", "16_RUS",
 ]
 ECONOMIES = ECONOMIES_RUN_ORDER
 # [, "20_USA"
