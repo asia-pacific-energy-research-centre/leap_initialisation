@@ -245,6 +245,13 @@ description = "Per-axis ESTO code colour map."
 
 [[config_assets]]
 repository = "leap_dashboard"
+path = "config/common_esto_dashboard/mapping_diagnostics.html"
+dest = "dashboard/mapping_diagnostics.html"
+role = "dashboard_mapping_diagnostics"
+description = "Full shared Mapping diagnostics page for review-dashboard navigation."
+
+[[config_assets]]
+repository = "leap_dashboard"
 path = "config/common_esto_dashboard/guide_config.json"
 dest = "dashboard/guide_config.json"
 role = "dashboard_guide_config"

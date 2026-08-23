@@ -92,19 +92,21 @@ def _dashboard_updated_label() -> str:
 
 
 def _shared_mapping_diagnostics_page(context: RuntimeContext) -> Path | None:
-    """Return the full dashboard diagnostics page when developer mode provides it."""
+    """Return the full dashboard diagnostics page from source output or package config."""
     dashboard_root = context.repository_roots.get("leap_dashboard")
-    if dashboard_root is None:
-        return None
-    page = (
-        Path(dashboard_root)
-        / "outputs"
-        / "common_esto_dashboard"
-        / "diagnostics"
-        / "dashboards"
-        / "mapping_diagnostics.html"
-    )
-    return page if page.is_file() else None
+    if dashboard_root is not None:
+        page = (
+            Path(dashboard_root)
+            / "outputs"
+            / "common_esto_dashboard"
+            / "diagnostics"
+            / "dashboards"
+            / "mapping_diagnostics.html"
+        )
+        if page.is_file():
+            return page
+    packaged_page = context.config_asset("dashboard_mapping_diagnostics")
+    return packaged_page if packaged_page is not None and packaged_page.is_file() else None
 
 
 def _resolve_user_path(context: RuntimeContext, value: Path | str) -> Path:
