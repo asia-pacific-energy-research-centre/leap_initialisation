@@ -56,7 +56,7 @@ Do not use the repository `.venv` from PowerShell or a bare `python` alias.
 | `CAPACITY_UNMET_PASS_MODE` | use `baseline_seed` normally; `results_update` is optional and under review |
 | `RUN_PREFLIGHT_COMPRESSED_PROJECTION` | isolated projection preflight |
 | `RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE` | isolated update preflight |
-| `TEST_HORIZON_BASE_YEAR_PLUS_ONE` | normal two-year development/production-check horizon when true |
+| `TEST_HORIZON_BASE_YEAR_PLUS_ONE` | optional two-year smoke-test horizon when true; full configured horizon by default |
 | `RUN_RESET_SUPPLY_AND_TRANSFORMATION_IMPORT_EXPORT` | reset behavior, preset-controlled |
 | `RUN_ELECTRICITY_HEAT_INTERIM` | placeholder power modules |
 | `RUN_OTHER_LOSS_OWN_USE_PROXY` / stage | proxy activity source |

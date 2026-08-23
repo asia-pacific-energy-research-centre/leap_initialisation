@@ -733,20 +733,21 @@ In `supply_reconciliation_workflow.py`:
 | `RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE` | `False` | Run the results-update preflight before the main run |
 | `PREFLIGHT_COMPRESSED_RESULTS_UPDATE_ONLY` | `False` | Stop after the preflights (skip the main run) |
 | `PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST` | `False` | Raise immediately if the results-update preflight fails |
-| `TEST_HORIZON_BASE_YEAR_PLUS_ONE` | `True` | Standard production/iteration horizon: run the selected real scope for `BASE_YEAR` and `BASE_YEAR + 1` only |
+| `TEST_HORIZON_BASE_YEAR_PLUS_ONE` | `False` | Optional smoke-test horizon: when enabled, run the selected real scope for `BASE_YEAR` and `BASE_YEAR + 1` only; the default is the full configured horizon |
 
 Either preflight can be enabled independently, run in preflight-only mode, and be
 configured fail-fast or warning-and-continue. The results-update preflight is off by
 default so it does not lengthen every run; enable it (ideally right before a full
 `results_update`) when you want the balance-export integration check.
 
-### Two-year main-workflow production/iteration mode
+### Optional two-year main-workflow smoke mode
 
-`TEST_HORIZON_BASE_YEAR_PLUS_ONE=True` is the standard notebook production/iteration horizon.
+`TEST_HORIZON_BASE_YEAR_PLUS_ONE=True` enables a short notebook smoke run.
 It runs the selected real economies, scenarios, source files, and normal output
 layout, but temporarily limits supply, transformation, demand, balance-table, and
 baseline-seed validation horizons to `BASE_YEAR` through `BASE_YEAR + 1`. The
 workflow restores its module configuration afterwards, including after an error.
+The default is `False`, so ordinary runs use the full configured horizon.
 
 Use a unique `RUN_OUTPUT_LABEL` for this mode. It is useful for quickly catching
 integration and workbook construction failures, but it is **not** a sparse

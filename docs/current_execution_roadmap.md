@@ -11,9 +11,10 @@ it.
 
 ## Run policy and verification boundary
 
-- Use a **single-economy, contiguous two-year horizon** (`BASE_YEAR` through
-  `BASE_YEAR + 1`) for normal development, production iteration, and measured
-  performance work. `TEST_HORIZON_BASE_YEAR_PLUS_ONE=True` is the default.
+- Use the **full configured horizon** by default for normal production and
+  useful-output runs. Set `TEST_HORIZON_BASE_YEAR_PLUS_ONE=True` explicitly for
+  a single-economy, contiguous two-year smoke check (`BASE_YEAR` through
+  `BASE_YEAR + 1`).
 - Keep `RUN_PREFLIGHT_COMPRESSED_PROJECTION=True` for the final verification of
   an output-affecting change. It is allowed to disable that preflight during a
   deliberately limited implementation iteration, but never for the final

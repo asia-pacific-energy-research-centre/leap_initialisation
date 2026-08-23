@@ -1109,12 +1109,12 @@ PREFLIGHT_COMPRESSED_FAIL_FAST = False
 RUN_PREFLIGHT_COMPRESSED_RESULTS_UPDATE = False
 PREFLIGHT_COMPRESSED_RESULTS_UPDATE_ONLY = False
 PREFLIGHT_COMPRESSED_RESULTS_UPDATE_FAIL_FAST = False
-# Standard production/iteration workflow horizon. When True, the main workflow uses
-# the real selected economy inputs but exports/validates only BASE_YEAR and
-# BASE_YEAR + 1. It restores module state after the run and must never replace
-# the final full-horizon verification. Set False only for a deliberate
-# full-horizon validation or useful-output run. Use a unique RUN_OUTPUT_LABEL.
-TEST_HORIZON_BASE_YEAR_PLUS_ONE = True
+# Optional smoke-test horizon. When True, the main workflow uses the real
+# selected economy inputs but exports/validates only BASE_YEAR and BASE_YEAR + 1.
+# The default is the full configured horizon; set this True deliberately for a
+# short development check. It restores module state after the run. Use a unique
+# RUN_OUTPUT_LABEL for every run whose output will be retained.
+TEST_HORIZON_BASE_YEAR_PLUS_ONE = False
 # When True, chokepoints that would otherwise abort the ENTIRE run (all
 # economies, all scenarios) instead print a [WARN] and continue, deferring the
 # failure to a single aggregated error raised only after every economy and
