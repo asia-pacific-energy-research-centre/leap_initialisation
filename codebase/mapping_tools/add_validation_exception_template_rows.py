@@ -19,6 +19,7 @@ from xml.etree import ElementTree
 from zipfile import ZIP_DEFLATED, ZipFile
 from xml.sax.saxutils import escape as xml_escape
 
+import pandas as pd
 from openpyxl import load_workbook
 
 from codebase.functions.patch_baseline_seeds import load_validation_exception_branch_notes
@@ -364,6 +365,80 @@ def update_all_templates(
     return results
 
 
+def _enabled_paths_by_economy(
+    exception_workbook_path: Path | str,
+    templates: list[SimpleNamespace],
+) -> dict[str, set[str]]:
+    """Return only material, enabled paths for the economies that need them."""
+    from codebase.functions.baseline_seed_validation_exceptions import _read_rows, _truthy
+
+    template_economies = {template.economy for template in templates}
+    rows = _read_rows(Path(exception_workbook_path))
+    paths_by_economy = {economy: set() for economy in template_economies}
+    for row in rows.itertuples(index=False):
+        path = str(row.branch_path).strip()
+        if not path or not _truthy(row.enabled):
+            continue
+        requested = {
+            economy.strip() for economy in str(row.economies_that_need_it or "").split("|")
+            if economy.strip()
+        }
+        if "all" in {economy.casefold() for economy in requested}:
+            requested = template_economies
+        for economy in requested & template_economies:
+            paths_by_economy[economy].add(path)
+    return paths_by_economy
+
+
+def apply_material_exception_placeholders(
+    *,
+    apply_changes: bool = False,
+    exception_workbook_path: Path | str = REPO_ROOT / "config" / "baseline_seed_validation_exception_sets.xlsx",
+    templates_root: Path | str = TEMPLATE_ROOT,
+    report_path: Path | str | None = None,
+) -> pd.DataFrame:
+    """Plan or append ID-99 rows only where the exception ledger says they are needed.
+
+    The dry run is a required preflight for an apply run: every targeted
+    template must have an unambiguous sibling profile before any workbook is
+    modified.  A post-write validation and coverage sync make this the single
+    supported operation for creating review placeholders from the ledger.
+    """
+    templates = list(leap_export_template_resolver.iter_leap_export_templates(templates_root))
+    if not templates:
+        raise FileNotFoundError(f"No LEAP export templates found under {templates_root}")
+    paths_by_economy = _enabled_paths_by_economy(exception_workbook_path, templates)
+
+    def _plan() -> list[dict[str, object]]:
+        plan = []
+        for template in templates:
+            paths = paths_by_economy[template.economy]
+            result = insert_missing_exception_rows(template.path, paths, apply_changes=False)
+            plan.append({"economy": template.economy, **result, "branch_paths": "|".join(sorted(paths))})
+        return plan
+
+    plan = _plan()  # Do this before writes so a bad sibling profile is atomic at run level.
+    if apply_changes:
+        results = []
+        for template in templates:
+            paths = paths_by_economy[template.economy]
+            result = insert_missing_exception_rows(template.path, paths, apply_changes=True)
+            validate_exception_placeholder_rows(template.path, paths)
+            results.append({"economy": template.economy, **result, "branch_paths": "|".join(sorted(paths))})
+        sync_exception_resolution_status(
+            exception_workbook_path=Path(exception_workbook_path), templates_root=templates_root,
+        )
+    else:
+        results = plan
+
+    report = pd.DataFrame(results).sort_values("economy").reset_index(drop=True)
+    if report_path is not None:
+        output = Path(report_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        report.to_csv(output, index=False)
+    return report
+
+
 def _template_presence_status(
     branch_paths: set[str],
     templates: list[SimpleNamespace],
@@ -405,7 +480,9 @@ def sync_exception_resolution_status(
 APPLY_CHANGES = False
 
 if __name__ == "__main__":
-    update_all_templates(apply_changes=APPLY_CHANGES)
+    # Preferred notebook entry point: respects economies_that_need_it, then
+    # performs one full dry run before it changes any template.
+    apply_material_exception_placeholders(apply_changes=APPLY_CHANGES)
     # Run manually after refreshed real LEAP exports replace ID-99 rows:
     # sync_exception_resolution_status()
 
