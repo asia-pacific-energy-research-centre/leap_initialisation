@@ -9,17 +9,14 @@ from __future__ import annotations
 
 import csv
 from collections import defaultdict
+from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
 
-from codebase.analysis.missing_branch_esto_vintage_impact import (
-    FLOW_BY_SECTOR,
-    NINTH_FUEL,
-    NINTH_SECTOR_LEVEL,
-    PRODUCT_BY_FUEL,
-)
 from codebase.configuration import workflow_config as workflow_cfg
+from codebase.functions.ninth_projection_mapping import add_ninth_pair_columns
+from codebase.functions.unified_name_lookup import load_active_mapping_sheet
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -59,42 +56,62 @@ def _read_registry(path: Path) -> tuple[list[dict[str, str]], list[str]]:
     return rows, fieldnames
 
 
+@lru_cache(maxsize=1)
+def _canonical_leaf_relationships() -> pd.DataFrame:
+    """Load canonical leaf relationships once per materiality refresh process."""
+    ninth_mapping = load_active_mapping_sheet("leap_combined_ninth").fillna("")
+    esto_mapping = load_active_mapping_sheet("leap_combined_esto").fillna("")
+    key_columns = ["leap_sector_name_full_path", "raw_leap_fuel_name"]
+    for mapping in (ninth_mapping, esto_mapping):
+        for column in [
+            *key_columns,
+            *[
+                column for column in mapping.columns
+                if column in {"ninth_sector", "ninth_fuel", "esto_flow", "esto_product"}
+            ],
+        ]:
+            mapping[column] = mapping[column].astype(str).str.strip()
+    ninth_mapping = ninth_mapping[key_columns + ["ninth_sector", "ninth_fuel"]].drop_duplicates()
+    esto_mapping = esto_mapping[key_columns + ["esto_flow", "esto_product"]].drop_duplicates()
+    return ninth_mapping.merge(esto_mapping, on=key_columns, how="inner")
+
+
 def _registry_source_keys(registry_rows: list[dict[str, str]]) -> pd.DataFrame:
-    """Map exact registered LEAP demand/transformation leaves to ESTO/9th keys."""
+    """Resolve registered LEAP leaves through the canonical mapping interface.
+
+    The compatibility workbook is generated from the editable single-axis
+    contract.  It is the operational way to obtain a coherent LEAP-to-ESTO and
+    LEAP-to-Ninth relationship; do not re-create a smaller hard-coded mapping
+    dictionary here.
+    """
+    canonical = _canonical_leaf_relationships()
     keys: list[dict[str, str]] = []
     for row in registry_rows:
         parts = [part.strip() for part in row["branch_path"].split("\\") if part.strip()]
         if len(parts) < 3 or parts[0] not in {"Demand", "Transformation"}:
             raise ValueError(f"Cannot derive source mapping for registry path: {row['branch_path']}")
-        # Demand leaves are ``Demand\\<module>\\<sector>\\<fuel>``;
-        # transformation leaves can be deeper, for example
-        # ``Transformation\\Coke ovens\\Processes\\Coke ovens\\Feedstock
-        # Fuels\\Coke oven coke``.  In both cases the source comparison
-        # sector is the transformation module immediately below the top-level
-        # ``Transformation`` node, not the local ``Output Fuels`` / ``Feedstock
-        # Fuels`` grouping immediately above the fuel.
-        sector = parts[1] if parts[0] == "Transformation" else parts[-2]
         fuel = parts[-1]
-        missing = []
-        if sector not in FLOW_BY_SECTOR:
-            missing.append(f"sector={sector!r}")
-        if fuel not in PRODUCT_BY_FUEL or fuel not in NINTH_FUEL:
-            missing.append(f"fuel={fuel!r}")
-        if sector not in NINTH_SECTOR_LEVEL:
-            missing.append(f"9th sector={sector!r}")
-        if missing:
+        # A demand branch has a direct sector path. Transformation leaves may
+        # contain local grouping nodes, so try its full path then successively
+        # shorter module paths until the canonical workbook resolves one.
+        source_parts = parts[1:-1]
+        sector_candidates = ["/".join(source_parts[:length]) for length in range(len(source_parts), 0, -1)]
+        matched = canonical[
+            canonical["raw_leap_fuel_name"].eq(fuel)
+            & canonical["leap_sector_name_full_path"].isin(sector_candidates)
+        ]
+        if matched.empty:
             raise ValueError(
                 f"Registry path needs an explicit source mapping before materiality can be refreshed: "
-                f"{row['branch_path']} ({'; '.join(missing)})"
+                f"{row['branch_path']} (canonical LEAP sector candidates={sector_candidates!r}; fuel={fuel!r})"
             )
-        keys.append({
-            "branch_path": row["branch_path"],
-            "sector": sector,
-            "fuel": fuel,
-            "esto_flow": FLOW_BY_SECTOR[sector],
-            "esto_product": PRODUCT_BY_FUEL[fuel],
-        })
-    return pd.DataFrame(keys)
+        matched = matched.copy()
+        matched["branch_path"] = row["branch_path"]
+        keys.extend(matched[[
+            "branch_path", "leap_sector_name_full_path", "raw_leap_fuel_name",
+            "esto_flow", "esto_product", "ninth_sector", "ninth_fuel",
+        ]].to_dict("records"))
+    return pd.DataFrame(keys).drop_duplicates()
 
 
 def _numeric_sum(values: pd.Series) -> tuple[float, float]:
@@ -109,20 +126,17 @@ def _is_blank(value: object) -> bool:
 
 def _esto_base_materiality(keys: pd.DataFrame, *, esto_path: Path, base_year: int) -> dict[str, tuple[float, float]]:
     result = {path: (0.0, 0.0) for path in keys["branch_path"]}
-    lookup = {
-        (row.esto_flow, row.esto_product): row.branch_path
-        for row in keys.itertuples(index=False)
-    }
+    lookup = defaultdict(set)
+    for row in keys.itertuples(index=False):
+        lookup[(row.esto_flow, row.esto_product)].add(row.branch_path)
     usecols = ["flows", "products", "is_subtotal", str(base_year)]
     for chunk in pd.read_csv(esto_path, usecols=usecols, chunksize=200_000, low_memory=False):
         chunk = chunk[chunk["is_subtotal"].fillna(False).ne(True)].copy()
-        pairs = list(zip(chunk["flows"].astype(str), chunk["products"].astype(str)))
-        chunk["branch_path"] = [lookup.get(pair, "") for pair in pairs]
-        chunk = chunk[chunk["branch_path"].ne("")]
-        for branch_path, group in chunk.groupby("branch_path", sort=False):
-            signed, absolute = _numeric_sum(group[str(base_year)])
-            prior_signed, prior_absolute = result[str(branch_path)]
-            result[str(branch_path)] = (prior_signed + signed, prior_absolute + absolute)
+        for (flow, product), group in chunk.groupby(["flows", "products"], sort=False):
+            for branch_path in lookup.get((str(flow), str(product)), set()):
+                signed, absolute = _numeric_sum(group[str(base_year)])
+                prior_signed, prior_absolute = result[str(branch_path)]
+                result[str(branch_path)] = (prior_signed + signed, prior_absolute + absolute)
     return result
 
 
@@ -135,33 +149,37 @@ def _projection_materiality(
     year_columns = [str(year) for year in projection_years]
     values = defaultdict(lambda: defaultdict(lambda: {"exact": [0.0, 0.0, 0], "fallback": [0.0, 0.0, 0]}))
     usecols = [
-        "scenarios", "sectors", "sub1sectors", "sub2sectors", "fuels", "subfuels",
+        "scenarios", "sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors", "fuels", "subfuels",
         "subtotal_layout", "subtotal_results", *year_columns,
     ]
+    available_columns = set(pd.read_csv(ninth_path, nrows=0).columns)
+    usecols = [column for column in usecols if column in available_columns]
     for chunk in pd.read_csv(ninth_path, usecols=usecols, chunksize=200_000, low_memory=False):
+        for column in ("sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors", "fuels", "subfuels"):
+            if column not in chunk:
+                chunk[column] = "x"
         chunk = chunk[
             chunk["scenarios"].astype(str).str.casefold().isin({"reference", "target"})
             & chunk["subtotal_layout"].fillna(False).eq(False)
             & chunk["subtotal_results"].fillna(False).eq(False)
         ]
+        chunk = add_ninth_pair_columns(chunk)
         for key in keys.itertuples(index=False):
-            level, sector_code = NINTH_SECTOR_LEVEL[key.sector]
-            fuel_code, subfuel_code = NINTH_FUEL[key.fuel]
-            subset = chunk[chunk[level].eq(sector_code) & chunk["fuels"].eq(fuel_code)]
+            sector_exact = chunk["ninth_sector"].eq(key.ninth_sector)
+            sector_any_level = chunk[["sectors", "sub1sectors", "sub2sectors", "sub3sectors", "sub4sectors"]].eq(key.ninth_sector).any(axis=1)
+            fuel_exact = chunk["ninth_fuel"].eq(key.ninth_fuel)
+            fuel_parent = chunk["fuels"].eq(key.ninth_fuel)
+            sector_match = sector_exact if sector_exact.any() else sector_any_level
+            fuel_match = fuel_exact if fuel_exact.any() else fuel_parent
+            subset = chunk[sector_match & fuel_match]
             if subset.empty:
                 continue
-            for match_name, match in (
-                ("exact", subset[subset["subfuels"].eq(subfuel_code)]),
-                ("fallback", subset[subset["subfuels"].eq("x")] if subfuel_code != "x" else pd.DataFrame()),
-            ):
-                if match.empty:
-                    continue
-                for scenario, scenario_rows in match.groupby("scenarios", sort=False):
-                    signed, absolute = _numeric_sum(scenario_rows[year_columns].stack())
-                    bucket = values[key.branch_path][str(scenario).casefold()][match_name]
-                    bucket[0] += signed
-                    bucket[1] += absolute
-                    bucket[2] += len(scenario_rows)
+            for scenario, scenario_rows in subset.groupby("scenarios", sort=False):
+                signed, absolute = _numeric_sum(scenario_rows[year_columns].stack())
+                bucket = values[key.branch_path][str(scenario).casefold()]["exact"]
+                bucket[0] += signed
+                bucket[1] += absolute
+                bucket[2] += len(scenario_rows)
     result: dict[str, dict[str, tuple[float, float]]] = {}
     for branch_path in keys["branch_path"]:
         result[branch_path] = {}

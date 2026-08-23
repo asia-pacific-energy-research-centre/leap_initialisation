@@ -13,6 +13,7 @@ from codebase.functions.baseline_seed_validation_exceptions import (
     register_material_missing_branch_findings,
     register_missing_branch_paths,
 )
+from codebase.mapping_tools.missing_branch_registry_materiality_workflow import _registry_source_keys
 
 
 def _workbook(path: Path, branch_path: str = "") -> None:
@@ -56,10 +57,15 @@ def test_refresh_uses_last_esto_year_and_reference_ninth_average(tmp_path: Path)
          "subtotal_results": False, "2023": value, "2024": value}
         for scenario, value in (("reference", -3.0), ("target", -9.0))
     ]).to_csv(ninth, index=False)
+    rows = pd.read_excel(workbook).fillna("")
+    rows.loc[0, "relevance_audit"] = "ESTO 2026: triggered for 20_USA."
+    rows.loc[0, "zero filter"] = "MAPPING INCOMPLETE — seed triggered"
+    rows.to_excel(workbook, sheet_name="branch_exceptions", index=False)
 
     refreshed = refresh_exception_materiality(
         workbook, esto_vintages={"2024": (esto, 2022)}, ninth_path=ninth,
         projection_start_year=2023, projection_final_year=2024,
+        retry_mapping_incomplete=True,
     )
 
     assert refreshed.at[0, "esto_2024_last_year_signed_pj_all_economies"] == -2.0
@@ -125,3 +131,14 @@ def test_materiality_refresh_does_not_refill_a_seed_triggered_mapping_gap(tmp_pa
 
     assert refreshed.loc[0, "zero filter"] == "MAPPING INCOMPLETE — seed triggered"
     assert refreshed.loc[0, NINTH_VALUE_COLUMN] == ""
+
+
+def test_canonical_single_axis_mapping_resolves_nonenergy_hydrogen() -> None:
+    keys = _registry_source_keys([{
+        "branch_path": r"Demand\All demand aggregated\Non Energy Use\Hydrogen",
+    }])
+
+    assert keys.loc[0, "ninth_sector"] == "17_nonenergy_use"
+    assert keys.loc[0, "ninth_fuel"] == "16_x_hydrogen"
+    assert keys.loc[0, "esto_flow"] == "17 Non-energy use"
+    assert keys.loc[0, "esto_product"] == "16.12 Hydrogen"

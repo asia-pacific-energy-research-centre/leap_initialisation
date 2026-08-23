@@ -132,11 +132,14 @@ def refresh_exception_materiality(
     projection_start_year: int = 2023,
     projection_final_year: int = 2060,
     esto_vintages: dict[str, tuple[Path, int]] = ESTO_VINTAGES,
+    retry_mapping_incomplete: bool = False,
 ) -> pd.DataFrame:
     """Fill blank derived values from all maintained ESTO vintages and Ninth.
 
     ESTO values use each file's final historical year.  The Ninth value is the
     signed Reference total across all economies divided by the model years.
+    ``retry_mapping_incomplete`` is for an explicit recheck after a canonical
+    mapping repair; normal refreshes preserve known mapping-incomplete blanks.
     """
     workbook = Path(workbook_path)
     rows = _read_rows(workbook)
@@ -146,10 +149,11 @@ def refresh_exception_materiality(
         rows = apply_zero_filter(rows)
         _write_rows(rows, workbook)
         return rows
-    needs_values = needs_values[
-        needs_values[value_columns].map(_blank).any(axis=1)
-        & ~needs_values[ZERO_FILTER_COLUMN].astype(str).str.startswith("MAPPING INCOMPLETE — seed triggered")
-    ]
+    needs_values = needs_values[needs_values[value_columns].map(_blank).any(axis=1)]
+    if not retry_mapping_incomplete:
+        needs_values = needs_values[
+            ~needs_values[ZERO_FILTER_COLUMN].astype(str).str.startswith("MAPPING INCOMPLETE — seed triggered")
+        ]
     if needs_values.empty:
         rows = apply_zero_filter(rows)
         _write_rows(rows, workbook)
