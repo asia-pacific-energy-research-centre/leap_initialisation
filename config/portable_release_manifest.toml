@@ -134,7 +134,7 @@ paths = ["config/LEAP_API_helpers.py"]
 # so `codebase/` is stripped when staging. That also keeps this repository's
 # `codebase` package name from colliding with leap_initialisation's.
 [repositories.leap_dashboard]
-commit = "b5d52ffb5d495bb4e6aca602cd15f05c7437a9ef"
+commit = "02d50a2e81e18740f2bca626b811f2738f4fa09b"
 stage_dir = "leap_dashboard"
 strip_prefix = "codebase"
 on_sys_path = true
