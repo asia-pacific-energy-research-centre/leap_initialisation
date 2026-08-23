@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import re
+import warnings
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,6 +22,8 @@ from xml.sax.saxutils import escape as xml_escape
 
 import pandas as pd
 from openpyxl import load_workbook
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
 
 from codebase.functions.patch_baseline_seeds import load_validation_exception_branch_notes
 from codebase.utilities import leap_export_template_resolver
@@ -539,6 +542,102 @@ def preview_material_exception_placeholder_rows(
         output.parent.mkdir(parents=True, exist_ok=True)
         preview.to_csv(output, index=False)
     return preview
+
+
+def write_material_exception_placeholder_review_workbook(
+    *,
+    exception_workbook_path: Path | str = REPO_ROOT / "config" / "baseline_seed_validation_exception_sets.xlsx",
+    templates_root: Path | str = TEMPLATE_ROOT,
+    review_workbook_path: Path | str = REPO_ROOT / "outputs" / "leap_exports" / "supply_reconciliation" / "supporting_files" / "runtime" / "baseline_seed_exception_placeholder_review.xlsx",
+) -> Path:
+    """Create a read-only, per-economy Excel review book of exact template rows.
+
+    Economy sheets deliberately contain *only* the columns in that economy's
+    template.  ``ALERTS`` is the one extra sheet and is bright red whenever a
+    branch cannot be cloned; an apply must not proceed until it is empty.
+    """
+    templates = list(leap_export_template_resolver.iter_leap_export_templates(templates_root))
+    branch_paths = _enabled_placeholder_paths(exception_workbook_path)
+    workbook = Workbook()
+    alerts = workbook.active
+    alerts.title = "ALERTS"
+    alerts.append(["PLACEHOLDER REVIEW — NO TEMPLATE HAS BEEN MODIFIED"])
+    alerts.append(["Blocked paths must be resolved before apply_changes=True is allowed."])
+    alerts.append(["economy", "template", "branch_path", "blocker"])
+    alert_fill = PatternFill("solid", fgColor="C00000")
+    for cell in alerts[1]:
+        cell.fill = alert_fill
+        cell.font = Font(bold=True, color="FFFFFF")
+    for cell in alerts[3]:
+        cell.font = Font(bold=True)
+    blocked: list[dict[str, str]] = []
+    for template in templates:
+        root, shared_strings, _ = _read_template_xml(template.path)
+        headers_by_name = _header_columns(root, shared_strings)
+        template_headers = list(headers_by_name)
+        sheet = workbook.create_sheet(template.economy)
+        sheet.append(template_headers)
+        sheet.freeze_panes = "A2"
+        for cell in sheet[1]:
+            cell.font = Font(bold=True)
+        sheet_data = root.find(f"{NAMESPACE}sheetData")
+        if sheet_data is None:
+            raise ValueError(f"{template.path.name} has no sheet data")
+        template_rows = list(sheet_data)
+        existing_paths = {
+            _cell_value({_column_name(cell): cell for cell in row}.get(headers_by_name["Branch Path"]), shared_strings)
+            for row in template_rows
+        }
+        sibling_rows_by_parent = _direct_sibling_rows_by_parent(template_rows, headers_by_name, shared_strings)
+        for target_path in sorted(branch_paths - existing_paths):
+            try:
+                sources = _leaf_profile_rows(
+                    template_rows, headers_by_name, shared_strings, target_path, sibling_rows_by_parent,
+                )
+            except ValueError as exc:
+                blocked.append({
+                    "economy": template.economy, "template": template.path.name,
+                    "branch_path": target_path, "blocker": str(exc),
+                })
+                continue
+            for source in sources:
+                cells = {_column_name(cell): cell for cell in source}
+                row_values = {
+                    header: _cell_value(cells.get(column), shared_strings)
+                    for header, column in headers_by_name.items()
+                }
+                row_values["BranchID"] = PLACEHOLDER_BRANCH_ID
+                row_values["Branch Path"] = target_path
+                for level_index, segment in enumerate(target_path.split("\\"), start=1):
+                    level_header = f"Level {level_index}"
+                    if level_header in row_values:
+                        row_values[level_header] = segment
+                sheet.append([row_values.get(header, "") for header in template_headers])
+        for column_cells in sheet.columns:
+            letter = column_cells[0].column_letter
+            width = min(max(len(str(cell.value or "")) for cell in column_cells) + 2, 42)
+            sheet.column_dimensions[letter].width = max(width, 12)
+    for item in blocked:
+        alerts.append([item["economy"], item["template"], item["branch_path"], item["blocker"]])
+    if blocked:
+        message = "PLACEHOLDER APPLY BLOCKED: " + "; ".join(
+            f"{item['economy']} {item['branch_path']}" for item in blocked
+        )
+        alerts["A1"] = message
+        warnings.warn(message, RuntimeWarning, stacklevel=2)
+        for row in alerts.iter_rows(min_row=4):
+            for cell in row:
+                cell.fill = PatternFill("solid", fgColor="FFC7CE")
+    else:
+        alerts.append(["No blockers. Review economy sheets before requesting template updates."])
+    alerts.column_dimensions["A"].width = 24
+    alerts.column_dimensions["B"].width = 45
+    alerts.column_dimensions["C"].width = 90
+    alerts.column_dimensions["D"].width = 100
+    output = Path(review_workbook_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    workbook.save(output)
+    return output
 
 
 def _template_presence_status(

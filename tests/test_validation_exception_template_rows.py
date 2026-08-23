@@ -14,6 +14,7 @@ from codebase.mapping_tools.add_validation_exception_template_rows import (
     validate_exception_placeholder_rows,
     apply_material_exception_placeholders,
     preview_material_exception_placeholder_rows,
+    write_material_exception_placeholder_review_workbook,
 )
 
 
@@ -275,3 +276,34 @@ def test_placeholder_preview_exposes_the_exact_cloned_row(tmp_path, monkeypatch)
         "placeholder_branch_id": 99,
         "Variable": "Activity Level",
     }]
+
+
+def test_review_workbook_uses_template_columns_and_has_a_blocking_alert(tmp_path, monkeypatch):
+    template_path = tmp_path / "template.xlsx"
+    _write_template(template_path, {r"Demand\Other\Existing fuel": [("Activity Level", "Reference", "Test")]})
+    exception_path = tmp_path / "exceptions.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "branch_exceptions"
+    sheet.append(["enabled", "branch_path", "notes"])
+    sheet.append([True, r"Demand\Other\Missing fuel", "Ready."])
+    sheet.append([True, r"Demand\No parent\Blocked fuel", "Blocked."])
+    workbook.save(exception_path)
+    monkeypatch.setattr(
+        placeholder_module.leap_export_template_resolver,
+        "iter_leap_export_templates",
+        lambda _root: [SimpleNamespace(path=template_path, economy="01_TST")],
+    )
+
+    output = tmp_path / "review.xlsx"
+    with pytest.warns(RuntimeWarning, match="PLACEHOLDER APPLY BLOCKED"):
+        write_material_exception_placeholder_review_workbook(
+            exception_workbook_path=exception_path, templates_root=tmp_path, review_workbook_path=output,
+        )
+    review = load_workbook(output, data_only=True)
+    assert review.sheetnames == ["ALERTS", "01_TST"]
+    assert [cell.value for cell in review["01_TST"][1]] == [
+        "BranchID", "Branch Path", "Variable", "Scenario", "Region", "Level 1", "Level 2", "Level 3",
+    ]
+    assert review["01_TST"][2][0].value == 99
+    assert "PLACEHOLDER APPLY BLOCKED" in review["ALERTS"][1][0].value

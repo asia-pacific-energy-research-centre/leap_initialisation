@@ -164,6 +164,8 @@ def register_missing_branch_paths(
         known.add(_normalise_path(branch_path))
     if additions:
         _write_rows(rows, workbook)
+        if workbook.resolve() == WORKBOOK_PATH.resolve():
+            refresh_placeholder_review_workbook(workbook)
     return additions
 
 
@@ -211,6 +213,8 @@ def register_material_missing_branch_findings(
         }
     if additions or not findings.empty:
         _write_rows(rows, workbook)
+        if workbook.resolve() == WORKBOOK_PATH.resolve():
+            refresh_placeholder_review_workbook(workbook)
     return additions
 
 
@@ -274,7 +278,24 @@ def audit_exception_relevance(
                     "Disabled after the completed all-vintage relevance audit: it did not trigger for any previously marked economy.",
                 )
     _write_rows(rows, workbook)
+    if workbook.resolve() == WORKBOOK_PATH.resolve():
+        refresh_placeholder_review_workbook(workbook)
     return rows
+
+
+def refresh_placeholder_review_workbook(workbook_path: Path | str = WORKBOOK_PATH) -> Path:
+    """Refresh the read-only per-economy placeholder review after ledger changes.
+
+    This never changes a template.  It also makes added and removed/disabled
+    ledger paths immediately visible to the modeller before any apply request.
+    """
+    from codebase.mapping_tools.add_validation_exception_template_rows import (
+        write_material_exception_placeholder_review_workbook,
+    )
+
+    return write_material_exception_placeholder_review_workbook(
+        exception_workbook_path=workbook_path,
+    )
 
 
 def sync_exception_template_coverage(

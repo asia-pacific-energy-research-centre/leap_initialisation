@@ -21,6 +21,14 @@ template. It then validates the written paths and refreshes the ledger's
 per-economy template coverage. Every enabled exception path is proposed in
 every economy template.
 
+`baseline_seed_validation_exceptions` automatically refreshes the read-only
+`baseline_seed_exception_placeholder_review.xlsx` whenever a baseline-seed run
+adds a material path or disables a stale exception after a completed relevance
+audit. The workbook has an `ALERTS` sheet plus one sheet per economy; economy
+sheets preserve only that template's own columns. This refresh never modifies a
+LEAP export template. Template edits remain an explicit later call to
+`apply_material_exception_placeholders(apply_changes=True)`.
+
 Each proposed leaf clones the complete `Variable + Scenario + Region` profile
 of an unambiguous direct sibling in that same template. It retains the local
 variable, scenario, and region IDs, updates the branch path and Level columns,
