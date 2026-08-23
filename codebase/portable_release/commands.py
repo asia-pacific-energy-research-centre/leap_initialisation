@@ -1188,7 +1188,12 @@ def run_dashboard_from_export(
                 "mapping_chain_esto_to_common_map"
             ),
             mapping_diagnostics_unmapped_branches_path=(
-                run_dir / "mapping_chain" / "qa_nonzero_unmapped_leap_branches.csv"
+                Path(
+                    chain_result.get(
+                        "unmapped_qa_path",
+                        run_dir / "mapping_chain" / "qa_nonzero_unmapped_leap_branches.csv",
+                    )
+                )
             ),
             output_root=run_dir,
             comparison_scope=comparison_scope,
