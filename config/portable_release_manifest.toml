@@ -48,7 +48,7 @@ packages = [
 # behaviour.
 
 [repositories.leap_initialisation]
-commit = "17b57ee16c812db8d81e07fbac949cc88de49632"
+commit = "911b3eb2dc66acf6727ed8bc8296f3adee3dd49b"
 stage_dir = "leap_initialisation"
 on_sys_path = true
 paths = [
@@ -123,7 +123,7 @@ paths = [
 # ``import LEAP_API_helpers``. Stage only that reviewed metadata module from
 # config/ on its own sys.path root; do not expose the rest of config/ as code.
 [repositories.leap_initialisation_config]
-commit = "17b57ee16c812db8d81e07fbac949cc88de49632"
+commit = "911b3eb2dc66acf6727ed8bc8296f3adee3dd49b"
 source_key = "leap_initialisation"
 stage_dir = "leap_initialisation_config"
 strip_prefix = "config"
@@ -134,7 +134,7 @@ paths = ["config/LEAP_API_helpers.py"]
 # so `codebase/` is stripped when staging. That also keeps this repository's
 # `codebase` package name from colliding with leap_initialisation's.
 [repositories.leap_dashboard]
-commit = "02d50a2e81e18740f2bca626b811f2738f4fa09b"
+commit = "1e60ebab370dca28030cb13ee5024458a5ec5a2d"
 stage_dir = "leap_dashboard"
 strip_prefix = "codebase"
 on_sys_path = true
