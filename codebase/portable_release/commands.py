@@ -91,6 +91,22 @@ def _dashboard_updated_label() -> str:
     return datetime.now(zone).strftime("%Y-%m-%d %H:%M %Z")
 
 
+def _shared_mapping_diagnostics_page(context: RuntimeContext) -> Path | None:
+    """Return the full dashboard diagnostics page when developer mode provides it."""
+    dashboard_root = context.repository_roots.get("leap_dashboard")
+    if dashboard_root is None:
+        return None
+    page = (
+        Path(dashboard_root)
+        / "outputs"
+        / "common_esto_dashboard"
+        / "diagnostics"
+        / "dashboards"
+        / "mapping_diagnostics.html"
+    )
+    return page if page.is_file() else None
+
+
 def _resolve_user_path(context: RuntimeContext, value: Path | str) -> Path:
     """Turn a user-supplied path into an absolute one, predictably.
 
@@ -926,9 +942,7 @@ def run_dashboard(
             esto_to_common_map_path=context.require_data_asset(
                 "mapping_chain_esto_to_common_map"
             ),
-            mapping_diagnostics_unmapped_branches_path=(
-                run_dir / "mapping_chain" / "qa_nonzero_unmapped_leap_branches.csv"
-            ),
+            mapping_diagnostics_source_page_path=_shared_mapping_diagnostics_page(context),
             output_root=run_dir,
             comparison_scope=comparison_scope,
             wide_file_scope=wide_file_scope,
@@ -1187,14 +1201,7 @@ def run_dashboard_from_export(
             esto_to_common_map_path=context.require_data_asset(
                 "mapping_chain_esto_to_common_map"
             ),
-            mapping_diagnostics_unmapped_branches_path=(
-                Path(
-                    chain_result.get(
-                        "unmapped_qa_path",
-                        run_dir / "mapping_chain" / "qa_nonzero_unmapped_leap_branches.csv",
-                    )
-                )
-            ),
+            mapping_diagnostics_source_page_path=_shared_mapping_diagnostics_page(context),
             output_root=run_dir,
             comparison_scope=comparison_scope,
             wide_file_scope=wide_file_scope,
