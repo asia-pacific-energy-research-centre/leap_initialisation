@@ -32,7 +32,8 @@ ESTO_VALUE_COLUMNS = [
     for vintage in ESTO_VINTAGES
 ]
 NINTH_VALUE_COLUMN = "ninth_reference_average_pj_per_year_all_economies"
-REQUIRED_COLUMNS = [*BASE_COLUMNS, *ESTO_VALUE_COLUMNS, NINTH_VALUE_COLUMN]
+RELEVANCE_AUDIT_COLUMN = "relevance_audit"
+REQUIRED_COLUMNS = [*BASE_COLUMNS, *ESTO_VALUE_COLUMNS, NINTH_VALUE_COLUMN, RELEVANCE_AUDIT_COLUMN]
 
 
 def _blank(value: object) -> bool:
@@ -45,6 +46,17 @@ def _truthy(value: object) -> bool:
 
 def _normalise_path(value: object) -> str:
     return "\\".join(part.strip() for part in str(value or "").replace("/", "\\").split("\\") if part.strip()).casefold()
+
+
+def _economies(value: object) -> set[str]:
+    """Read the workbook's compact, reviewable pipe-separated economy list."""
+    return {part.strip() for part in str(value or "").split("|") if part.strip() and part.strip().casefold() != "all"}
+
+
+def _append_unique_note(existing: object, message: str) -> str:
+    """Append one audit sentence once, without erasing modeller-authored notes."""
+    note = str(existing or "").strip()
+    return note if message in note else f"{note} {message}".strip()
 
 
 def _read_rows(workbook_path: Path = WORKBOOK_PATH) -> pd.DataFrame:
@@ -155,6 +167,116 @@ def register_missing_branch_paths(
     return additions
 
 
+def register_material_missing_branch_findings(
+    findings: pd.DataFrame,
+    *,
+    workbook_path: Path | str = WORKBOOK_PATH,
+) -> list[str]:
+    """Record all material unknown paths, retaining the economies that triggered them.
+
+    This is the final-stage registration boundary: a material unknown path is a
+    warning-ledger entry, never a reason to block the baseline seed.  Existing
+    rows gain newly observed economies instead of being duplicated.
+    """
+    required = {"economy", "branch_path"}
+    missing = required.difference(findings.columns)
+    if missing:
+        raise ValueError(f"Material findings are missing columns: {sorted(missing)}")
+    workbook = Path(workbook_path)
+    rows = _read_rows(workbook)
+    observed: dict[str, tuple[str, set[str]]] = {}
+    for item in findings[["economy", "branch_path"]].dropna().itertuples(index=False):
+        path = str(item.branch_path).strip()
+        economy = str(item.economy).strip()
+        if path and economy:
+            key = _normalise_path(path)
+            canonical, economies = observed.get(key, (path, set()))
+            economies.add(economy)
+            observed[key] = (canonical, economies)
+
+    existing = {_normalise_path(row.branch_path): index for index, row in rows.iterrows() if str(row.branch_path).strip()}
+    additions: list[str] = []
+    for key, (path, economies) in sorted(observed.items(), key=lambda item: item[1][0]):
+        if key in existing:
+            index = existing[key]
+            rows.at[index, "economies_that_need_it"] = "|".join(sorted(_economies(rows.at[index, "economies_that_need_it"]) | economies))
+            continue
+        additions.append(path)
+        rows.loc[len(rows)] = {
+            "enabled": True,
+            "branch_path": path,
+            "notes": "Automatically recorded from material baseline-seed validation; review/create in LEAP when appropriate. Warnings only: this row never blocks seed generation.",
+            "economies_that_need_it": "|".join(sorted(economies)),
+            "economies_resolved_in_templates": "",
+        }
+    if additions or not findings.empty:
+        _write_rows(rows, workbook)
+    return additions
+
+
+def audit_exception_relevance(
+    findings_by_vintage: dict[str, pd.DataFrame],
+    *,
+    workbook_path: Path | str = WORKBOOK_PATH,
+    prune_after_all_vintages: bool = False,
+) -> pd.DataFrame:
+    """Record whether enabled exception economies actually triggered in completed runs.
+
+    A single-vintage audit only records evidence.  When the caller explicitly
+    confirms that every relevant vintage was checked, stale economy memberships
+    are removed and a row with no remaining economies is disabled.  This avoids
+    incorrectly disabling a branch merely because it is zero in one vintage.
+    """
+    workbook = Path(workbook_path)
+    rows = _read_rows(workbook)
+    observed_by_vintage: dict[str, dict[str, set[str]]] = {}
+    for vintage, findings in findings_by_vintage.items():
+        required = {"economy", "branch_path"}
+        if required.difference(findings.columns):
+            raise ValueError(f"{vintage} material findings are missing {sorted(required.difference(findings.columns))}")
+        observed: dict[str, set[str]] = {}
+        for item in findings[["economy", "branch_path"]].dropna().itertuples(index=False):
+            path, economy = str(item.branch_path).strip(), str(item.economy).strip()
+            if path and economy:
+                observed.setdefault(_normalise_path(path), set()).add(economy)
+        observed_by_vintage[str(vintage)] = observed
+
+    for index, row in rows.iterrows():
+        path = str(row["branch_path"]).strip()
+        if not path:
+            continue
+        configured = _economies(row["economies_that_need_it"])
+        key = _normalise_path(path)
+        triggered_union: set[str] = set()
+        audit_parts: list[str] = []
+        for vintage, observed in observed_by_vintage.items():
+            triggered = observed.get(key, set())
+            triggered_union.update(triggered)
+            no_longer_needed = configured - triggered
+            if triggered:
+                audit_parts.append(f"{vintage}: triggered for {'|'.join(sorted(triggered))}.")
+            if no_longer_needed:
+                audit_parts.append(
+                    f"{vintage}: found not needed for {'|'.join(sorted(no_longer_needed))} (no material unknown-path finding)."
+                )
+        summary = " ".join(audit_parts) or "No supplied run contained this exception path."
+        rows.at[index, RELEVANCE_AUDIT_COLUMN] = summary
+        rows.at[index, "notes"] = _append_unique_note(
+            row["notes"], f"Relevance audit: {summary}"
+        )
+        if prune_after_all_vintages and configured:
+            retained = configured & triggered_union
+            rows.at[index, "economies_that_need_it"] = "|".join(sorted(retained))
+            if not retained:
+                rows.at[index, "enabled"] = False
+                rows.at[index, "notes"] = _append_unique_note(
+                    rows.at[index, "notes"],
+                    "Disabled after the completed all-vintage relevance audit: it did not trigger for any previously marked economy.",
+                )
+    _write_rows(rows, workbook)
+    return rows
+
+
 def sync_exception_template_coverage(
     workbook_path: Path | str = WORKBOOK_PATH,
     *,
@@ -191,7 +313,8 @@ def sync_exception_template_coverage(
             continue
         resolved = sorted(economy for economy, statuses in template_paths.items() if statuses[path])
         needed = sorted(economy for economy, statuses in template_paths.items() if not statuses[path])
-        rows.at[index, "economies_that_need_it"] = "|".join(needed)
+        # ``economies_that_need_it`` is an observed materiality/relevance list,
+        # not a list of every template that happens not to have the branch.
         rows.at[index, "economies_resolved_in_templates"] = "all" if not needed else "|".join(resolved)
     _write_rows(rows, workbook)
     return rows

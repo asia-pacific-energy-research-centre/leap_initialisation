@@ -298,7 +298,9 @@ def test_validate_seed_files_reports_documented_branch_exception(
     assert "[EXCEPTION]" in output
     assert "documented missing branch row(s)" in output
     assert "Other recovered gases" in output
-    assert "Bio jet kerosene" in output
+    # The all-vintage relevance audit disabled the stale Bio jet ledger row,
+    # so only enabled, currently reviewable exceptions are emitted.
+    assert "Bio jet kerosene" not in output
     assert "[OK] All non-excepted seed file rows match the template." in output
 
 

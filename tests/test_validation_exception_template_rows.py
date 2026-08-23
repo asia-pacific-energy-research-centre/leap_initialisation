@@ -181,4 +181,6 @@ def test_sync_records_per_economy_coverage_without_disabling_rows(tmp_path, monk
         "economies_resolved_in_templates",
     )
     assert values[1][0] is True and values[1][4] == "all"
-    assert values[2][0] is True and values[2][3] == "01_TST|02_TST"
+    # Template coverage does not invent materiality: this list is populated by
+    # an observed material missing-path finding, not every template gap.
+    assert values[2][0] is True and values[2][3] is None
