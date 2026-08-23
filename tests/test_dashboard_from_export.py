@@ -145,6 +145,7 @@ def test_run_dashboard_from_export_uses_mapping_chain_and_renders(tmp_path, monk
         "Electricity interim",
         "CHP interim",
     ]
+    assert Path(result.outputs["mapping_diagnostics"]["page"]).is_file()
     dashboard_html = Path(result.outputs["dashboard_index"]).read_text(encoding="utf-8")
     assert "Native-source provenance files were not included" not in dashboard_html
 

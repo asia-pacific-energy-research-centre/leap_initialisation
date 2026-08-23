@@ -926,6 +926,9 @@ def run_dashboard(
             esto_to_common_map_path=context.require_data_asset(
                 "mapping_chain_esto_to_common_map"
             ),
+            mapping_diagnostics_unmapped_branches_path=(
+                run_dir / "mapping_chain" / "qa_nonzero_unmapped_leap_branches.csv"
+            ),
             output_root=run_dir,
             comparison_scope=comparison_scope,
             wide_file_scope=wide_file_scope,
@@ -1183,6 +1186,9 @@ def run_dashboard_from_export(
             ),
             esto_to_common_map_path=context.require_data_asset(
                 "mapping_chain_esto_to_common_map"
+            ),
+            mapping_diagnostics_unmapped_branches_path=(
+                run_dir / "mapping_chain" / "qa_nonzero_unmapped_leap_branches.csv"
             ),
             output_root=run_dir,
             comparison_scope=comparison_scope,
