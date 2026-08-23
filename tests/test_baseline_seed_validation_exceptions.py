@@ -13,7 +13,10 @@ from codebase.functions.baseline_seed_validation_exceptions import (
     register_material_missing_branch_findings,
     register_missing_branch_paths,
 )
-from codebase.mapping_tools.missing_branch_registry_materiality_workflow import _registry_source_keys
+from codebase.mapping_tools.missing_branch_registry_materiality_workflow import (
+    _esto_base_materiality,
+    _registry_source_keys,
+)
 
 
 def _workbook(path: Path, branch_path: str = "") -> None:
@@ -142,3 +145,25 @@ def test_canonical_single_axis_mapping_resolves_nonenergy_hydrogen() -> None:
     assert keys.loc[0, "ninth_fuel"] == "16_x_hydrogen"
     assert keys.loc[0, "esto_flow"] == "17 Non-energy use"
     assert keys.loc[0, "esto_product"] == "16.12 Hydrogen"
+
+
+def test_esto_materiality_uses_subtotal_only_when_no_detailed_match(tmp_path: Path) -> None:
+    source = tmp_path / "esto.csv"
+    pd.DataFrame([
+        {"flows": "17 Non-energy use", "products": "08.03 Gas works gas", "is_subtotal": True, "2023": 43.0},
+        {"flows": "17 Non-energy use", "products": "08.03 Gas works gas", "is_subtotal": False, "2023": 2.0},
+    ]).to_csv(source, index=False)
+    keys = pd.DataFrame([{
+        "branch_path": r"Demand\All demand aggregated\Non Energy Use\Gas works gas",
+        "esto_flow": "17 Non-energy use",
+        "esto_product": "08.03 Gas works gas",
+    }])
+
+    values = _esto_base_materiality(keys, esto_path=source, base_year=2023)
+    assert values[keys.loc[0, "branch_path"]][0] == 2.0
+
+    pd.DataFrame([
+        {"flows": "17 Non-energy use", "products": "08.03 Gas works gas", "is_subtotal": True, "2023": 43.0},
+    ]).to_csv(source, index=False)
+    values = _esto_base_materiality(keys, esto_path=source, base_year=2023)
+    assert values[keys.loc[0, "branch_path"]][0] == 43.0

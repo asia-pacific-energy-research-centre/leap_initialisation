@@ -125,18 +125,43 @@ def _is_blank(value: object) -> bool:
 
 
 def _esto_base_materiality(keys: pd.DataFrame, *, esto_path: Path, base_year: int) -> dict[str, tuple[float, float]]:
+    """Return exact mapped ESTO values, retaining subtotal-only source pairs.
+
+    Detailed non-subtotal rows take precedence over a same-pair subtotal. If a
+    mapped pair is represented only by its subtotal, the subtotal is the best
+    available source evidence and is retained. This avoids both dropping real
+    parent-only data and double-counting a parent with its detailed children.
+    """
     result = {path: (0.0, 0.0) for path in keys["branch_path"]}
+    subtotal_result = {path: (0.0, 0.0) for path in keys["branch_path"]}
+    paths_with_detail_rows: set[str] = set()
     lookup = defaultdict(set)
     for row in keys.itertuples(index=False):
         lookup[(row.esto_flow, row.esto_product)].add(row.branch_path)
     usecols = ["flows", "products", "is_subtotal", str(base_year)]
     for chunk in pd.read_csv(esto_path, usecols=usecols, chunksize=200_000, low_memory=False):
-        chunk = chunk[chunk["is_subtotal"].fillna(False).ne(True)].copy()
         for (flow, product), group in chunk.groupby(["flows", "products"], sort=False):
-            for branch_path in lookup.get((str(flow), str(product)), set()):
-                signed, absolute = _numeric_sum(group[str(base_year)])
-                prior_signed, prior_absolute = result[str(branch_path)]
-                result[str(branch_path)] = (prior_signed + signed, prior_absolute + absolute)
+            branch_paths = lookup.get((str(flow), str(product)), set())
+            if not branch_paths:
+                continue
+            is_subtotal = group["is_subtotal"].fillna(False).astype(str).str.strip().str.casefold().isin(
+                {"true", "1", "yes", "y", "t"}
+            )
+            detailed_rows = group.loc[~is_subtotal]
+            subtotal_rows = group.loc[is_subtotal]
+            for branch_path in branch_paths:
+                if not detailed_rows.empty:
+                    signed, absolute = _numeric_sum(detailed_rows[str(base_year)])
+                    prior_signed, prior_absolute = result[str(branch_path)]
+                    result[str(branch_path)] = (prior_signed + signed, prior_absolute + absolute)
+                    paths_with_detail_rows.add(str(branch_path))
+                if not subtotal_rows.empty:
+                    signed, absolute = _numeric_sum(subtotal_rows[str(base_year)])
+                    prior_signed, prior_absolute = subtotal_result[str(branch_path)]
+                    subtotal_result[str(branch_path)] = (prior_signed + signed, prior_absolute + absolute)
+    for branch_path, subtotal_values in subtotal_result.items():
+        if branch_path not in paths_with_detail_rows:
+            result[branch_path] = subtotal_values
     return result
 
 
