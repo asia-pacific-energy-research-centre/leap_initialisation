@@ -8,6 +8,7 @@ from codebase.functions.baseline_seed_validation_exceptions import (
     REQUIRED_COLUMNS,
     NINTH_VALUE_COLUMN,
     refresh_exception_materiality,
+    apply_zero_filter,
     audit_exception_relevance,
     register_material_missing_branch_findings,
     register_missing_branch_paths,
@@ -89,3 +90,38 @@ def test_final_stage_registers_material_economies_and_prunes_only_after_all_vint
     assert not row["enabled"]
     assert pd.isna(row["economies_that_need_it"])  # blank Excel cell reads as NaN
     assert "Disabled after the completed all-vintage relevance audit" in row["notes"]
+
+
+def test_zero_filter_blanks_false_mapping_zeros_when_seed_audit_triggered() -> None:
+    rows = pd.DataFrame([{
+        "enabled": True,
+        "branch_path": r"Demand\Other\Fuel",
+        "relevance_audit": "ESTO 2026: triggered for 20_USA.",
+        "esto_2024_last_year_signed_pj_all_economies": 0.0,
+        "esto_2025_last_year_signed_pj_all_economies": 0.0,
+        "esto_2026_last_year_signed_pj_all_economies": 0.0,
+        "ninth_reference_average_pj_per_year_all_economies": 0.0,
+    }])
+
+    filtered = apply_zero_filter(rows)
+
+    assert filtered.loc[0, "zero filter"] == "MAPPING INCOMPLETE — seed triggered"
+    assert filtered.loc[0, "esto_2024_last_year_signed_pj_all_economies"] == ""
+
+
+def test_materiality_refresh_does_not_refill_a_seed_triggered_mapping_gap(tmp_path: Path) -> None:
+    workbook = tmp_path / "exceptions.xlsx"
+    _workbook(workbook, r"Demand\Other loss and own use\Coal mines\BKB and PB")
+    rows = pd.read_excel(workbook).fillna("")
+    rows.loc[0, "relevance_audit"] = "ESTO 2026: triggered for 20_USA."
+    rows.loc[0, "zero filter"] = "MAPPING INCOMPLETE — seed triggered"
+    rows.to_excel(workbook, sheet_name="branch_exceptions", index=False)
+
+    refreshed = refresh_exception_materiality(
+        workbook,
+        esto_vintages={},
+        ninth_path=tmp_path / "not_needed.csv",
+    )
+
+    assert refreshed.loc[0, "zero filter"] == "MAPPING INCOMPLETE — seed triggered"
+    assert refreshed.loc[0, NINTH_VALUE_COLUMN] == ""

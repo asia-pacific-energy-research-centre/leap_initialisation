@@ -33,7 +33,9 @@ ESTO_VALUE_COLUMNS = [
 ]
 NINTH_VALUE_COLUMN = "ninth_reference_average_pj_per_year_all_economies"
 RELEVANCE_AUDIT_COLUMN = "relevance_audit"
-REQUIRED_COLUMNS = [*BASE_COLUMNS, *ESTO_VALUE_COLUMNS, NINTH_VALUE_COLUMN, RELEVANCE_AUDIT_COLUMN]
+ZERO_FILTER_COLUMN = "zero filter"
+MATERIALITY_VALUE_COLUMNS = [*ESTO_VALUE_COLUMNS, NINTH_VALUE_COLUMN]
+REQUIRED_COLUMNS = [*BASE_COLUMNS, *MATERIALITY_VALUE_COLUMNS, RELEVANCE_AUDIT_COLUMN, ZERO_FILTER_COLUMN]
 
 
 def _blank(value: object) -> bool:
@@ -57,6 +59,45 @@ def _append_unique_note(existing: object, message: str) -> str:
     """Append one audit sentence once, without erasing modeller-authored notes."""
     note = str(existing or "").strip()
     return note if message in note else f"{note} {message}".strip()
+
+
+def _has_material_seed_trigger(row: pd.Series) -> bool:
+    """The completed-vintage audit is stronger evidence than a simplified mapping zero."""
+    return "triggered for" in str(row.get(RELEVANCE_AUDIT_COLUMN, "")).casefold()
+
+
+def apply_zero_filter(rows: pd.DataFrame) -> pd.DataFrame:
+    """Mark simplified all-zero materiality results that contradict seed evidence.
+
+    A material seed expression can be nonzero through a proxy, aggregation, or
+    multi-row mapping even where the current one-flow/one-fuel materiality
+    helper returns zero.  Such zeros must remain blank and visibly flagged
+    until the canonical mapping is added; they are not evidence for pruning.
+    """
+    for column in [*MATERIALITY_VALUE_COLUMNS, RELEVANCE_AUDIT_COLUMN, ZERO_FILTER_COLUMN]:
+        if column not in rows:
+            rows[column] = ""
+    rows[MATERIALITY_VALUE_COLUMNS] = rows[MATERIALITY_VALUE_COLUMNS].astype(object)
+    for index, row in rows.iterrows():
+        values = pd.to_numeric(row[MATERIALITY_VALUE_COLUMNS], errors="coerce")
+        all_zero = values.notna().all() and values.eq(0).all()
+        any_blank = values.isna().any()
+        triggered = _has_material_seed_trigger(row)
+        enabled = _truthy(row.get("enabled", ""))
+        if triggered and all_zero:
+            rows.loc[index, MATERIALITY_VALUE_COLUMNS] = ""
+            rows.at[index, ZERO_FILTER_COLUMN] = "MAPPING INCOMPLETE — seed triggered"
+        elif triggered and any_blank:
+            rows.at[index, ZERO_FILTER_COLUMN] = "MAPPING INCOMPLETE — seed triggered"
+        elif not enabled:
+            rows.at[index, ZERO_FILTER_COLUMN] = "DISABLED — no trigger across audited vintages"
+        elif values.notna().all() and values.ne(0).any():
+            rows.at[index, ZERO_FILTER_COLUMN] = "CONFIRMED NONZERO"
+        elif all_zero:
+            rows.at[index, ZERO_FILTER_COLUMN] = "ZERO VALUES — review seed relevance"
+        else:
+            rows.at[index, ZERO_FILTER_COLUMN] = "MAPPING INCOMPLETE — source mapping required"
+    return rows
 
 
 def _read_rows(workbook_path: Path = WORKBOOK_PATH) -> pd.DataFrame:
@@ -99,12 +140,19 @@ def refresh_exception_materiality(
     """
     workbook = Path(workbook_path)
     rows = _read_rows(workbook)
-    value_columns = [*ESTO_VALUE_COLUMNS, NINTH_VALUE_COLUMN]
+    value_columns = MATERIALITY_VALUE_COLUMNS
     needs_values = rows[rows["branch_path"].map(lambda value: bool(str(value).strip()))]
     if needs_values.empty:
+        rows = apply_zero_filter(rows)
+        _write_rows(rows, workbook)
         return rows
-    needs_values = needs_values[needs_values[value_columns].map(_blank).any(axis=1)]
+    needs_values = needs_values[
+        needs_values[value_columns].map(_blank).any(axis=1)
+        & ~needs_values[ZERO_FILTER_COLUMN].astype(str).str.startswith("MAPPING INCOMPLETE — seed triggered")
+    ]
     if needs_values.empty:
+        rows = apply_zero_filter(rows)
+        _write_rows(rows, workbook)
         return rows
 
     mapped_rows = []
@@ -118,6 +166,7 @@ def refresh_exception_materiality(
                 if "materiality mapping needs review" not in note.casefold():
                     rows.at[index, "notes"] = (note + " " if note else "") + f"Materiality mapping needs review: {exc}"
     if not mapped_rows:
+        rows = apply_zero_filter(rows)
         _write_rows(rows, workbook)
         return rows
     keys = pd.DataFrame(mapped_rows)
@@ -135,6 +184,7 @@ def refresh_exception_materiality(
             rows.at[index, NINTH_VALUE_COLUMN] = (
                 projections[rows.at[index, "branch_path"]]["reference"][0] / len(years)
             )
+    rows = apply_zero_filter(rows)
     _write_rows(rows, workbook)
     return rows
 
@@ -277,6 +327,7 @@ def audit_exception_relevance(
                     rows.at[index, "notes"],
                     "Disabled after the completed all-vintage relevance audit: it did not trigger for any previously marked economy.",
                 )
+    rows = apply_zero_filter(rows)
     _write_rows(rows, workbook)
     if workbook.resolve() == WORKBOOK_PATH.resolve():
         refresh_placeholder_review_workbook(workbook)
