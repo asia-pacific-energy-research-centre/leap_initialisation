@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import tempfile
+import uuid
 import zipfile
 from pathlib import Path, PurePosixPath
 
@@ -93,6 +94,42 @@ def _load_and_validate_manifest(archive: zipfile.ZipFile) -> tuple[dict[str, obj
     return manifest, manifest_paths
 
 
+def _open_data_bundle(bundle_path: Path) -> zipfile.ZipFile:
+    """Open a data bundle, unwrapping the single ZIP Google Drive may create."""
+    archive = zipfile.ZipFile(bundle_path, mode="r")
+    if MANIFEST_NAME in archive.namelist():
+        return archive
+
+    file_members = [info for info in archive.infolist() if not info.is_dir()]
+    nested_zips = [info for info in file_members if info.filename.lower().endswith(".zip")]
+    if len(file_members) != 1 or len(nested_zips) != 1:
+        archive.close()
+        raise ValueError(
+            "ZIP is not a data bundle or a single-file wrapper around one. "
+            f"Expected {MANIFEST_NAME} or one inner .zip file."
+        )
+
+    inner_info = nested_zips[0]
+    extracted_inner = bundle_path.parent / f".{uuid.uuid4().hex}.bundle.zip"
+    try:
+        with archive.open(inner_info) as source, extracted_inner.open("wb") as target:
+            shutil.copyfileobj(source, target, length=1024 * 1024)
+    except Exception:
+        extracted_inner.unlink(missing_ok=True)
+        archive.close()
+        raise
+    archive.close()
+    try:
+        inner_archive = zipfile.ZipFile(extracted_inner, mode="r")
+    except Exception:
+        extracted_inner.unlink(missing_ok=True)
+        raise
+    # The caller closes this handle; attach the disposable wrapper path so it
+    # can be removed after validation and staging.
+    inner_archive._leap_wrapper_path = extracted_inner  # type: ignore[attr-defined]
+    return inner_archive
+
+
 def extract_data_bundle(
     bundle_path: Path,
     repo_root: Path = REPO_ROOT,
@@ -106,7 +143,9 @@ def extract_data_bundle(
     if not (repo_root / ".git").exists():
         raise FileNotFoundError(f"Target is not a Git repository clone: {repo_root}")
 
-    with zipfile.ZipFile(bundle_path, mode="r") as archive:
+    archive = _open_data_bundle(bundle_path)
+    wrapper_path = getattr(archive, "_leap_wrapper_path", None)
+    try:
         manifest, manifest_paths = _load_and_validate_manifest(archive)
         with tempfile.TemporaryDirectory(prefix=f"{REPOSITORY_NAME}_bundle_") as staging_text:
             staging_root = Path(staging_text)
@@ -157,6 +196,11 @@ def extract_data_bundle(
                     temporary_target.unlink(missing_ok=True)
                     raise
                 installed.append(target_path)
+
+    finally:
+        archive.close()
+        if wrapper_path is not None:
+            Path(wrapper_path).unlink(missing_ok=True)
 
     template_count = len(list((repo_root / "data/leap_export_templates").glob("*.xlsx")))
     export_count = sum(1 for path in (repo_root / "data/leap balances exports").rglob("*") if path.is_file())

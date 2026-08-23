@@ -12,6 +12,7 @@ from pandas.testing import assert_frame_equal
 from codebase.utilities.typed_storage import (
     read_manifested_parquet_file,
     read_typed_cache_bundle,
+    write_json_atomic,
     write_manifested_parquet,
     write_typed_cache_bundle_atomic,
 )
@@ -71,3 +72,16 @@ def test_manifested_parquet_round_trip_preserves_table_contract(tmp_path):
 
     assert manifest["artifact_type"] == "test_detail"
     pd.testing.assert_frame_equal(restored, frame)
+
+
+def test_atomic_storage_uses_short_temporary_paths_for_deep_artifacts(tmp_path):
+    deep_path = tmp_path.joinpath(*(["nested_directory"] * 12))
+    parquet_path = deep_path / "supply_reconciliation_balance_demand_conservation.parquet"
+    frame = pd.DataFrame({"value": [1.0, 2.0]})
+
+    write_manifested_parquet(frame, parquet_path, artifact_type="deep_path_test")
+    write_json_atomic({"status": "ok"}, deep_path / "long_diagnostic_manifest.json")
+
+    pd.testing.assert_frame_equal(read_manifested_parquet_file(parquet_path), frame)
+    assert json.loads((deep_path / "long_diagnostic_manifest.json").read_text()) == {"status": "ok"}
+    assert not list(deep_path.glob("*.tmp"))

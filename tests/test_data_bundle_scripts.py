@@ -67,6 +67,24 @@ def test_extraction_refuses_to_replace_different_data_by_default(tmp_path: Path)
         extract_data_bundle(bundle_path=bundle_path, repo_root=target_repo)
 
 
+def test_extraction_accepts_single_inner_zip_google_drive_wrapper(tmp_path: Path) -> None:
+    source_repo = tmp_path / "source"
+    target_repo = tmp_path / "clone"
+    inner_bundle_path = tmp_path / "inner_bundle.zip"
+    wrapper_path = tmp_path / "google_drive_download.zip"
+    _make_source_repo(source_repo)
+    (target_repo / ".git").mkdir(parents=True)
+    create_data_bundle(repo_root=source_repo, bundle_path=inner_bundle_path)
+    with zipfile.ZipFile(wrapper_path, "w") as wrapper:
+        wrapper.write(inner_bundle_path, arcname=inner_bundle_path.name)
+
+    installed = extract_data_bundle(bundle_path=wrapper_path, repo_root=target_repo)
+
+    assert installed
+    assert (target_repo / "data/00APEC_2024_low_with_subtotals.csv").is_file()
+    assert not list(tmp_path.glob(".*.bundle.zip"))
+
+
 def test_extraction_rejects_parent_directory_paths(tmp_path: Path) -> None:
     target_repo = tmp_path / "clone"
     (target_repo / ".git").mkdir(parents=True)

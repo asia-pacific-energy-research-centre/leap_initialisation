@@ -1856,6 +1856,18 @@ def save_missing_ninth_fill_diagnostics(
     return output_path
 
 
+def write_projection_diagnostics(
+    projection_diagnostics: pd.DataFrame,
+    output_path: Path | str = PROJECTION_DIAGNOSTICS_PATH,
+) -> Path:
+    """Write the configured projection diagnostics, including its real parent."""
+    resolved_output_path = Path(output_path)
+    resolved_output_path.parent.mkdir(parents=True, exist_ok=True)
+    projection_diagnostics.to_csv(resolved_output_path, index=False)
+    print(f"Saved projection fallback report to {resolved_output_path}")
+    return resolved_output_path
+
+
 
 
 def prepare_transformation_assets() -> None:
@@ -1937,9 +1949,7 @@ def prepare_transformation_assets() -> None:
         SAVE_PROJECTION_DIAGNOSTICS or FILL_IN_MISSING_9TH_SECTORS
     ) and projection_diagnostics is not None:
         if not projection_diagnostics.empty:
-            os.makedirs(EXPORT_OUTPUT_DIR, exist_ok=True)
-            projection_diagnostics.to_csv(PROJECTION_DIAGNOSTICS_PATH, index=False)
-            print(f"Saved projection fallback report to {PROJECTION_DIAGNOSTICS_PATH}")
+            write_projection_diagnostics(projection_diagnostics)
     save_unallocated_projection_diagnostics(
         projection_diagnostics,
         scenario="reference",

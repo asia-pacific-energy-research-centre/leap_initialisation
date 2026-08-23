@@ -68,6 +68,17 @@ The maintained workflow expects reviewed local data, including:
 
 See [`data/README.md`](data/README.md) for the exact current file contracts.
 
+## New-clone setup
+
+After cloning, run [`scripts/setup_clone.py`](scripts/setup_clone.py) from the
+same explicit Windows conda interpreter that will run the workflow. Set
+`DOWNLOADED_ZIP_PATH` and `INSTALL_DOWNLOADED_BUNDLE = True` in its final
+settings block. It accepts both the normal data bundle and Google Drive's
+single-inner-ZIP download wrapper, verifies the required source/template
+inputs, checks `pyarrow` and `plotly` in the selected interpreter, and confirms
+the tracked LEAP API compatibility files are present. It never installs into a
+different interpreter or weakens workflow validation.
+
 ## Running and safety
 
 Use Windows because the optional LEAP COM integration depends on `pywin32`, but

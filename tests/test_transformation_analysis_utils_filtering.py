@@ -4,7 +4,10 @@
 
 import pandas as pd
 
-from codebase.functions.transformation_analysis_utils import filter_total_energy_rows
+from codebase.functions.transformation_analysis_utils import (
+    filter_total_energy_rows,
+    write_projection_diagnostics,
+)
 
 
 def test_filter_total_energy_rows_uses_is_subtotal_for_products():
@@ -53,6 +56,18 @@ def test_filter_total_energy_rows_uses_conservative_product_fallback_without_is_
         "17 Electricity",
         "18 Heat",
     ]
+
+
+def test_write_projection_diagnostics_creates_configured_parent(tmp_path):
+    output_path = tmp_path / "new" / "nested" / "projection_diagnostics.csv"
+
+    written_path = write_projection_diagnostics(
+        pd.DataFrame({"diagnostic_type": ["projection_fallback"]}),
+        output_path,
+    )
+
+    assert written_path == output_path
+    assert output_path.is_file()
 
 
 #%%

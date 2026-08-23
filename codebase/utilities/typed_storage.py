@@ -40,13 +40,16 @@ def write_parquet_atomic(
     """Write one authoritative Parquet file atomically and return manifest fields."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = output_path.with_name(f".{output_path.name}.{uuid.uuid4().hex}.tmp")
+    # Keep the temporary name deliberately short.  Repeating a long artifact
+    # name here can make an otherwise valid final path exceed Windows MAX_PATH.
+    temporary_path = output_path.parent / f".{uuid.uuid4().hex}.tmp"
     try:
-        frame.to_parquet(
-            temporary_path,
-            index=index,
-            compression=PARQUET_COMPRESSION,
-        )
+        with temporary_path.open("wb") as handle:
+            frame.to_parquet(
+                handle,
+                index=index,
+                compression=PARQUET_COMPRESSION,
+            )
         os.replace(temporary_path, output_path)
     except Exception:
         temporary_path.unlink(missing_ok=True)
@@ -69,12 +72,10 @@ def write_json_atomic(payload: dict, output_path: Path) -> None:
     """Write JSON atomically in the same directory as its final path."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = output_path.with_name(f".{output_path.name}.{uuid.uuid4().hex}.tmp")
+    temporary_path = output_path.parent / f".{uuid.uuid4().hex}.tmp"
     try:
-        temporary_path.write_text(
-            json.dumps(payload, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        with temporary_path.open("w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, ensure_ascii=False)
         os.replace(temporary_path, output_path)
     except Exception:
         temporary_path.unlink(missing_ok=True)
@@ -279,7 +280,7 @@ def write_typed_cache_bundle_atomic(value, bundle_path: Path) -> None:
     """Atomically write nested cache state using Parquet tables and JSON structure."""
     bundle_path = Path(bundle_path)
     bundle_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = bundle_path.with_name(f".{bundle_path.name}.{uuid.uuid4().hex}.tmp")
+    temporary_path = bundle_path.parent / f".{uuid.uuid4().hex}.tmp"
     try:
         temporary_path.mkdir()
         structure = _encode_value(value, bundle_dir=temporary_path, table_counter=[0])
