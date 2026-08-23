@@ -13,6 +13,7 @@ from codebase.mapping_tools.add_validation_exception_template_rows import (
     sync_exception_resolution_status,
     validate_exception_placeholder_rows,
     apply_material_exception_placeholders,
+    preview_material_exception_placeholder_rows,
 )
 
 
@@ -245,3 +246,32 @@ def test_material_placeholder_dry_run_reports_blockers_without_writing(tmp_path,
         apply_material_exception_placeholders(
             apply_changes=True, exception_workbook_path=exception_path, templates_root=tmp_path,
         )
+
+
+def test_placeholder_preview_exposes_the_exact_cloned_row(tmp_path, monkeypatch):
+    template_path = tmp_path / "template.xlsx"
+    source_path = r"Demand\Other\Existing fuel"
+    target_path = r"Demand\Other\Missing fuel"
+    _write_template(template_path, {source_path: [("Activity Level", "Reference", "Test")]})
+    exception_path = tmp_path / "exceptions.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "branch_exceptions"
+    sheet.append(["enabled", "branch_path", "notes"])
+    sheet.append([True, target_path, "Preview test path."])
+    workbook.save(exception_path)
+    monkeypatch.setattr(
+        placeholder_module.leap_export_template_resolver,
+        "iter_leap_export_templates",
+        lambda _root: [SimpleNamespace(path=template_path, economy="01_TST")],
+    )
+
+    preview = preview_material_exception_placeholder_rows(
+        exception_workbook_path=exception_path, templates_root=tmp_path,
+    )
+    assert preview[["source_branch_path", "placeholder_branch_path", "placeholder_branch_id", "Variable"]].to_dict("records") == [{
+        "source_branch_path": source_path,
+        "placeholder_branch_path": target_path,
+        "placeholder_branch_id": 99,
+        "Variable": "Activity Level",
+    }]

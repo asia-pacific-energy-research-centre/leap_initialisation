@@ -472,6 +472,75 @@ def apply_material_exception_placeholders(
     return report
 
 
+def preview_material_exception_placeholder_rows(
+    *,
+    exception_workbook_path: Path | str = REPO_ROOT / "config" / "baseline_seed_validation_exception_sets.xlsx",
+    templates_root: Path | str = TEMPLATE_ROOT,
+    report_path: Path | str | None = None,
+) -> pd.DataFrame:
+    """Return the exact ID-99 rows an all-template placeholder apply would add.
+
+    This is deliberately read-only.  It exposes the local sibling row used as
+    the source so a modeller can inspect every proposed Variable/Scenario/
+    Region combination before approving an apply run.
+    """
+    templates = list(leap_export_template_resolver.iter_leap_export_templates(templates_root))
+    if not templates:
+        raise FileNotFoundError(f"No LEAP export templates found under {templates_root}")
+    branch_paths = _enabled_placeholder_paths(exception_workbook_path)
+    records: list[dict[str, object]] = []
+    copied_columns = ("Variable", "Scenario", "Region", "VariableID", "ScenarioID", "RegionID", "Scale", "Units", "Per...", "Expression")
+    for template in templates:
+        root, shared_strings, _ = _read_template_xml(template.path)
+        headers = _header_columns(root, shared_strings)
+        sheet_data = root.find(f"{NAMESPACE}sheetData")
+        if sheet_data is None:
+            raise ValueError(f"{template.path.name} has no sheet data")
+        template_rows = list(sheet_data)
+        existing_paths = {
+            _cell_value({_column_name(cell): cell for cell in row}.get(headers["Branch Path"]), shared_strings)
+            for row in template_rows
+        }
+        sibling_rows_by_parent = _direct_sibling_rows_by_parent(template_rows, headers, shared_strings)
+        for target_path in sorted(branch_paths - existing_paths):
+            try:
+                sources = _leaf_profile_rows(
+                    template_rows, headers, shared_strings, target_path, sibling_rows_by_parent,
+                )
+            except ValueError as exc:
+                records.append({
+                    "economy": template.economy, "template": template.path.name,
+                    "placeholder_branch_path": target_path, "placeholder_branch_id": PLACEHOLDER_BRANCH_ID,
+                    "status": "blocked", "blocker": str(exc),
+                })
+                continue
+            for source in sources:
+                cells = {_column_name(cell): cell for cell in source}
+                record = {
+                    "economy": template.economy,
+                    "template": template.path.name,
+                    "source_excel_row": int(source.attrib["r"]),
+                    "source_branch_path": _cell_value(cells.get(headers["Branch Path"]), shared_strings),
+                    "placeholder_branch_path": target_path,
+                    "placeholder_branch_id": PLACEHOLDER_BRANCH_ID,
+                    "status": "ready",
+                    "blocker": "",
+                }
+                for column in copied_columns:
+                    if column in headers:
+                        record[column] = _cell_value(cells.get(headers[column]), shared_strings)
+                records.append(record)
+    preview = pd.DataFrame(records).sort_values(
+        ["economy", "placeholder_branch_path", "status", "source_excel_row"],
+        na_position="last",
+    ).reset_index(drop=True)
+    if report_path is not None:
+        output = Path(report_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        preview.to_csv(output, index=False)
+    return preview
+
+
 def _template_presence_status(
     branch_paths: set[str],
     templates: list[SimpleNamespace],
