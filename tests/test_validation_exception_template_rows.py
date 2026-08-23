@@ -187,7 +187,7 @@ def test_sync_records_per_economy_coverage_without_disabling_rows(tmp_path, monk
     assert values[2][0] is True and values[2][3] is None
 
 
-def test_material_placeholder_operation_targets_only_marked_economies(tmp_path, monkeypatch):
+def test_material_placeholder_operation_targets_every_economy(tmp_path, monkeypatch):
     template_paths = [tmp_path / "one.xlsx", tmp_path / "two.xlsx"]
     target_path = r"Demand\Other\Missing fuel"
     profile = [("Activity Level", "Reference", "Test")]
@@ -210,10 +210,38 @@ def test_material_placeholder_operation_targets_only_marked_economies(tmp_path, 
     plan = apply_material_exception_placeholders(
         exception_workbook_path=exception_path, templates_root=tmp_path,
     )
-    assert plan.set_index("economy")["rows_added"].to_dict() == {"01_TST": 1, "02_TST": 0}
+    assert plan.set_index("economy")["rows_added"].to_dict() == {"01_TST": 1, "02_TST": 1}
 
     apply_material_exception_placeholders(
         apply_changes=True, exception_workbook_path=exception_path, templates_root=tmp_path,
     )
     validate_exception_placeholder_rows(template_paths[0], {target_path})
-    assert not placeholder_module._exception_rows(template_paths[1], {target_path})
+    validate_exception_placeholder_rows(template_paths[1], {target_path})
+
+
+def test_material_placeholder_dry_run_reports_blockers_without_writing(tmp_path, monkeypatch):
+    template_path = tmp_path / "template.xlsx"
+    _write_template(template_path, {r"Demand\Other\Existing fuel": [("Activity Level", "Reference", "Test")]})
+    exception_path = tmp_path / "exceptions.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "branch_exceptions"
+    sheet.append(["enabled", "branch_path", "notes", "economies_that_need_it"])
+    sheet.append([True, r"Demand\Missing parent\Fuel", "Blocked test path.", "01_TST"])
+    workbook.save(exception_path)
+    monkeypatch.setattr(
+        placeholder_module.leap_export_template_resolver,
+        "iter_leap_export_templates",
+        lambda _root: [SimpleNamespace(path=template_path, economy="01_TST")],
+    )
+
+    plan = apply_material_exception_placeholders(
+        exception_workbook_path=exception_path, templates_root=tmp_path,
+    )
+    assert plan.at[0, "status"] == "blocked"
+    assert "No direct sibling leaf exists" in plan.at[0, "blocker"]
+    assert not placeholder_module._exception_rows(template_path, {r"Demand\Missing parent\Fuel"})
+    with pytest.raises(ValueError, match="no templates changed"):
+        apply_material_exception_placeholders(
+            apply_changes=True, exception_workbook_path=exception_path, templates_root=tmp_path,
+        )

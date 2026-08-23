@@ -212,6 +212,7 @@ def _leaf_profile_rows(
     headers: dict[str, str],
     shared_strings: list[str],
     target_path: str,
+    sibling_rows_by_parent: dict[str, dict[str, list]] | None = None,
 ) -> list:
     """Choose one complete direct-sibling leaf profile for a missing leaf.
 
@@ -220,17 +221,14 @@ def _leaf_profile_rows(
     from being presented as a proposed LEAP branch.
     """
     parent = target_path.rsplit("\\", 1)[0]
-    prefix = parent + "\\"
-    sibling_rows: dict[str, list] = {}
-    for row in template_rows:
-        cells = {_column_name(cell): cell for cell in row}
-        branch_path = _cell_value(cells.get(headers["Branch Path"]), shared_strings)
-        if not branch_path.startswith(prefix):
-            continue
-        leaf = branch_path[len(prefix):]
-        if not leaf or "\\" in leaf or branch_path == target_path:
-            continue
-        sibling_rows.setdefault(branch_path, []).append(row)
+    if sibling_rows_by_parent is None:
+        sibling_rows_by_parent = _direct_sibling_rows_by_parent(
+            template_rows, headers, shared_strings,
+        )
+    sibling_rows = {
+        path: rows for path, rows in sibling_rows_by_parent.get(parent, {}).items()
+        if path != target_path
+    }
 
     if not sibling_rows:
         raise ValueError(f"No direct sibling leaf exists for {target_path!r}")
@@ -255,6 +253,24 @@ def _leaf_profile_rows(
             f"Candidates: {paths}"
         )
     return sorted(largest, key=lambda item: item[0])[0][1]
+
+
+def _direct_sibling_rows_by_parent(
+    template_rows: list,
+    headers: dict[str, str],
+    shared_strings: list[str],
+) -> dict[str, dict[str, list]]:
+    """Index direct-leaf profiles once, so a large all-template plan stays fast."""
+    indexed: dict[str, dict[str, list]] = {}
+    for row in template_rows:
+        cells = {_column_name(cell): cell for cell in row}
+        branch_path = _cell_value(cells.get(headers["Branch Path"]), shared_strings)
+        if not branch_path or "\\" not in branch_path:
+            continue
+        parent, leaf = branch_path.rsplit("\\", 1)
+        if leaf:
+            indexed.setdefault(parent, {}).setdefault(branch_path, []).append(row)
+    return indexed
 
 
 def _exception_rows(template_path: Path, branch_paths: set[str]) -> list[dict[str, str]]:
@@ -327,7 +343,16 @@ def insert_missing_exception_rows(
         validate_exception_placeholder_rows(template_path, branch_paths)
         return {"template": template_path.name, "rows_added": 0}
 
-    rows_to_add = [(source_row, target_path) for target_path in missing_paths for source_row in _leaf_profile_rows(template_rows, headers, shared_strings, target_path)]
+    sibling_rows_by_parent = _direct_sibling_rows_by_parent(
+        template_rows, headers, shared_strings,
+    )
+    rows_to_add = [
+        (source_row, target_path)
+        for target_path in missing_paths
+        for source_row in _leaf_profile_rows(
+            template_rows, headers, shared_strings, target_path, sibling_rows_by_parent,
+        )
+    ]
     if apply_changes:
         next_row = max(int(row.attrib["r"]) for row in template_rows) + 1
         with ZipFile(template_path) as source_archive:
@@ -365,29 +390,18 @@ def update_all_templates(
     return results
 
 
-def _enabled_paths_by_economy(
-    exception_workbook_path: Path | str,
-    templates: list[SimpleNamespace],
-) -> dict[str, set[str]]:
-    """Return only material, enabled paths for the economies that need them."""
+def _enabled_placeholder_paths(exception_workbook_path: Path | str) -> set[str]:
+    """Return every enabled ledger path for structurally consistent templates."""
     from codebase.functions.baseline_seed_validation_exceptions import _read_rows, _truthy
 
-    template_economies = {template.economy for template in templates}
     rows = _read_rows(Path(exception_workbook_path))
-    paths_by_economy = {economy: set() for economy in template_economies}
+    paths = set()
     for row in rows.itertuples(index=False):
         path = str(row.branch_path).strip()
         if not path or not _truthy(row.enabled):
             continue
-        requested = {
-            economy.strip() for economy in str(row.economies_that_need_it or "").split("|")
-            if economy.strip()
-        }
-        if "all" in {economy.casefold() for economy in requested}:
-            requested = template_economies
-        for economy in requested & template_economies:
-            paths_by_economy[economy].add(path)
-    return paths_by_economy
+        paths.add(path)
+    return paths
 
 
 def apply_material_exception_placeholders(
@@ -397,7 +411,7 @@ def apply_material_exception_placeholders(
     templates_root: Path | str = TEMPLATE_ROOT,
     report_path: Path | str | None = None,
 ) -> pd.DataFrame:
-    """Plan or append ID-99 rows only where the exception ledger says they are needed.
+    """Plan or append every enabled ID-99 path to every economy template.
 
     The dry run is a required preflight for an apply run: every targeted
     template must have an unambiguous sibling profile before any workbook is
@@ -407,24 +421,43 @@ def apply_material_exception_placeholders(
     templates = list(leap_export_template_resolver.iter_leap_export_templates(templates_root))
     if not templates:
         raise FileNotFoundError(f"No LEAP export templates found under {templates_root}")
-    paths_by_economy = _enabled_paths_by_economy(exception_workbook_path, templates)
+    branch_paths = _enabled_placeholder_paths(exception_workbook_path)
 
     def _plan() -> list[dict[str, object]]:
         plan = []
         for template in templates:
-            paths = paths_by_economy[template.economy]
-            result = insert_missing_exception_rows(template.path, paths, apply_changes=False)
-            plan.append({"economy": template.economy, **result, "branch_paths": "|".join(sorted(paths))})
+            try:
+                result = insert_missing_exception_rows(template.path, branch_paths, apply_changes=False)
+                plan.append({
+                    "economy": template.economy, **result,
+                    "branch_paths": "|".join(sorted(branch_paths)),
+                    "status": "ready", "blocker": "",
+                })
+            except ValueError as exc:
+                # A dry run must remain reviewable: capture an uncloneable
+                # branch in the CSV instead of hiding all other information.
+                plan.append({
+                    "economy": template.economy, "template": template.path.name,
+                    "rows_added": 0, "branch_paths": "|".join(sorted(branch_paths)),
+                    "status": "blocked", "blocker": str(exc),
+                })
         return plan
 
     plan = _plan()  # Do this before writes so a bad sibling profile is atomic at run level.
     if apply_changes:
+        blockers = [item for item in plan if item["status"] == "blocked"]
+        if blockers:
+            summary = "; ".join(f"{item['economy']}: {item['blocker']}" for item in blockers)
+            raise ValueError(f"Placeholder apply preflight failed; no templates changed. {summary}")
         results = []
         for template in templates:
-            paths = paths_by_economy[template.economy]
-            result = insert_missing_exception_rows(template.path, paths, apply_changes=True)
-            validate_exception_placeholder_rows(template.path, paths)
-            results.append({"economy": template.economy, **result, "branch_paths": "|".join(sorted(paths))})
+            result = insert_missing_exception_rows(template.path, branch_paths, apply_changes=True)
+            validate_exception_placeholder_rows(template.path, branch_paths)
+            results.append({
+                "economy": template.economy, **result,
+                "branch_paths": "|".join(sorted(branch_paths)),
+                "status": "applied", "blocker": "",
+            })
         sync_exception_resolution_status(
             exception_workbook_path=Path(exception_workbook_path), templates_root=templates_root,
         )

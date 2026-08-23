@@ -2,8 +2,9 @@
 
 `codebase/mapping_tools/add_validation_exception_template_rows.py` formally
 turns enabled, material paths in `config/baseline_seed_validation_exception_sets.xlsx`
-into visible proposed branches only in the economy templates listed in
-`economies_that_need_it`.
+into visible proposed branches in every available economy template. LEAP areas
+are structurally consistent by design; `economies_that_need_it` records where
+the data was material, not where the structural placeholder should exist.
 
 Use the notebook-safe `apply_material_exception_placeholders` operation:
 
@@ -17,8 +18,8 @@ result = apply_material_exception_placeholders(apply_changes=True)
 
 The apply operation always repeats its dry-run preflight before editing any
 template. It then validates the written paths and refreshes the ledger's
-per-economy template coverage. It will not invent a placeholder for an economy
-that did not materially trigger the exception.
+per-economy template coverage. Every enabled exception path is proposed in
+every economy template.
 
 Each proposed leaf clones the complete `Variable + Scenario + Region` profile
 of an unambiguous direct sibling in that same template. It retains the local
