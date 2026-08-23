@@ -2189,7 +2189,19 @@ def build_proxy_log_rows(
             if not include_zero_target_fuel_branches and not (fuel_group["target_energy"].abs() > 0).any():
                 continue
             fuel_path = build_branch_path([*DEMAND_ROOT_PARTS, str(process_label), str(fuel_label)])
-            activity_by_year = fuel_group.set_index("year")["proxy_activity"].to_dict()
+            # Activity Level is only a proxy denominator for a nonzero target
+            # energy/intensity in the same exported year.  A fuel can remain in
+            # detail because it was historically active before the export
+            # window, but that must not create a nonzero LEAP Activity Level
+            # after its final target has become zero.
+            activity_values = pd.to_numeric(fuel_group["proxy_activity"], errors="coerce").fillna(0.0)
+            target_values = pd.to_numeric(fuel_group["target_energy"], errors="coerce").fillna(0.0)
+            intensity_values = pd.to_numeric(fuel_group["intensity"], errors="coerce").fillna(0.0)
+            activity_values = activity_values.where(
+                target_values.ne(0.0) | intensity_values.ne(0.0),
+                0.0,
+            )
+            activity_by_year = dict(zip(fuel_group["year"].astype(int), activity_values, strict=True))
             rows.extend(
                 build_year_rows(
                     fuel_path,

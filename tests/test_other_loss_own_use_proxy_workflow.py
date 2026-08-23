@@ -1000,6 +1000,134 @@ def test_proxy_log_rows_include_zero_target_fuel_branches_by_default() -> None:
     assert {row["Units"] for row in intensity_rows} == {"Petajoule"}
 
 
+def test_proxy_log_rows_zeroes_activity_after_target_ends_in_export_window() -> None:
+    """Pre-window history cannot retain nonzero final-seed activity."""
+    detail = pd.DataFrame(
+        [
+            {
+                "process_label": "Electricity CHP and heat plants",
+                "fuel_branch_label": "Anthracite",
+                "year": 2021,
+                "proxy_activity": 50.0,
+                "target_energy": 5.0,
+                "intensity": 0.1,
+            },
+            {
+                "process_label": "Electricity CHP and heat plants",
+                "fuel_branch_label": "Anthracite",
+                "year": 2022,
+                "proxy_activity": 100.0,
+                "target_energy": 0.0,
+                "intensity": 0.0,
+            },
+            {
+                "process_label": "Electricity CHP and heat plants",
+                "fuel_branch_label": "Anthracite",
+                "year": 2060,
+                "proxy_activity": 200.0,
+                "target_energy": 0.0,
+                "intensity": 0.0,
+            },
+        ]
+    )
+
+    rows = workflow.build_proxy_log_rows(detail, scenario="Target")
+    branch_rows = [
+        row for row in rows
+        if row["Branch_Path"].endswith("\\Electricity CHP and heat plants\\Anthracite")
+    ]
+    activity_by_year = {
+        row["Date"]: row["Value"] for row in branch_rows
+        if row["Measure"] == workflow.ACTIVITY_VARIABLE
+    }
+    intensity_by_year = {
+        row["Date"]: row["Value"] for row in branch_rows
+        if row["Measure"] == workflow.INTENSITY_VARIABLE
+    }
+
+    assert activity_by_year == {2021: 50.0, 2022: 0.0, 2060: 0.0}
+    assert intensity_by_year == {2021: 0.1, 2022: 0.0, 2060: 0.0}
+
+
+def test_proxy_log_rows_retain_activity_for_nonzero_target_and_later_projection() -> None:
+    detail = pd.DataFrame(
+        [
+            {
+                "process_label": "Electricity CHP and heat plants",
+                "fuel_branch_label": "Anthracite",
+                "year": 2022,
+                "proxy_activity": 100.0,
+                "target_energy": 0.0,
+                "intensity": 0.0,
+            },
+            {
+                "process_label": "Electricity CHP and heat plants",
+                "fuel_branch_label": "Anthracite",
+                "year": 2030,
+                "proxy_activity": 200.0,
+                "target_energy": 10.0,
+                "intensity": 0.05,
+            },
+            {
+                "process_label": "Electricity CHP and heat plants",
+                "fuel_branch_label": "Anthracite",
+                "year": 2040,
+                "proxy_activity": 300.0,
+                "target_energy": 0.0,
+                "intensity": 0.05,
+            },
+        ]
+    )
+
+    rows = workflow.build_proxy_log_rows(detail, scenario="Target")
+    activity_by_year = {
+        row["Date"]: row["Value"] for row in rows
+        if row["Branch_Path"].endswith("\\Electricity CHP and heat plants\\Anthracite")
+        and row["Measure"] == workflow.ACTIVITY_VARIABLE
+    }
+
+    assert activity_by_year == {2022: 0.0, 2030: 200.0, 2040: 300.0}
+
+
+def test_proxy_log_rows_current_accounts_keeps_only_base_year_value() -> None:
+    detail = pd.DataFrame(
+        [
+            {
+                "process_label": "Electricity CHP and heat plants",
+                "fuel_branch_label": "Anthracite",
+                "year": 2022,
+                "proxy_activity": 100.0,
+                "target_energy": 0.0,
+                "intensity": 0.0,
+            },
+            {
+                "process_label": "Electricity CHP and heat plants",
+                "fuel_branch_label": "Anthracite",
+                "year": 2030,
+                "proxy_activity": 200.0,
+                "target_energy": 10.0,
+                "intensity": 0.05,
+            },
+        ]
+    )
+
+    export_df = workflow.finalise_export_df(
+        pd.DataFrame(workflow.build_proxy_log_rows(detail, scenario="Current Accounts")),
+        scenario="Current Accounts",
+        region="Test region",
+        base_year=2022,
+        final_year=2060,
+    )
+    expression_df = workflow.build_expression_export_df(export_df, base_year=2022)
+    activity_expression = expression_df.loc[
+        expression_df["Branch Path"].str.endswith("\\Electricity CHP and heat plants\\Anthracite")
+        & expression_df["Variable"].eq(workflow.ACTIVITY_VARIABLE),
+        "Expression",
+    ].iloc[0]
+
+    assert activity_expression == "Data(2022,0.0)"
+
+
 def test_proxy_log_rows_sum_parent_activity_from_fuel_children() -> None:
     detail = pd.DataFrame(
         [
