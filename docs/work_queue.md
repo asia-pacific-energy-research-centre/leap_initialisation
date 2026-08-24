@@ -105,7 +105,19 @@ blocked conclusion for the web app and overall process.
 
 ## [54] Cross-economy 09.06 / 09.08 baseline-seed verification set
 
-**Status: queued after the fresh AUS seed evidence is accepted.**
+**Status: workbook-only verification complete 2026-08-24; isolated LEAP import
+remains blocked by export-readiness findings.**
+
+The completed `SEED_2022_FULL_TEMPLATED12_PRCTEST_20260823_213740` run wrote
+seeds for `05_PRC`, `10_MAS`, and `20_USA`.  Each contains direct Coke ovens
+and Blast furnaces branches but no `(including own use)` branch path.  Its LNG
+processes have only the expected feedstock: Natural gas for NG Liquefaction and
+LNG for LNG regasification, each at 100% in Current Accounts, Reference, and
+Target; no generic `Gas` feedstock row was written.  This closes the
+workbook-seed part of this item.  Do not call the item fully complete or import
+these workbooks yet: export readiness still reports blocking template/catalogue
+findings (PRC 185, MAS 11, USA 22) that must be resolved or explicitly
+accepted before isolated LEAP imports.
 
 Use template-backed economies with materially different parent/child patterns,
 not a broad batch:
@@ -234,7 +246,17 @@ Acceptance evidence:
 
 ## [51] Rework 09.08 synthetic own-use rollup handling in baseline-seed diagnostics (WEBQ-002)
 
-**Status: waiting for smarter-agent independent diagnosis.**
+**Status: closed as a baseline-seed correctness blocker 2026-08-24; diagnostic
+presentation follow-up remains optional.**
+
+The independent investigation is recorded in
+`docs/webq_002_synthetic_own_use_rollup_findings.md`.  It established that the
+synthetic `(including own use)` rows can affect review classification but are
+not readers or writers of baseline-seed values.  The completed 2022 all-template
+run confirms no such branch path is written to the PRC, MAS, or USA seed.  Do
+not implement a seed-writing blocker for this issue.  Reopen only as a narrow
+diagnostic-label improvement if reviewers need those rollups classified
+differently.
 
 The 09.08 parent rollup rows (for example `09.08.01 Coke ovens (including own use)` /
 `09.08.02 Blast furnaces (including own use)`) can still be treated as active
@@ -269,7 +291,15 @@ References for investigation:
 
 ## [50] Add scenario-aware transfer projection fallback for baseline seeds
 
-**Status: design review complete 2026-08-20; policy decided; ready to implement.**
+**Status: complete and workbook-verified 2026-08-24.**
+
+Implemented in `5c304fd` (`codex: apply scenario-aware transfer fallback`) with
+focused regression coverage.  The completed
+`SEED_2022_FULL_TEMPLATED12_PRCTEST_20260823_213740` run confirms the intended
+PRC output shape: Current Accounts remains base-year only, while Reference and
+Target retain the configured transfer process setup through 2060, including the
+one-sided-transfer 1 PJ balancing capacity.  The remaining export-readiness
+findings are template/catalogue issues, not a reason to reopen this fallback.
 
 Decision record: [`docs/decision_transfer_projection_fallback_20260820.md`](decision_transfer_projection_fallback_20260820.md).
 Method recorded in [`docs/initialisation_flow_estimation_methods.md`](initialisation_flow_estimation_methods.md#projection-availability-and-the-base-year-carry-forward).
