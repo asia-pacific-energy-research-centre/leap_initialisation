@@ -819,7 +819,7 @@ ECONOMIES_RUN_ORDER = [
     # Economies whose templates have not yet been exported are intentionally
     # excluded from the default run and can be added after template delivery.
     "21_VN", "20_USA", "19_THA", "05_PRC", "13_PNG", "15_PHL",
-    "12_NZ", "11_MEX", "10_MAS", "02_BD", "01_AUS", "16_RUS",
+    "12_NZ", "11_MEX", "10_MAS", "02_BD", "01_AUS",
 ]
 ECONOMIES = ECONOMIES_RUN_ORDER
 # [, "20_USA"
