@@ -1196,35 +1196,29 @@ def run_dashboard_from_export(
             if trace_only
             else render_common_esto_dashboard_variants
         )
-        result = renderer(
-            economy=economy_code,
-            comparison_data_path=Path(chain_result["comparison_data_path"]),
-            common_rows_path=Path(chain_result["common_rows_path"]),
-            template_path=template_path,
-            series_config_path=series_config_path,
-            code_colors_path=context.config_asset("dashboard_code_colors"),
-            power_interim_audit_path=Path(
-                chain_result["power_interim_audit_path"]
-            ),
-            source_to_common_map_path=context.require_data_asset(
-                "mapping_chain_source_to_common_map"
-            ),
-            esto_to_common_map_path=context.require_data_asset(
-                "mapping_chain_esto_to_common_map"
-            ),
-            mapping_diagnostics_source_page_path=(
-                None if trace_only else _shared_mapping_diagnostics_page(context)
-            ),
-            output_root=run_dir,
-            comparison_scope=comparison_scope,
-            wide_file_scope=wide_file_scope,
-            min_year=min_year,
-            max_year=max_year,
-            include_ninth_pre_base_year_data=include_ninth_pre_base_year_data,
-            representation_status_df=representation_status_df,
-            dashboard_updated_label=_dashboard_updated_label(),
-            clear_existing=True,
-        )
+        renderer_kwargs = {
+            "economy": economy_code,
+            "comparison_data_path": Path(chain_result["comparison_data_path"]),
+            "common_rows_path": Path(chain_result["common_rows_path"]),
+            "template_path": template_path,
+            "series_config_path": series_config_path,
+            "code_colors_path": context.config_asset("dashboard_code_colors"),
+            "power_interim_audit_path": Path(chain_result["power_interim_audit_path"]),
+            "source_to_common_map_path": context.require_data_asset("mapping_chain_source_to_common_map"),
+            "esto_to_common_map_path": context.require_data_asset("mapping_chain_esto_to_common_map"),
+            "output_root": run_dir,
+            "comparison_scope": comparison_scope,
+            "wide_file_scope": wide_file_scope,
+            "min_year": min_year,
+            "max_year": max_year,
+            "include_ninth_pre_base_year_data": include_ninth_pre_base_year_data,
+            "representation_status_df": representation_status_df,
+            "dashboard_updated_label": _dashboard_updated_label(),
+            "clear_existing": True,
+        }
+        if not trace_only:
+            renderer_kwargs["mapping_diagnostics_source_page_path"] = _shared_mapping_diagnostics_page(context)
+        result = renderer(**renderer_kwargs)
         return {
             "_input_records": describe_directory_files(
                 resolved_export_dir, role_prefix="input:balance_export", patterns=("*.xlsx",)
