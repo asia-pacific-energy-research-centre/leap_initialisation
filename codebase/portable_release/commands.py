@@ -1067,6 +1067,7 @@ def run_dashboard_from_export(
     include_ninth_pre_base_year_data: bool = False,
     run_label: str | None = None,
     cancellation_check: Callable[[], bool] | None = None,
+    trace_only: bool = False,
 ) -> CommandResult:
     """Go from a LEAP balance export to a rendered dashboard in one run.
 
@@ -1138,7 +1139,10 @@ def run_dashboard_from_export(
     )
 
     def work(run_dir: Path) -> dict[str, Any]:
-        from common_esto_dashboard_portable import render_common_esto_dashboard_variants
+        from common_esto_dashboard_portable import (
+            render_common_esto_comparison_traces,
+            render_common_esto_dashboard_variants,
+        )
 
         economy_code = validation.normalize_economy(economy)
         chain_job = {
@@ -1187,7 +1191,12 @@ def run_dashboard_from_export(
             max_year=max_year,
         )
         progress.begin_step("render")
-        result = render_common_esto_dashboard_variants(
+        renderer = (
+            render_common_esto_comparison_traces
+            if trace_only
+            else render_common_esto_dashboard_variants
+        )
+        result = renderer(
             economy=economy_code,
             comparison_data_path=Path(chain_result["comparison_data_path"]),
             common_rows_path=Path(chain_result["common_rows_path"]),
@@ -1203,7 +1212,9 @@ def run_dashboard_from_export(
             esto_to_common_map_path=context.require_data_asset(
                 "mapping_chain_esto_to_common_map"
             ),
-            mapping_diagnostics_source_page_path=_shared_mapping_diagnostics_page(context),
+            mapping_diagnostics_source_page_path=(
+                None if trace_only else _shared_mapping_diagnostics_page(context)
+            ),
             output_root=run_dir,
             comparison_scope=comparison_scope,
             wide_file_scope=wide_file_scope,
@@ -1228,6 +1239,8 @@ def run_dashboard_from_export(
         }
 
     def describe_outputs(outputs: dict[str, Any]) -> list:
+        if trace_only:
+            return []
         return [
             describe_file(outputs["dashboard_index"], role="output:dashboard_index"),
             describe_file(outputs["chart_manifest"], role="output:chart_manifest"),
@@ -1260,6 +1273,7 @@ def run_dashboard_from_export(
             "max_year": max_year,
             "include_ninth_pre_base_year_data": include_ninth_pre_base_year_data,
             "input_mode": "leap_balance_export",
+            "trace_only": trace_only,
         },
         work=work,
         output_describer=describe_outputs,

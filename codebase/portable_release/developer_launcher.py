@@ -368,6 +368,7 @@ def run_dashboard_from_export(
     max_year: int | None = 2060,
     run_label: str | None = None,
     cancellation_check: object = None,
+    trace_only: bool = False,
     context: RuntimeContext | None = None,
 ) -> CommandResult:
     """Go from a LEAP balance export to a rendered dashboard in one run.
@@ -392,6 +393,7 @@ def run_dashboard_from_export(
             max_year=max_year,
             run_label=run_label,
             cancellation_check=cancellation_check,
+            trace_only=trace_only,
         )
         print("\n".join(result.summary_lines()))
     return result
