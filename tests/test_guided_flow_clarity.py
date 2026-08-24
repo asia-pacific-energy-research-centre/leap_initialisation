@@ -182,6 +182,24 @@ def test_a_one_click_entry_point_is_written(tmp_path: Path) -> None:
     assert result["open_this"] == str(shortcut)
 
 
+def test_trace_only_bundle_root_has_no_broken_dashboard_shortcut(tmp_path: Path) -> None:
+    run_dir = tmp_path / "dashboard"
+    rendered = run_dir / "20USA"
+    (rendered / "chart_bundles").mkdir(parents=True)
+    (rendered / "chart_bundles" / "supply.json").write_text("{}", encoding="utf-8")
+
+    result = commands._flatten_dashboard_output(
+        run_dir,
+        {
+            "output_root": str(rendered),
+            "comparison_trace_root": str(rendered),
+        },
+    )
+
+    assert not (run_dir / commands._DASHBOARD_SHORTCUT_NAME).exists()
+    assert "open_this" not in result
+
+
 def test_the_pages_themselves_are_not_moved_or_rewritten(tmp_path: Path) -> None:
     """They link to siblings by bare name and to ../chart_bundles/.
 

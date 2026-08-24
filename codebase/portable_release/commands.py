@@ -841,9 +841,11 @@ def _flatten_dashboard_output(run_dir: Path, result: dict[str, Any]) -> dict[str
             moved[key] = str(run_dir / Path(str(value)).relative_to(rendered_root))
     moved["output_root"] = str(run_dir)
 
-    shortcut = run_dir / _DASHBOARD_SHORTCUT_NAME
-    shortcut.write_text(_DASHBOARD_SHORTCUT, encoding="utf-8")
-    moved["open_this"] = str(shortcut)
+    dashboard_index = run_dir / "dashboards" / "index.html"
+    if dashboard_index.is_file():
+        shortcut = run_dir / _DASHBOARD_SHORTCUT_NAME
+        shortcut.write_text(_DASHBOARD_SHORTCUT, encoding="utf-8")
+        moved["open_this"] = str(shortcut)
     return moved
 
 
