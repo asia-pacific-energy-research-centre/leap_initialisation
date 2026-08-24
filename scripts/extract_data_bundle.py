@@ -29,6 +29,7 @@ REQUIRED_SOURCE_PATHS = {
     "data/9th merged_file_energy_00_APEC_20251106.csv",
 }
 REQUIRED_CONFIG_PATHS = {"config/baseline_seed_validation_exception_sets.xlsx"}
+ALLOWED_BUNDLE_ROOTS = {"config", "data"}
 
 
 def _require_sibling_repository(repo_root: Path) -> Path:
@@ -76,8 +77,8 @@ def _validate_member_name(name: str) -> None:
     path = PurePosixPath(name)
     if path.is_absolute() or ".." in path.parts or not path.parts:
         raise ValueError(f"Unsafe ZIP member path: {name!r}")
-    if name != MANIFEST_NAME and name not in REQUIRED_CONFIG_PATHS and path.parts[0] != "data":
-        raise ValueError(f"Unexpected path outside data/: {name!r}")
+    if name != MANIFEST_NAME and path.parts[0] not in ALLOWED_BUNDLE_ROOTS:
+        raise ValueError(f"Unexpected path outside approved bundle roots: {name!r}")
 
 
 def _load_and_validate_manifest(archive: zipfile.ZipFile) -> tuple[dict[str, object], list[str]]:

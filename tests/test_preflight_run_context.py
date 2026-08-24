@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from codebase.supply_reconciliation import preflight
+from codebase.supply_reconciliation import config
 import codebase.supply_reconciliation_workflow as workflow
 
 
@@ -84,3 +85,14 @@ def test_projection_preflight_forwards_its_explicit_context_to_results_saver(
     assert context.capacity_unmet_state_path == (
         preflight_root / "runtime" / "capacity_unmet_iterative_state.json"
     )
+
+
+def test_long_run_labels_are_compacted_for_windows_output_paths() -> None:
+    context = config.resolve_reconciliation_run_context(
+        "baseline_seed",
+        "BASELINE_2024VINTAGE_20260824_FULL_01_AUS",
+    )
+
+    assert context.run_output_label is not None
+    assert len(context.run_output_label) <= 12
+    assert context.run_output_label.startswith("run_")

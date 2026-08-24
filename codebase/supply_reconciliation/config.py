@@ -22,6 +22,7 @@ edit this file only to change the fallback used outside that workflow.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -442,6 +443,15 @@ def resolve_reconciliation_run_context(
     safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "_", label).strip("_.") if label else None
     if label and not safe_label:
         raise ValueError("RUN_OUTPUT_LABEL must include at least one letter or number.")
+
+    # The deepest baseline-seed diagnostic filenames are long. On Windows,
+    # even a valid run label can push those final paths beyond MAX_PATH before
+    # the writer reaches its atomic temporary-file handling. Keep the path
+    # component compact while retaining deterministic identity for the full
+    # requested label.
+    if safe_label and len(safe_label) > 12:
+        digest = hashlib.sha256(safe_label.encode("utf-8")).hexdigest()[:6]
+        safe_label = f"run_{digest}"
 
     if safe_label:
         output_dir = (
