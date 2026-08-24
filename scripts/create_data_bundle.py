@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
 import subprocess
+import sys
 import tempfile
 import zipfile
 from datetime import datetime, timezone
@@ -18,6 +20,7 @@ from codebase.utilities.leap_export_template_resolver import is_excluded_templat
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_NAME = "leap_initialisation"
+SIBLING_REPOSITORY_NAME = "leap_mappings"
 MANIFEST_NAME = "bundle_manifest.json"
 SCHEMA_VERSION = 1
 
@@ -31,6 +34,32 @@ SOURCE_TABLE_PATHS = (
 TEMPLATE_DIRECTORY = Path("data/leap_export_templates")
 BALANCE_EXPORT_DIRECTORY = Path("data/leap balances exports")
 ACTIVE_EXPORT_SUFFIXES = {".csv", ".xlsm", ".xlsx"}
+
+
+def _require_sibling_repository(repo_root: Path) -> Path:
+    """Return the sibling mappings checkout required for paired bundle refreshes."""
+    sibling_root = Path(repo_root).resolve().parent / SIBLING_REPOSITORY_NAME
+    if not (sibling_root / ".git").exists():
+        raise FileNotFoundError(
+            "Coordinated data-bundle refresh requires the sibling "
+            f"{SIBLING_REPOSITORY_NAME!r} repository at {sibling_root}. "
+            "Clone it beside leap_initialisation before creating bundles."
+        )
+    return sibling_root
+
+
+def _load_sibling_bundle_module(sibling_root: Path):
+    module_path = sibling_root / "scripts" / "create_data_bundle.py"
+    if not module_path.is_file():
+        raise FileNotFoundError(f"Sibling bundle creator not found: {module_path}")
+    if str(sibling_root) not in sys.path:
+        sys.path.insert(0, str(sibling_root))
+    spec = importlib.util.spec_from_file_location("leap_mappings_create_data_bundle", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load sibling bundle creator: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _git_commit(repo_root: Path) -> str:
@@ -175,6 +204,40 @@ def create_data_bundle(
     return bundle_path
 
 
+def create_coordinated_data_bundles(
+    repo_root: Path = REPO_ROOT,
+    *,
+    bundle_path: Path | None = None,
+    sibling_bundle_path: Path | None = None,
+    replace_existing: bool = False,
+) -> dict[str, Path]:
+    """Create both sibling repositories' bundles as one visible refresh operation."""
+    repo_root = Path(repo_root).resolve()
+    sibling_root = _require_sibling_repository(repo_root)
+    print(
+        "[INFO] Coordinated bundle refresh: creating leap_initialisation and "
+        "leap_mappings bundles together."
+    )
+    sibling_module = _load_sibling_bundle_module(sibling_root)
+    # Check both source inventories before publishing either bundle.
+    collect_bundle_files(repo_root)
+    sibling_module.collect_bundle_files(sibling_root)
+    paths = {
+        REPOSITORY_NAME: create_data_bundle(
+            repo_root=repo_root,
+            bundle_path=bundle_path,
+            replace_existing=replace_existing,
+        ),
+        SIBLING_REPOSITORY_NAME: sibling_module.create_data_bundle(
+            repo_root=sibling_root,
+            bundle_path=sibling_bundle_path,
+            replace_existing=replace_existing,
+        ),
+    }
+    print(f"[INFO] Coordinated bundle refresh complete: {paths}")
+    return paths
+
+
 #%%
 # --- Frequently changed run settings ---
 
@@ -183,7 +246,7 @@ BUNDLE_PATH: Path | None = None
 REPLACE_EXISTING_BUNDLE = False
 
 if __name__ == "__main__" and CREATE_BUNDLE:
-    create_data_bundle(
+    create_coordinated_data_bundles(
         repo_root=REPO_ROOT,
         bundle_path=BUNDLE_PATH,
         replace_existing=REPLACE_EXISTING_BUNDLE,

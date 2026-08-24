@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import filecmp
+import importlib.util
 import json
 import os
 import shutil
+import sys
 import tempfile
 import uuid
 import zipfile
@@ -17,6 +19,7 @@ from pathlib import Path, PurePosixPath
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_NAME = "leap_initialisation"
+SIBLING_REPOSITORY_NAME = "leap_mappings"
 MANIFEST_NAME = "bundle_manifest.json"
 SCHEMA_VERSION = 1
 REQUIRED_SOURCE_PATHS = {
@@ -25,6 +28,33 @@ REQUIRED_SOURCE_PATHS = {
     "data/merged_file_energy_ALL_20251106.csv",
     "data/9th merged_file_energy_00_APEC_20251106.csv",
 }
+
+
+def _require_sibling_repository(repo_root: Path) -> Path:
+    """Return the sibling mappings checkout required for paired installs."""
+    sibling_root = Path(repo_root).resolve().parent / SIBLING_REPOSITORY_NAME
+    if not (sibling_root / ".git").exists():
+        raise FileNotFoundError(
+            "Coordinated data-bundle install requires the sibling "
+            f"{SIBLING_REPOSITORY_NAME!r} repository at {sibling_root}. "
+            "Clone it beside leap_initialisation and put its data bundle in "
+            "leap_mappings/data_bundles before installing."
+        )
+    return sibling_root
+
+
+def _load_sibling_bundle_module(sibling_root: Path):
+    module_path = sibling_root / "scripts" / "extract_data_bundle.py"
+    if not module_path.is_file():
+        raise FileNotFoundError(f"Sibling bundle extractor not found: {module_path}")
+    if str(sibling_root) not in sys.path:
+        sys.path.insert(0, str(sibling_root))
+    spec = importlib.util.spec_from_file_location("leap_mappings_extract_data_bundle", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load sibling bundle extractor: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def find_latest_bundle(repo_root: Path = REPO_ROOT) -> Path:
@@ -212,6 +242,38 @@ def extract_data_bundle(
     return installed
 
 
+def extract_coordinated_data_bundles(
+    bundle_path: Path,
+    repo_root: Path = REPO_ROOT,
+    *,
+    sibling_bundle_path: Path | None = None,
+    allow_overwrite: bool = False,
+) -> dict[str, list[Path]]:
+    """Install both sibling bundles so code and mapping inputs stay aligned."""
+    repo_root = Path(repo_root).resolve()
+    sibling_root = _require_sibling_repository(repo_root)
+    sibling_module = _load_sibling_bundle_module(sibling_root)
+    selected_sibling_bundle = sibling_bundle_path or sibling_module.find_latest_bundle(sibling_root)
+    print(
+        "[INFO] Coordinated bundle install: installing leap_initialisation and "
+        "leap_mappings bundles together."
+    )
+    installed = {
+        REPOSITORY_NAME: extract_data_bundle(
+            bundle_path=bundle_path,
+            repo_root=repo_root,
+            allow_overwrite=allow_overwrite,
+        ),
+        SIBLING_REPOSITORY_NAME: sibling_module.extract_data_bundle(
+            bundle_path=selected_sibling_bundle,
+            repo_root=sibling_root,
+            allow_overwrite=allow_overwrite,
+        ),
+    }
+    print("[INFO] Coordinated bundle install complete.")
+    return installed
+
+
 #%%
 # --- Frequently changed run settings ---
 
@@ -221,7 +283,7 @@ ALLOW_OVERWRITE = False
 
 if __name__ == "__main__" and EXTRACT_BUNDLE:
     selected_bundle = BUNDLE_PATH or find_latest_bundle(REPO_ROOT)
-    extract_data_bundle(
+    extract_coordinated_data_bundles(
         bundle_path=selected_bundle,
         repo_root=REPO_ROOT,
         allow_overwrite=ALLOW_OVERWRITE,

@@ -6,8 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from scripts.create_data_bundle import SOURCE_TABLE_PATHS, create_data_bundle
-from scripts.extract_data_bundle import MANIFEST_NAME, extract_data_bundle
+from scripts.create_data_bundle import (
+    SOURCE_TABLE_PATHS,
+    create_coordinated_data_bundles,
+    create_data_bundle,
+)
+from scripts.extract_data_bundle import (
+    MANIFEST_NAME,
+    extract_coordinated_data_bundles,
+    extract_data_bundle,
+)
 
 
 def _write(path: Path, content: bytes = b"test data\n") -> None:
@@ -25,6 +33,19 @@ def _make_source_repo(root: Path) -> None:
     _write(root / "data/leap balances exports/01_AUS/current.xlsx")
     _write(root / "data/leap balances exports/archive/01_AUS/old.xlsx")
     _write(root / "data/leap balances exports/README.md")
+
+
+def test_coordinated_bundle_actions_require_sibling_mappings_checkout(tmp_path: Path) -> None:
+    initialisation_root = tmp_path / "leap_initialisation"
+    _make_source_repo(initialisation_root)
+
+    with pytest.raises(FileNotFoundError, match="leap_mappings"):
+        create_coordinated_data_bundles(repo_root=initialisation_root)
+    with pytest.raises(FileNotFoundError, match="leap_mappings"):
+        extract_coordinated_data_bundles(
+            bundle_path=tmp_path / "not-needed.zip",
+            repo_root=initialisation_root,
+        )
 
 
 def test_bundle_round_trip_excludes_archives_and_has_no_hash_sidecar(tmp_path: Path) -> None:
