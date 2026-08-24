@@ -23,6 +23,23 @@ TABULAR_ARTIFACT_FORMAT = "leap_manifested_tabular_artifact"
 TABULAR_ARTIFACT_VERSION = 1
 
 
+def ensure_output_parent(path: Path | str) -> Path:
+    """Return a normalized output path after guaranteeing its parent directory.
+
+    Writers call this at their actual write boundary, rather than relying on a
+    directory created earlier in a long-running workflow.  That matters when a
+    run context is refreshed or another process has recreated the output tree.
+    """
+    output_path = Path(str(path).replace("\\", "/"))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if not output_path.parent.is_dir():
+        raise NotADirectoryError(
+            f"Output parent is not a directory: {output_path.parent} "
+            f"(target: {output_path})"
+        )
+    return output_path
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -38,8 +55,7 @@ def write_parquet_atomic(
     index: bool = False,
 ) -> dict:
     """Write one authoritative Parquet file atomically and return manifest fields."""
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path = ensure_output_parent(output_path)
     # Keep the temporary name deliberately short.  Repeating a long artifact
     # name here can make an otherwise valid final path exceed Windows MAX_PATH.
     temporary_path = output_path.parent / f".{uuid.uuid4().hex}.tmp"
@@ -50,6 +66,12 @@ def write_parquet_atomic(
                 index=index,
                 compression=PARQUET_COMPRESSION,
             )
+        if not temporary_path.is_file():
+            raise FileNotFoundError(
+                f"Atomic Parquet temporary file was not created: {temporary_path} "
+                f"(final target: {output_path})"
+            )
+        ensure_output_parent(output_path)
         os.replace(temporary_path, output_path)
     except Exception:
         temporary_path.unlink(missing_ok=True)
@@ -70,12 +92,17 @@ def write_parquet_atomic(
 
 def write_json_atomic(payload: dict, output_path: Path) -> None:
     """Write JSON atomically in the same directory as its final path."""
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path = ensure_output_parent(output_path)
     temporary_path = output_path.parent / f".{uuid.uuid4().hex}.tmp"
     try:
         with temporary_path.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, ensure_ascii=False)
+        if not temporary_path.is_file():
+            raise FileNotFoundError(
+                f"Atomic JSON temporary file was not created: {temporary_path} "
+                f"(final target: {output_path})"
+            )
+        ensure_output_parent(output_path)
         os.replace(temporary_path, output_path)
     except Exception:
         temporary_path.unlink(missing_ok=True)

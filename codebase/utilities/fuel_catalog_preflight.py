@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import json
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
@@ -14,6 +15,7 @@ from codebase.functions.analysis_input_write_dispatcher import (
 )
 from codebase.utilities.leap_export_template_resolver import is_excluded_template_file
 from codebase.utilities.output_paths import INTEGRATED_LEAP_EXPORTS_ROOT
+from codebase.utilities.typed_storage import ensure_output_parent, write_json_atomic
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_FUEL_CATALOG_PATH = (
@@ -53,6 +55,15 @@ DEFAULT_FUEL_REGISTRY_PATH = (
 
 _STALE_DECISIONS: dict[tuple[str, int], bool] = {}
 _PREFLIGHT_RUN_CACHE: set[tuple[str, str, str]] = set()
+
+_CACHE_REQUIRED_COLUMNS = {
+    "catalog_type",
+    "scenario",
+    "module_or_root",
+    "fuel_name",
+    "branch_path",
+    "variable",
+}
 
 
 def _resolve(path: Path | str) -> Path:
@@ -111,6 +122,38 @@ def _add_catalog_source_metadata(rows: list[dict[str, object]], source_path: Pat
         return frame
     frame["source_template"] = source_path.name
     frame["source_path"] = str(source_path.resolve())
+    return frame
+
+
+def _write_csv_atomic(frame: pd.DataFrame, output_path: Path | str) -> Path:
+    """Write CSV in its final directory so readers never observe a partial file."""
+    final_path = ensure_output_parent(output_path)
+    temporary_path = final_path.parent / f".{uuid.uuid4().hex}.tmp"
+    try:
+        frame.to_csv(temporary_path, index=False)
+        if not temporary_path.is_file() or temporary_path.stat().st_size == 0:
+            raise OSError(
+                f"Catalog temporary CSV was not written: {temporary_path} "
+                f"(final target: {final_path})"
+            )
+        ensure_output_parent(final_path)
+        os.replace(temporary_path, final_path)
+    except Exception:
+        temporary_path.unlink(missing_ok=True)
+        raise
+    return final_path
+
+
+def _read_cached_catalog_source(cache_path: Path) -> pd.DataFrame | None:
+    """Return a usable cache frame, treating empty or truncated files as invalid."""
+    try:
+        if not cache_path.is_file() or cache_path.stat().st_size == 0:
+            return None
+        frame = pd.read_csv(cache_path)
+    except (OSError, pd.errors.EmptyDataError, UnicodeDecodeError):
+        return None
+    if not _CACHE_REQUIRED_COLUMNS.issubset(frame.columns):
+        return None
     return frame
 
 
@@ -207,22 +250,23 @@ def build_incremental_template_catalog(
             cache_name = f"{source_path.stem}.csv"
             cache_path = cache_dir / cache_name
             previous = previous_manifest.get(source_key, {})
+            cached_frame = _read_cached_catalog_source(cache_path)
             unchanged = (
                 isinstance(previous, dict)
                 and previous.get("size") == signature["size"]
                 and previous.get("modified_ns") == signature["modified_ns"]
-                and cache_path.exists()
+                and cached_frame is not None
             )
 
             if unchanged:
-                frame = pd.read_csv(cache_path)
+                frame = cached_frame
             else:
                 rows = _catalog_rows_from_full_model_export(
                     source_path=source_path,
                     sheet_name=full_model_sheet,
                 )
                 frame = _add_catalog_source_metadata(rows, source_path)
-                frame.to_csv(cache_path, index=False)
+                _write_csv_atomic(frame, cache_path)
         except FileNotFoundError:
             # Operators may replace/rename a freshly exported economy template
             # while another isolated economy run is assembling the shared
@@ -263,12 +307,9 @@ def build_incremental_template_catalog(
         catalog_df = catalog_df.merge(source_templates, on=dedupe_columns, how="left")
 
     registry_df = _build_fuel_registry(catalog_df)
-    catalog_file.parent.mkdir(parents=True, exist_ok=True)
-    catalog_df.to_csv(catalog_file, index=False)
-    registry_file.parent.mkdir(parents=True, exist_ok=True)
-    registry_df.to_csv(registry_file, index=False)
-    manifest_file.parent.mkdir(parents=True, exist_ok=True)
-    manifest_file.write_text(json.dumps(current_manifest, indent=2), encoding="utf-8")
+    _write_csv_atomic(catalog_df, catalog_file)
+    _write_csv_atomic(registry_df, registry_file)
+    write_json_atomic(current_manifest, manifest_file)
     return catalog_df, registry_df
 
 
@@ -757,11 +798,12 @@ def _template_sources_changed(
             return True
         signature = _source_file_signature(path)
         cache_path = record.get("cache_path")
+        cached_frame = _read_cached_catalog_source(_resolve(str(cache_path))) if cache_path else None
         if (
             record.get("size") != signature["size"]
             or record.get("modified_ns") != signature["modified_ns"]
             or not cache_path
-            or not _resolve(str(cache_path)).exists()
+            or cached_frame is None
         ):
             return True
     return not cache_dir.exists()

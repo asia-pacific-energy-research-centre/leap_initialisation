@@ -87,7 +87,7 @@ from codebase.analysis.missing_branch_esto_vintage_impact import (
     CREATION_INSTRUCTION_COLUMNS,
     build_creation_instructions_for_run,
 )
-from codebase.utilities.typed_storage import write_manifested_parquet
+from codebase.utilities.typed_storage import ensure_output_parent, write_manifested_parquet
 from codebase import (
     electricity_heat_interim_workflow,
     other_loss_own_use_proxy_workflow,
@@ -1091,8 +1091,11 @@ def save_combined_supply_transformation_export(
     diagnostics_dir = output_path / "supporting_files" / "baseline_seed_validation"
     diagnostic_stem = combined_path.stem
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
+    exclusions_path = ensure_output_parent(
+        diagnostics_dir / f"{diagnostic_stem}_documented_exclusions.csv"
+    )
     excluded_rows.to_csv(
-        diagnostics_dir / f"{diagnostic_stem}_documented_exclusions.csv",
+        exclusions_path,
         index=False,
     )
 
@@ -2228,8 +2231,11 @@ def write_per_economy_combined_workbooks(
         diagnostics_dir = out_dir / "supporting_files" / "baseline_seed_validation"
         diagnostics_dir.mkdir(parents=True, exist_ok=True)
         diagnostic_stem = f"baseline_seed_{econ_token}_{run_stamp}"
+        exclusions_path = ensure_output_parent(
+            diagnostics_dir / f"{diagnostic_stem}_documented_exclusions.csv"
+        )
         excluded_rows.to_csv(
-            diagnostics_dir / f"{diagnostic_stem}_documented_exclusions.csv",
+            exclusions_path,
             index=False,
         )
 
@@ -2250,7 +2256,7 @@ def write_per_economy_combined_workbooks(
             postprocess_audit_path = (
                 diagnostics_dir / f"{diagnostic_stem}_postprocess_overrides.csv"
             )
-            postprocess_audit.to_csv(postprocess_audit_path, index=False)
+            postprocess_audit.to_csv(ensure_output_parent(postprocess_audit_path), index=False)
             print(
                 f"[INFO] Baseline-seed post-processing applied "
                 f"{len(postprocess_audit)} override(s) for {econ_token}; "
@@ -2522,7 +2528,7 @@ def write_per_economy_combined_workbooks(
             artifact_type="baseline_seed_consolidated_rule_findings_detail",
         )
         build_consolidated_findings_review(consolidated).to_csv(
-            consolidated_path,
+            ensure_output_parent(consolidated_path),
             index=False,
         )
         # Keep a narrow, modeller-facing repair list beside the consolidated
@@ -2533,7 +2539,7 @@ def write_per_economy_combined_workbooks(
             creation_instructions = build_creation_instructions_for_run(
                 consolidated,
                 seed_rows_by_economy=artifact_expected_rows,
-                output_path=creation_instructions_path,
+                output_path=ensure_output_parent(creation_instructions_path),
             )
             print(
                 f"[INFO] Missing-branch creation instructions: {len(creation_instructions)} "
@@ -2545,7 +2551,7 @@ def write_per_economy_combined_workbooks(
             # are unavailable, while surfacing the failure loudly.
             print(f"[WARN] Could not build missing-branch creation instructions: {exc!r}")
             pd.DataFrame(columns=CREATION_INSTRUCTION_COLUMNS).to_csv(
-                creation_instructions_path, index=False
+                ensure_output_parent(creation_instructions_path), index=False
             )
         proxy_warnings = consolidated[
             consolidated.get("rule_id", pd.Series(dtype=object)).eq("SEED-014")
@@ -2559,13 +2565,15 @@ def write_per_economy_combined_workbooks(
                 f"Diagnostics: {consolidated_path}"
             )
         consolidated_issue_groups_path = diagnostics_dir / f"baseline_seed_{run_stamp}_consolidated_issue_groups.csv"
-        build_validation_issue_groups(consolidated).to_csv(consolidated_issue_groups_path, index=False)
+        build_validation_issue_groups(consolidated).to_csv(
+            ensure_output_parent(consolidated_issue_groups_path), index=False
+        )
         consolidated_branch_summary_path = (
             diagnostics_dir
             / f"baseline_seed_{run_stamp}_consolidated_branch_issue_summary.csv"
         )
         build_branch_issue_summary(consolidated).to_csv(
-            consolidated_branch_summary_path,
+            ensure_output_parent(consolidated_branch_summary_path),
             index=False,
         )
         blocking = consolidated[

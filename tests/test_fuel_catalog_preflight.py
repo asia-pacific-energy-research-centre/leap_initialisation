@@ -140,6 +140,39 @@ def test_empty_catalog_file_is_treated_as_unavailable(tmp_path):
     assert result.empty
 
 
+def test_incremental_catalog_rebuilds_empty_source_cache(tmp_path, monkeypatch):
+    """A manifest match must not reuse a two-byte or empty source cache file."""
+    source_directory = tmp_path / "templates"
+    source_directory.mkdir()
+    source = source_directory / "USA clean slate.xlsx"
+    source.write_bytes(b"usa")
+    calls: list[str] = []
+
+    def fake_rows(*, source_path, sheet_name):
+        calls.append(source_path.name)
+        return _rows_for_source(source_path)
+
+    monkeypatch.setattr(preflight, "_catalog_rows_from_full_model_export", fake_rows)
+    kwargs = {
+        "template_directory": source_directory,
+        "full_model_export_path": tmp_path / "does-not-exist.xlsx",
+        "cache_directory": tmp_path / "cache",
+        "manifest_path": tmp_path / "manifest.json",
+        "catalog_path": tmp_path / "catalog.csv",
+        "registry_path": tmp_path / "fuel_registry.csv",
+    }
+    preflight.build_incremental_template_catalog(**kwargs)
+    cache_path = tmp_path / "cache" / "USA clean slate.csv"
+    cache_path.write_bytes(b"")
+
+    rebuilt, _ = preflight.build_incremental_template_catalog(**kwargs)
+
+    assert calls == [source.name, source.name]
+    assert not rebuilt.empty
+    assert cache_path.stat().st_size > 0
+    assert set(pd.read_csv(cache_path).columns) >= preflight._CACHE_REQUIRED_COLUMNS
+
+
 def test_incremental_catalog_skips_template_renamed_after_directory_scan(
     tmp_path,
     monkeypatch,

@@ -10,12 +10,20 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 from codebase.utilities.typed_storage import (
+    ensure_output_parent,
     read_manifested_parquet_file,
     read_typed_cache_bundle,
     write_json_atomic,
     write_manifested_parquet,
     write_typed_cache_bundle_atomic,
 )
+
+
+def test_ensure_output_parent_creates_a_missing_nested_directory(tmp_path):
+    output_path = tmp_path / "workbooks" / "supporting_files" / "baseline_seed_validation" / "result.csv"
+
+    assert ensure_output_parent(output_path) == output_path
+    assert output_path.parent.is_dir()
 
 
 def test_typed_cache_bundle_preserves_nested_values_columns_and_dtypes(tmp_path):
@@ -85,3 +93,18 @@ def test_atomic_storage_uses_short_temporary_paths_for_deep_artifacts(tmp_path):
     pd.testing.assert_frame_equal(read_manifested_parquet_file(parquet_path), frame)
     assert json.loads((deep_path / "long_diagnostic_manifest.json").read_text()) == {"status": "ok"}
     assert not list(deep_path.glob("*.tmp"))
+
+
+def test_atomic_parquet_failure_cleans_up_its_temporary_file(tmp_path, monkeypatch):
+    output_path = tmp_path / "nested" / "detail.parquet"
+    frame = pd.DataFrame({"value": [1.0]})
+
+    def fail_to_parquet(*args, **kwargs):
+        raise RuntimeError("simulated write failure")
+
+    monkeypatch.setattr(pd.DataFrame, "to_parquet", fail_to_parquet)
+    with pytest.raises(RuntimeError, match="simulated write failure"):
+        write_manifested_parquet(frame, output_path, artifact_type="test_failure")
+
+    assert output_path.parent.is_dir()
+    assert not list(output_path.parent.glob("*.tmp"))

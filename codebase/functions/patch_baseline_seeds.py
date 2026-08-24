@@ -74,6 +74,7 @@ from codebase.functions.baseline_seed_validation import (
     row_has_only_zero_payload,
     load_template_rows,
 )
+from codebase.utilities.typed_storage import ensure_output_parent
 from codebase.functions.leap_excel_io import (
     add_leap_preamble,
     find_leap_header_row,
@@ -1175,7 +1176,9 @@ def _patch_one(
     diagnostic_stem = f"{seed_path.stem}_patch_{source_workflow}"
     diagnostics_dir.mkdir(parents=True, exist_ok=True)
     excluded_rows.to_csv(
-        diagnostics_dir / f"{diagnostic_stem}_documented_exclusions.csv",
+        ensure_output_parent(
+            diagnostics_dir / f"{diagnostic_stem}_documented_exclusions.csv"
+        ),
         index=False,
     )
 

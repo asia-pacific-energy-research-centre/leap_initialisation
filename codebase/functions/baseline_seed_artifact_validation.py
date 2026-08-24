@@ -33,7 +33,7 @@ from codebase.functions.baseline_seed_structure_migration import (
 )
 from codebase.functions.leap_excel_io import LeapSheet, read_leap_sheet
 from codebase.functions.leap_expressions import parse_expression
-from codebase.utilities.typed_storage import write_manifested_parquet
+from codebase.utilities.typed_storage import ensure_output_parent, write_json_atomic, write_manifested_parquet
 
 
 # --- Stable contract -------------------------------------------------------
@@ -1158,6 +1158,7 @@ def write_acceptance_package(
         "final_shadow_status": shadow_status,
         "accepted": not bool(ordered_findings["run_was_blocked"].any()),
     }
+    output.mkdir(parents=True, exist_ok=True)
     findings_path = output / "baseline_seed_artifact_findings.parquet"
     findings_review_path = output / "baseline_seed_artifact_findings_review.parquet"
     summary_path = output / "baseline_seed_artifact_summary.parquet"
@@ -1183,10 +1184,7 @@ def write_acceptance_package(
         "findings_review": findings_review_artifact,
         "summary": summary_artifact,
     }
-    manifest_path.write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    write_json_atomic(manifest, ensure_output_parent(manifest_path))
     return ArtifactValidationResult(
         findings=ordered_findings,
         summary=summary,
