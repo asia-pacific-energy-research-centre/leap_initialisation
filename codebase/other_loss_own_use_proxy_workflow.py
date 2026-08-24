@@ -39,6 +39,7 @@ from codebase.utilities.master_config import OUTLOOK_MAPPINGS_MASTER_PATH
 from codebase.mappings.canonical_loaders import (
     load_leap_combined_esto,
     load_leap_combined_ninth,
+    load_ninth_pairs_to_esto_pairs,
 )
 from codebase.configuration.config import BASE_YEAR
 from codebase.functions.analysis_input_write_dispatcher import dispatch_analysis_input_write
@@ -1124,6 +1125,10 @@ def build_proxy_detail_table(
 ) -> pd.DataFrame:
     detail_frames = []
     fuel_mapping_lookup = load_fuel_mapping_lookup()
+    ninth_pair_mapping, _ = load_ninth_pairs_to_esto_pairs(
+        workbook=LEAP_MAPPINGS_PATH,
+        detect_conflicts=False,
+    )
     normalized_intensity_mode = _normalize_intensity_mode(intensity_mode)
     for config in configs:
         if not bool(config.get("enabled", True)):
@@ -1136,6 +1141,7 @@ def build_proxy_detail_table(
             base_year=base_year,
             final_year=final_year,
             fuel_mapping_lookup=fuel_mapping_lookup,
+            ninth_pair_mapping=ninth_pair_mapping,
         )
         if target.empty:
             continue

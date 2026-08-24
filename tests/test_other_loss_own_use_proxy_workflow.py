@@ -826,6 +826,91 @@ def test_target_energy_ignores_ninth_fuels_not_seen_in_esto_target() -> None:
     assert int(target[target["source_dataset"].eq("ninth")]["target_energy"].sum()) == 8
 
 
+def test_target_energy_allocates_canonical_ninth_thermal_coal_pair() -> None:
+    """A one-to-many 9th fuel is allocated, rather than dropped as ambiguous."""
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "05PRC",
+                "economy_key": "05_PRC",
+                "flows": "10.01.06 Coal mines",
+                "products": "01.02 Other bituminous coal",
+                2022: -10.0,
+            },
+            {
+                "economy": "05PRC",
+                "economy_key": "05_PRC",
+                "flows": "10.01.06 Coal mines",
+                "products": "01.03 Sub-bituminous coal",
+                2022: 0.0,
+            },
+            {
+                "economy": "05PRC",
+                "economy_key": "05_PRC",
+                "flows": "10.01.06 Coal mines",
+                "products": "01.04 Anthracite",
+                2022: 0.0,
+            },
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy_key": "05_PRC",
+                "sectors": "10_losses_and_own_use",
+                "sub1sectors": "10_01_own_use",
+                "sub2sectors": "10_01_06_coal_mines",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "01_coal",
+                "subfuels": "01_x_thermal_coal",
+                2023: -100.0,
+            },
+        ]
+    )
+    pairs = pd.DataFrame(
+        [
+            {
+                "ninth_sector": "10_01_06_coal_mines",
+                "ninth_fuel": "01_x_thermal_coal",
+                "esto_flow": "10.01.06 Coal mines",
+                "esto_product": "01.02 Other bituminous coal",
+            },
+            {
+                "ninth_sector": "10_01_06_coal_mines",
+                "ninth_fuel": "01_x_thermal_coal",
+                "esto_flow": "10.01.06 Coal mines",
+                "esto_product": "01.03 Sub-bituminous coal",
+            },
+            {
+                "ninth_sector": "10_01_06_coal_mines",
+                "ninth_fuel": "01_x_thermal_coal",
+                "esto_flow": "10.01.06 Coal mines",
+                "esto_product": "01.04 Anthracite",
+            },
+        ]
+    )
+
+    target = workflow.build_target_energy_long(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="05_PRC",
+        config=_coal_config(),
+        base_year=2022,
+        final_year=2023,
+        fuel_mapping_lookup={
+            "esto": {"01.02 other bituminous coal": "Other bituminous coal"},
+            "ninth": {},
+        },
+        ninth_pair_mapping=pairs,
+    )
+
+    projected = target[target["source_dataset"].eq("ninth")]
+    nonzero = projected[projected["target_energy"].gt(0.0)]
+    assert nonzero["fuel_branch_label"].tolist() == ["Other bituminous coal"]
+    assert projected["target_energy_signed"].sum() == pytest.approx(-100.0)
+
+
 def test_target_energy_allows_ninth_fuels_seen_in_esto_other_economies() -> None:
     esto = pd.DataFrame(
         [

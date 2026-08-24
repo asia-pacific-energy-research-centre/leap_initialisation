@@ -18,6 +18,11 @@ from codebase.functions.leap_labels import clean_fuel_label_for_leap
 from codebase.functions.leap_expressions import build_data_expression_from_row
 from codebase.functions.leap_excel_io import read_export_sheet
 from codebase.functions.export_zero_fill import zero_data_expression, zero_fill_unset_rows
+from codebase.functions.ninth_projection_mapping import (
+    allocate_ninth_projection_to_esto,
+    build_esto_base_year_values,
+    normalize_economy_key,
+)
 from codebase.utilities.workflow_utils import (
     _normalize_economy,
     _normalize_year_columns,
@@ -1562,6 +1567,7 @@ def build_target_energy_long(
     base_year: int,
     final_year: int,
     fuel_mapping_lookup: Mapping[str, Mapping[str, str]] | None = None,
+    ninth_pair_mapping: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     mapping_lookup: Mapping[str, Mapping[str, str]] = fuel_mapping_lookup or {}
@@ -1643,6 +1649,92 @@ def build_target_energy_long(
                 ~ninth_subset["subfuels"].fillna("").astype(str).str.strip().str.lower().isin(exclude_subfuels)
             ].copy()
         ninth_subset["fuel_label_for_grouping"] = ninth_subset.apply(_target_fuel_label_from_ninth, axis=1)
+        configured_sectors = {
+            str(value).strip()
+            for value in ninth_cfg.get("sector_codes", [])
+            if str(value).strip()
+        }
+        sector_columns = [
+            column
+            for column in ["sub4sectors", "sub3sectors", "sub2sectors", "sub1sectors", "sectors"]
+            if column in ninth_subset.columns
+        ]
+        ninth_subset["sector_label_for_grouping"] = ninth_subset[sector_columns].apply(
+            lambda row: next(
+                (str(value).strip() for value in row if str(value).strip() in configured_sectors),
+                "",
+            ),
+            axis=1,
+        ) if sector_columns else ""
+
+        # The canonical pair mapping owns a one-to-many 9th-fuel split.  A
+        # fuel-only lookup cannot resolve examples such as thermal coal, which
+        # maps to three ESTO coal products.  Allocate the exact 9th
+        # (sector, fuel) pair with economy-specific ESTO base-year shares
+        # before converting the allocated ESTO products to LEAP branch names.
+        allocated_source_indices: set[object] = set()
+        if ninth_pair_mapping is not None and not ninth_pair_mapping.empty:
+            pair_columns = ["ninth_sector", "ninth_fuel", "esto_flow", "esto_product"]
+            available_pairs = ninth_pair_mapping.copy()
+            if all(column in available_pairs.columns for column in pair_columns):
+                for column in pair_columns:
+                    available_pairs[column] = available_pairs[column].fillna("").astype(str).str.strip()
+                source_with_index = ninth_subset.reset_index(names="_source_index")
+                candidate_rows = source_with_index.merge(
+                    available_pairs[["ninth_sector", "ninth_fuel"]].drop_duplicates(),
+                    left_on=["sector_label_for_grouping", "fuel_label_for_grouping"],
+                    right_on=["ninth_sector", "ninth_fuel"],
+                    how="inner",
+                )
+                if not candidate_rows.empty:
+                    allocated_source_indices = set(candidate_rows["_source_index"])
+                    source_rows = ninth_subset.loc[list(allocated_source_indices)].copy()
+                    source_rows["ninth_sector"] = source_rows["sector_label_for_grouping"]
+                    source_rows["ninth_fuel"] = source_rows["fuel_label_for_grouping"]
+                    source_rows["economy_key"] = source_rows["economy_key"].map(normalize_economy_key)
+                    source_series = source_rows.groupby(
+                        ["economy_key", "ninth_sector", "ninth_fuel"], dropna=False
+                    )[projection_years].sum().reset_index()
+                    pair_subset = available_pairs.merge(
+                        source_series[["ninth_sector", "ninth_fuel"]].drop_duplicates(),
+                        on=["ninth_sector", "ninth_fuel"],
+                        how="inner",
+                    )
+                    allocated, _ = allocate_ninth_projection_to_esto(
+                        mapping_df=pair_subset,
+                        ninth_series=source_series,
+                        base_values=build_esto_base_year_values(esto_data, int(base_year)),
+                        projection_years=projection_years,
+                        strict_conservation=True,
+                    )
+                    allocated = allocated.loc[
+                        allocated["economy_key"].eq(normalize_economy_key(economy))
+                    ].copy()
+                    for _, allocated_row in allocated.iterrows():
+                        fuel_branch_label = _format_fuel_branch_label(
+                            allocated_row["esto_product"],
+                            source_name="esto",
+                            fuel_mapping_lookup=mapping_lookup,
+                        )
+                        if not fuel_branch_label:
+                            continue
+                        for year in projection_years:
+                            value = float(allocated_row[year])
+                            rows.append(
+                                {
+                                    "source_dataset": "ninth",
+                                    "economy": economy_key,
+                                    "process_key": config["process_key"],
+                                    "process_label": config["process_label"],
+                                    "leap_process_label": config.get("leap_process_label", config["process_label"]),
+                                    "fuel_label": str(allocated_row["esto_product"]),
+                                    "fuel_branch_label": fuel_branch_label,
+                                    "year": int(year),
+                                    "target_energy": float(abs(value)),
+                                    "target_energy_signed": value,
+                                }
+                            )
+                    ninth_subset = ninth_subset.drop(index=list(allocated_source_indices))
         fuel_branch_overrides = {
             _normalize_source_token(source): sanitize_leap_name(str(target))
             for source, target in dict(ninth_cfg.get("fuel_branch_overrides", {})).items()
