@@ -17,8 +17,10 @@ missing.
 
 Each repository receives its own dated, commit-labelled ZIP under
 `data_bundles/`. This repository's ZIP contains the maintained ESTO/9th tables,
-active top-level export templates, and current LEAP balance exports. Archive
-folders and generated outputs are excluded.
+active top-level export templates, current LEAP balance exports, and
+`config/baseline_seed_validation_exception_sets.xlsx`. The exception workbook
+is intentionally bundled because it contains the approved baseline-seed
+validation rules. Archive folders and generated outputs are excluded.
 
 After cloning both repositories, place the matching ZIP in each repository's
 `data_bundles/` folder and run `scripts/extract_data_bundle.py` (or

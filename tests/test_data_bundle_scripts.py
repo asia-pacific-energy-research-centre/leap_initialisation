@@ -8,6 +8,7 @@ import pytest
 
 from scripts.create_data_bundle import (
     SOURCE_TABLE_PATHS,
+    VALIDATION_EXCEPTION_PATH,
     create_coordinated_data_bundles,
     create_data_bundle,
 )
@@ -27,6 +28,7 @@ def _make_source_repo(root: Path) -> None:
     (root / ".git").mkdir(parents=True)
     for relative_path in SOURCE_TABLE_PATHS:
         _write(root / relative_path, relative_path.as_posix().encode("utf-8"))
+    _write(root / VALIDATION_EXCEPTION_PATH, b"approved baseline seed exceptions")
     _write(root / "data/leap_export_templates/AUS current.xlsx")
     _write(root / "data/leap_export_templates/APEC clean slate 03_08.xlsx")
     _write(root / "data/leap_export_templates/archive/AUS old.xlsx")
@@ -64,6 +66,7 @@ def test_bundle_round_trip_excludes_archives_and_has_no_hash_sidecar(tmp_path: P
     assert "data/leap_export_templates/AUS current.xlsx" in names
     assert "data/leap_export_templates/APEC clean slate 03_08.xlsx" not in names
     assert "data/00APEC_2026_low_with_subtotals_PRELIMINARY.csv" in names
+    assert VALIDATION_EXCEPTION_PATH.as_posix() in names
     assert "data/leap balances exports/01_AUS/current.xlsx" in names
     assert all("archive" not in name.casefold() for name in names)
     assert all("sha256" not in record for record in manifest["files"])
@@ -72,6 +75,7 @@ def test_bundle_round_trip_excludes_archives_and_has_no_hash_sidecar(tmp_path: P
     assert len(installed) == manifest["file_count"]
     assert (target_repo / "data/leap_export_templates/AUS current.xlsx").is_file()
     assert (target_repo / "data/leap balances exports/01_AUS/current.xlsx").is_file()
+    assert (target_repo / VALIDATION_EXCEPTION_PATH).is_file()
 
 
 def test_extraction_refuses_to_replace_different_data_by_default(tmp_path: Path) -> None:

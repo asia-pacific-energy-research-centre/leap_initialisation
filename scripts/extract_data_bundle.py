@@ -28,6 +28,7 @@ REQUIRED_SOURCE_PATHS = {
     "data/merged_file_energy_ALL_20251106.csv",
     "data/9th merged_file_energy_00_APEC_20251106.csv",
 }
+REQUIRED_CONFIG_PATHS = {"config/baseline_seed_validation_exception_sets.xlsx"}
 
 
 def _require_sibling_repository(repo_root: Path) -> Path:
@@ -75,7 +76,7 @@ def _validate_member_name(name: str) -> None:
     path = PurePosixPath(name)
     if path.is_absolute() or ".." in path.parts or not path.parts:
         raise ValueError(f"Unsafe ZIP member path: {name!r}")
-    if name != MANIFEST_NAME and path.parts[0] != "data":
+    if name != MANIFEST_NAME and name not in REQUIRED_CONFIG_PATHS and path.parts[0] != "data":
         raise ValueError(f"Unexpected path outside data/: {name!r}")
 
 
@@ -105,9 +106,10 @@ def _load_and_validate_manifest(archive: zipfile.ZipFile) -> tuple[dict[str, obj
         raise ValueError("Manifest contains duplicate file paths")
     if set(names) != {MANIFEST_NAME, *manifest_paths}:
         raise ValueError("ZIP contents do not exactly match the manifest")
-    if not REQUIRED_SOURCE_PATHS.issubset(manifest_paths):
-        missing = sorted(REQUIRED_SOURCE_PATHS.difference(manifest_paths))
-        raise ValueError(f"Manifest is missing required source files: {missing}")
+    required_paths = REQUIRED_SOURCE_PATHS | REQUIRED_CONFIG_PATHS
+    if not required_paths.issubset(manifest_paths):
+        missing = sorted(required_paths.difference(manifest_paths))
+        raise ValueError(f"Manifest is missing required process files: {missing}")
     if int(manifest.get("file_count", -1)) != len(records):
         raise ValueError("Manifest file_count does not match its file list")
 

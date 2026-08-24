@@ -36,6 +36,7 @@ SOURCE_TABLE_PATHS = (
 )
 TEMPLATE_DIRECTORY = Path("data/leap_export_templates")
 BALANCE_EXPORT_DIRECTORY = Path("data/leap balances exports")
+VALIDATION_EXCEPTION_PATH = Path("config/baseline_seed_validation_exception_sets.xlsx")
 ACTIVE_EXPORT_SUFFIXES = {".csv", ".xlsm", ".xlsx"}
 
 
@@ -99,6 +100,9 @@ def collect_bundle_files(repo_root: Path = REPO_ROOT) -> list[dict[str, object]]
         (repo_root / relative_path, "source_table")
         for relative_path in SOURCE_TABLE_PATHS
     ]
+    # This workbook carries the approved baseline-seed exceptions and is a
+    # required process input, not a disposable local diagnostic.
+    selected.append((repo_root / VALIDATION_EXCEPTION_PATH, "baseline_seed_validation_exceptions"))
 
     template_root = repo_root / TEMPLATE_DIRECTORY
     selected.extend(
