@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import uuid
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -157,6 +158,7 @@ def create_data_bundle(
     repo_root: Path = REPO_ROOT,
     bundle_path: Path | None = None,
     replace_existing: bool = False,
+    bundle_pair_id: str | None = None,
 ) -> Path:
     """Write the ZIP atomically and return its resolved path."""
     repo_root = Path(repo_root).resolve()
@@ -174,6 +176,8 @@ def create_data_bundle(
         "total_uncompressed_bytes": sum(int(record["size_bytes"]) for record in records),
         "files": records,
     }
+    if bundle_pair_id is not None:
+        manifest["bundle_pair_id"] = bundle_pair_id
 
     bundle_path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path: Path | None = None
@@ -229,16 +233,20 @@ def create_coordinated_data_bundles(
     # Check both source inventories before publishing either bundle.
     collect_bundle_files(repo_root)
     sibling_module.collect_bundle_files(sibling_root)
+    bundle_pair_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + f"-{uuid.uuid4().hex[:8]}"
+    print(f"[INFO] Bundle pair ID: {bundle_pair_id}")
     paths = {
         REPOSITORY_NAME: create_data_bundle(
             repo_root=repo_root,
             bundle_path=bundle_path,
             replace_existing=replace_existing,
+            bundle_pair_id=bundle_pair_id,
         ),
         SIBLING_REPOSITORY_NAME: sibling_module.create_data_bundle(
             repo_root=sibling_root,
             bundle_path=sibling_bundle_path,
             replace_existing=replace_existing,
+            bundle_pair_id=bundle_pair_id,
         ),
     }
     print(f"[INFO] Coordinated bundle refresh complete: {paths}")

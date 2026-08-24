@@ -25,10 +25,12 @@ validation rules. Archive folders and generated outputs are excluded.
 After cloning both repositories, place the matching ZIP in each repository's
 `data_bundles/` folder and run `scripts/extract_data_bundle.py` (or
 `scripts/setup_clone.py`) from either checkout. It deliberately installs both
-bundles. The extractor validates each manifest and ZIP contents, refuses unsafe
-paths, and does not overwrite different local files unless `ALLOW_OVERWRITE`
-is deliberately changed to `True`. The ZIPs are ignored by Git and are intended
-to be shared separately through restricted storage such as Google Drive.
+bundles. It checks that both manifests have the same `bundle_pair_id` before
+installing either one; never combine ZIPs from different bundle pairs. The
+extractor validates each manifest and ZIP contents, refuses unsafe paths, and
+does not overwrite different local files unless `ALLOW_OVERWRITE` is deliberately
+changed to `True`. The ZIPs are ignored by Git and are intended to be shared
+separately through restricted storage such as Google Drive.
 
 ### Publication checklist
 

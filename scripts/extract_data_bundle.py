@@ -162,6 +162,38 @@ def _open_data_bundle(bundle_path: Path) -> zipfile.ZipFile:
     return inner_archive
 
 
+def read_bundle_manifest(bundle_path: Path) -> dict[str, object]:
+    """Read the validated manifest without installing any bundle files."""
+    archive = _open_data_bundle(Path(bundle_path).resolve())
+    wrapper_path = getattr(archive, "_leap_wrapper_path", None)
+    try:
+        manifest, _manifest_paths = _load_and_validate_manifest(archive)
+        return manifest
+    finally:
+        archive.close()
+        if wrapper_path is not None:
+            Path(wrapper_path).unlink(missing_ok=True)
+
+
+def _require_matching_bundle_pair(
+    primary_manifest: dict[str, object],
+    sibling_manifest: dict[str, object],
+) -> str:
+    """Reject independently-created or stale bundles before either is installed."""
+    primary_pair_id = primary_manifest.get("bundle_pair_id")
+    sibling_pair_id = sibling_manifest.get("bundle_pair_id")
+    if not isinstance(primary_pair_id, str) or not primary_pair_id:
+        raise ValueError("Initialisation bundle has no bundle_pair_id; download the current published pair.")
+    if not isinstance(sibling_pair_id, str) or not sibling_pair_id:
+        raise ValueError("Mappings bundle has no bundle_pair_id; download the current published pair.")
+    if primary_pair_id != sibling_pair_id:
+        raise ValueError(
+            "Bundle pair IDs do not match. Do not combine bundles from different releases: "
+            f"initialisation={primary_pair_id}, mappings={sibling_pair_id}."
+        )
+    return primary_pair_id
+
+
 def extract_data_bundle(
     bundle_path: Path,
     repo_root: Path = REPO_ROOT,
@@ -256,10 +288,15 @@ def extract_coordinated_data_bundles(
     sibling_root = _require_sibling_repository(repo_root)
     sibling_module = _load_sibling_bundle_module(sibling_root)
     selected_sibling_bundle = sibling_bundle_path or sibling_module.find_latest_bundle(sibling_root)
+    bundle_pair_id = _require_matching_bundle_pair(
+        read_bundle_manifest(bundle_path),
+        sibling_module.read_bundle_manifest(selected_sibling_bundle),
+    )
     print(
         "[INFO] Coordinated bundle install: installing leap_initialisation and "
         "leap_mappings bundles together."
     )
+    print(f"[INFO] Verified bundle pair ID: {bundle_pair_id}")
     installed = {
         REPOSITORY_NAME: extract_data_bundle(
             bundle_path=bundle_path,
