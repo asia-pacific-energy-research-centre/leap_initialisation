@@ -10,6 +10,7 @@ from codebase.functions.baseline_seed_validation_exceptions import (
     refresh_exception_materiality,
     apply_zero_filter,
     audit_exception_relevance,
+    load_enabled_exception_notes,
     register_material_missing_branch_findings,
     register_missing_branch_paths,
 )
@@ -42,6 +43,24 @@ def test_registers_new_paths_enabled_with_observed_economy(tmp_path: Path) -> No
     values = list(load_workbook(path)["branch_exceptions"].values)
     assert values[1][0] is True
     assert values[1][3] == "20_USA"
+
+
+def test_loading_exception_notes_does_not_refresh_or_rewrite_by_default(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "exceptions.xlsx"
+    _workbook(path, "Demand\\Example")
+    calls: list[Path] = []
+
+    def fail_if_refreshed(workbook_path, **kwargs):
+        calls.append(Path(workbook_path))
+        raise AssertionError("reader unexpectedly refreshed the shared workbook")
+
+    monkeypatch.setattr(
+        "codebase.functions.baseline_seed_validation_exceptions.refresh_exception_materiality",
+        fail_if_refreshed,
+    )
+
+    assert load_enabled_exception_notes(path) == {"Demand\\Example": ""}
+    assert calls == []
 
 
 def test_refresh_uses_last_esto_year_and_reference_ninth_average(tmp_path: Path) -> None:

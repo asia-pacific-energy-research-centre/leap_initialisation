@@ -399,9 +399,15 @@ def sync_exception_template_coverage(
 def load_enabled_exception_notes(
     workbook_path: Path | str = WORKBOOK_PATH,
     *,
-    refresh_materiality: bool = True,
+    refresh_materiality: bool = False,
 ) -> dict[str, str]:
-    """Return enabled exact exceptions after filling any missing materiality."""
+    """Return enabled exact exceptions without mutating the shared workbook by default.
+
+    Validation workers may run concurrently.  Materiality refresh is a
+    deliberate maintenance action that rewrites the workbook, so callers that
+    need it must opt in before launching workers rather than allowing every
+    reader to edit the same configuration file.
+    """
     workbook = Path(workbook_path)
     if refresh_materiality and not os.environ.get("LEAP_SKIP_EXCEPTION_MATERIALITY_REFRESH"):
         refresh_exception_materiality(workbook)
