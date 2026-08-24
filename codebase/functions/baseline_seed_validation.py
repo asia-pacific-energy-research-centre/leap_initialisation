@@ -100,6 +100,18 @@ SHARE_DONOR_SCENARIO_PRIORITY = ("Reference", "Current Accounts", "Target")
 AGGREGATED_DEMAND_BRANCH_PREFIX = "demand\\all demand aggregated\\"
 
 
+def _is_auto_balance_placeholder(value: object) -> bool:
+    """Return whether a branch path names the synthetic transfer fuel."""
+    return _text(value).split("\\")[-1].casefold() in {"auto balance", "99 auto balance"}
+
+
+def _synthetic_share_anchor(paths: Iterable[object]) -> str:
+    """Choose a real inert sibling, retaining AUTO BALANCE if it is the only option."""
+    candidates = [_text(path) for path in paths]
+    real_paths = [path for path in candidates if not _is_auto_balance_placeholder(path)]
+    return sorted(real_paths or candidates, key=str.lower)[0]
+
+
 @dataclass(frozen=True)
 class RuleSpec:
     rule_id: str
@@ -1592,7 +1604,7 @@ def complete_canonical_share_groups(
                         if total > tolerance:
                             profile = {path: value * 100.0 / total for path, value in raw.items()}
                         else:
-                            fallback_anchor = sorted(parsed_by_path, key=str.lower)[0]
+                            fallback_anchor = _synthetic_share_anchor(parsed_by_path)
                             profile = {
                                 path: 100.0 if path == fallback_anchor else 0.0
                                 for path in parsed_by_path
@@ -1611,7 +1623,7 @@ def complete_canonical_share_groups(
                         **group_context,
                     ))
                 else:
-                    anchor = sorted(parsed_by_path, key=str.lower)[0]
+                    anchor = _synthetic_share_anchor(parsed_by_path)
                     profiles = {
                         year: {path: 100.0 if path == anchor else 0.0 for path in parsed_by_path}
                         for year in years

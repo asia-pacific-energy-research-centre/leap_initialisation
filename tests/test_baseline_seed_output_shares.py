@@ -134,6 +134,30 @@ def test_auto_balance_is_not_the_inert_all_zero_share_anchor():
     assert feedstock_shares["Naphtha"] == {2022: 100.0, 2023: 100.0}
 
 
+def test_auto_balance_remains_a_valid_anchor_when_it_is_the_only_sibling():
+    output_shares = builder._normalize_output_shares_for_export(
+        {"AUTO BALANCE": {2022: 0.0, 2023: 0.0}}, 2022, 2023
+    )
+    feedstock_shares = builder.prepare_feedstock_shares_for_export(
+        feedstock_shares={},
+        feedstock_values={},
+        process_feedstock_labels=["AUTO BALANCE"],
+        base_year=2022,
+        final_year=2023,
+    )
+
+    assert output_shares["AUTO BALANCE"] == {2022: 100.0, 2023: 100.0}
+    assert feedstock_shares["AUTO BALANCE"] == {2022: 100.0, 2023: 100.0}
+
+
+def test_genuine_auto_balance_profile_is_preserved():
+    shares = builder._normalize_output_shares_for_export(
+        {"AUTO BALANCE": {2022: 12.0, 2023: 12.0}}, 2022, 2023
+    )
+
+    assert shares["AUTO BALANCE"] == {2022: 100.0, 2023: 100.0}
+
+
 def test_zero_fill_never_anchors_auto_balance():
     catalog = pd.DataFrame([
         {"fuel_group": "Feedstock Fuels", "branch_path": r"Transformation\Transfers unallocated\Processes\Transfers unallocated\Feedstock Fuels\AUTO BALANCE"},

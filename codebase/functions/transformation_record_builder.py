@@ -737,7 +737,7 @@ def prepare_feedstock_shares_for_export(
             # physical transfer unless a one-sided record explicitly uses it.
             anchor_labels = [label for label in labels if not _is_auto_balance_placeholder(label)]
             if not anchor_labels:
-                return prepared_shares
+                anchor_labels = labels
             equal_share = 100.0 / float(len(anchor_labels))
             for label in labels:
                 prepared_shares[label] = {
@@ -1704,7 +1704,7 @@ def _normalize_output_shares_for_export(output_shares, base_year, final_year):
         if not genuine_profiles:
             anchor_labels = [label for label in labels if not _is_auto_balance_placeholder(label)]
             if not anchor_labels:
-                return normalized
+                anchor_labels = labels
             anchor_label = anchor_labels[0]
             return {
                 label: {
@@ -2622,6 +2622,10 @@ def build_aux_fuel_zero_rows(
                         for branch_path, already_set in branches
                         if not already_set and not _is_auto_balance_placeholder(branch_path)
                     ]
+                    if not anchor_branches:
+                        anchor_branches = [
+                            branch_path for branch_path, already_set in branches if not already_set
+                        ]
                     anchor_branch = anchor_branches[0] if anchor_branches else None
                     for branch_path, already_set in branches:
                         if already_set:
@@ -2703,6 +2707,8 @@ def build_aux_fuel_zero_rows(
                             for branch_path in branches
                             if not _is_auto_balance_placeholder(branch_path)
                         ]
+                        if not anchor_branches:
+                            anchor_branches = list(branches)
                         anchor_branch = anchor_branches[0] if anchor_branches else None
                         for branch_path in branches:
                             value = 100.0 if branch_path == anchor_branch else 0.0
@@ -2851,6 +2857,8 @@ def build_aux_fuel_zero_rows(
                         for branch_path in branches
                         if not _is_auto_balance_placeholder(branch_path)
                     ]
+                    if not anchor_branches:
+                        anchor_branches = list(branches)
                     anchor_branch = anchor_branches[0] if anchor_branches else None
                     for branch_path in branches:
                         if (output_share_measure, scenario, branch_path) in existing:
