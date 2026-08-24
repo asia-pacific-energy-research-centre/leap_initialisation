@@ -133,6 +133,7 @@ def refresh_exception_materiality(
     projection_final_year: int = 2060,
     esto_vintages: dict[str, tuple[Path, int]] = ESTO_VINTAGES,
     retry_mapping_incomplete: bool = False,
+    persist: bool = True,
 ) -> pd.DataFrame:
     """Fill blank derived values from all maintained ESTO vintages and Ninth.
 
@@ -142,13 +143,18 @@ def refresh_exception_materiality(
     mapping repair; normal refreshes preserve known mapping-incomplete blanks.
     """
     workbook = Path(workbook_path)
+
+    def _finish(refreshed_rows: pd.DataFrame) -> pd.DataFrame:
+        if persist:
+            _write_rows(refreshed_rows, workbook)
+        return refreshed_rows
+
     rows = _read_rows(workbook)
     value_columns = MATERIALITY_VALUE_COLUMNS
     needs_values = rows[rows["branch_path"].map(lambda value: bool(str(value).strip()))]
     if needs_values.empty:
         rows = apply_zero_filter(rows)
-        _write_rows(rows, workbook)
-        return rows
+        return _finish(rows)
     needs_values = needs_values[needs_values[value_columns].map(_blank).any(axis=1)]
     if not retry_mapping_incomplete:
         needs_values = needs_values[
@@ -156,8 +162,7 @@ def refresh_exception_materiality(
         ]
     if needs_values.empty:
         rows = apply_zero_filter(rows)
-        _write_rows(rows, workbook)
-        return rows
+        return _finish(rows)
 
     mapped_rows = []
     for item in needs_values[["branch_path"]].to_dict("records"):
@@ -171,8 +176,7 @@ def refresh_exception_materiality(
                     rows.at[index, "notes"] = (note + " " if note else "") + f"Materiality mapping needs review: {exc}"
     if not mapped_rows:
         rows = apply_zero_filter(rows)
-        _write_rows(rows, workbook)
-        return rows
+        return _finish(rows)
     keys = pd.DataFrame(mapped_rows)
     for vintage, (esto_path, final_year) in esto_vintages.items():
         values = _esto_base_materiality(keys, esto_path=Path(esto_path), base_year=int(final_year))
@@ -189,8 +193,7 @@ def refresh_exception_materiality(
                 projections[rows.at[index, "branch_path"]]["reference"][0] / len(years)
             )
     rows = apply_zero_filter(rows)
-    _write_rows(rows, workbook)
-    return rows
+    return _finish(rows)
 
 
 def register_missing_branch_paths(
@@ -399,19 +402,20 @@ def sync_exception_template_coverage(
 def load_enabled_exception_notes(
     workbook_path: Path | str = WORKBOOK_PATH,
     *,
-    refresh_materiality: bool = False,
+    refresh_materiality: bool = True,
 ) -> dict[str, str]:
-    """Return enabled exact exceptions without mutating the shared workbook by default.
+    """Return enabled exact exceptions without mutating the shared workbook.
 
     Validation workers may run concurrently.  Materiality refresh is a
-    deliberate maintenance action that rewrites the workbook, so callers that
-    need it must opt in before launching workers rather than allowing every
-    reader to edit the same configuration file.
+    read-time calculation only; deliberate maintenance callers use
+    ``refresh_exception_materiality(..., persist=True)`` to rewrite the
+    workbook before workers start.
     """
     workbook = Path(workbook_path)
     if refresh_materiality and not os.environ.get("LEAP_SKIP_EXCEPTION_MATERIALITY_REFRESH"):
-        refresh_exception_materiality(workbook)
-    rows = _read_rows(workbook)
+        rows = refresh_exception_materiality(workbook, persist=False)
+    else:
+        rows = _read_rows(workbook)
     return {
         str(row.branch_path).strip(): str(row.notes).strip()
         for row in rows.itertuples(index=False)

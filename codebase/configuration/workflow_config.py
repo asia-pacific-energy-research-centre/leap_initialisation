@@ -54,7 +54,7 @@ GLOBAL_ECONOMIES = _normalize_economies(
 )
 # Multiple economies -> per-economy runs (no aggregation unless a sentinel is used).
 GLOBAL_SCENARIOS = ["Reference", "Target", "Current Accounts"]
-GLOBAL_BASE_YEAR = 2024
+GLOBAL_BASE_YEAR = 2022
 # None means: fall back to the workflow/module default final year.
 GLOBAL_FINAL_YEAR = None
 GLOBAL_REGION = "United States"
@@ -64,7 +64,7 @@ GLOBAL_AGGREGATE_ECONOMY_LABEL = _resolve_global_aggregate(GLOBAL_ECONOMIES)
 # Final baseline-seed validation coverage. These are deliberately independent
 # of projection-only producer windows: final imports must explicitly cover the
 # complete configured model horizon for every represented scenario.
-BASELINE_SEED_VALIDATION_BASE_YEAR = 2024
+BASELINE_SEED_VALIDATION_BASE_YEAR = 2022
 BASELINE_SEED_VALIDATION_FINAL_YEAR = 2060
 # Retained only for compatibility with older callers. The shared migration
 # classifier now downgrades only missing-template structure findings; genuine
@@ -137,7 +137,7 @@ def _resolve_repo_path(path_value: str | Path) -> Path:
 # Shared ESTO/ninth source pairing for active reconciliation workflows.
 # Update these together when changing ESTO vintage; do not infer the base year
 # from the filename because future source files may not be year-stamped cleanly.
-ENERGY_SOURCE_ESTO_BASE_TABLE_PATH = "data/00APEC_2026_low_with_subtotals_PRELIMINARY.csv"
+ENERGY_SOURCE_ESTO_BASE_TABLE_PATH = "data/00APEC_2024_low_with_subtotals.csv"
 ENERGY_SOURCE_ESTO_BASE_YEAR = GLOBAL_BASE_YEAR
 ENERGY_SOURCE_NINTH_PROJECTION_TABLE_PATH = "data/merged_file_energy_ALL_20251106.csv"
 ENERGY_SOURCE_PROJECTION_START_YEAR = ENERGY_SOURCE_ESTO_BASE_YEAR + 1

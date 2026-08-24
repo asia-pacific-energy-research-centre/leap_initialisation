@@ -45,7 +45,7 @@ def test_registers_new_paths_enabled_with_observed_economy(tmp_path: Path) -> No
     assert values[1][3] == "20_USA"
 
 
-def test_loading_exception_notes_does_not_refresh_or_rewrite_by_default(tmp_path: Path, monkeypatch) -> None:
+def test_loading_exception_notes_can_skip_materiality_refresh(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "exceptions.xlsx"
     _workbook(path, "Demand\\Example")
     calls: list[Path] = []
@@ -59,7 +59,7 @@ def test_loading_exception_notes_does_not_refresh_or_rewrite_by_default(tmp_path
         fail_if_refreshed,
     )
 
-    assert load_enabled_exception_notes(path) == {"Demand\\Example": ""}
+    assert load_enabled_exception_notes(path, refresh_materiality=False) == {"Demand\\Example": ""}
     assert calls == []
 
 
