@@ -83,7 +83,13 @@ def test_manifested_parquet_round_trip_preserves_table_contract(tmp_path):
 
 
 def test_atomic_storage_uses_short_temporary_paths_for_deep_artifacts(tmp_path):
-    deep_path = tmp_path.joinpath(*(["nested_directory"] * 12))
+    directory_name = "nested_directory"
+    filename_length = len("supply_reconciliation_balance_demand_conservation.parquet")
+    remaining_segments = max(
+        0,
+        (220 - len(str(tmp_path)) - filename_length) // (len(directory_name) + 1),
+    )
+    deep_path = tmp_path.joinpath(*([directory_name] * min(12, remaining_segments)))
     parquet_path = deep_path / "supply_reconciliation_balance_demand_conservation.parquet"
     frame = pd.DataFrame({"value": [1.0, 2.0]})
 

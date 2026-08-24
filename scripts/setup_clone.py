@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.extract_data_bundle import extract_data_bundle
+from scripts.extract_data_bundle import extract_coordinated_data_bundles
 
 REQUIRED_MODULES = ("numpy", "pandas", "openpyxl", "pyarrow", "plotly")
 REQUIRED_COMPATIBILITY_FILES = (
@@ -54,9 +54,9 @@ def install_bundle_and_verify(
     downloaded_zip_path: Path,
     repo_root: Path = REPO_ROOT,
     allow_overwrite: bool = False,
-) -> list[Path]:
-    """Install a regular or Google Drive wrapper ZIP, then fail clearly if unready."""
-    installed = extract_data_bundle(
+) -> dict[str, list[Path]]:
+    """Install both repository bundles, then fail clearly if this clone is unready."""
+    installed = extract_coordinated_data_bundles(
         bundle_path=downloaded_zip_path,
         repo_root=repo_root,
         allow_overwrite=allow_overwrite,
