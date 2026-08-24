@@ -1040,6 +1040,46 @@ def test_target_energy_keeps_zero_rows_for_fuels_seen_in_esto_other_economies() 
     assert float(target["target_energy"].sum()) == 0.0
 
 
+def test_proxy_detail_drops_fuels_zero_throughout_export_horizon() -> None:
+    config = _coal_config()
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "01AUS",
+                "economy_key": "01_AUS",
+                "flows": "10.01.06 Coal mines",
+                "products": "08.03 Gas works gas",
+                2021: -4.0,
+                2022: 0.0,
+            }
+        ]
+    )
+    ninth = pd.DataFrame(
+        columns=[
+            "economy_key",
+            "sectors",
+            "sub1sectors",
+            "sub2sectors",
+            "sub3sectors",
+            "sub4sectors",
+            "fuels",
+            "subfuels",
+            2023,
+        ]
+    )
+
+    detail = workflow.build_proxy_detail_table(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="01_AUS",
+        configs=[config],
+        base_year=2022,
+        final_year=2023,
+    )
+
+    assert detail.empty
+
+
 def test_proxy_log_rows_include_zero_target_fuel_branches_by_default() -> None:
     detail = pd.DataFrame(
         [

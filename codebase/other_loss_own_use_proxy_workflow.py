@@ -1184,8 +1184,17 @@ def build_proxy_detail_table(
                 target.loc[mask, "activity_fallback_reason"] = (
                     "configured_process_proxy_all_zero"
                 )
-        coverage = target.groupby("fuel_branch_label", dropna=False)["target_energy"].transform(
-            lambda values: bool((values.abs() > 0.0).any())
+        # Keep a fuel only when it has energy in the exported base/projection
+        # horizon. Historical activity before the base year can legitimately
+        # identify a fuel, but it must not create a zero-only LEAP branch when
+        # the selected economy has no 2022-2060 target for it.
+        export_horizon = target["year"].astype(int).between(
+            int(base_year), int(final_year)
+        )
+        coverage = target.assign(
+            _export_horizon=export_horizon,
+        ).groupby("fuel_branch_label", dropna=False)["target_energy"].transform(
+            lambda values: bool((values.loc[export_horizon.loc[values.index]].abs() > 0.0).any())
         )
         target = target[coverage].copy()
         target["base_target_available"] = target.groupby(
