@@ -1139,6 +1139,12 @@ def run_dashboard_from_export(
         if selected_esto is not None
         else None
     )
+    vintage_match = re.search(
+        r"00APEC_(\d{4})",
+        selected_esto.name if selected_esto is not None else "",
+        flags=re.IGNORECASE,
+    )
+    esto_vintage_issue = vintage_match.group(1) if vintage_match else ""
 
     def work(run_dir: Path) -> dict[str, Any]:
         from common_esto_dashboard_portable import (
@@ -1208,6 +1214,9 @@ def run_dashboard_from_export(
             "power_interim_audit_path": Path(chain_result["power_interim_audit_path"]),
             "source_to_common_map_path": context.require_data_asset("mapping_chain_source_to_common_map"),
             "esto_to_common_map_path": context.require_data_asset("mapping_chain_esto_to_common_map"),
+            "missing_branch_exceptions_path": context.config_asset("baseline_seed_validation_exception_sets"),
+            "relationships_path": context.require_data_asset("mapping_chain_relationships"),
+            "esto_vintage_issue": esto_vintage_issue,
             "output_root": run_dir,
             "comparison_scope": comparison_scope,
             "wide_file_scope": wide_file_scope,

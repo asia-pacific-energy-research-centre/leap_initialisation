@@ -383,6 +383,13 @@ description = "Synthetic zero-row rules used to align ESTO vintages for review."
 
 [[config_assets]]
 repository = "leap_initialisation"
+path = "config/baseline_seed_validation_exception_sets.xlsx"
+dest = "balance_review/baseline_seed_validation_exception_sets.xlsx"
+role = "baseline_seed_validation_exception_sets"
+description = "Enabled, per-economy missing-LEAP-branch coverage exceptions for dashboard notes."
+
+[[config_assets]]
+repository = "leap_initialisation"
 path = "config/runtime_tables/leap_results_sheet_map.csv"
 dest = "balance_review/leap_results_sheet_map.csv"
 role = "leap_results_sheet_map"
