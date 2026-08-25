@@ -286,6 +286,7 @@ def make_proxy_config(
     ninth_target_exclude_subfuels: Sequence[str] | None = None,
     ninth_target_fuel_overrides: Mapping[str, str] | None = None,
     allow_ninth_target_without_esto_history: bool = False,
+    carry_base_target_forward_when_ninth_projection_all_zero: bool = False,
     same_fuel_total_demand_activity_fallback: bool = False,
     leap_balance_rows: Sequence[str] | None = None,
     leap_balance_fuel_set: str = "",
@@ -333,6 +334,9 @@ def make_proxy_config(
                 "fuel_branch_overrides": dict(ninth_target_fuel_overrides or {}),
                 "allow_without_esto_history": bool(
                     allow_ninth_target_without_esto_history
+                ),
+                "carry_base_target_forward_when_all_zero": bool(
+                    carry_base_target_forward_when_ninth_projection_all_zero
                 ),
             },
         },
@@ -623,7 +627,8 @@ PROXY_CONFIG = [
         activity_value_mode="positive_only",
         esto_target_flows=["10.01.13 Pump storage plants"],
         ninth_target_sectors=["10_01_13_pump_storage_plants"],
-        notes="Starter proxy: 9th pump-storage electricity output. ESTO and simple LEAP balance exports do not isolate pump storage, so LEAP balance mode falls back to total electricity production unless refined later.",
+        carry_base_target_forward_when_ninth_projection_all_zero=True,
+        notes="Use the 9th pump-storage own-use target where supplied. The active 9th vintage stores structural zeros for this unmodelled flow, so a nonzero ESTO base-year target is carried forward flat only when every supplied 9th projection year is zero. ESTO and simple LEAP balance exports do not isolate pump storage, so LEAP balance mode falls back to total electricity production unless refined later.",
     ),
     make_proxy_config(
         enabled=True,#cannot be easily handled by auxiliary branch in leap since it includes both pumping and generation, so keeping enabled
@@ -1212,6 +1217,12 @@ def build_proxy_detail_table(
             )
         )
         target["target_fallback_reason"] = ""
+        pump_storage_carry_forward = target["source_dataset"].eq(
+            "esto_base_year_carry_forward"
+        )
+        target.loc[pump_storage_carry_forward, "target_fallback_reason"] = (
+            "esto_base_year_carried_forward_ninth_projection_all_zero"
+        )
         no_base_projection = (~target["base_target_available"]) & target["projection_target_available"]
         target.loc[no_base_projection, "target_fallback_reason"] = "ninth_exact_no_base_target"
         if normalized_intensity_mode == "target_matching_initialisation":

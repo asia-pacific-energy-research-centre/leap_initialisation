@@ -2169,6 +2169,88 @@ def test_pump_storage_activity_falls_back_to_hydro_output() -> None:
     assert fallback["fallback_key"] == "hydro_electricity_output_positive"
 
 
+def test_pump_storage_carries_base_target_when_all_ninth_projections_are_zero() -> None:
+    cfg = next(item for item in workflow.PROXY_CONFIG if item["process_key"] == "pump_storage_plants")
+    esto = pd.DataFrame(
+        [{
+            "economy": "20USA",
+            "economy_key": "20_USA",
+            "flows": "10.01.13 Pump storage plants",
+            "products": "17 Electricity",
+            2022: -5.0,
+        }]
+    )
+    ninth = pd.DataFrame(
+        [{
+            "economy_key": "20_USA",
+            "sectors": "10_losses_and_own_use",
+            "sub1sectors": "10_01_own_use",
+            "sub2sectors": "10_01_13_pump_storage_plants",
+            "sub3sectors": "x",
+            "sub4sectors": "x",
+            "fuels": "17_electricity",
+            "subfuels": "x",
+            2023: 0.0,
+            2024: 0.0,
+        }]
+    )
+
+    target = workflow.build_target_energy_long(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="20_USA",
+        config=cfg,
+        base_year=2022,
+        final_year=2024,
+        fuel_mapping_lookup={"esto": {}, "ninth": {}},
+    )
+
+    projection = target[target["year"].astype(int).gt(2022)]
+    assert projection["target_energy"].tolist() == [5.0, 5.0]
+    assert set(projection["source_dataset"]) == {"esto_base_year_carry_forward"}
+
+
+def test_pump_storage_preserves_nonzero_ninth_projection_target() -> None:
+    cfg = next(item for item in workflow.PROXY_CONFIG if item["process_key"] == "pump_storage_plants")
+    esto = pd.DataFrame(
+        [{
+            "economy": "20USA",
+            "economy_key": "20_USA",
+            "flows": "10.01.13 Pump storage plants",
+            "products": "17 Electricity",
+            2022: -5.0,
+        }]
+    )
+    ninth = pd.DataFrame(
+        [{
+            "economy_key": "20_USA",
+            "sectors": "10_losses_and_own_use",
+            "sub1sectors": "10_01_own_use",
+            "sub2sectors": "10_01_13_pump_storage_plants",
+            "sub3sectors": "x",
+            "sub4sectors": "x",
+            "fuels": "17_electricity",
+            "subfuels": "x",
+            2023: -3.0,
+            2024: -4.0,
+        }]
+    )
+
+    target = workflow.build_target_energy_long(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="20_USA",
+        config=cfg,
+        base_year=2022,
+        final_year=2024,
+        fuel_mapping_lookup={"esto": {}, "ninth": {}},
+    )
+
+    projection = target[target["year"].astype(int).gt(2022)]
+    assert projection["target_energy"].tolist() == [3.0, 4.0]
+    assert set(projection["source_dataset"]) == {"ninth"}
+
+
 def test_fallback_report_includes_alternative_source_fallbacks() -> None:
     cfg = _liquefaction_config()
     esto = pd.DataFrame(

@@ -1777,7 +1777,39 @@ def build_target_energy_long(
                         "target_energy_signed": float(value),
                     }
                 )
-    return pd.DataFrame(rows)
+    target = pd.DataFrame(rows)
+    carry_base_target = bool(
+        ninth_cfg.get("carry_base_target_forward_when_all_zero", False)
+    )
+    if target.empty or not carry_base_target:
+        return target
+
+    # The current 9th vintage has structural zero rows for pump-storage
+    # own-use: they mean the flow is not modelled, rather than that an
+    # observed ESTO own-use value ceases after the base year. This opt-in
+    # policy preserves a non-zero ESTO target only when every supplied 9th
+    # projection value for that fuel is zero. Any non-zero ninth value remains
+    # authoritative and is never replaced.
+    for _, group in target.groupby("fuel_branch_label", dropna=False):
+        base_rows = group.loc[
+            group["source_dataset"].eq("esto")
+            & group["year"].astype(int).eq(int(base_year))
+        ]
+        projection_rows = group.loc[
+            group["source_dataset"].eq("ninth")
+            & group["year"].astype(int).gt(int(base_year))
+        ]
+        if base_rows.empty or projection_rows.empty:
+            continue
+        base_target_energy = float(base_rows["target_energy"].sum())
+        if base_target_energy == 0.0 or not projection_rows["target_energy"].eq(0.0).all():
+            continue
+        base_target_signed = float(base_rows["target_energy_signed"].sum())
+        projection_indices = projection_rows.index
+        target.loc[projection_indices, "target_energy"] = base_target_energy
+        target.loc[projection_indices, "target_energy_signed"] = base_target_signed
+        target.loc[projection_indices, "source_dataset"] = "esto_base_year_carry_forward"
+    return target
 
 
 def _nonzero_fuels_from_esto_activity(
