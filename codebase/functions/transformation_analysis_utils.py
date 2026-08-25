@@ -1908,6 +1908,7 @@ def prepare_transformation_assets() -> None:
     if "subtotal_results" in ninth_data.columns:
         ninth_data = ninth_data[ninth_data["subtotal_results"] == False].copy()
     esto_data_raw = normalize_esto_economy_codes(esto_data_raw)
+    esto_projection_anchor_data = esto_data_raw.copy()
     esto_data_raw = filter_total_energy_rows(esto_data_raw)
     ninth_data = filter_total_energy_rows(ninth_data)
     esto_data = filter_matt_subtotals(esto_data_raw)
@@ -1939,6 +1940,7 @@ def prepare_transformation_assets() -> None:
             strict_conservation=strict_conservation,
             fill_missing_ninth_sectors=FILL_IN_MISSING_9TH_SECTORS,
             owner_workflow="transformation_workflow",
+            allocation_anchor_esto_data=esto_projection_anchor_data,
         ),
     )
     esto_data = merge_projection_into_esto(

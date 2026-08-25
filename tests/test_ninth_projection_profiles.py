@@ -819,6 +819,51 @@ def test_general_missing_child_carries_base_year_when_parent_has_no_projection(t
     assert set(fill["base_year_continuity_error"]) == {0.0}
 
 
+def test_subtotal_parent_anchor_keeps_gas_blending_when_lng_starts_later(tmp_path: Path) -> None:
+    """The scenario ESTO table excludes subtotal parents, but allocation needs one."""
+    anchor_esto = pd.DataFrame(
+        [
+            {"economy": "20USA", "flows": "09.06 Gas processing plants", "products": "08.01 Natural gas", "is_subtotal": True, "2022": 46.94349},
+            {"economy": "20USA", "flows": "09.06.03 Natural gas blending plants", "products": "08.01 Natural gas", "is_subtotal": False, "2022": 46.94349},
+            {"economy": "20USA", "flows": "09.06.02 Liquefaction/regasification plants", "products": "08.01 Natural gas", "is_subtotal": False, "2022": 0.0},
+        ]
+    )
+    filtered_esto = anchor_esto.loc[~anchor_esto["is_subtotal"]].copy()
+    ninth = pd.DataFrame(
+        [
+            {"economy": "20_USA", "scenarios": "target", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x", "fuels": "08_gas", "subfuels": "08_01_natural_gas", "subtotal_results": False, 2023: 0.0},
+            {"economy": "20_USA", "scenarios": "target", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "09_06_03_natural_gas_blending_plants", "sub3sectors": "x", "sub4sectors": "x", "fuels": "08_gas", "subfuels": "08_01_natural_gas", "subtotal_results": False, 2023: 0.0},
+            {"economy": "20_USA", "scenarios": "target", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "09_06_02_liquefaction_regasification_plants", "sub3sectors": "x", "sub4sectors": "x", "fuels": "08_gas", "subfuels": "08_01_natural_gas", "subtotal_results": False, 2023: -100.0},
+        ]
+    )
+    mapping_path = tmp_path / "mapping.xlsx"
+    pd.DataFrame(
+        [
+            {"ninth_sector": "09_06_gas_processing_plants", "ninth_fuel": "08_01_natural_gas", "esto_flow": "09.06 Gas processing plants", "esto_product": "08.01 Natural gas"},
+            {"ninth_sector": "09_06_02_liquefaction_regasification_plants", "ninth_fuel": "08_01_natural_gas", "esto_flow": "09.06.02 Liquefaction/regasification plants", "esto_product": "08.01 Natural gas"},
+        ]
+    ).to_excel(mapping_path, index=False)
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth,
+        filtered_esto,
+        mapping_path,
+        base_year=2022,
+        projection_years=[2023],
+        scenario="target",
+        sign_stable_flows="all",
+        fill_missing_ninth_sectors=True,
+        owner_workflow="transformation_workflow",
+        allocation_anchor_esto_data=anchor_esto,
+    )
+
+    values = projection.set_index("esto_flow")[2023].to_dict()
+    assert values["09.06.02 Liquefaction/regasification plants"] == pytest.approx(-100.0)
+    assert values["09.06.03 Natural gas blending plants"] == pytest.approx(46.94349)
+    fill = diagnostics[diagnostics["diagnostic_type"].eq("missing_ninth_sector_fill_applied")]
+    assert set(fill["allocation_method"]) == {"base_year_constant"}
+
+
 def test_general_missing_child_infers_parent_from_surviving_child(tmp_path: Path) -> None:
     esto, ninth, mapping_path = _general_gas_fill_fixture(tmp_path, parent_2023=0.0)
     # The parent is unavailable, but one child has a real 9th projection.  It

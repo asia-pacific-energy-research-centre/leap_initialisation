@@ -184,8 +184,10 @@ def collect_transformation_rows(
             scenario_ninth = scenario_ninth[scenario_ninth["subtotal_results"] == False].copy()
         scenario_ninth = core.filter_total_energy_rows(scenario_ninth)
 
-        scenario_esto = core.normalize_esto_economy_codes(core.esto_data_raw.copy())
-        scenario_esto = core.filter_total_energy_rows(scenario_esto)
+        scenario_esto_unfiltered = core.normalize_esto_economy_codes(
+            core.esto_data_raw.copy()
+        )
+        scenario_esto = core.filter_total_energy_rows(scenario_esto_unfiltered)
         scenario_esto = core.filter_matt_subtotals(scenario_esto)
         scenario_esto_year_cols = sorted([col for col in scenario_esto.columns if str(col).isdigit()])
 
@@ -219,6 +221,7 @@ def collect_transformation_rows(
                 strict_conservation=strict_conservation,
                 fill_missing_ninth_sectors=core.FILL_IN_MISSING_9TH_SECTORS,
                 owner_workflow="transformation_workflow",
+                allocation_anchor_esto_data=scenario_esto_unfiltered,
             ),
         )
         core.save_unallocated_projection_diagnostics(

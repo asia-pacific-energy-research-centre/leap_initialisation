@@ -271,6 +271,49 @@ def build_esto_base_year_values(
     return grouped
 
 
+def select_approved_parent_anchor_rows(
+    esto_df: pd.DataFrame,
+    mapping_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Keep reviewed subtotal parents available for projection allocation only.
+
+    The ESTO subtotal filter correctly removes aggregate rows from the output
+    dataset. The 09.06 and 09.08 aggregate rows are nevertheless needed as
+    base-year allocation anchors when their children must be reconstructed.
+    This selects only mapped, reviewed parent rows; callers must not merge the
+    result into their output ESTO table.
+    """
+    if esto_df is None or esto_df.empty or mapping_df is None or mapping_df.empty:
+        return pd.DataFrame(columns=esto_df.columns if esto_df is not None else None)
+    required_esto = {"flows", "products", "is_subtotal"}
+    required_mapping = {"esto_flow", "esto_product"}
+    if not required_esto.issubset(esto_df.columns) or not required_mapping.issubset(mapping_df.columns):
+        return pd.DataFrame(columns=esto_df.columns)
+
+    subtotal_mask = (
+        esto_df["is_subtotal"].fillna(False).astype(str).str.strip().str.lower()
+        .isin({"1", "true", "yes", "y", "t"})
+    )
+    parent_rows = esto_df.loc[
+        subtotal_mask
+        & esto_df["flows"].astype(str).isin(APPROVED_MISSING_NINTH_PARENT_FLOWS)
+    ].copy()
+    if parent_rows.empty:
+        return parent_rows
+
+    mapped_pairs = mapping_df.loc[
+        mapping_df["esto_flow"].astype(str).isin(APPROVED_MISSING_NINTH_PARENT_FLOWS),
+        ["esto_flow", "esto_product"],
+    ].drop_duplicates()
+    anchors = parent_rows.merge(
+        mapped_pairs,
+        left_on=["flows", "products"],
+        right_on=["esto_flow", "esto_product"],
+        how="inner",
+    )
+    return anchors[esto_df.columns].copy()
+
+
 def build_economy_specific_child_flow_profiles(
     esto_df: pd.DataFrame,
     base_year: int,
@@ -1829,6 +1872,7 @@ def build_esto_projection_table(
     fill_missing_ninth_sectors: bool = False,
     owner_workflow: str = "",
     existing_output_pairs: pd.DataFrame | None = None,
+    allocation_anchor_esto_data: pd.DataFrame | None = None,
     return_allocation_provenance: bool = False,
 ) -> (
     tuple[pd.DataFrame, pd.DataFrame]
@@ -1846,6 +1890,10 @@ def build_esto_projection_table(
         return_allocation_provenance:
             If True, also return one long-form row per allocated 9th source
             pair, ESTO target pair, and projection year.
+        allocation_anchor_esto_data:
+            Optional unfiltered ESTO rows. Only mapped 09.06/09.08 subtotal
+            parents are selected from this data, solely to establish
+            base-year allocation shares; they are never returned as output.
     """
     if isinstance(mapping_path, tuple):
         mapping_file, mapping_sheet = Path(mapping_path[0]), str(mapping_path[1])
@@ -1862,6 +1910,18 @@ def build_esto_projection_table(
     if mapping_df.empty:
         empty = (pd.DataFrame(), pd.DataFrame())
         return (*empty, pd.DataFrame()) if return_allocation_provenance else empty
+    allocation_base_data = esto_data
+    if allocation_anchor_esto_data is not None:
+        anchor_rows = select_approved_parent_anchor_rows(
+            allocation_anchor_esto_data,
+            mapping_df,
+        )
+        if not anchor_rows.empty:
+            allocation_base_data = pd.concat(
+                [esto_data, anchor_rows],
+                ignore_index=True,
+                sort=False,
+            )
     general_child_flow_profiles = build_general_child_flow_profiles(
         esto_data,
         mapping_df,
@@ -1935,7 +1995,7 @@ def build_esto_projection_table(
         ninth_pairs = pd.concat([ninth_pairs, ninth_parent_pairs], ignore_index=True, sort=False)
     ninth_pairs["economy_key"] = ninth_pairs["economy"].apply(normalize_economy_key)
     ninth_series = build_ninth_projection_series(ninth_pairs, projection_years)
-    base_values = build_esto_base_year_values(esto_data, base_year)
+    base_values = build_esto_base_year_values(allocation_base_data, base_year)
     child_flow_profiles = build_economy_specific_child_flow_profiles(
         esto_data,
         base_year,
