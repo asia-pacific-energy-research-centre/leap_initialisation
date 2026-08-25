@@ -402,6 +402,11 @@ code_to_name_mapping: dict = {}
 ESTO_IMPORT_EXPORT_REFERENCE_DATA = None
 ESTO_IMPORT_EXPORT_YEAR_COLS: list = []
 esto_data_raw = None
+# Normalized ESTO rows before total-energy and subtotal filtering.  Projection
+# allocation may use approved 09.06/09.08 subtotal parents from this table as
+# base-year anchors, but downstream analysis and exports continue to use the
+# filtered ``esto_data_raw`` / ``esto_data`` tables below.
+esto_projection_anchor_data = None
 ninth_data_raw = None
 esto_year_cols: list = []
 ninth_year_cols: list = []
@@ -1877,7 +1882,8 @@ def prepare_transformation_assets() -> None:
     This matches the explicit-init pattern used by supply_data_pipeline.prepare_supply_assets().
     """
     global DATASET_MAP, code_to_name_mapping, ESTO_IMPORT_EXPORT_REFERENCE_DATA, ESTO_IMPORT_EXPORT_YEAR_COLS
-    global esto_data_raw, ninth_data_raw, esto_year_cols, ninth_year_cols, esto_year_cols_raw
+    global esto_data_raw, esto_projection_anchor_data, ninth_data_raw
+    global esto_year_cols, ninth_year_cols, esto_year_cols_raw
     global esto_data, ninth_data
     if DATASET_MAP is not None:
         return

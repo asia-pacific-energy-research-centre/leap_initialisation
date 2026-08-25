@@ -24,6 +24,7 @@ def _reset_transformation_analysis_utils_globals():
         ESTO_IMPORT_EXPORT_REFERENCE_DATA=tau.ESTO_IMPORT_EXPORT_REFERENCE_DATA,
         ESTO_IMPORT_EXPORT_YEAR_COLS=list(tau.ESTO_IMPORT_EXPORT_YEAR_COLS),
         esto_data_raw=tau.esto_data_raw,
+        esto_projection_anchor_data=tau.esto_projection_anchor_data,
         ninth_data_raw=tau.ninth_data_raw,
         esto_year_cols=list(tau.esto_year_cols),
         ninth_year_cols=list(tau.ninth_year_cols),
@@ -41,6 +42,7 @@ def _reset_transformation_analysis_utils_globals():
     tau.ESTO_IMPORT_EXPORT_REFERENCE_DATA = snapshot["ESTO_IMPORT_EXPORT_REFERENCE_DATA"]
     tau.ESTO_IMPORT_EXPORT_YEAR_COLS = snapshot["ESTO_IMPORT_EXPORT_YEAR_COLS"]
     tau.esto_data_raw = snapshot["esto_data_raw"]
+    tau.esto_projection_anchor_data = snapshot["esto_projection_anchor_data"]
     tau.ninth_data_raw = snapshot["ninth_data_raw"]
     tau.esto_year_cols = snapshot["esto_year_cols"]
     tau.ninth_year_cols = snapshot["ninth_year_cols"]
