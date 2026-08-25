@@ -977,6 +977,11 @@ def test_gas_carry_forward_preserves_net_zero_handoff_beside_new_lng_projection(
         {"economy": "20USA", "flows": "09.06 Gas processing plants", "products": "08.03 Gas works gas", "is_subtotal": True, "2022": 0.0},
         {"economy": "20USA", "flows": "09.06.01 Gas works plants", "products": "01.05 Lignite", "is_subtotal": False, "2022": -71.766956},
         {"economy": "20USA", "flows": "09.06.01 Gas works plants", "products": "08.03 Gas works gas", "is_subtotal": False, "2022": 46.943101},
+        # Projection merging retains future-only LNG child rows as explicit
+        # zeros in the ESTO-shaped table. They must not block the historical
+        # blending carry-forward.
+        {"economy": "20USA", "flows": "09.06.02 Liquefaction/regasification plants", "products": "08.01 Natural gas", "is_subtotal": False, "2022": 0.0},
+        {"economy": "20USA", "flows": "09.06.02 Liquefaction/regasification plants", "products": "08.02 LNG", "is_subtotal": False, "2022": 0.0},
         {"economy": "20USA", "flows": "09.06.03 Natural gas blending plants", "products": "08.03 Gas works gas", "is_subtotal": False, "2022": -46.943101},
         {"economy": "20USA", "flows": "09.06.03 Natural gas blending plants", "products": "08.01 Natural gas", "is_subtotal": False, "2022": 46.943490},
     ])

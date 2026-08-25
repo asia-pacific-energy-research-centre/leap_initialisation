@@ -837,7 +837,17 @@ def _fill_general_missing_ninth_children(
             str(flow) for flow, values in direct_by_flow.iterrows()
             if values.abs().gt(tolerance).any()
         }
-        direct_active_flows = direct_flows & child_flows
+        # A future-only direct 9th child must not be treated as a protected
+        # historical child.  Projection merging can materialise it as an
+        # explicit zero-valued ESTO row in the base year (as LNG does for USA),
+        # so membership in ``child_flows`` alone is not sufficient here.
+        base_active_child_flows = set(
+            active.loc[
+                active["base_value"].abs() > tolerance,
+                "child_flow",
+            ].astype(str)
+        )
+        direct_active_flows = direct_flows & base_active_child_flows
         produced_elsewhere = {
             flow for flow in child_flows
             if (economy, flow, product) in existing_pairs
