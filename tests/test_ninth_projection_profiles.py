@@ -967,6 +967,66 @@ def test_general_missing_children_with_zero_signed_profile_remain_unallocated(tm
     assert unallocated.iloc[0]["residual_value"] == pytest.approx(200.0)
 
 
+def test_gas_carry_forward_preserves_net_zero_handoff_beside_new_lng_projection(
+    tmp_path: Path,
+) -> None:
+    """USA-shaped gas works/blending history must survive new LNG activity."""
+    esto = pd.DataFrame([
+        {"economy": "20USA", "flows": "09.06 Gas processing plants", "products": "01.05 Lignite", "is_subtotal": True, "2022": -71.766956},
+        {"economy": "20USA", "flows": "09.06 Gas processing plants", "products": "08.01 Natural gas", "is_subtotal": True, "2022": 46.943490},
+        {"economy": "20USA", "flows": "09.06 Gas processing plants", "products": "08.03 Gas works gas", "is_subtotal": True, "2022": 0.0},
+        {"economy": "20USA", "flows": "09.06.01 Gas works plants", "products": "01.05 Lignite", "is_subtotal": False, "2022": -71.766956},
+        {"economy": "20USA", "flows": "09.06.01 Gas works plants", "products": "08.03 Gas works gas", "is_subtotal": False, "2022": 46.943101},
+        {"economy": "20USA", "flows": "09.06.03 Natural gas blending plants", "products": "08.03 Gas works gas", "is_subtotal": False, "2022": -46.943101},
+        {"economy": "20USA", "flows": "09.06.03 Natural gas blending plants", "products": "08.01 Natural gas", "is_subtotal": False, "2022": 46.943490},
+    ])
+    ninth_rows = []
+    for fuel, value in [
+        ("01_05_lignite", 0.0),
+        ("08_01_natural_gas", 0.0),
+        ("08_02_lng", 0.0),
+        ("08_03_gas_works_gas", 0.0),
+    ]:
+        ninth_rows.append({"economy": "20_USA", "scenarios": "target", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x", "fuels": fuel, "subfuels": "x", "subtotal_results": False, 2023: value})
+    ninth_rows.extend([
+        {"economy": "20_USA", "scenarios": "target", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "09_06_01_gas_works_plants", "sub3sectors": "x", "sub4sectors": "x", "fuels": "01_coal", "subfuels": "01_05_lignite", "subtotal_results": False, 2023: 0.0},
+        {"economy": "20_USA", "scenarios": "target", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "09_06_01_gas_works_plants", "sub3sectors": "x", "sub4sectors": "x", "fuels": "08_gas", "subfuels": "08_03_gas_works_gas", "subtotal_results": False, 2023: 0.0},
+        {"economy": "20_USA", "scenarios": "target", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "09_06_03_natural_gas_blending_plants", "sub3sectors": "x", "sub4sectors": "x", "fuels": "08_gas", "subfuels": "08_01_natural_gas", "subtotal_results": False, 2023: 0.0},
+        {"economy": "20_USA", "scenarios": "target", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "09_06_03_natural_gas_blending_plants", "sub3sectors": "x", "sub4sectors": "x", "fuels": "08_gas", "subfuels": "08_03_gas_works_gas", "subtotal_results": False, 2023: 0.0},
+        {"economy": "20_USA", "scenarios": "target", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "09_06_02_liquefaction_regasification_plants", "sub3sectors": "x", "sub4sectors": "x", "fuels": "08_gas", "subfuels": "08_01_natural_gas", "subtotal_results": False, 2023: -100.0},
+        {"economy": "20_USA", "scenarios": "target", "sectors": "09_total_transformation_sector", "sub1sectors": "09_06_gas_processing_plants", "sub2sectors": "09_06_02_liquefaction_regasification_plants", "sub3sectors": "x", "sub4sectors": "x", "fuels": "08_gas", "subfuels": "08_02_lng", "subtotal_results": False, 2023: 100.0},
+    ])
+    mapping_path = tmp_path / "usa_gas_mapping.xlsx"
+    pd.DataFrame([
+        {"ninth_sector": "09_06_gas_processing_plants", "ninth_fuel": "01_05_lignite", "esto_flow": "09.06 Gas processing plants", "esto_product": "01.05 Lignite"},
+        {"ninth_sector": "09_06_gas_processing_plants", "ninth_fuel": "08_01_natural_gas", "esto_flow": "09.06 Gas processing plants", "esto_product": "08.01 Natural gas"},
+        {"ninth_sector": "09_06_gas_processing_plants", "ninth_fuel": "08_03_gas_works_gas", "esto_flow": "09.06 Gas processing plants", "esto_product": "08.03 Gas works gas"},
+        {"ninth_sector": "09_06_01_gas_works_plants", "ninth_fuel": "01_05_lignite", "esto_flow": "09.06.01 Gas works plants", "esto_product": "01.05 Lignite"},
+        {"ninth_sector": "09_06_01_gas_works_plants", "ninth_fuel": "08_03_gas_works_gas", "esto_flow": "09.06.01 Gas works plants", "esto_product": "08.03 Gas works gas"},
+        {"ninth_sector": "09_06_03_natural_gas_blending_plants", "ninth_fuel": "08_01_natural_gas", "esto_flow": "09.06.03 Natural gas blending plants", "esto_product": "08.01 Natural gas"},
+        {"ninth_sector": "09_06_03_natural_gas_blending_plants", "ninth_fuel": "08_03_gas_works_gas", "esto_flow": "09.06.03 Natural gas blending plants", "esto_product": "08.03 Gas works gas"},
+        {"ninth_sector": "09_06_02_liquefaction_regasification_plants", "ninth_fuel": "08_01_natural_gas", "esto_flow": "09.06.02 Liquefaction/regasification plants", "esto_product": "08.01 Natural gas"},
+        {"ninth_sector": "09_06_02_liquefaction_regasification_plants", "ninth_fuel": "08_02_lng", "esto_flow": "09.06.02 Liquefaction/regasification plants", "esto_product": "08.02 LNG"},
+    ]).to_excel(mapping_path, index=False)
+
+    projection, diagnostics = build_esto_projection_table(
+        pd.DataFrame(ninth_rows), esto, mapping_path, base_year=2022,
+        projection_years=[2023], scenario="target", sign_stable_flows="all",
+        fill_missing_ninth_sectors=True, owner_workflow="transformation_workflow",
+    )
+
+    values = projection.set_index(["esto_flow", "esto_product"])[2023].to_dict()
+    assert values[("09.06.01 Gas works plants", "01.05 Lignite")] == pytest.approx(-71.766956)
+    assert values[("09.06.01 Gas works plants", "08.03 Gas works gas")] == pytest.approx(46.943101)
+    assert values[("09.06.03 Natural gas blending plants", "08.03 Gas works gas")] == pytest.approx(-46.943101)
+    assert values[("09.06.03 Natural gas blending plants", "08.01 Natural gas")] == pytest.approx(46.943490)
+    assert values[("09.06.02 Liquefaction/regasification plants", "08.01 Natural gas")] == pytest.approx(-100.0)
+    assert values[("09.06.02 Liquefaction/regasification plants", "08.02 LNG")] == pytest.approx(100.0)
+    assert not diagnostics["diagnostic_type"].eq(
+        "missing_ninth_sector_fill_unallocated"
+    ).any()
+
+
 def test_apec_aggregate_is_a_stress_fixture_not_a_production_fallback() -> None:
     repo = Path(__file__).resolve().parents[1]
     ninth_path = repo / "data" / "9th merged_file_energy_00_APEC_20251106.csv"

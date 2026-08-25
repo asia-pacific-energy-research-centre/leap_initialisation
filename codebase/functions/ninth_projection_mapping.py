@@ -828,18 +828,24 @@ def _fill_general_missing_ninth_children(
         ]
         direct_by_flow = direct.groupby("esto_flow", dropna=False)[list(year_cols)].sum()
         # A child that is present only as zeros is a missing projection, not a
-        # protected child.  A child with any non-zero projected year remains
-        # wholly authoritative, including any genuine zero years within it.
+        # protected child. A projected child which was not active for this
+        # fuel in the ESTO base year must also not block a base-active sibling
+        # from being reconstructed. This is important for LNG: a new
+        # liquefaction series can coexist with a historical gas-blending
+        # series without making the latter's carry-forward underdetermined.
         direct_flows = {
             str(flow) for flow, values in direct_by_flow.iterrows()
             if values.abs().gt(tolerance).any()
         }
+        direct_active_flows = direct_flows & child_flows
         produced_elsewhere = {
             flow for flow in child_flows
             if (economy, flow, product) in existing_pairs
         }
         missing = active[
-            ~active["child_flow"].astype(str).isin(direct_flows | produced_elsewhere)
+            ~active["child_flow"].astype(str).isin(
+                direct_active_flows | produced_elsewhere
+            )
         ].copy()
         if missing.empty:
             continue
@@ -868,13 +874,24 @@ def _fill_general_missing_ninth_children(
         parent_by_year = {year: float(parent_row.get(year, 0.0) or 0.0) for year in year_cols}
         parent_has_projection = any(abs(value) > tolerance for value in parent_by_year.values())
         active_total = float(active["base_value"].sum())
-        protected_flows = direct_flows | produced_elsewhere
+        protected_flows = direct_active_flows | produced_elsewhere
         protected_base_total = float(
             active.loc[active["child_flow"].astype(str).isin(protected_flows), "base_value"].sum()
         )
         missing_total = float(missing["base_value"].sum())
         has_protected_children = bool(protected_flows)
-        if abs(active_total) <= tolerance or (has_protected_children and abs(protected_base_total) <= tolerance) or abs(missing_total) <= tolerance:
+        carry_zero_net_profile = (
+            not parent_has_projection
+            and not has_protected_children
+            and abs(active_total) <= tolerance
+            and abs(missing_total) <= tolerance
+        )
+        cannot_allocate = (
+            abs(active_total) <= tolerance
+            or (has_protected_children and abs(protected_base_total) <= tolerance)
+            or abs(missing_total) <= tolerance
+        )
+        if cannot_allocate and not carry_zero_net_profile:
             for year in year_cols:
                 diagnostics.append({
                     "economy_key": economy,
@@ -898,7 +915,12 @@ def _fill_general_missing_ninth_children(
                 })
             continue
 
-        if parent_has_projection and has_protected_children:
+        if carry_zero_net_profile:
+            # No future parent or base-active direct child supplies a scale,
+            # but the full signed historical hand-off is known. Keep both
+            # sides of that hand-off rather than dropping a net-zero pair.
+            method = "base_year_constant"
+        elif parent_has_projection and has_protected_children:
             method = "parent_augmented_for_protected_children"
         elif parent_has_projection:
             method = "parent_base_year_share"
@@ -911,7 +933,11 @@ def _fill_general_missing_ninth_children(
             child_flow = str(profile_row["child_flow"])
             child["esto_flow"] = child_flow
             child["missing_ninth_fill_method"] = method
-            missing_share = float(profile_row["base_value"]) / missing_total
+            missing_share = (
+                float(profile_row["base_value"]) / missing_total
+                if method != "base_year_constant"
+                else pd.NA
+            )
             for year in year_cols:
                 direct_value = direct_by_year[year]
                 inferred_parent = (
@@ -941,7 +967,7 @@ def _fill_general_missing_ninth_children(
                     "parent_flow": parent_flow,
                     "child_flow": child_flow,
                     "base_year_value": float(profile_row["base_value"]),
-                    "direct_ninth_presence": child_flow in direct_flows,
+                    "direct_ninth_presence": child_flow in direct_active_flows,
                     "existing_output_presence": child_flow in produced_elsewhere,
                     "owner_workflow": owner,
                     "diagnostic_type": "missing_ninth_sector_fill_applied",
