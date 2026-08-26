@@ -465,6 +465,12 @@ def _apply_unallocated_policy(
     carrier["process_name"] = str(policy.get("process_name") or "Transfers unallocated")
     carrier["sector_title"] = carrier["process_name"]
     carrier["output_values"] = aggregated_outputs
+    # Capacity seeding prefers ``gross_output_values``.  A merged transfer
+    # process must therefore carry the same summed output series in all three
+    # representations; retaining the first source record here halves PRC's
+    # two 1-PJ AUTO BALANCE outputs while preserving its combined efficiency.
+    carrier["gross_output_values"] = aggregated_outputs
+    carrier["deliverable_output_values"] = aggregated_outputs
     carrier["feedstock_values"] = aggregated_feedstocks
     carrier["feedstock_shares"] = feedstock_shares
     carrier["efficiency"] = core.series_to_year_dict(
@@ -619,6 +625,12 @@ def merge_transfer_rows(rows: list[dict]) -> list[dict]:
         }
         carrier = dict(records[0])
         carrier["output_values"] = aggregated_outputs
+        # Keep the output basis used by downstream capacity seeding in sync
+        # with the merged outputs.  Otherwise only the first record's gross
+        # output is available as capacity even though efficiency and feedstock
+        # shares use every merged record.
+        carrier["gross_output_values"] = aggregated_outputs
+        carrier["deliverable_output_values"] = aggregated_outputs
         carrier["feedstock_values"] = aggregated_feedstocks
         carrier["feedstock_shares"] = feedstock_shares
         carrier["efficiency"] = core.series_to_year_dict(

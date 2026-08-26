@@ -24,6 +24,10 @@ from codebase.transfers_workflow import (  # noqa: E402
     balance_one_sided_transfer_flow,
     save_transfer_export,
 )
+from codebase.functions.transfers_utils import (  # noqa: E402
+    _apply_unallocated_policy,
+    merge_transfer_rows,
+)
 
 YEARS = [2022, 2023]
 
@@ -153,6 +157,54 @@ def test_outflow_only_has_no_implied_efficiency_risk() -> None:
     )
 
     assert diagnostic["max_implied_efficiency_percent"] is None
+
+
+def _transfer_record_with_one_pj_auto_balance(feedstock: float) -> dict:
+    """Build a minimal one-sided transfer record for merge regression tests."""
+    output_values = {AUTO_BALANCE_PRODUCT_LABEL: {2022: 1.0, 2023: 1.0}}
+    return {
+        "economy": "05_PRC",
+        "sector_title": "Transfers unallocated",
+        "process_name": "Transfers unallocated",
+        "output_values": output_values,
+        "gross_output_values": output_values,
+        "deliverable_output_values": output_values,
+        "feedstock_values": {"Fuel oil": {2022: feedstock, 2023: feedstock}},
+        "efficiency": {2022: 1.0 / feedstock, 2023: 1.0 / feedstock},
+        "input_total": feedstock * 2,
+        "output_import_targets": {},
+        "output_export_targets": {},
+    }
+
+
+@pytest.mark.parametrize(
+    ("merge", "policy"),
+    [
+        (merge_transfer_rows, None),
+        (
+            _apply_unallocated_policy,
+            {
+                "enabled": True,
+                "process_name": "Transfers unallocated",
+                "max_efficiency_ratio": 0.001,
+                "merge_all_when_triggered": True,
+            },
+        ),
+    ],
+)
+def test_merged_auto_balance_outputs_also_set_the_capacity_output_basis(merge, policy) -> None:
+    """Two 1-PJ counterparts must seed 2 PJ capacity, not the first 1 PJ only."""
+    records = [
+        _transfer_record_with_one_pj_auto_balance(230.270568),
+        _transfer_record_with_one_pj_auto_balance(4998.147525),
+    ]
+
+    merged = merge(records) if policy is None else merge(records, policy)
+
+    assert len(merged) == 1
+    for key in ("output_values", "gross_output_values", "deliverable_output_values"):
+        assert merged[0][key][AUTO_BALANCE_PRODUCT_LABEL][2023] == pytest.approx(2.0)
+    assert merged[0]["efficiency"][2023] == pytest.approx(2.0 / 5228.418093)
 
 
 def test_transfer_export_maps_synthetic_auto_balance_to_the_real_leap_leaf(monkeypatch, tmp_path) -> None:

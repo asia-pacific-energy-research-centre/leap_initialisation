@@ -296,10 +296,22 @@ References for investigation:
 Implemented in `5c304fd` (`codex: apply scenario-aware transfer fallback`) with
 focused regression coverage.  The completed
 `SEED_2022_FULL_TEMPLATED12_PRCTEST_20260823_213740` run confirms the intended
-PRC output shape: Current Accounts remains base-year only, while Reference and
-Target retain the configured transfer process setup through 2060, including the
-one-sided-transfer 1 PJ balancing capacity.  The remaining export-readiness
-findings are template/catalogue issues, not a reason to reopen this fallback.
+source policy: Current Accounts remains base-year only, while Reference and
+Target carry an unavailable transfer projection flat from the ESTO base year.
+
+**Correction made 2026-08-26 — PRC capacity was halved after the carry-forward,
+not lost by it.** PRC has two one-sided active transfer child flows whose
+5,228.42 PJ of carried feedstock is represented by two 1-PJ `AUTO BALANCE`
+outputs. Their merge correctly summed outputs and calculated an efficiency of
+`2 / 5,228.42 = 0.038252%`, but retained only the first record's 1-PJ
+`gross_output_values`. Capacity seeding deliberately prefers that gross-output
+field, so LEAP received 1 PJ of Exogenous Capacity and correctly consumed only
+about `1 / 0.00038252 = 2,614 PJ` — the apparent post-2022 fall in the review
+chart. `transfers_utils` now keeps merged `output_values`,
+`gross_output_values`, and `deliverable_output_values` identical. The merged
+PRC process therefore receives 2 PJ capacity and, at the same efficiency,
+demands the full carried 5,228.42 PJ. This is a record-merging defect, not a
+failure of the no-9th-projection carry-forward policy.
 
 Decision record: [`docs/decision_transfer_projection_fallback_20260820.md`](decision_transfer_projection_fallback_20260820.md).
 Method recorded in [`docs/initialisation_flow_estimation_methods.md`](initialisation_flow_estimation_methods.md#projection-availability-and-the-base-year-carry-forward).
