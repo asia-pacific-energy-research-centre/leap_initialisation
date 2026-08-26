@@ -178,7 +178,7 @@ and
 | `09.04` Electric boilers; `09.05` chemical heat | Shared signed-flow method. |
 | `09.06.01` Gas works; `09.06.03` natural-gas blending; `09.06.04` gas-to-liquids | Shared method with process-specific input/output labels. Gas parent projections require economy child-flow evidence; unsafe parent splits are reported rather than divided arbitrarily. |
 | `09.06.02` LNG liquefaction/regasification | Classified separately for every economy-year. Natural gas output with LNG input is regasification; LNG output with natural-gas input is liquefaction. Ambiguous years are excluded. `10.01.03` is proxy-owned rather than added as auxiliary use. |
-| `09.07` Oil refineries | Shared multi-output method. Petroleum-product output shares, feedstock shares, efficiency, capacity and output trade targets are derived from the signed source balance. Refinery-gas or other same-module auxiliary use remains on a consistent gross-output basis. |
+| `09.07` Oil refineries | Shared multi-output method. Petroleum-product output shares, feedstock shares, efficiency, capacity and output trade targets are derived from the signed source balance. Same-product refinery own use is currently written as Auxiliary Fuel Use on a gross-output basis; see the deferred boundary note below. |
 | `09.08.01–09.08.05` coal transformation children | Shared signed-flow method with sign-stable allocation. Coke ovens, blast furnaces, patent fuel, BKB/PB and coal-to-oil retain their child process context. A coarse parent projection is split only with historical child evidence; zero-net profiles use a gross sign-stable fallback. |
 | `09.08.06 Coal mines` | Present in sector configuration but commented out of the active transformation analysis registry. `10.01.06` mine own-use/loss is proxy-owned using coal production activity. |
 | `09.09` Petrochemical industry; `09.11` charcoal processing; `09.12` non-specified transformation | Shared signed-flow method. `10.01.17` is not tied to `09.12`; it is proxy-owned using total transformation throughput. |
@@ -188,6 +188,44 @@ and
 
 The interim power details are in
 [`placeholder_branches_and_interim_models.md`](placeholder_branches_and_interim_models.md).
+
+### Deferred: refinery same-product own-use boundary
+
+**Status: non-blocking review item.** Oil refining is unusual because it has a
+material multi-output product slate and also consumes several of those same
+products within the refinery. The source balance records gross `09.07` output
+and a separate negative `10.01.11` own-use row. The current seed preserves the
+gross product shares and writes the own use as Oil Refining `Auxiliary Fuel
+Use`, expecting LEAP to consume the matching output fuel internally.
+
+For the USA 2023 Target test, LEAP reproduces external refinery auxiliary use
+(natural gas and electricity) proportionally, but does not show the expected
+net result for same-output fuels: refinery gas and ethane remain positive even
+where the Ninth net target is zero. This is not a broad transformation mapping
+failure. Most other transformation owners either consume external fuels, have
+immaterial same-fuel overlap, or use a separate own-use proxy; refining makes
+the boundary visible because the overlapping product amounts are large.
+
+The dashboard therefore compares the source refinery result on a net basis but
+currently receives a non-net LEAP Oil Refining row for these fuels. The USA
+input dashboard additionally labels the source `Other hydrocarbons` feedstock
+through the LEAP `Refinery feedstocks` proxy; that comparison is now explicitly
+cross-walked in the dashboard.
+
+No immediate seed-model change is planned. When refining own use is revisited,
+test these options in a small LEAP area before changing the common workflow:
+
+1. retain same-product Auxiliary Fuel Use, but establish a LEAP formulation
+   that reports the internal consumption on the intended net balance boundary;
+2. add `Demand\\Other loss and own use\\Oil refineries` template branches,
+   move same-product own use there, and retain external auxiliary fuels in Oil
+   Refining; or
+3. provide a dashboard-only gross/net presentation after a separate own-use
+   series exists. A dashboard-only inferred subtraction must not be treated as
+   evidence that LEAP consumed the fuel.
+
+Until then this remains a visible, relatively minor balance-review issue rather
+than a reason to change the broader transformation estimation method.
 
 ## Transfers
 
@@ -368,7 +406,7 @@ method; it is not used.
 | `10.01.08` Patent fuel plants | Proxy disabled; no active owner configured | A possible proxy would use patent-fuel output. The process does not currently use this own-use flow. **[Choose: Auxiliary Fuel Use, proxy, or leave out?]** | **No current source value; incomplete for future non-zero data.** |
 | `10.01.09` BKB/PB plants | Proxy disabled; no active owner configured | A possible proxy would use BKB/PB output. The process does not currently use this own-use flow. **[Choose: Auxiliary Fuel Use, proxy, or leave out?]** | **No current source value; incomplete for future non-zero data.** |
 | `10.01.10` Coal-to-oil liquefaction | Proxy disabled; no active owner configured | A possible proxy would use petroleum-product output. The process does not currently use this own-use flow. **[Choose: Auxiliary Fuel Use, proxy, or leave out?]** | **No current source value; incomplete for future non-zero data.** |
-| `10.01.11` Oil refineries | Proxy disabled; **transformation auxiliary configured** | Put the source own-use energy in Oil Refining's Auxiliary Fuel Use. The unused proxy would follow refinery petroleum-product output. | **Implemented and tested.** |
+| `10.01.11` Oil refineries | Proxy disabled; **transformation auxiliary configured** | Put the source own-use energy in Oil Refining's Auxiliary Fuel Use. The unused proxy would follow refinery petroleum-product output. Same-output fuels have a documented deferred net-boundary issue; external auxiliary fuels behave as expected. | **Implemented; same-output balance treatment under review.** |
 | `10.01.12` Oil and gas extraction | **Proxy enabled** | Use primary production of crude oil, NGLs, other hydrocarbons and gas products. This combines extraction and related production activity because the source flow is not separated more finely. | **Implemented and tested.** |
 | `10.01.13` Pump storage plants | **Proxy enabled** | Use pumped-storage electricity output from the 9th, falling back to hydro output if needed. There is no separate ESTO activity row, so a missing base-year activity may borrow the first non-zero projection activity solely to calibrate the base-year intensity. For the target own-use energy, retain a non-zero ESTO base-year electricity value flat only when every supplied 9th `10.01.13` projection value is zero (the current vintage's unmodelled structural-zero case); use any non-zero 9th projection value unchanged. | **Implemented and tested.** Both the activity backfill and the narrowly scoped target carry-forward are deliberate and visible in the method. |
 | `10.01.14` Nuclear industry | **Proxy enabled** | Use positive primary nuclear production as the driver. | **Implemented; no current source own-use value to validate numerically.** |
