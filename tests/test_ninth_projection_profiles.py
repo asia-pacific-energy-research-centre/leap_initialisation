@@ -136,6 +136,38 @@ def test_coal_and_refinery_owned_own_use_flows_are_eligible_for_flat_carry(tmp_p
     assert values.loc["10.01.11 Oil refineries", [2023, 2030]].tolist() == pytest.approx([-4.0, -4.0])
 
 
+def test_confirmed_refinery_shutdown_skips_structural_zero_own_use_carry(tmp_path) -> None:
+    """NZ refinery closure must not become a perpetual own-use projection."""
+    esto = pd.DataFrame([
+        {"economy": "12NZ", "flows": "10.01.11 Oil refineries", "products": "07.10 Refinery gas (not liquefied)", "is_subtotal": False, 2022: -2.236986},
+    ])
+    ninth = pd.DataFrame([
+        {**_own_use_ninth_row("07_10_refinery_gas_not_liquefied", 0.0, 0.0), "economy": "12_NZ", "sub2sectors": "10_01_11_oil_refineries"},
+    ])
+    mapping_path = tmp_path / "mapping.xlsx"
+    pd.DataFrame([{
+        "ninth_sector": "10_01_11_oil_refineries",
+        "ninth_fuel": "07_10_refinery_gas_not_liquefied",
+        "esto_flow": "10.01.11 Oil refineries",
+        "esto_product": "07.10 Refinery gas (not liquefied)",
+    }]).to_excel(mapping_path, index=False)
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth, esto, mapping_path, base_year=2022, projection_years=[2023, 2030],
+        scenario="target", fill_missing_ninth_sectors=True,
+        transformation_owned_loss_flows={"10.01.11 Oil refineries": "Oil Refining"},
+        transformation_owned_all_zero_carry_exceptions={
+            ("12NZ", "10.01.11 Oil refineries"): "Confirmed NZ refinery shutdown."
+        },
+    )
+
+    projected = projection.set_index("esto_product")
+    assert projected.loc["07.10 Refinery gas (not liquefied)", [2023, 2030]].tolist() == pytest.approx([0.0, 0.0])
+    skipped = diagnostics[diagnostics["proposed_action"].eq("skip_confirmed_shutdown")]
+    assert len(skipped) == 1
+    assert skipped.iloc[0]["provenance"] == "economy_flow_shutdown_exception"
+
+
 def test_projection_series_accepts_string_year_headers() -> None:
     ninth_pairs = pd.DataFrame(
         [

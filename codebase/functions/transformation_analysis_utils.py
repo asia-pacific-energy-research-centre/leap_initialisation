@@ -410,6 +410,16 @@ TRANSFORMATION_OWN_USE_SECTOR_KEYS = (
     "oil_refineries",
 )
 
+# A carried own-use value is invalid when its whole transformation process is
+# confirmed to have closed. Keep these exceptions at the economy/ESTO-flow
+# boundary so they apply to every fuel on the retired process.
+TRANSFORMATION_OWN_USE_ALL_ZERO_CARRY_EXCEPTIONS = {
+    ("12NZ", "10.01.11 Oil refineries"): (
+        "New Zealand oil refinery shut down in 2022; retain zero projected "
+        "refinery activity and do not carry 2022 own use forward."
+    ),
+}
+
 
 def get_transformation_owned_loss_flows() -> dict[str, str]:
     """Return active transformation-owned own-use flow -> LEAP process title."""
@@ -419,6 +429,11 @@ def get_transformation_owned_loss_flows() -> dict[str, str]:
         for flow in config.get("loss_flow_codes", []):
             owned[str(flow)] = str(config["title"])
     return owned
+
+
+def get_transformation_owned_all_zero_carry_exceptions() -> dict[tuple[str, str], str]:
+    """Return reviewed shutdown exceptions to structural-zero own-use carries."""
+    return dict(TRANSFORMATION_OWN_USE_ALL_ZERO_CARRY_EXCEPTIONS)
 
 
 # Module-level data globals — populated by prepare_transformation_assets().
@@ -2004,6 +2019,9 @@ def prepare_transformation_assets() -> None:
             owner_workflow="transformation_workflow",
             allocation_anchor_esto_data=esto_projection_anchor_data,
             transformation_owned_loss_flows=get_transformation_owned_loss_flows(),
+            transformation_owned_all_zero_carry_exceptions=(
+                get_transformation_owned_all_zero_carry_exceptions()
+            ),
         ),
     )
     esto_data = merge_projection_into_esto(

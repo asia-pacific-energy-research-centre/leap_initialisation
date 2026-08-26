@@ -1867,6 +1867,7 @@ def carry_transformation_owned_all_zero_own_use(
     base_values: pd.DataFrame,
     projection_years: Sequence[int],
     owned_loss_flows: dict[str, str],
+    all_zero_carry_exceptions: dict[tuple[str, str], str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Carry eligible transformation own-use energy through all-zero projections.
 
@@ -1886,6 +1887,7 @@ def carry_transformation_owned_all_zero_own_use(
     ):
         return projection_df, pd.DataFrame()
 
+    exception_reasons = dict(all_zero_carry_exceptions or {})
     result = projection_df.copy()
     if result.empty:
         result = pd.DataFrame(columns=["economy_key", "esto_flow", "esto_product", *projection_years])
@@ -1916,6 +1918,24 @@ def carry_transformation_owned_all_zero_own_use(
         flow = str(candidate["esto_flow"]).strip()
         product = str(candidate["esto_product"]).strip()
         base_value = float(candidate["base_value"])
+        exception_reason = exception_reasons.get((economy_key, flow))
+        if exception_reason:
+            diagnostics.append({
+                "diagnostic_type": "transformation_own_use_ninth_projection_all_zero",
+                "economy_key": economy_key,
+                "esto_flow": flow,
+                "esto_product": product,
+                "leap_process_label": owned_loss_flows[flow],
+                "signed_base_year_value": base_value,
+                "ninth_projection_state": "shutdown_exception",
+                "owner_workflow": "transformation_workflow",
+                "owner_writes_as": "transformation_auxiliary_fuel_use",
+                "process_output_nonzero_every_projection_year": False,
+                "proposed_action": "skip_confirmed_shutdown",
+                "provenance": "economy_flow_shutdown_exception",
+                "exception_reason": exception_reason,
+            })
+            continue
         source_pairs = mapping.loc[
             mapping["esto_flow"].eq(flow) & mapping["esto_product"].eq(product),
             ["ninth_sector", "ninth_fuel"],
@@ -1984,6 +2004,7 @@ def build_esto_projection_table(
     allocation_anchor_esto_data: pd.DataFrame | None = None,
     return_allocation_provenance: bool = False,
     transformation_owned_loss_flows: dict[str, str] | None = None,
+    transformation_owned_all_zero_carry_exceptions: dict[tuple[str, str], str] | None = None,
 ) -> (
     tuple[pd.DataFrame, pd.DataFrame]
     | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
@@ -2146,6 +2167,7 @@ def build_esto_projection_table(
             base_values,
             projection_years,
             transformation_owned_loss_flows,
+            transformation_owned_all_zero_carry_exceptions,
         )
 
     context = build_unallocated_projection_flow_context(

@@ -43,7 +43,9 @@ nonzero Ninth value, including a series with internal zero years, remains
 authoritative. LNG, non-specified own use, and other proxy-owned flows are not
 eligible for transformation auxiliary rows. A nonzero carried fuel with zero
 process denominator raises a named review/blocking error rather than silently
-writing a zero ratio.
+writing a zero ratio. The reviewed exception is New Zealand (`12_NZ`) oil
+refining: the refinery closed in 2022, so its `10.01.11 Oil refineries`
+own-use rows remain zero after the base year rather than being carried forward.
 
 ### Rationale
 
