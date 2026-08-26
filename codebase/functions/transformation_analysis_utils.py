@@ -319,7 +319,11 @@ MAJOR_SECTOR_CONFIG = {
     },
     "coal_liquefaction": {
         "dataset_key": "esto",
-        "title": "Liquefaction (coal to oil)",
+        # Match the canonical LEAP module title in the export templates.  The
+        # ESTO flow retains parentheses, but the LEAP branch does not.  Keeping
+        # these distinct prevents this 09.08 child from being dropped as an
+        # apparently absent zero-skeleton process.
+        "title": "Liquefaction coal to oil",
         "transformation_flow_codes": ["09.08.05 Liquefaction (coal to oil)"],
         "loss_flow_codes": [],
     },

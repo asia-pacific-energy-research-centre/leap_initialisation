@@ -53,4 +53,17 @@ def test_nonspecified_transformation_registers_canonical_title(monkeypatch):
     assert core.get_analyzed_sector_titles() == {"Non specified transformation"}
 
 
+def test_coal_liquefaction_registers_template_title(monkeypatch):
+    """Coal-to-oil must use the PRC template's canonical LEAP branch title."""
+    monkeypatch.setattr(core, "DATASET_MAP", {"esto": (object(), [2022])})
+    monkeypatch.setattr(core, "resolve_dataset", lambda dataset_map, key: dataset_map[key])
+    monkeypatch.setattr(core, "get_economy_list", lambda data, configured: ["05_PRC"])
+    monkeypatch.setattr(core, "map_code_label", lambda label, mapping: label)
+
+    core.reset_analyzed_sector_titles()
+    core.run_analysis_for_sector(True, "coal_liquefaction", lambda *parameters: None, [])
+
+    assert core.get_analyzed_sector_titles() == {"Liquefaction coal to oil"}
+
+
 #%%
