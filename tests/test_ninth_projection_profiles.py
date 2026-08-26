@@ -11,6 +11,131 @@ from codebase.functions.ninth_projection_mapping import (
 from codebase.functions.esto_data_utils import add_all_economy_total
 
 
+def _own_use_ninth_row(fuel: str, value_2023: float, value_2030: float) -> dict:
+    return {
+        "economy": "05_PRC",
+        "scenarios": "target",
+        "sectors": "10_losses_and_own_use",
+        "sub1sectors": "10_01_own_use",
+        "sub2sectors": "10_01_02_gas_works_plants",
+        "sub3sectors": "x",
+        "sub4sectors": "x",
+        "fuels": fuel,
+        "subfuels": "x",
+        "subtotal_results": False,
+        2023: value_2023,
+        2030: value_2030,
+    }
+
+
+def test_transformation_owned_all_zero_own_use_carries_signed_base_energy(tmp_path) -> None:
+    """PRC gas-works own-use structural zeros retain all four known fuels."""
+    candidates = {
+        "02 Coal products": -1.163344,
+        "08.03 Gas works gas": -0.264522,
+        "17 Electricity": -69.472800,
+        "18 Heat": -49.066621,
+    }
+    esto = pd.DataFrame([
+        {"economy": "05PRC", "flows": "10.01.02 Gas works plants", "products": product,
+         "is_subtotal": False, 2022: value}
+        for product, value in candidates.items()
+    ])
+    ninth = pd.DataFrame([
+        _own_use_ninth_row("02_coal_products", 0.0, 0.0),
+        _own_use_ninth_row("08_03_gas_works_gas", 0.0, 0.0),
+        _own_use_ninth_row("17_electricity", 0.0, 0.0),
+        _own_use_ninth_row("18_heat", 0.0, 0.0),
+    ])
+    mapping_path = tmp_path / "mapping.xlsx"
+    pd.DataFrame([
+        {"ninth_sector": "10_01_02_gas_works_plants", "ninth_fuel": fuel,
+         "esto_flow": "10.01.02 Gas works plants", "esto_product": product}
+        for fuel, product in [
+            ("02_coal_products", "02 Coal products"),
+            ("08_03_gas_works_gas", "08.03 Gas works gas"),
+            ("17_electricity", "17 Electricity"),
+            ("18_heat", "18 Heat"),
+        ]
+    ]).to_excel(mapping_path, index=False)
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth, esto, mapping_path, base_year=2022, projection_years=[2023, 2030],
+        scenario="target", fill_missing_ninth_sectors=True,
+        transformation_owned_loss_flows={"10.01.02 Gas works plants": "Gas works plants"},
+    )
+
+    projected = projection.set_index("esto_product")
+    for product, value in candidates.items():
+        assert projected.loc[product, [2023, 2030]].tolist() == pytest.approx([value, value])
+    carried = diagnostics[diagnostics["diagnostic_type"].eq(
+        "transformation_own_use_ninth_projection_all_zero"
+    )]
+    assert len(carried) == 4
+    assert set(carried["provenance"]) == {"esto_base_year_carry_forward"}
+
+
+def test_transformation_own_use_nonzero_ninth_and_proxy_flow_are_unchanged(tmp_path) -> None:
+    esto = pd.DataFrame([
+        {"economy": "05PRC", "flows": "10.01.02 Gas works plants", "products": "17 Electricity", "is_subtotal": False, 2022: -10.0},
+        {"economy": "05PRC", "flows": "10.01.03 Liquefaction/regasification plants", "products": "18 Heat", "is_subtotal": False, 2022: -20.0},
+        {"economy": "05PRC", "flows": "10.01.02 Gas works plants", "products": "18 Heat", "is_subtotal": False, 2022: 0.0},
+    ])
+    ninth = pd.DataFrame([
+        _own_use_ninth_row("17_electricity", 0.0, -15.0),
+        {**_own_use_ninth_row("18_heat", 0.0, 0.0), "sub2sectors": "10_01_03_liquefaction_regasification_plants"},
+    ])
+    mapping_path = tmp_path / "mapping.xlsx"
+    pd.DataFrame([
+        {"ninth_sector": "10_01_02_gas_works_plants", "ninth_fuel": "17_electricity", "esto_flow": "10.01.02 Gas works plants", "esto_product": "17 Electricity"},
+        {"ninth_sector": "10_01_03_liquefaction_regasification_plants", "ninth_fuel": "18_heat", "esto_flow": "10.01.03 Liquefaction/regasification plants", "esto_product": "18 Heat"},
+        {"ninth_sector": "10_01_02_gas_works_plants", "ninth_fuel": "18_heat", "esto_flow": "10.01.02 Gas works plants", "esto_product": "18 Heat"},
+    ]).to_excel(mapping_path, index=False)
+
+    projection, diagnostics = build_esto_projection_table(
+        ninth, esto, mapping_path, base_year=2022, projection_years=[2023, 2030],
+        scenario="target", fill_missing_ninth_sectors=True,
+        transformation_owned_loss_flows={"10.01.02 Gas works plants": "Gas works plants"},
+    )
+
+    values = projection.set_index(["esto_flow", "esto_product"])
+    assert values.loc[("10.01.02 Gas works plants", "17 Electricity"), [2023, 2030]].tolist() == pytest.approx([0.0, -15.0])
+    assert values.loc[("10.01.03 Liquefaction/regasification plants", "18 Heat"), [2023, 2030]].tolist() == pytest.approx([0.0, 0.0])
+    assert ("10.01.02 Gas works plants", "18 Heat") not in values.index
+    assert not diagnostics.get("diagnostic_type", pd.Series(dtype=str)).eq(
+        "transformation_own_use_ninth_projection_all_zero"
+    ).any()
+
+
+def test_coal_and_refinery_owned_own_use_flows_are_eligible_for_flat_carry(tmp_path) -> None:
+    esto = pd.DataFrame([
+        {"economy": "01AUS", "flows": "10.01.05 Coke ovens", "products": "17 Electricity", "is_subtotal": False, 2022: -3.0},
+        {"economy": "01AUS", "flows": "10.01.11 Oil refineries", "products": "08.01 Natural gas", "is_subtotal": False, 2022: -4.0},
+    ])
+    ninth = pd.DataFrame([
+        {**_own_use_ninth_row("17_electricity", 0.0, 0.0), "economy": "01_AUS", "sub2sectors": "10_01_05_coke_ovens"},
+        {**_own_use_ninth_row("08_01_natural_gas", 0.0, 0.0), "economy": "01_AUS", "sub2sectors": "10_01_11_oil_refineries"},
+    ])
+    mapping_path = tmp_path / "mapping.xlsx"
+    pd.DataFrame([
+        {"ninth_sector": "10_01_05_coke_ovens", "ninth_fuel": "17_electricity", "esto_flow": "10.01.05 Coke ovens", "esto_product": "17 Electricity"},
+        {"ninth_sector": "10_01_11_oil_refineries", "ninth_fuel": "08_01_natural_gas", "esto_flow": "10.01.11 Oil refineries", "esto_product": "08.01 Natural gas"},
+    ]).to_excel(mapping_path, index=False)
+
+    projection, _ = build_esto_projection_table(
+        ninth, esto, mapping_path, base_year=2022, projection_years=[2023, 2030],
+        scenario="target", fill_missing_ninth_sectors=True,
+        transformation_owned_loss_flows={
+            "10.01.05 Coke ovens": "Coke ovens",
+            "10.01.11 Oil refineries": "Oil Refining",
+        },
+    )
+
+    values = projection.set_index("esto_flow")
+    assert values.loc["10.01.05 Coke ovens", [2023, 2030]].tolist() == pytest.approx([-3.0, -3.0])
+    assert values.loc["10.01.11 Oil refineries", [2023, 2030]].tolist() == pytest.approx([-4.0, -4.0])
+
+
 def test_projection_series_accepts_string_year_headers() -> None:
     ninth_pairs = pd.DataFrame(
         [

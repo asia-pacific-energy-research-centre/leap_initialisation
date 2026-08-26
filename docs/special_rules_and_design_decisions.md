@@ -8,7 +8,7 @@
 
 ## INIT-017: Missing 9th children use base-year carry or parent residuals
 
-**Status:** Decided 2026-08-16; generalized implementation pending
+**Status:** Implemented 2026-08-26; full mapping-pipeline validation pending
 **Owner:** leap_initialisation
 **Type:** Projection gap fill / parent-child additivity
 **Affected areas:** `FILL_IN_MISSING_9TH_SECTORS`; workflow ownership routing;
@@ -34,6 +34,17 @@ shares or an equal split. Every fill must identify its owning workflow and emit
 a reviewable method/input/residual/share diagnostic. With
 `FILL_IN_MISSING_9TH_SECTORS=False`, direct 9th output remains unchanged.
 
+Transformation-owned own-use fuel is a separate projection-gap case. For an
+active process configured with an owned `10.01` flow, carry the signed ESTO
+base-year energy flat only when the complete Ninth own-use fuel series is
+absent or all zero. The process builder then recalculates its year-specific
+Auxiliary Fuel Use ratio against that year's applicable denominator. Any
+nonzero Ninth value, including a series with internal zero years, remains
+authoritative. LNG, non-specified own use, and other proxy-owned flows are not
+eligible for transformation auxiliary rows. A nonzero carried fuel with zero
+process denominator raises a named review/blocking error rather than silently
+writing a zero ratio.
+
 ### Rationale
 
 The provisional behavior is intentionally obvious: a modeller can recognize a
@@ -45,6 +56,10 @@ the simplicity rule must not break parent-child additivity.
 
 - 2026-08-16: User selected parent-residual allocation over scaling direct 9th
   children or allowing children to disagree with the projected parent.
+- 2026-08-26: Added transformation-owned all-zero own-use carry-forward for
+  Gas works, Coke ovens, Blast furnaces, and Oil Refining under the existing
+  feature gate, with `transformation_own_use_ninth_projection_all_zero`
+  diagnostics and `esto_base_year_carry_forward` provenance.
 
 ## INIT-016: Non-specified own-use other-petroleum residual
 

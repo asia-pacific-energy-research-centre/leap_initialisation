@@ -109,7 +109,21 @@ def build_auxiliary_from_losses_by_year(loss_values_by_year, output_series, feed
             if str(label) in exclude:
                 continue
             fuels.append(label)
-            ratio_series = safe_divide_series(pd.Series(series).abs(), output_series_pos)
+            energy_series = pd.Series(series, dtype=float).abs().reindex(
+                output_series_pos.index, fill_value=0.0
+            )
+            invalid_years = energy_series.index[
+                energy_series.ne(0.0) & output_series_pos.eq(0.0)
+            ].tolist()
+            if invalid_years:
+                message = (
+                    "[REVIEW] transformation_own_use_zero_denominator: "
+                    f"fuel={label}, years={invalid_years}, carried_energy="
+                    f"{energy_series.loc[invalid_years].to_dict()}"
+                )
+                print(message)
+                raise ValueError(message)
+            ratio_series = safe_divide_series(energy_series, output_series_pos)
             ratios[label] = ratio_series.to_dict()
         return fuels, ratios
     except Exception as exc:

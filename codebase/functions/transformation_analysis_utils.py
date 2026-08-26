@@ -399,6 +399,28 @@ MAJOR_SECTOR_CONFIG = {
         "process_config": HYDROGEN_PROCESS_CONFIG,
     },
 } 
+
+# Only these configured transformation modules currently write their own-use
+# energy as Auxiliary Fuel Use. LNG and non-specified own use have explicit
+# proxy owners; coal mines is not registered in the transformation workflow.
+TRANSFORMATION_OWN_USE_SECTOR_KEYS = (
+    "gas_works",
+    "coal_coke_ovens",
+    "coal_blast_furnaces",
+    "oil_refineries",
+)
+
+
+def get_transformation_owned_loss_flows() -> dict[str, str]:
+    """Return active transformation-owned own-use flow -> LEAP process title."""
+    owned: dict[str, str] = {}
+    for sector_key in TRANSFORMATION_OWN_USE_SECTOR_KEYS:
+        config = MAJOR_SECTOR_CONFIG[sector_key]
+        for flow in config.get("loss_flow_codes", []):
+            owned[str(flow)] = str(config["title"])
+    return owned
+
+
 # Module-level data globals — populated by prepare_transformation_assets().
 # None/empty until that function is called.
 DATASET_MAP: dict | None = None
@@ -1848,7 +1870,7 @@ def save_missing_ninth_fill_diagnostics(
     ):
         return None
     mask = projection_diagnostics["diagnostic_type"].astype(str).str.contains(
-        "missing_ninth|gas_missing_ninth|gas_parent_residual",
+        "missing_ninth|gas_missing_ninth|gas_parent_residual|transformation_own_use_ninth",
         regex=True,
     )
     inventory = projection_diagnostics.loc[mask].copy()
@@ -1862,6 +1884,36 @@ def save_missing_ninth_fill_diagnostics(
     output_path = diagnostics_dir / f"transformation_missing_ninth_sector_fills_{scenario_token}.csv"
     inventory.to_csv(output_path, index=False)
     print(f"Saved missing-9th-sector fill inventory to {output_path}")
+    return output_path
+
+
+def save_transformation_own_use_projection_inventory(
+    projection_diagnostics: pd.DataFrame | None,
+    scenario: str,
+    output_dir: Path | str | None = None,
+) -> Path | None:
+    """Write the narrow source-backed inventory of owned own-use gap fills."""
+    if (
+        projection_diagnostics is None
+        or projection_diagnostics.empty
+        or "diagnostic_type" not in projection_diagnostics.columns
+    ):
+        return None
+    inventory = projection_diagnostics.loc[
+        projection_diagnostics["diagnostic_type"].astype(str).eq(
+            "transformation_own_use_ninth_projection_all_zero"
+        )
+    ].copy()
+    if inventory.empty:
+        return None
+    scenario_token = re.sub(
+        r"[^a-z0-9]+", "_", str(scenario or "scenario").strip().lower()
+    ).strip("_")
+    diagnostics_dir = Path(output_dir or EXPORT_OUTPUT_DIR) / "supporting_files" / "diagnostics"
+    diagnostics_dir.mkdir(parents=True, exist_ok=True)
+    output_path = diagnostics_dir / f"transformation_own_use_projection_candidates_{scenario_token}.csv"
+    inventory.to_csv(output_path, index=False)
+    print(f"Saved transformation own-use projection inventory to {output_path}")
     return output_path
 
 
@@ -1951,6 +2003,7 @@ def prepare_transformation_assets() -> None:
             fill_missing_ninth_sectors=FILL_IN_MISSING_9TH_SECTORS,
             owner_workflow="transformation_workflow",
             allocation_anchor_esto_data=esto_projection_anchor_data,
+            transformation_owned_loss_flows=get_transformation_owned_loss_flows(),
         ),
     )
     esto_data = merge_projection_into_esto(
@@ -1967,6 +2020,10 @@ def prepare_transformation_assets() -> None:
         scenario="reference",
     )
     save_missing_ninth_fill_diagnostics(
+        projection_diagnostics,
+        scenario="reference",
+    )
+    save_transformation_own_use_projection_inventory(
         projection_diagnostics,
         scenario="reference",
     )

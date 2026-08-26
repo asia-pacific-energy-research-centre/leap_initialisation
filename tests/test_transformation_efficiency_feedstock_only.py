@@ -12,9 +12,26 @@ from codebase.functions.transformation_record_builder import (
     build_transformation_log_rows,
 )
 from codebase.functions.transformation_series_utils import (
+    build_auxiliary_from_losses_by_year,
     compute_efficiency_by_year,
     compute_efficiency_from_value_maps,
 )
+
+
+def test_auxiliary_ratio_reconstructs_carried_energy_and_blocks_zero_denominator() -> None:
+    fuels, ratios = build_auxiliary_from_losses_by_year(
+        {"Electricity": {2023: 69.4728, 2030: 69.4728}},
+        pd.Series({2023: 100.0, 2030: 50.0}),
+    )
+    assert fuels == ["Electricity"]
+    assert ratios["Electricity"][2023] * 100.0 == pytest.approx(69.4728)
+    assert ratios["Electricity"][2030] * 50.0 == pytest.approx(69.4728)
+
+    with pytest.raises(ValueError, match="transformation_own_use_zero_denominator"):
+        build_auxiliary_from_losses_by_year(
+            {"Electricity": {2023: 69.4728}},
+            pd.Series({2023: 0.0}),
+        )
 
 
 def test_efficiency_series_uses_feedstock_without_auxiliary_energy() -> None:

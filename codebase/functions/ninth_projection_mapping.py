@@ -1860,6 +1860,115 @@ def build_unallocated_projection_flow_context(
     return pd.DataFrame(rows)
 
 
+def carry_transformation_owned_all_zero_own_use(
+    projection_df: pd.DataFrame,
+    mapping_df: pd.DataFrame,
+    ninth_series: pd.DataFrame,
+    base_values: pd.DataFrame,
+    projection_years: Sequence[int],
+    owned_loss_flows: dict[str, str],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Carry eligible transformation own-use energy through all-zero projections.
+
+    ``owned_loss_flows`` is deliberately supplied by the transformation
+    workflow from its process registry.  That keeps ownership in one place and
+    prevents proxy-owned own-use rows (notably LNG) from being emitted twice.
+    A nonzero Ninth source remains authoritative, including zero years inside
+    its supplied series.
+    """
+    required_base = {"economy_key", "esto_flow", "esto_product", "base_value"}
+    required_mapping = {"ninth_sector", "ninth_fuel", "esto_flow", "esto_product"}
+    if (
+        not owned_loss_flows
+        or base_values.empty
+        or not required_base.issubset(base_values.columns)
+        or not required_mapping.issubset(mapping_df.columns)
+    ):
+        return projection_df, pd.DataFrame()
+
+    result = projection_df.copy()
+    if result.empty:
+        result = pd.DataFrame(columns=["economy_key", "esto_flow", "esto_product", *projection_years])
+    for year in projection_years:
+        if year not in result.columns:
+            result[year] = 0.0
+
+    mapping = mapping_df[list(required_mapping)].copy()
+    for column in required_mapping:
+        mapping[column] = mapping[column].fillna("").astype(str).str.strip()
+    mapping = mapping[mapping["esto_flow"].isin(owned_loss_flows)].drop_duplicates()
+
+    source = ninth_series.copy()
+    if not source.empty:
+        for column in ("economy_key", "ninth_sector", "ninth_fuel"):
+            source[column] = source[column].fillna("").astype(str).str.strip()
+        for year in projection_years:
+            if year not in source.columns:
+                source[year] = 0.0
+
+    diagnostics: list[dict[str, object]] = []
+    candidates = base_values.loc[
+        base_values["esto_flow"].astype(str).isin(owned_loss_flows)
+        & pd.to_numeric(base_values["base_value"], errors="coerce").fillna(0.0).ne(0.0)
+    ].copy()
+    for _, candidate in candidates.iterrows():
+        economy_key = str(candidate["economy_key"]).strip()
+        flow = str(candidate["esto_flow"]).strip()
+        product = str(candidate["esto_product"]).strip()
+        base_value = float(candidate["base_value"])
+        source_pairs = mapping.loc[
+            mapping["esto_flow"].eq(flow) & mapping["esto_product"].eq(product),
+            ["ninth_sector", "ninth_fuel"],
+        ].drop_duplicates()
+        source_rows = source.iloc[0:0].copy()
+        if not source_pairs.empty and not source.empty:
+            source_rows = source.merge(source_pairs, on=["ninth_sector", "ninth_fuel"], how="inner")
+            source_rows = source_rows[source_rows["economy_key"].eq(economy_key)]
+        ninth_state = "absent" if source_rows.empty else "all_zero"
+        if not source_rows.empty:
+            source_values = source_rows[list(projection_years)].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+            if source_values.ne(0.0).any().any():
+                continue
+
+        key_mask = (
+            result["economy_key"].astype(str).eq(economy_key)
+            & result["esto_flow"].astype(str).eq(flow)
+            & result["esto_product"].astype(str).eq(product)
+        )
+        if key_mask.any():
+            # A direct zero source allocated to this target already has a row.
+            # Replacing all years together ensures no isolated Ninth zero is filled.
+            result.loc[key_mask, list(projection_years)] = base_value
+        else:
+            result = pd.concat(
+                [result, pd.DataFrame([{
+                    "economy_key": economy_key,
+                    "esto_flow": flow,
+                    "esto_product": product,
+                    **{year: base_value for year in projection_years},
+                }])],
+                ignore_index=True,
+                sort=False,
+            )
+        diagnostics.append({
+            "diagnostic_type": "transformation_own_use_ninth_projection_all_zero",
+            "economy_key": economy_key,
+            "esto_flow": flow,
+            "esto_product": product,
+            "leap_process_label": owned_loss_flows[flow],
+            "signed_base_year_value": base_value,
+            "ninth_projection_state": ninth_state,
+            "owner_workflow": "transformation_workflow",
+            "owner_writes_as": "transformation_auxiliary_fuel_use",
+            # The projection allocator has no process-output denominator. The
+            # sector builder is the authority for that process-specific basis.
+            "process_output_nonzero_every_projection_year": pd.NA,
+            "proposed_action": "carry",
+            "provenance": "esto_base_year_carry_forward",
+        })
+    return result, pd.DataFrame(diagnostics)
+
+
 def build_esto_projection_table(
     ninth_data: pd.DataFrame,
     esto_data: pd.DataFrame,
@@ -1874,6 +1983,7 @@ def build_esto_projection_table(
     existing_output_pairs: pd.DataFrame | None = None,
     allocation_anchor_esto_data: pd.DataFrame | None = None,
     return_allocation_provenance: bool = False,
+    transformation_owned_loss_flows: dict[str, str] | None = None,
 ) -> (
     tuple[pd.DataFrame, pd.DataFrame]
     | tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
@@ -2027,6 +2137,17 @@ def build_esto_projection_table(
         projection_df, diagnostics = allocation_result
         allocation_provenance = None
 
+    own_use_diagnostics = pd.DataFrame()
+    if fill_missing_ninth_sectors and transformation_owned_loss_flows:
+        projection_df, own_use_diagnostics = carry_transformation_owned_all_zero_own_use(
+            projection_df,
+            mapping_df,
+            ninth_series,
+            base_values,
+            projection_years,
+            transformation_owned_loss_flows,
+        )
+
     context = build_unallocated_projection_flow_context(
         diagnostics,
         esto_data,
@@ -2037,6 +2158,12 @@ def build_esto_projection_table(
     if not context.empty:
         diagnostics = pd.concat(
             [diagnostics, context],
+            ignore_index=True,
+            sort=False,
+        )
+    if not own_use_diagnostics.empty:
+        diagnostics = pd.concat(
+            [diagnostics, own_use_diagnostics],
             ignore_index=True,
             sort=False,
         )
