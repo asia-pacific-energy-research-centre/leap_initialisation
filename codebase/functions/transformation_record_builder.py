@@ -1174,7 +1174,12 @@ def build_process_record(
         leap_boundary = _normalize_process_boundary_for_leap(
             output_values,
             auxiliary_ratios,
-            preserve_gross_output_basis=True,
+            # Oil Refining is compared on the Ninth inclusive boundary
+            # (09.07 output less 10.01.11 own use).  Other transformation
+            # modules retain their established gross output representation.
+            preserve_gross_output_basis=(
+                str(sector_title).strip().casefold() != "oil refining"
+            ),
         )
         return {
             "economy": economy,

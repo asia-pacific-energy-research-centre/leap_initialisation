@@ -110,8 +110,8 @@ def test_process_record_overrides_legacy_efficiency_with_exported_feedstocks() -
     assert efficiency_row["Value"] == pytest.approx((16.775 / 41.930999) * 100.0)
 
 
-def test_oil_refining_uses_one_gross_output_basis_for_leap_boundary() -> None:
-    """Refinery outputs and auxiliary ratios share the gross capacity basis."""
+def test_oil_refining_uses_net_deliverable_boundary_for_leap() -> None:
+    """Refinery output shares and auxiliary ratios use the Ninth inclusive boundary."""
     gross_output = 551.001809
     feedstock = 552.471099
     own_use = {
@@ -133,7 +133,7 @@ def test_oil_refining_uses_one_gross_output_basis_for_leap_boundary() -> None:
 
     record = build_process_record(
         economy="01_AUS",
-        sector_title="Oil Refining",
+        sector_title="  oil refining  ",
         process_name="Oil Refining",
         output_values=output_values,
         feedstock_values={"Crude oil and refinery feedstocks": {2022: feedstock}},
@@ -153,40 +153,39 @@ def test_oil_refining_uses_one_gross_output_basis_for_leap_boundary() -> None:
         gross_output
     )
     assert sum(values[2022] for values in record["output_values"].values()) == pytest.approx(
-        gross_output
+        gross_output - sum(own_use.values())
     )
-    assert sum(
-        values[2022] for values in record["deliverable_output_values"].values()
-    ) == pytest.approx(gross_output - sum(own_use.values()))
+    assert record["deliverable_output_values"] == record["output_values"]
     assert record["output_values"]["Refinery gas"][2022] == pytest.approx(
-        own_use["Refinery gas"]
+        0.0
     )
     assert record["output_values"]["Petroleum coke"][2022] == pytest.approx(
-        own_use["Petroleum coke"]
+        0.0
     )
-    assert record["output_values"]["Other products"][2022] == pytest.approx(90.210399)
+    assert record["output_values"]["Other products"][2022] == pytest.approx(
+        90.210399 - own_use["Other products"]
+    )
     assert record["efficiency"][2022] == pytest.approx(gross_output / feedstock)
     assert record["auxiliary_ratios"]["Natural gas"][2022] == pytest.approx(
-        external_auxiliary["Natural gas"] / gross_output
+        external_auxiliary["Natural gas"] / (gross_output - sum(own_use.values()))
     )
-    assert record["process_boundary_status"] == "gross_output_with_separate_auxiliary_use"
+    assert record["process_boundary_status"] == "net_deliverable_output"
 
-    # LEAP applies Output Share and Auxiliary Fuel Use to the same process
-    # output basis. Their combined balance must therefore reconstruct the
-    # source 09.07 output plus the separate 10.01.11 own-use row fuel by fuel.
+    # Output Shares now write the net `09.07 + 10.01.11` value while every
+    # auxiliary ratio is rebased to the same total deliverable output.
+    net_output = gross_output - sum(own_use.values())
     all_fuels = sorted(set(output_values) | set(auxiliary_energy))
     for fuel in all_fuels:
-        modeled_output = gross_output * (
-            record["output_values"].get(fuel, {}).get(2022, 0.0) / gross_output
-        )
-        modeled_auxiliary = gross_output * (
+        modeled_output = record["output_values"].get(fuel, {}).get(2022, 0.0)
+        modeled_auxiliary = net_output * (
             record["auxiliary_ratios"].get(fuel, {}).get(2022, 0.0)
         )
-        expected_balance = (
+        expected_net_output = (
             output_values.get(fuel, {}).get(2022, 0.0)
-            - auxiliary_energy.get(fuel, 0.0)
+            - own_use.get(fuel, 0.0)
         )
-        assert modeled_output - modeled_auxiliary == pytest.approx(expected_balance)
+        assert modeled_output == pytest.approx(expected_net_output)
+        assert modeled_auxiliary == pytest.approx(auxiliary_energy.get(fuel, 0.0))
 
 
 def test_non_overlapping_auxiliary_fuels_leave_process_record_unchanged() -> None:
@@ -257,10 +256,35 @@ def test_refinery_capacity_uses_deliverable_output_and_preserves_runtime_additio
         output_values={"Motor gasoline": {2022: 80.0}, "Refinery gas": {2022: 20.0}},
         feedstock_values={"Crude oil": {2022: 110.0}},
         efficiency={2022: 0.0},
-        auxiliary_ratios={"Refinery gas": {2022: 20.0 / gross_output}},
-        loss_values={"Refinery gas": {2022: 20.0}},
-        loss_total=20.0,
+        auxiliary_ratios={
+            "Refinery gas": {2022: 20.0 / gross_output},
+            "Natural gas": {2022: 5.0 / gross_output},
+        },
+        loss_values={
+            "Refinery gas": {2022: 20.0},
+            "Natural gas": {2022: 5.0},
+        },
+        loss_total=25.0,
     )
+    assert sum(
+        values[2022] for values in record["gross_output_values"].values()
+    ) == pytest.approx(100.0)
+    assert sum(
+        values[2022] for values in record["output_values"].values()
+    ) == pytest.approx(80.0)
+    assert record["output_values"]["Motor gasoline"][2022] == pytest.approx(80.0)
+    assert record["output_values"]["Refinery gas"][2022] == pytest.approx(0.0)
+    assert sum(
+        values[2022] for values in record["deliverable_output_values"].values()
+    ) == pytest.approx(80.0)
+    assert record["auxiliary_ratios"]["Refinery gas"][2022] == pytest.approx(
+        20.0 / 80.0
+    )
+    assert record["auxiliary_ratios"]["Natural gas"][2022] == pytest.approx(
+        5.0 / 80.0
+    )
+    assert record["efficiency"][2022] == pytest.approx(100.0 / 110.0)
+    assert record["process_boundary_status"] == "net_deliverable_output"
     monkeypatch.setattr(supply_leap_io, "_use_capacity_like_mode", lambda: True)
     monkeypatch.setattr(supply_leap_io, "_use_legacy_trade_split_mode", lambda: False)
     monkeypatch.setattr(
