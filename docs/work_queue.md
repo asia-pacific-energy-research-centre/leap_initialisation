@@ -103,6 +103,54 @@ expected differences and every unexpected one.
 for both vintages, with import/review evidence and a clear pass, fail, or
 blocked conclusion for the web app and overall process.
 
+## [59] Controlled PRC gas-works and refinery dispatch / own-use correction test
+
+**Status: planned — diagnosis complete; isolated LEAP A/B required before any
+producer change.**
+
+The evidence and exact 2023 reconciliation are recorded in
+`docs/prc_gasworks_refining_dispatch_and_own_use_findings.md`. The two process
+families have distinct confirmed causes:
+
+- Gas works capacity is a ceiling and is dispatched only to requirements; its
+  Auxiliary Fuel Use ratios were generated per gross output but LEAP applies
+  them per feedstock throughput in this module.
+- Oil Refining output is exactly capped by the template's Target `Maximum
+  Availability = 90%`. Same-product refinery own use remains a separate
+  fuel-level comparison-boundary question.
+
+Use one copied PRC area and one copied seed. Do not edit the production area,
+the canonical PRC template, or all-economy seeds during this test.
+
+1. **Gas-works test:** keep Exogenous Capacity equal to gross `09.06.01`
+   output, set Target `Minimum Utilization = 100%`, and rebase each
+   `Auxiliary Fuel Use` ratio to `10.01.02 own use / 09.06.01 direct feedstock
+   throughput`. Export a fresh balance and require exact fuel-level
+   reconstruction of `09.06.01 + 10.01.02` for coal, natural gas,
+   gas-works-gas, motor gasoline, and one trace fuel.
+2. **Refining availability test:** keep the current capacity boundary, set
+   Target `Maximum Availability = 100%`, and prove that the exact 90% activity
+   factor disappears without inflating Exogenous Capacity.
+3. **Refining boundary A/B:** at 100% availability compare the current gross
+   output-share/gross auxiliary-denominator formulation with a net-inclusive
+   output-share/net auxiliary-denominator formulation. Keep Process Efficiency
+   on gross `09.07` output / direct feedstock. Accept only a version that
+   reproduces crude input, external auxiliary fuels, and same-product
+   `09.07 + 10.01.11` values from the raw LEAP export.
+4. **Focused implementation after acceptance:** add only the proven process-
+   specific seed variables and denominator rule, plus exact PRC regression
+   fixtures and a check that aggregate agreement cannot hide material
+   fuel-level residuals.
+5. **Documentation reconciliation:** after the LEAP result selects the refinery
+   boundary, make item [30], SEED-C025, the special-rules note, executable code,
+   and regression names describe the same gross/net convention.
+
+**Complete when:** the controlled seed, LEAP area/version, raw export, and
+source-to-seed-to-result ledger are retained; Gas works matches fuel by fuel;
+the refinery 90% factor is removed; the refinery same-product boundary is
+either proven and implementation-ready or left with one precisely named LEAP
+observation still required.
+
 ## [54] Cross-economy 09.06 / 09.08 baseline-seed verification set
 
 **Status: workbook-only verification complete 2026-08-24; isolated LEAP import
