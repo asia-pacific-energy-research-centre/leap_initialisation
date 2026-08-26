@@ -1,0 +1,2 @@
+economy,sheet_name,fuel_label,sector_code_9th,projection_sector_code,ninth_fuel_code,esto_flow,esto_product,mapping_note,active
+20_USA,refining_inputs,Refinery feedstocks,09_07_oil_refineries,09_07_oil_refineries,06_x_other_hydrocarbons,09.07 Oil refineries,06.05 Other hydrocarbons,USA refining models Ninth Other hydrocarbons as LEAP Refinery feedstocks; compare this proxy branch rather than a literal Other hydrocarbons branch.,TRUE

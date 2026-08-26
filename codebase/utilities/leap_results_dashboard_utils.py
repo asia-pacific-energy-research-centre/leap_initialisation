@@ -444,8 +444,10 @@ def load_explicit_sector_fuel_mappings(path: Path = DEFAULT_EXPLICIT_LEAP_MAPPIN
     if not config_table_exists(path):
         return pd.DataFrame(
             columns=[
+                "economy",
                 "sheet_name",
                 "fuel_label",
+                "economy",
                 "sector_code_9th",
                 "projection_sector_code",
                 "ninth_fuel_code",
@@ -466,6 +468,7 @@ def load_explicit_sector_fuel_mappings(path: Path = DEFAULT_EXPLICIT_LEAP_MAPPIN
         df = df[df["active"].astype(str).str.strip().str.lower().isin({"true", "1", "yes"})]
 
     for col in [
+        "economy",
         "sheet_name",
         "fuel_label",
         "sector_code_9th",
@@ -481,6 +484,7 @@ def load_explicit_sector_fuel_mappings(path: Path = DEFAULT_EXPLICIT_LEAP_MAPPIN
 
     return df[
         [
+            "economy",
             "sheet_name",
             "fuel_label",
             "sector_code_9th",
@@ -1792,7 +1796,7 @@ def build_comparisons(
     exact_esto_product_lookup = _build_name_to_esto_product(DEFAULT_CODEBOOK)
     explicit_map = explicit_mappings.copy() if explicit_mappings is not None else load_explicit_sector_fuel_mappings()
     if explicit_map.empty:
-        explicit_lookup: dict[tuple[str, str, str], list[dict[str, str]]] = {}
+        explicit_lookup: dict[tuple[str, str, str, str], list[dict[str, str]]] = {}
     else:
         for col in [
             "sheet_name",
@@ -1810,6 +1814,7 @@ def build_comparisons(
         explicit_lookup = {}
         for _, row in explicit_map.iterrows():
             key = (
+                _normalize_label(row.get("economy", "")),
                 _normalize_label(row.get("sheet_name", "")),
                 _normalize_label(row.get("fuel_label", "")),
                 _normalize_label(row.get("sector_code_9th", "")),
@@ -2625,14 +2630,27 @@ def build_comparisons(
         sector_code_text: str,
         sector_codes: list[str],
     ) -> dict[str, object]:
+        economy_key = _normalize_label(projection_economy)
         key = (
+            economy_key,
             _normalize_label(sheet_name),
             _normalize_label(fuel_label),
             _normalize_label(sector_code_text),
         )
         if key in explicit_lookup:
             return _build_explicit_mapping_summary(explicit_lookup[key], sector_codes=sector_codes)
+        economy_wildcard_key = (
+            economy_key,
+            _normalize_label(sheet_name),
+            _normalize_label(fuel_label),
+            "",
+        )
+        if economy_wildcard_key in explicit_lookup:
+            return _build_explicit_mapping_summary(
+                explicit_lookup[economy_wildcard_key], sector_codes=sector_codes
+            )
         wildcard_key = (
+            "",
             _normalize_label(sheet_name),
             _normalize_label(fuel_label),
             "",
