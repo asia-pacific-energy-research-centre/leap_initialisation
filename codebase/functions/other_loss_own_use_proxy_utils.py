@@ -1811,6 +1811,69 @@ def build_target_energy_long(
     return target
 
 
+def project_zero_ninth_targets_from_base_intensity(
+    target: pd.DataFrame,
+    *,
+    base_year: int,
+) -> pd.DataFrame:
+    """Project zero-only Ninth targets from calibrated base-year intensity.
+
+    This is deliberately narrower than carrying the base-year energy value
+    forward. Each eligible fuel keeps its observed ESTO base-year
+    ``own use / proxy activity`` ratio, while projected energy changes with
+    the configured Ninth activity series. A supplied nonzero Ninth target is
+    always authoritative and is never replaced.
+    """
+    if target.empty:
+        return target
+
+    out = target.copy()
+    for _, group in out.groupby("fuel_branch_label", dropna=False):
+        base_rows = group.loc[
+            group["source_dataset"].eq("esto")
+            & group["year"].astype(int).eq(int(base_year))
+        ]
+        projection_rows = group.loc[
+            group["source_dataset"].eq("ninth")
+            & group["year"].astype(int).gt(int(base_year))
+        ]
+        if base_rows.empty or projection_rows.empty:
+            continue
+        if not projection_rows["target_energy"].eq(0.0).all():
+            continue
+
+        base_target = float(base_rows["target_energy"].sum())
+        base_activity = float(base_rows["proxy_activity"].max())
+        if base_target == 0.0 or base_activity == 0.0:
+            continue
+
+        base_signed = float(base_rows["target_energy_signed"].sum())
+        sign = -1.0 if base_signed < 0.0 else 1.0
+        calibrated_intensity = base_target / base_activity
+        projection_indices = projection_rows.index
+        projected_energy = (
+            pd.to_numeric(
+                out.loc[projection_indices, "proxy_activity"], errors="coerce"
+            )
+            .fillna(0.0)
+            .abs()
+            * calibrated_intensity
+        )
+        # Several Ninth native fuels can map to the same LEAP branch. Keep one
+        # deterministic calibrated value per year so the detail ledger and the
+        # later max-intensity export aggregation describe the same energy.
+        duplicate_projection = out.loc[projection_indices, "year"].duplicated(
+            keep="first"
+        )
+        projected_energy.loc[duplicate_projection.index[duplicate_projection]] = 0.0
+        out.loc[projection_indices, "target_energy"] = projected_energy
+        out.loc[projection_indices, "target_energy_signed"] = projected_energy * sign
+        out.loc[projection_indices, "source_dataset"] = (
+            "esto_base_intensity_ninth_activity_projection"
+        )
+    return out
+
+
 def _nonzero_fuels_from_esto_activity(
     esto_data: pd.DataFrame,
     config: Mapping[str, object],

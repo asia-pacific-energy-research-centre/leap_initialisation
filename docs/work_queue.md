@@ -1,5 +1,26 @@
 # Remaining work queue
 
+## [60] Restore projected PRC power-plant own-use fuels
+
+**Status: implemented and source-verified 2026-08-26; fresh LEAP import/results
+export remains an external Windows LEAP step.**
+
+The maintained Ninth table supplies projected electricity for `10.01.01
+Electricity, CHP and heat plants` but structural zeroes for PRC coal, coal
+products, oil, gas, biomass, and heat. The enabled Other loss/own-use proxy now
+uses its existing activity model for only those zero-only fuels: calibrate each
+fuel's ESTO 2022 own-use intensity against 2022 electricity-and-heat plant
+output, then apply that intensity to projected Ninth plant output. A nonzero
+Ninth `10.01.01` fuel projection remains authoritative. This is not a flat 2022
+energy carry-forward.
+
+Focused tests cover scaling, sign preservation, and nonzero-Ninth precedence.
+The real PRC Target source ledger was checked at 2022, 2023, 2030, and 2060.
+Complete the external boundary by patching a controlled PRC seed, importing it
+into a copied LEAP area, exporting new results, and re-rendering the PRC Target
+dashboard; do not treat the source/seed calculation alone as a LEAP-result
+verification.
+
 ## [52] Pilot the 2026 preliminary ESTO vintage end to end: baseline seed → LEAP → web review
 
 **Status: planned — scope and provenance gates required before execution.**

@@ -165,6 +165,104 @@ def test_proxy_log_rows_use_matching_ninth_scenario(monkeypatch) -> None:
     ]
 
 
+def _power_own_use_config() -> dict[str, object]:
+    return next(
+        item
+        for item in workflow.PROXY_CONFIG
+        if item["process_key"] == "electricity_chp_and_heat_plants"
+    )
+
+
+def test_power_own_use_projects_zero_only_fuel_from_calibrated_activity() -> None:
+    """A structural Ninth zero uses base intensity, not a flat energy carry."""
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "05PRC",
+                "economy_key": "05_PRC",
+                "flows": "09.01.01 Electricity plants",
+                "products": "17 Electricity",
+                2022: 100.0,
+            },
+            {
+                "economy": "05PRC",
+                "economy_key": "05_PRC",
+                "flows": "10.01.01 Electricity, CHP and heat plants",
+                "products": "18 Heat",
+                2022: -10.0,
+            },
+            {
+                "economy": "05PRC",
+                "economy_key": "05_PRC",
+                "flows": "10.01.01 Electricity, CHP and heat plants",
+                "products": "17 Electricity",
+                2022: -20.0,
+            },
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy_key": "05_PRC",
+                "sectors": "09_total_transformation_sector",
+                "sub1sectors": "09_01_electricity_plants",
+                "sub2sectors": "x",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "17_electricity",
+                "subfuels": "x",
+                2023: 200.0,
+                2030: 300.0,
+            },
+            {
+                "economy_key": "05_PRC",
+                "sectors": "10_losses_and_own_use",
+                "sub1sectors": "10_01_own_use",
+                "sub2sectors": "10_01_01_electricity_chp_and_heat_plants",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "18_heat",
+                "subfuels": "x",
+                2023: 0.0,
+                2030: 0.0,
+            },
+            {
+                "economy_key": "05_PRC",
+                "sectors": "10_losses_and_own_use",
+                "sub1sectors": "10_01_own_use",
+                "sub2sectors": "10_01_01_electricity_chp_and_heat_plants",
+                "sub3sectors": "x",
+                "sub4sectors": "x",
+                "fuels": "17_electricity",
+                "subfuels": "x",
+                2023: -30.0,
+                2030: -40.0,
+            },
+        ]
+    )
+
+    detail = workflow.build_proxy_detail_table(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="05_PRC",
+        configs=[_power_own_use_config()],
+        base_year=2022,
+        final_year=2030,
+    )
+
+    heat = detail[detail["fuel_branch_label"].eq("Heat")].sort_values("year")
+    electricity = detail[
+        detail["fuel_branch_label"].eq("Electricity")
+        & detail["year"].astype(int).gt(2022)
+    ].sort_values("year")
+    assert heat["target_energy"].tolist() == pytest.approx([10.0, 20.0, 30.0])
+    assert heat["target_energy_signed"].tolist() == pytest.approx([-10.0, -20.0, -30.0])
+    assert set(heat.loc[heat["year"].astype(int).gt(2022), "source_dataset"]) == {
+        "esto_base_intensity_ninth_activity_projection"
+    }
+    assert electricity["target_energy"].tolist() == pytest.approx([30.0, 40.0])
+    assert set(electricity["source_dataset"]) == {"ninth"}
+
 def test_export_key_workbook_resolves_for_economy_when_not_overridden(monkeypatch, tmp_path) -> None:
     resolved = tmp_path / "12_NZ.xlsx"
     calls: list[tuple[object, object]] = []

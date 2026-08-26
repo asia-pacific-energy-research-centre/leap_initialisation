@@ -113,6 +113,7 @@ from codebase.functions.other_loss_own_use_proxy_utils import (
     build_activity_source_gap_warnings,
     build_activity_source_fallback_report,
     build_target_energy_long,
+    project_zero_ninth_targets_from_base_intensity,
     _nonzero_fuels_from_esto_activity,
     _nonzero_fuels_from_ninth_activity,
     _mapped_expected_fuels,
@@ -287,6 +288,7 @@ def make_proxy_config(
     ninth_target_fuel_overrides: Mapping[str, str] | None = None,
     allow_ninth_target_without_esto_history: bool = False,
     carry_base_target_forward_when_ninth_projection_all_zero: bool = False,
+    project_base_intensity_when_ninth_projection_all_zero: bool = False,
     same_fuel_total_demand_activity_fallback: bool = False,
     leap_balance_rows: Sequence[str] | None = None,
     leap_balance_fuel_set: str = "",
@@ -337,6 +339,9 @@ def make_proxy_config(
                 ),
                 "carry_base_target_forward_when_all_zero": bool(
                     carry_base_target_forward_when_ninth_projection_all_zero
+                ),
+                "project_base_intensity_when_all_zero": bool(
+                    project_base_intensity_when_ninth_projection_all_zero
                 ),
             },
         },
@@ -404,7 +409,13 @@ PROXY_CONFIG = [
         activity_value_mode="positive_only",
         esto_target_flows=["10.01.01 Electricity, CHP and heat plants"],
         ninth_target_sectors=["10_01_01_electricity_chp_and_heat_plants"],
-        notes="Starter proxy: total electricity plus heat output from main/autoproducer electricity, CHP, and heat plants.",
+        project_base_intensity_when_ninth_projection_all_zero=True,
+        notes=(
+            "Total electricity plus heat output from main/autoproducer electricity, CHP, "
+            "and heat plants. A fuel whose supplied Ninth own-use projection is entirely "
+            "zero uses its ESTO 2022 own-use intensity against this projected activity; "
+            "any nonzero Ninth fuel projection remains authoritative."
+        ),
     ),
     make_proxy_config(
         enabled=False,#can be handled by auxiliary branch in leap so keeping disabled for now
@@ -1199,6 +1210,15 @@ def build_proxy_detail_table(
                 target.loc[mask, "activity_fallback_reason"] = (
                     "configured_process_proxy_all_zero"
                 )
+        if bool(
+            config.get("target_sources", {})
+            .get("ninth", {})
+            .get("project_base_intensity_when_all_zero", False)
+        ):
+            target = project_zero_ninth_targets_from_base_intensity(
+                target,
+                base_year=base_year,
+            )
         # Keep a fuel only when it has energy in the exported base/projection
         # horizon. Historical activity before the base year can legitimately
         # identify a fuel, but it must not create a zero-only LEAP branch when
@@ -1232,6 +1252,12 @@ def build_proxy_detail_table(
         )
         target.loc[pump_storage_carry_forward, "target_fallback_reason"] = (
             "esto_base_year_carried_forward_ninth_projection_all_zero"
+        )
+        calibrated_projection = target["source_dataset"].eq(
+            "esto_base_intensity_ninth_activity_projection"
+        )
+        target.loc[calibrated_projection, "target_fallback_reason"] = (
+            "esto_base_intensity_applied_to_ninth_activity_projection_all_zero"
         )
         no_base_projection = (~target["base_target_available"]) & target["projection_target_available"]
         target.loc[no_base_projection, "target_fallback_reason"] = "ninth_exact_no_base_target"
