@@ -65,11 +65,20 @@ Those detailed branches remain driven by their own named 9th subfuels.
 This is a process-specific residual rule, not a global claim that every use of
 `07_x_other_petroleum_products` should be assigned to one detailed product.
 
+When a nonzero economy-specific ESTO base-year target is followed by a complete
+all-zero Ninth projection for this proxy fuel, retain the signed base-year
+value through the projection horizon. Treat those all-zero rows as structural
+placeholders, not evidence that the own-use ceases. A nonzero Ninth projection
+remains authoritative.
+
 ### Validation
 
 A focused target-energy test requires a `-13 PJ` 9th residual to emerge as
 `Other products` without changing its sign or magnitude. The next 01_AUS seed
 rerun must show that branch continuously after 2022.
+
+- 2026-08-26: Applied the all-zero projection carry-forward to `10.01.17`
+  after PRC `Other products` fell from -858.806 PJ in 2022 to structural zeros.
 
 ## INIT-015: Coke ovens and blast furnaces retain projected Historical Production
 

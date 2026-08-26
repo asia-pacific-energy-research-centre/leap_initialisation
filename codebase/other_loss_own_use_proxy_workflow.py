@@ -725,6 +725,11 @@ PROXY_CONFIG = [
         ninth_target_fuel_overrides={
             "07_x_other_petroleum_products": "Other products",
         },
+        # PRC has a large observed Other products own-use value, while this
+        # Ninth row is structurally all-zero after 2022. Retain the observed
+        # value until a real projection is supplied instead of treating that
+        # placeholder series as a phase-out.
+        carry_base_target_forward_when_ninth_projection_all_zero=True,
         notes=(
             "Proxy activity is the absolute sum of every top-level fuel's input plus "
             "output under the whole transformation sector (09 Total transformation "

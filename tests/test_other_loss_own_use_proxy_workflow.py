@@ -1125,6 +1125,41 @@ def test_proxy_log_rows_include_zero_target_fuel_branches_by_default() -> None:
     assert {row["Units"] for row in intensity_rows} == {"Petajoule"}
 
 
+def test_proxy_log_rows_aggregate_duplicate_mapped_fuel_rows_before_export() -> None:
+    detail = pd.DataFrame(
+        [
+            {
+                "process_label": "Non-specified own uses",
+                "fuel_branch_label": "Other biomass",
+                "year": 2023,
+                "proxy_activity": 200.0,
+                "target_energy": 24.0,
+                "intensity": 0.12,
+            },
+            {
+                "process_label": "Non-specified own uses",
+                "fuel_branch_label": "Other biomass",
+                "year": 2023,
+                "proxy_activity": 200.0,
+                "target_energy": 0.0,
+                "intensity": 0.0,
+            },
+        ]
+    )
+
+    rows = workflow.build_proxy_log_rows(detail, scenario="Target")
+    fuel_rows = [
+        row for row in rows
+        if row["Branch_Path"].endswith("\\Non specified own uses\\Other biomass")
+        and row["Date"] == 2023
+    ]
+    intensity = next(row["Value"] for row in fuel_rows if row["Measure"] == workflow.INTENSITY_VARIABLE)
+    activity = next(row["Value"] for row in fuel_rows if row["Measure"] == workflow.ACTIVITY_VARIABLE)
+
+    assert intensity == pytest.approx(0.12)
+    assert activity == 200.0
+
+
 def test_proxy_log_rows_zeroes_activity_after_target_ends_in_export_window() -> None:
     """Pre-window history cannot retain nonzero final-seed activity."""
     detail = pd.DataFrame(
@@ -2249,6 +2284,48 @@ def test_pump_storage_preserves_nonzero_ninth_projection_target() -> None:
     projection = target[target["year"].astype(int).gt(2022)]
     assert projection["target_energy"].tolist() == [3.0, 4.0]
     assert set(projection["source_dataset"]) == {"ninth"}
+
+
+def test_nonspecified_own_use_carries_nonzero_base_target_when_ninth_is_all_zero() -> None:
+    cfg = next(item for item in workflow.PROXY_CONFIG if item["process_key"] == "nonspecified_own_uses")
+    esto = pd.DataFrame(
+        [{
+            "economy": "05PRC",
+            "economy_key": "05_PRC",
+            "flows": "10.01.17 Non-specified own uses",
+            "products": "07.17 Other products",
+            2022: -858.806199,
+        }]
+    )
+    ninth = pd.DataFrame(
+        [{
+            "economy_key": "05_PRC",
+            "sectors": "10_losses_and_own_use",
+            "sub1sectors": "10_01_own_use",
+            "sub2sectors": "10_01_17_nonspecified_own_uses",
+            "sub3sectors": "x",
+            "sub4sectors": "x",
+            "fuels": "07_petroleum_products",
+            "subfuels": "07_x_other_petroleum_products",
+            2023: 0.0,
+            2024: 0.0,
+        }]
+    )
+
+    target = workflow.build_target_energy_long(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="05_PRC",
+        config=cfg,
+        base_year=2022,
+        final_year=2024,
+        fuel_mapping_lookup={"esto": {}, "ninth": {}},
+    )
+
+    projection = target[target["year"].astype(int).gt(2022)]
+    assert projection["target_energy"].tolist() == [858.806199, 858.806199]
+    assert set(projection["target_energy_signed"]) == {-858.806199}
+    assert set(projection["source_dataset"]) == {"esto_base_year_carry_forward"}
 
 
 def test_fallback_report_includes_alternative_source_fallbacks() -> None:
