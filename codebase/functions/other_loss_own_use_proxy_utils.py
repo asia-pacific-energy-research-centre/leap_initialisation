@@ -1784,12 +1784,11 @@ def build_target_energy_long(
     if target.empty or not carry_base_target:
         return target
 
-    # The current 9th vintage has structural zero rows for pump-storage
-    # own-use: they mean the flow is not modelled, rather than that an
-    # observed ESTO own-use value ceases after the base year. This opt-in
-    # policy preserves a non-zero ESTO target only when every supplied 9th
-    # projection value for that fuel is zero. Any non-zero ninth value remains
-    # authoritative and is never replaced.
+    # Some Ninth rows are structural placeholders rather than evidence that an
+    # observed ESTO flow ceases after the base year. This opt-in policy preserves
+    # a non-zero ESTO target only when every supplied Ninth projection value for
+    # that fuel is zero. Any non-zero Ninth value remains authoritative and is
+    # never replaced.
     for _, group in target.groupby("fuel_branch_label", dropna=False):
         base_rows = group.loc[
             group["source_dataset"].eq("esto")

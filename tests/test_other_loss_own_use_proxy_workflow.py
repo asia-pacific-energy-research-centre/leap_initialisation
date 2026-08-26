@@ -2286,6 +2286,73 @@ def test_pump_storage_preserves_nonzero_ninth_projection_target() -> None:
     assert set(projection["source_dataset"]) == {"ninth"}
 
 
+def test_td_carries_base_target_when_all_ninth_projections_are_zero() -> None:
+    cfg = next(item for item in workflow.PROXY_CONFIG if item["process_key"] == "transmission_and_distribution_losses")
+    esto = pd.DataFrame(
+        [
+            {
+                "economy": "05PRC",
+                "economy_key": "05_PRC",
+                "flows": "10.02 Transmission and distribution losses",
+                "products": "06.01 Crude oil",
+                2022: -10.073441,
+            },
+            {
+                "economy": "05PRC",
+                "economy_key": "05_PRC",
+                "flows": "10.02 Transmission and distribution losses",
+                "products": "07.09 LPG",
+                2022: -0.190918,
+            },
+            {
+                "economy": "05PRC",
+                "economy_key": "05_PRC",
+                "flows": "10.02 Transmission and distribution losses",
+                "products": "08.01 Natural gas",
+                2022: -78.108958,
+            },
+        ]
+    )
+    ninth = pd.DataFrame(
+        [
+            {
+                "economy_key": "05_PRC",
+                "sectors": "10_losses_and_own_use",
+                "sub1sectors": "10_02_transmission_and_distribution_losses",
+                "sub2sectors": "x", "sub3sectors": "x", "sub4sectors": "x",
+                "fuels": fuel, "subfuels": subfuel, 2023: 0.0, 2024: 0.0,
+            }
+            for fuel, subfuel in [
+                ("06_crude_oil_and_ngl", "06_01_crude_oil"),
+                ("07_petroleum_products", "07_09_lpg"),
+                ("08_gas", "08_01_natural_gas"),
+            ]
+        ]
+    )
+
+    target = workflow.build_target_energy_long(
+        esto_data=esto,
+        ninth_data=ninth,
+        economy="05_PRC",
+        config=cfg,
+        base_year=2022,
+        final_year=2024,
+        fuel_mapping_lookup={"esto": {}, "ninth": {}},
+    )
+
+    projection = target[target["year"].astype(int).gt(2022)]
+    expected = {
+        "Crude oil": 10.073441,
+        "LPG": 0.190918,
+        "Natural gas": 78.108958,
+    }
+    for fuel_branch_label, target_energy in expected.items():
+        fuel_projection = projection[projection["fuel_branch_label"].eq(fuel_branch_label)]
+        assert fuel_projection["target_energy"].tolist() == [target_energy, target_energy]
+        assert fuel_projection["target_energy_signed"].tolist() == [-target_energy, -target_energy]
+        assert set(fuel_projection["source_dataset"]) == {"esto_base_year_carry_forward"}
+
+
 def test_nonspecified_own_use_carries_nonzero_base_target_when_ninth_is_all_zero() -> None:
     cfg = next(item for item in workflow.PROXY_CONFIG if item["process_key"] == "nonspecified_own_uses")
     esto = pd.DataFrame(

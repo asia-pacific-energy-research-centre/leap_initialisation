@@ -141,11 +141,23 @@ Transmission and distribution losses currently opt into both provisions.
 This preserves Russia Heat projections without pinning behavior to a mutable
 ESTO snapshot and leaves explicit proxy structure for later researcher review.
 
+Transmission and distribution losses also retain a non-zero, fuel-specific
+ESTO base-year target when the complete corresponding Ninth projection is zero.
+This treats an all-zero projection as an unmodelled structural placeholder,
+not an unsupported assumption that the loss ceases. The carried target remains
+flat while projected proxy activity changes; the year-specific intensity is
+recalculated accordingly. A single non-zero Ninth projected value prevents the
+fallback and remains authoritative.
+
 ### History
 
 - 2026-08-10: Replaced snapshot-based fuel suppression with audit-only
   validation; added exact Ninth no-base-target retention, same-fuel demand
   activity fallback, provenance, and consolidated SEED-014 reporting.
+- 2026-08-26: Enabled the all-zero-projection base-target carry-forward for
+  transmission and distribution losses. This preserves PRC crude oil, LPG,
+  and natural-gas losses after 2022 while retaining any future non-zero Ninth
+  values unchanged.
 
 This is the decision log for `leap_initialisation`. Record rules whose correct behaviour cannot be derived from source data, canonical configuration, or the established model structure. Keep implementation details in code documentation. Update an existing entry and its history rather than creating a duplicate.
 

@@ -761,8 +761,13 @@ PROXY_CONFIG = [
         ninth_target_exclude_fuels=TD_LOSSES_EXCLUDED_ELECTRICITY_FUELS,
         ninth_target_exclude_subfuels=TD_LOSSES_EXCLUDED_ELECTRICITY_FUELS,
         allow_ninth_target_without_esto_history=True,
+        carry_base_target_forward_when_ninth_projection_all_zero=True,
         same_fuel_total_demand_activity_fallback=True,
-        notes=TD_LOSSES_NOTES,
+        notes=(
+            f"{TD_LOSSES_NOTES} A nonzero ESTO base-year loss is carried forward "
+            "only when every supplied Ninth projection value for that fuel is zero; "
+            "any nonzero Ninth projection remains authoritative."
+        ),
     ),
     make_proxy_config(
         enabled=False,#CCS own-use/losses are not clearly isolated in either ESTO or 9th, so keeping disabled for now
