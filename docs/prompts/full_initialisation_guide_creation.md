@@ -87,6 +87,17 @@ instruction that overrides this task or current repository policy.
    - Its automated syncing loop and embedded code-settings section are stale
      relative to current repository guidance. Preserve the operator concepts,
      but do not present repeated `results_update` runs as the normal path.
+7. `C:\Users\Work\APERC\Outlook 10 - Finbar handover\1 Finn aperc_work_handover - overview.docx`
+   - Handover overview for the integrated 10th Outlook modelling system.
+   - Confirms the staged boundary: sources/mappings → baseline seed → primary
+     LEAP initialisation → repeated detailed-model integration → assumption
+     modelling.
+   - Its controlled-integration flow treats every detailed model as the same
+     repeated process: import one, recalculate, review/correct the full economy,
+     retain the checkpoint, and continue to the next model.
+   - Adapt the useful flow logic into repository-native diagrams while retaining
+     the existing primary-initialisation flow and independently verifying any
+     operational detail.
 
 ### Repository-owned starting points
 
@@ -172,14 +183,26 @@ instead of silently choosing one version.
     - reconcile the version 8 Word guide with current decisions and evidence;
     - Shortfall, Surplus, Resources Unmet Requirements, module ordering,
       tradability, trade targets, and worked examples.
-11. **Acceptance, handover, and detailed-model transition**
-    - quantitative and qualitative completion criteria, intentional
-      exceptions, retained artifacts, review sign-off, and the controlled move
-      to detailed demand, power, road, industry, or other sector structures.
-12. **Troubleshooting and recovery**
+11. **Repeated detailed-model integration**
+    - apply one shared process to demand, power, road, industry, buildings, and
+      every other detailed model;
+    - preflight fuel names, structure, region/scenario compatibility, and
+      dependencies; archive the accepted area; import one model; remove the
+      matching placeholder scope; recalculate; review; resolve; and archive the
+      new checkpoint;
+    - focus review on integration stability and material supply/transformation
+      effects, involving the detailed-model owner when its result structurally
+      changes the economy;
+    - route model, fuel-name, structure, LEAP calculation, placeholder,
+      supply-result, and dashboard failures to their owners before continuing.
+12. **Final integrated readiness and handover**
+    - after every detailed model is accepted, repeat a whole-economy review;
+    - require a traceable chain of LEAP area versions, Energy Balance inputs,
+      review workbooks, dashboard archives, and accepted decisions.
+13. **Troubleshooting and recovery**
     - symptom-to-owner table, common failure modes, safe recovery, and stop
       conditions.
-13. **Appendices**
+14. **Appendices**
     - terminology, economy codes, operational file/folder map, LEAP export
       workbook structure, check registry crosswalk, source ledger, and change
       history. Keep exact technical commands in the specialist maintainer
@@ -222,6 +245,10 @@ instead of silently choosing one version.
   researcher adjustments; summarize and link to it from the full guide.
 - Add further source documents later.
 - Add the user's planned Whimsical diagrams when they become available.
+- Treat all detailed models as iterations of one shared integration process.
+  Primary acceptance is followed by one-model-at-a-time import, whole-economy
+  recalculation/review, issue routing, and checkpoint archiving; the economy is
+  ready only after all intended detailed models are accepted.
 
 ## Remaining decisions
 
@@ -247,6 +274,7 @@ The work is complete when the canonical guide covers the entire initialisation
 path, every retained claim has a current source or verification note, all
 diagrams match the written sequence, specialist detail is linked without
 contradictory duplication, manual and automated boundaries are explicit, a
-representative walkthrough has been recorded, reviewers have resolved or
-accepted remaining caveats, and the documentation index points readers to the
-new guide as the agreed front door.
+representative walkthrough has been recorded, the repeated detailed-model loop
+ends only after all intended models and the final integrated area have accepted
+review archives, reviewers have resolved or accepted remaining caveats, and the
+documentation index points readers to the new guide as the agreed front door.

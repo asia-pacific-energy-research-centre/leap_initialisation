@@ -19,19 +19,23 @@ team. No special APERC branding or existing Word template is required.
 ## What this guide is for
 
 Initialisation turns a shared clean-slate LEAP model into a usable
-economy-specific starting point. It brings together three connected activities:
+economy-specific starting point. It brings together four connected activities:
 
 1. preparing the economy area and its branch structure;
 2. generating, validating, and importing the baseline seed; and
 3. recalculating, reviewing, and correcting the model until its main energy
-   pathways are plausible and explainable.
+   pathways are plausible and explainable; and
+4. replacing placeholders with detailed sector models one at a time, checking
+   the complete economy after each import, and retaining a review record until
+   every intended detailed model has been integrated.
 
 The baseline seed is a structured starting point, not a finished model. It
 uses ESTO history, Ninth Outlook projections, canonical mappings, and the
 economy's own LEAP export template to populate demand, transformation,
-transfers, losses and own use, and Resources. Detailed demand and power models
-can replace placeholders later, but only through an explicit handoff that
-prevents double counting.
+transfers, losses and own use, and Resources. It establishes the accepted
+comparison point for the next phase. Detailed models then replace placeholders
+in a controlled sequence, with an explicit handoff that prevents double
+counting and exposes each model's effect on the wider economy.
 
 This guide deliberately does not reproduce every transformation formula,
 source-mapping rule, code setting, or issue template. Those details change at a
@@ -64,13 +68,35 @@ An economy is ready to move forward when:
   modelling reason explains the difference;
 - imports, exports, production, transformation activity, and remaining Unmet
   Requirements are plausible and explainable;
+- every intended detailed sector model has been imported and checked in a
+  controlled sequence;
 - placeholder and detailed branches do not own the same energy twice; and
+- the LEAP area, Energy Balance export, review inputs, dashboard archive, and
+  decisions from every accepted integration checkpoint have been retained; and
 - every accepted exception, unresolved issue, source identity, and retained
   output has been recorded for the next modeller.
 
 Initialisation does not require every LEAP result to equal the source data
 exactly. It requires material differences to be understood and the model to
 balance through the intended pathway.
+
+### Where initialisation sits in the wider modelling process
+
+The first handover flowchart separates initialisation from the assumption work
+that follows it. This guide covers the middle three stages: creating the seed,
+initialising the LEAP area, and integrating every detailed model. It stops when
+the integrated economy is ready for 10th Outlook assumption modelling.
+
+```mermaid
+flowchart LR
+    A[ESTO, previous Outlook results,<br/>economy context, and mappings]
+    B[Create and accept<br/>the baseline seed]
+    C[Import and complete<br/>primary LEAP initialisation]
+    D[Integrate detailed sector models<br/>one controlled import at a time]
+    E[Begin 10th Outlook<br/>assumption modelling]
+
+    A --> B --> C --> D --> E
+```
 
 ## The complete process at a glance
 
@@ -92,7 +118,7 @@ flowchart TD
     N[Source, mapping, or<br/>baseline-seed fix]
     O[LEAP configuration or<br/>supply-rule fix]
     P[Review-tool or<br/>dashboard fix]
-    Q[Record acceptance and hand over<br/>for detailed sector modelling]
+    Q[Record primary acceptance and begin<br/>detailed-model integration]
 
     A --> B --> C --> D --> E
     E -- Yes --> F --> C
@@ -428,10 +454,158 @@ it is under review and may be deactivated. Do not present it as the automatic
 next step after every first-pass review. Use it only under an explicit run plan
 and retain its gap, cap, convergence, conservation, and readiness evidence.
 
-## 11. Accept and hand over the area
+## 11. Integrate detailed models one at a time
 
-Before handover, confirm the success conditions at the beginning of this guide
-and retain:
+Primary initialisation is an accepted checkpoint, not the end of the process.
+From that checkpoint, apply the same controlled integration loop to each
+detailed model. The method is intentionally common across demand, power, road,
+industry, buildings, and other sector models. Sector-specific development and
+calibration remain the responsibility of each detailed-model owner.
+
+### The repeated detailed-model loop
+
+This adapts the controlled-integration flow from the handover overview while
+adding the issue routing and evidence needed in practice.
+
+```mermaid
+flowchart TD
+    A[Accepted primary-initialisation<br/>LEAP area]
+    B[Select the next detailed model<br/>and confirm its owner and version]
+    C[Pre-import check:<br/>fuel names, branch structure,<br/>region, scenarios, and dependencies]
+    D[Archive the current LEAP area<br/>and previous review checkpoint]
+    E[Remove the branch being replaced<br/>and the equivalent placeholder scope]
+    F[Import the detailed model]
+    G[Recalculate LEAP]
+    H{Does the area solve and is<br/>the imported structure correct?}
+    I[Return the integration defect<br/>to the detailed-model owner]
+    J[Export the Energy Balance and<br/>create the workbook/dashboard review]
+    K{Major or unexplained<br/>issue remains?}
+    L{What kind of issue?}
+    M[Material supply or transformation change:<br/>review with the model owner and<br/>supply/transformation reviewer]
+    N{Is the structural change<br/>intended and defensible?}
+    O[Detailed-model result or<br/>integration defect: correct with owner]
+    P[Dashboard-only issue:<br/>validate the export, then fix<br/>the review layer]
+    Q[Accept and archive the<br/>integration checkpoint]
+    R{Do detailed models remain?}
+    S[Integrated economy ready<br/>for final review]
+
+    A --> B --> C --> D --> E --> F --> G --> H
+    H -- No --> I --> C
+    H -- Yes --> J --> K
+    K -- No --> Q
+    K -- Yes --> L
+    L -- Supply structure --> M --> N
+    N -- Yes --> Q
+    N -- No --> O --> C
+    L -- Model or import --> O
+    L -- Review output --> P --> J
+    Q --> R
+    R -- Yes --> B
+    R -- No --> S
+```
+
+### Pre-import checks
+
+Before changing the accepted area, confirm:
+
+- the detailed model, owner, version, source area, and replacement branch;
+- the model solves in its source area or has a documented limitation;
+- its region and scenario names are compatible with the economy area;
+- its branch hierarchy matches the agreed common LEAP structure;
+- every fuel uses the expected canonical name;
+- required units, expressions, yearly shapes, lifecycle profiles, and linked
+  branches are present;
+- any dependency on another detailed model is understood;
+- the exact placeholder or older branch scope that will be removed; and
+- the previous accepted LEAP area and review checkpoint have been archived.
+
+Do not import several new detailed models together. One-at-a-time integration
+is what makes it possible to identify which model introduced a change.
+
+### Import and structural checks
+
+For each model:
+
+1. remove only the branch being replaced;
+2. remove or reduce the equivalent aggregated-demand or interim-power scope so
+   it will not be counted twice;
+3. import the detailed branch into the intended parent;
+4. confirm that no extra region, duplicate branch, or unexpected structure was
+   created;
+5. confirm transformation order if the import affects Transformation;
+6. recalculate LEAP; and
+7. stop before reviewing results if the area does not solve cleanly.
+
+Fuel-name, structure, expression, and dependency failures belong first with the
+detailed-model owner. If the model follows the agreed common structure but the
+common structure or canonical mapping is itself wrong, escalate to the relevant
+structure or mapping owner rather than creating a private economy workaround.
+
+### Review after every meaningful import
+
+Use the same LEAP Energy Balance export, validation, review workbook, and
+dashboard process used during primary initialisation. The emphasis changes:
+
+- supply-rule adjustment is not the routine goal because the rules should have
+  been established during primary initialisation;
+- confirm that the LEAP area still calculates and behaves smoothly;
+- identify large, new, or unexplained changes in imports, exports, production,
+  transformation inputs/outputs, losses and own use, and Unmet Requirements;
+- determine whether the detailed model has structurally changed the economy's
+  energy system; and
+- confirm that the dashboard displays the newly imported sector and its fuels
+  at the expected comparison boundaries.
+
+Differences from the previous Outlook or the primary seed are not automatically
+errors. A detailed model can legitimately introduce a new structure or better
+evidence. When the effect on supply or transformation is material, pause and
+review it with the detailed-model owner and the relevant supply/transformation
+reviewer. Record whether the change is intended, why it is defensible, and what
+other parts of the economy it affects.
+
+Only reopen LEAP supply-rule adjustment when the new model provides evidence
+that an earlier configuration assumption is no longer correct. Do not change
+rules merely to force the detailed model back toward the previous checkpoint.
+
+### Route common detailed-model failures
+
+| Finding | How to distinguish it | Owner and next action |
+|---|---|---|
+| Wrong or unrecognised fuel name | The detailed branch uses a label outside the agreed fuel catalogue, or the fuel cannot map to the expected balance column | Detailed-model owner corrects the model; involve the mapping/structure owner if the agreed catalogue is incomplete |
+| Unexpected branch structure | The import lands under the wrong parent, omits required siblings, duplicates a branch, or cannot replace the declared placeholder scope cleanly | Detailed-model owner and integration owner agree the common structure, fix the source model, and repeat the same import |
+| Model does not work after import | LEAP reports invalid expressions, unresolved links, missing dependencies, shares that do not sum, or calculation failure | Detailed-model owner repairs or documents the dependency before integration continues |
+| Major supply or transformation change | The raw LEAP Energy Balance shows a material new change in production, trade, transformation, or Unmet Requirements after this import | Discuss with the detailed-model owner and supply/transformation reviewer; accept and document an intended structural change or correct the detailed model |
+| Dashboard omits or misrepresents the new model | First check whether the raw, valid Level-2-or-deeper LEAP export contains the expected rows and values | If absent from the raw export, return to model integration; if present there, route to review-tool/dashboard mapping and rendering |
+| Placeholder overlap | Detailed and placeholder branches both carry the same scope after import | Correct ownership immediately, regenerate or edit the declared placeholder scope through its maintained process, then recalculate |
+| Small, explainable difference | The change is consistent with the detailed model's intended structure and does not create an unresolved system problem | Record it in the checkpoint decision and continue |
+
+Do not continue to the next detailed model while a major issue remains
+unclassified or lacks an owner and next action.
+
+### Archive every accepted checkpoint
+
+Keep a chronological record after each accepted detailed-model import. Retain:
+
+- the pre-import and accepted post-import LEAP area versions;
+- detailed-model name, owner, source area, version, and imported branch;
+- the placeholder scope removed or retained;
+- the exact Energy Balance workbook used as review input;
+- generated review workbook(s), dashboard, and complete run archive;
+- the selected economy, scenarios, years, and units;
+- material differences and the decision on each; and
+- unresolved issues, owner, status, and next action.
+
+The dashboard's recent browser history is not the archive. Keep the downloaded
+archive and its exact input workbook together with the checkpoint record.
+
+## 12. Complete the final integrated-area review and handover
+
+After the last detailed model is accepted, repeat the whole-economy review once
+more. Confirm that the model remains coherent as an integrated system, not only
+that each individual import passed at the time.
+
+Before final handover, confirm the success conditions at the beginning of this
+guide and retain:
 
 - the clean-slate source and economy working-area identities;
 - the exact economy template;
@@ -440,13 +614,17 @@ and retain:
 - LEAP import/calculation result;
 - balance export and review archive, if produced;
 - accepted exceptions and their evidence;
-- unresolved issues, owner, status, and next action; and
-- the declared ownership of every remaining placeholder.
+- unresolved issues, owner, status, and next action;
+- the declared ownership of every remaining placeholder;
+- the ordered register of detailed models and accepted integration checkpoints;
+  and
+- the final integrated Energy Balance export and dashboard archive.
 
-When a detailed demand or power model is introduced, treat that as a controlled
-replacement. Remove the equivalent source scope from the placeholder, check the
-combined boundary, and retire the placeholder only when its intended scope is
-fully covered.
+The area is finally ready when all intended detailed models have been
+integrated, every remaining placeholder is intentional, material economy-wide
+changes are understood, and the final archive lets another researcher trace how
+the model changed from the accepted primary seed through every successive
+import. This is the handoff point to 10th Outlook assumption modelling.
 
 ## Material intentionally kept outside this guide
 
@@ -456,6 +634,8 @@ specialist references rather than expanding the main guide:
 - detailed power, refining, other-transformation, transfer, and own-use
   methodology;
 - the complete list of transformation modules and process-specific formulas;
+- the internal development and calibration method of each detailed sector
+  model;
 - implementation flags and preset internals;
 - reusable contribution, issue, and resource-record templates, maintained in
   the rule-adjustment companion guide;
@@ -482,7 +662,9 @@ the maintained technical or issue reference.
 - Name the reviewer(s), the human sign-off owner, and the economy record for the
   walkthrough.
 - Add the planned Whimsical process diagrams when they are available, then
-  reconcile each diagram against the accepted written sequence.
+  reconcile each diagram against the accepted written sequence. The current
+  Mermaid diagrams preserve the handover document's overall staged flow and
+  repeatable detailed-model integration loop in the meantime.
 - After Markdown content approval, create and visually verify the accessible
   Word publication using a simple unbranded document style.
 
@@ -508,9 +690,9 @@ the maintained technical or issue reference.
 - `C:\Users\Work\github\leap_mappings\docs\mappings_system.md` - canonical
   mapping-system authority.
 
-## First source-review record
+## Source-review record
 
-This draft was shaped by three working Word documents supplied on 31 August
+This draft was initially shaped by three working Word documents supplied on 31 August
 2026:
 
 - *Transformation and supply guide*;
@@ -526,3 +708,11 @@ and their specialist methodology was routed to maintained references. Claims tha
 conflict with current repository status, contain unresolved reviewer comments,
 or describe optional results-update behaviour as routine were not promoted to
 authoritative instructions.
+
+The *Modelling System: Work Handover and Continuity Guide* was reviewed later
+the same day. Its integrated-process and controlled-detailed-import flowcharts
+confirmed that primary initialisation is followed by a repeated detailed-model
+integration loop, and that final readiness occurs only after all intended
+sector models have been imported, recalculated, reviewed, and archived. Those
+flows were adapted into the two Mermaid diagrams above; the original document
+remains source evidence rather than an operating instruction.
