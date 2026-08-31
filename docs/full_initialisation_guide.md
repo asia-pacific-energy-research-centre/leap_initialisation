@@ -47,10 +47,9 @@ not turn the main guide into a code manual.
 
 - **New economy modellers:** follow the numbered sections in order. They cover
   the actions, decisions, evidence, and stop conditions needed for one economy.
-- **Workflow maintainers:** use the issue-routing table, short maintainer notes,
-  open-verification list, and maintained references to find the owning system.
-  Implementation commands and internal settings stay in those specialist
-  references.
+- **Workflow maintainers:** follow the same main process. When a problem points
+  to the code, mappings, dashboard, or another supporting system, use the
+  maintainer notes and linked technical guides for the detailed instructions.
 
 ## What successful initialisation looks like
 
