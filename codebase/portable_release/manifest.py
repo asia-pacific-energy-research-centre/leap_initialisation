@@ -77,7 +77,7 @@ ALLOWED_SOURCE_SUFFIXES = frozenset({".py"})
 #: Configuration/template assets are distributed under the package's external
 #: ``config/`` directory and hashed into every run manifest.
 ALLOWED_CONFIG_SUFFIXES = frozenset(
-    {".json", ".csv", ".toml", ".yaml", ".yml", ".md", ".txt", ".xlsx"}
+    {".json", ".csv", ".toml", ".yaml", ".yml", ".md", ".txt", ".xlsx", ".html"}
 )
 
 #: A configuration asset larger than this is almost certainly generated data

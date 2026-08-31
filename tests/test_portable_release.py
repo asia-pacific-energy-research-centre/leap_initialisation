@@ -175,6 +175,18 @@ def test_declarative_validation_passes_for_a_good_manifest() -> None:
     assert report.ok, report.errors
 
 
+def test_html_dashboard_config_asset_is_accepted() -> None:
+    html_manifest = VALID_MANIFEST.replace(
+        'path = "config/example.json"',
+        'path = "config/example.html"',
+    ).replace(
+        'dest = "example.json"',
+        'dest = "example.html"',
+    )
+    report = _validate(html_manifest, known_command_names=["balance-review"])
+    assert report.ok, report.errors
+
+
 def test_abbreviated_commit_is_rejected() -> None:
     report = _validate(VALID_MANIFEST.replace("0123456789abcdef0123456789abcdef01234567", "0123456"))
     assert any("40-character SHA" in error for error in report.errors)
