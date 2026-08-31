@@ -1061,6 +1061,7 @@ def run_dashboard_from_export(
     comparison_data_path: Path | str | None = None,
     common_rows_path: Path | str | None = None,
     export_dir: Path | str | None = None,
+    balance_csv_hierarchy_template_path: Path | str | None = None,
     esto_table_path: Path | str | None = None,
     comparison_scope: str = "esto_leap_ninth",
     wide_file_scope: str = "esto_leap_ninth",
@@ -1139,6 +1140,11 @@ def run_dashboard_from_export(
         if selected_esto is not None
         else None
     )
+    resolved_csv_hierarchy_template = (
+        _resolve_user_path(context, balance_csv_hierarchy_template_path)
+        if balance_csv_hierarchy_template_path is not None
+        else None
+    )
     vintage_match = re.search(
         r"00APEC_(\d{4})",
         selected_esto.name if selected_esto is not None else "",
@@ -1173,6 +1179,10 @@ def run_dashboard_from_export(
                 ),
             },
         }
+        if resolved_csv_hierarchy_template is not None:
+            chain_job["config"]["balance_csv_hierarchy_template_path"] = str(
+                resolved_csv_hierarchy_template
+            )
         # Only send the ESTO base table when the user supplied one. The worker
         # re-extracts exact rows whenever it receives a table, which takes about
         # two minutes; the shipped exact rows already match the shipped table, so
@@ -1232,7 +1242,9 @@ def run_dashboard_from_export(
         result = renderer(**renderer_kwargs)
         return {
             "_input_records": describe_directory_files(
-                resolved_export_dir, role_prefix="input:balance_export", patterns=("*.xlsx",)
+                resolved_export_dir,
+                role_prefix="input:balance_export",
+                patterns=("*.xlsx", "*.csv"),
             ),
             # Promoted out of the chain result so they are readable rather than
             # buried in it. These say whether the ESTO rows were re-derived and
@@ -1272,6 +1284,11 @@ def run_dashboard_from_export(
         settings={
             "economy": economy,
             "export_dir": str(resolved_export_dir),
+            "balance_csv_hierarchy_template_path": (
+                str(resolved_csv_hierarchy_template)
+                if resolved_csv_hierarchy_template is not None
+                else None
+            ),
             "comparison_scope": comparison_scope,
             "wide_file_scope": wide_file_scope,
             "min_year": min_year,

@@ -1,5 +1,17 @@
 # Remaining work queue
 
+## [61] Guarded CSV handoff for export-to-dashboard runs
+
+**Status: implemented and end-to-end verified 2026-08-31.**
+
+The portable dashboard command can pass an optional LEAP CSV hierarchy
+template into the mapping worker, validates CSV-only export folders, and records
+CSV inputs in provenance. This is an API/developer workflow, not a web-upload
+replacement: the tested LEAP CSV lost all branch indentation and contained only
+Target/2022, so browser upload remains XLSX-only until LEAP provides hierarchy
+and all-year coverage in the CSV itself or a maintained per-model hierarchy
+registry is approved.
+
 ## [60] Restore projected PRC power-plant own-use fuels
 
 **Status: implemented and source-verified 2026-08-26; fresh LEAP import/results

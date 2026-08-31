@@ -11,6 +11,7 @@ from codebase.utilities.leap_balance_export_resolver import (
     balance_export_unit_to_petajoule_multiplier,
     is_leap_balance_own_use_or_loss_row,
     inspect_balance_export_detail,
+    infer_balance_export_identity,
     load_leap_balance_activity_table,
     require_level2_balance_export_detail,
     resolve_balance_export_workbook,
@@ -252,6 +253,30 @@ def test_inspect_balance_export_detail_distinguishes_level1_and_level2(
     assert level2.detected_level_label == "Level 2+"
     assert level2.has_level2_detail is True
     assert level2.sample_indented_label == "Refinery process"
+
+
+def test_csv_identity_is_read_but_stripped_hierarchy_is_not_accepted(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "balance.csv"
+    path.write_text(
+        '"Energy Balance for Area AUS test model""""",,\n'
+        '"Scenario: Target, Year: 2022, Units: Petajoule",,\n'
+        ",Electricity,Total\n"
+        "Production,-,-\n"
+        "Road,1,1\n",
+        encoding="utf-8",
+    )
+
+    identity = infer_balance_export_identity(path)
+    detail = inspect_balance_export_detail(path)
+
+    assert identity.economy == "01_AUS"
+    assert identity.scenario == "Target"
+    assert identity.years == (2022,)
+    assert identity.units == "Petajoule"
+    assert detail.detected_level_label == "hierarchy stripped by CSV"
+    assert detail.has_level2_detail is False
 
 
 def test_require_level2_balance_export_detail_rejects_level1(tmp_path: Path) -> None:

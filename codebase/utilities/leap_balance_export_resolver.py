@@ -53,7 +53,7 @@ _ECONOMY_AREA_ALIASES = {
 
 # LEAP writes the area name into the title row of every balance sheet.
 _ECONOMY_AREA_TITLE_PATTERN = re.compile(
-    r"Energy Balance for Area\s*[\"'](?P<area>.+?)[\"']",
+    r"Energy Balance for Area\s*(?:[\"'](?P<quoted>.+?)[\"']|(?P<plain>.+))$",
     re.IGNORECASE,
 )
 
@@ -204,6 +204,27 @@ def inspect_balance_export_detail(
     path = _resolve_path(workbook_path)
     if not path.exists():
         raise FileNotFoundError(f"LEAP balance-export workbook does not exist: {path}")
+
+    if path.suffix.casefold() == ".csv":
+        raw = pd.read_csv(path, header=None, dtype=object, keep_default_na=False)
+        labels = raw.iloc[3:, 0].fillna("").astype(str) if len(raw) > 3 else []
+        sample_indented_label = next(
+            (
+                value.strip()
+                for value in labels
+                if value.strip() and value != value.lstrip(" ")
+            ),
+            None,
+        )
+        has_level2_detail = sample_indented_label is not None
+        return BalanceExportDetailInspection(
+            path=path,
+            detected_level_label=(
+                "Level 2+" if has_level2_detail else "hierarchy stripped by CSV"
+            ),
+            has_level2_detail=has_level2_detail,
+            sample_indented_label=sample_indented_label,
+        )
 
     try:
         from openpyxl import load_workbook
@@ -553,6 +574,33 @@ def list_balance_export_sheets(
     if not path.exists():
         raise FileNotFoundError(f"LEAP balance-export workbook does not exist: {path}")
 
+    if path.suffix.casefold() == ".csv":
+        raw = pd.read_csv(path, header=None, dtype=object, keep_default_na=False)
+        metadata = str(raw.iloc[1, 0] if len(raw) > 1 else "").strip()
+        scenario_match = re.search(
+            r"Scenario:\s*([^,]+)", metadata, flags=re.IGNORECASE
+        )
+        year_match = re.search(r"Year:\s*(\d{4})", metadata, flags=re.IGNORECASE)
+        units_match = re.search(r"Units:\s*(.+)$", metadata, flags=re.IGNORECASE)
+        if not scenario_match or not year_match or not units_match:
+            raise ValueError(
+                "The CSV does not declare Scenario, Year, and Units metadata in "
+                f"its second row: {path}."
+            )
+        scenario_code = normalize_balance_scenario_code(
+            scenario_match.group(1).strip()
+        )
+        return [
+            BalanceExportSheet(
+                path=path,
+                sheet_name=path.name,
+                scenario="Reference" if scenario_code == "REF" else "Target",
+                scenario_code=scenario_code,
+                year=int(year_match.group(1)),
+                units=units_match.group(1).strip().rstrip("."),
+            )
+        ]
+
     from openpyxl import load_workbook
 
     workbook = load_workbook(path, read_only=True, data_only=True)
@@ -598,6 +646,20 @@ def read_balance_export_area_name(workbook_path: Path | str) -> str:
     if not path.exists():
         raise FileNotFoundError(f"LEAP balance-export workbook does not exist: {path}")
 
+    if path.suffix.casefold() == ".csv":
+        raw = pd.read_csv(
+            path,
+            header=None,
+            dtype=object,
+            keep_default_na=False,
+            nrows=1,
+        )
+        text = " ".join(str(value).strip() for value in raw.iloc[0] if value)
+        match = _ECONOMY_AREA_TITLE_PATTERN.search(text)
+        if not match:
+            return ""
+        return (match.group("quoted") or match.group("plain") or "").rstrip('"').strip()
+
     from openpyxl import load_workbook
 
     workbook = load_workbook(path, read_only=True, data_only=True)
@@ -610,7 +672,7 @@ def read_balance_export_area_name(workbook_path: Path | str) -> str:
                 )
                 match = _ECONOMY_AREA_TITLE_PATTERN.search(text)
                 if match:
-                    return match.group("area").strip()
+                    return (match.group("quoted") or match.group("plain") or "").strip()
     finally:
         workbook.close()
     return ""

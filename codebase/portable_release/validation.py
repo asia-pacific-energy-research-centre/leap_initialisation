@@ -1003,11 +1003,11 @@ def validate_dashboard_from_export_inputs(
             False,
             f"The LEAP balance export folder does not exist at:\n      {export_path}",
         )
-    elif not any(export_path.glob("*.xlsx")):
+    elif not any(export_path.glob("*.xlsx")) and not any(export_path.glob("*.csv")):
         report.add(
             "export_dir",
             False,
-            f"No .xlsx LEAP balance export files were found in: {export_path}",
+            f"No .xlsx or .csv LEAP balance export files were found in: {export_path}",
         )
     else:
         report.add("export_dir", True, f"Found the LEAP balance export folder: {export_path}")
