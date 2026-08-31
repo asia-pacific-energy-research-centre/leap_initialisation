@@ -7,10 +7,12 @@
 The portable dashboard command can pass an optional LEAP CSV hierarchy
 template into the mapping worker, validates CSV-only export folders, and records
 CSV inputs in provenance. This is an API/developer workflow, not a web-upload
-replacement: the tested LEAP CSV lost all branch indentation and contained only
-Target/2022, so browser upload remains XLSX-only until LEAP provides hierarchy
-and all-year coverage in the CSV itself or a maintained per-model hierarchy
-registry is approved.
+replacement. The fuel-column CSV lost branch indentation and contained only
+Target/2022. The separately tested 2022–2060 CSV instead contains only the
+`Fuels: All` aggregate and rounds in two-decimal Thousand PJ, so it cannot
+supply the product axis or small detailed-road values. Browser upload remains
+XLSX-only until one CSV retains hierarchy, individual fuels, adequate precision,
+and all-year coverage, or an equivalent maintained import contract is approved.
 
 ## [60] Restore projected PRC power-plant own-use fuels
 
