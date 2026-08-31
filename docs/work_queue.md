@@ -1585,6 +1585,14 @@ transfers pass their explicit owner; demand and losses/own-use have distinct
 routes available when those producers consume this builder. The original
 `09.06` gas-processing case remains supported by the generalized engine.
 
+2026-08-26 extension: transformation-owned own-use fuels with an absent or
+all-zero complete Ninth projection now use a signed flat ESTO-base-year energy
+carry before the process builder calculates Auxiliary Fuel Use ratios. This is
+not the `09.06`/`09.08` direct-child residual mechanism. It is restricted to
+the active configured owners (Gas works, Coke ovens, Blast furnaces, Oil
+Refining); LNG and proxy-owned own-use stay in the proxy workflow. The existing
+feature gate remains the single control point.
+
 Projection-allocation guard added 2026-07-28: a nonzero `09.06` or `09.08`
 aggregate with neither parent nor child economy-specific base-year evidence is
 left unallocated rather than borrowing APEC ratios or using an equal split.
