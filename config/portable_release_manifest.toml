@@ -48,7 +48,7 @@ packages = [
 # behaviour.
 
 [repositories.leap_initialisation]
-commit = "911b3eb2dc66acf6727ed8bc8296f3adee3dd49b"
+commit = "5e2a4553504cf73df25208cab024449f529cbeb6"
 stage_dir = "leap_initialisation"
 on_sys_path = true
 paths = [
@@ -123,7 +123,7 @@ paths = [
 # ``import LEAP_API_helpers``. Stage only that reviewed metadata module from
 # config/ on its own sys.path root; do not expose the rest of config/ as code.
 [repositories.leap_initialisation_config]
-commit = "911b3eb2dc66acf6727ed8bc8296f3adee3dd49b"
+commit = "5e2a4553504cf73df25208cab024449f529cbeb6"
 source_key = "leap_initialisation"
 stage_dir = "leap_initialisation_config"
 strip_prefix = "config"
@@ -134,7 +134,7 @@ paths = ["config/LEAP_API_helpers.py"]
 # so `codebase/` is stripped when staging. That also keeps this repository's
 # `codebase` package name from colliding with leap_initialisation's.
 [repositories.leap_dashboard]
-commit = "1e60ebab370dca28030cb13ee5024458a5ec5a2d"
+commit = "f2f6b30159ed4330a681b8130c868407608b33f0"
 stage_dir = "leap_dashboard"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -150,7 +150,7 @@ paths = [
 # `mapping_tools` has no __init__.py in its own repository either; it works as
 # an implicit namespace package here exactly as it does there.
 [repositories.leap_mappings]
-commit = "bf67eedf78b33d313cfbcdf8e72f641cdf596ad2"
+commit = "976a7cb6ffd59cd5aa7c86f67192ffc048f65a53"
 stage_dir = "leap_mappings"
 strip_prefix = "codebase"
 on_sys_path = true
@@ -173,7 +173,7 @@ paths = [
 # packages into the worker to reach one module. Omitted, each becomes an implicit
 # namespace package (PEP 420) and the submodule imports on its own - verified.
 [repositories.leap_mappings_worker]
-commit = "bf67eedf78b33d313cfbcdf8e72f641cdf596ad2"
+commit = "976a7cb6ffd59cd5aa7c86f67192ffc048f65a53"
 stage_dir = "leap_mappings_worker"
 source_key = "leap_mappings"
 on_sys_path = true
@@ -425,7 +425,7 @@ repository = "leap_mappings"
 path = "results/mapping_relationships/energy_balance_relationships.csv"
 dest = "mapping_chain/energy_balance_relationships.csv"
 role = "mapping_chain_relationships"
-sha256 = "6e8fc74280373980b1c3eddd6c680231b8e0c01db71e09414eb4664a338f4147"
+sha256 = "2d00403f81b8dca265ae49a328c041ceb34e7414fa625175b02c59f6d94b232b"
 description = "LEAP-to-ESTO conversion relationships, a function of the mapping workbook."
 allow_untracked = true
 
@@ -452,7 +452,7 @@ repository = "leap_mappings"
 path = "results/common_esto/common_esto_rows.csv"
 dest = "mapping_chain/common_esto_rows.csv"
 role = "mapping_chain_common_esto_rows"
-sha256 = "c256c660ad399615573c24cdda0e837f1582abf8e7791c30a8c8eaa3081b8cb3"
+sha256 = "9538d681d12d4e99aced90e150e3ce7d35070bbb4cc9ced7cdf075086b2ba555"
 description = "Common ESTO row definitions the mapping-chain fast path applies."
 allow_untracked = true
 
@@ -461,7 +461,7 @@ repository = "leap_mappings"
 path = "results/common_esto/source_to_common_esto_map.csv"
 dest = "mapping_chain/source_to_common_esto_map.csv"
 role = "mapping_chain_source_to_common_map"
-sha256 = "4b0dfa1739ff75424b8446cf10222da57b7313382c2dde1f8e22304c25c155a1"
+sha256 = "49c69741ec25896ffa79d32f634144d0428c5fb320aef38384a6aebcfaa124f8"
 description = "Universal seven-column ESTO, ESTO Extended, LEAP, and 9th native-source mapping to Common ESTO rows."
 allow_untracked = true
 
@@ -470,7 +470,7 @@ repository = "leap_mappings"
 path = "results/common_esto/esto_to_common_esto_map.csv"
 dest = "mapping_chain/esto_to_common_esto_map.csv"
 role = "mapping_chain_esto_to_common_map"
-sha256 = "2a1382116c006277386c6e5f261eb1be4f812b27049cfbb823efc4160ec77302"
+sha256 = "04e00bcbdcb0517539ca60500b22e79ba61f22c3d7860b00ff34f4bcdfc1b813"
 description = "Published ESTO component provenance for Common ESTO rows."
 allow_untracked = true
 
