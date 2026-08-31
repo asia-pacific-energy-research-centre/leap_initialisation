@@ -1,7 +1,8 @@
 # Build the full LEAP initialisation guide
 
-**Status:** placeholder for Monday, 31 August 2026. Source discovery and
-content reconciliation have not yet been completed.
+**Status:** active. A first working draft was created in
+`docs/full_initialisation_guide.md` on 31 August 2026. Source discovery,
+operational verification, and human review remain incomplete.
 
 ## Purpose
 
@@ -58,8 +59,29 @@ instruction that overrides this task or current repository policy.
    - Shows baseline-seed import, LEAP recalculation, balance export, web-app
      review, the major-gap decision, configuration changes, and acceptance.
    - Preserve the iterative review idea while reconciling it with the more
-     complete tall workflow and the repository's current position that the
-     automated `results_update` path is optional and under review.
+   complete tall workflow and the repository's current position that the
+   automated `results_update` path is optional and under review.
+4. `C:\Users\Work\APERC\Outlook 10 - LEAP modelling_2026\Guides and notes\other transformation and supply\Transformation and supply guide.docx`
+   - Working source under the Outlook 10 LEAP modelling guides folder.
+   - Supplies the mental model for Transformation/Resources interactions,
+     process-specific background, ordering, Shortfall/Surplus guidance, and
+     worked Natural Gas evidence.
+   - Contains unresolved comments and duplicated/historical sections. Use its
+     detailed methodology as a specialist reference; do not copy it wholesale
+     into the operator guide.
+5. `C:\Users\Work\APERC\Outlook 10 - LEAP modelling_2026\Guides and notes\other transformation and supply\Guideline on supply rule adjustment on the LEAP clean slate of each economy.docx`
+   - Working version 8 rule-adjustment guide under the same guides folder.
+   - Supplies a concise test loop, working defaults, evidence statuses, and
+     issue-recording method. Its reusable templates belong in a companion or
+     appendix rather than the main initialisation procedure.
+6. `C:\Users\Work\APERC\Outlook 10 - LEAP modelling_2026\Guides and notes\LEAP initialisation guide.docx`
+   - Working source under the Outlook 10 LEAP modelling guides folder.
+   - Adds the missing pre-seed stages: preserving/copying the clean slate,
+     region naming, branch replacement, transformation-order checks,
+     placeholder decisions, and final handover.
+   - Its automated syncing loop and embedded code-settings section are stale
+     relative to current repository guidance. Preserve the operator concepts,
+     but do not present repeated `results_update` runs as the normal path.
 
 ### Repository-owned starting points
 
