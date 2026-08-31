@@ -1746,6 +1746,36 @@ def aggregate_esto_by_ninth_pairs(
 # -----------------------------------------------------------------------------
 # Comparison assembly
 # -----------------------------------------------------------------------------
+def _leap_sibling_allocation_shares(
+    fallback_rows: pd.DataFrame,
+    group_cols: list[str],
+) -> pd.DataFrame:
+    """Return fuel-preserving sibling shares for each hierarchy depth.
+
+    A parent comparator may be reused as the envelope for several alternative
+    hierarchy levels. Each level therefore gets its own normalized allocation;
+    rows from different depths must never share one denominator.
+    """
+    leap_rows = fallback_rows[fallback_rows["source"] == "leap"].copy()
+    if leap_rows.empty:
+        return pd.DataFrame()
+    share_group_cols = group_cols + ["min_sector_depth"]
+    totals = (
+        leap_rows.groupby(share_group_cols, as_index=False)["value"]
+        .sum(min_count=1)
+        .rename(columns={"value": "parent_total"})
+    )
+    shares = leap_rows.merge(totals, on=share_group_cols, how="left")
+    shares["detail_share"] = shares["value"] / shares["parent_total"]
+    shares.loc[
+        ~shares["detail_share"].replace(
+            [float("inf"), float("-inf")], pd.NA
+        ).notna(),
+        "detail_share",
+    ] = pd.NA
+    return shares
+
+
 def build_comparisons(
     leap_long: pd.DataFrame,
     sheet_map: pd.DataFrame,
@@ -4008,28 +4038,17 @@ def build_comparisons(
                 fallback_rows = comp[fallback_mask].copy()
 
                 if sibling_mode == "allocate_by_leap_share":
-                    # Allocate parent-level comparator series to sibling detail sheets using LEAP shares.
+                    # Allocate each parent/fuel comparator independently at
+                    # every displayed hierarchy depth. Depths are alternative
+                    # views of the same parent boundary, not additive rows. A
+                    # denominator drawn only from the shallowest depth while
+                    # allocating every deeper row makes detailed shares sum to
+                    # more than one and can put child charts above the parent.
                     share_rows = pd.DataFrame()
-                    leap_rows = fallback_rows[fallback_rows["source"] == "leap"].copy()
-                    if not leap_rows.empty:
-                        min_depth = (
-                            leap_rows.groupby(group_cols, as_index=False)["min_sector_depth"]
-                            .min()
-                            .rename(columns={"min_sector_depth": "group_min_depth"})
-                        )
-                        parent_rows = leap_rows.merge(min_depth, on=group_cols, how="left")
-                        parent_rows = parent_rows[parent_rows["min_sector_depth"] == parent_rows["group_min_depth"]].copy()
-                        totals = (
-                            parent_rows.groupby(group_cols, as_index=False)["value"]
-                            .sum(min_count=1)
-                            .rename(columns={"value": "parent_total"})
-                        )
-                        shares = leap_rows.merge(totals, on=group_cols, how="left")
-                        shares["detail_share"] = shares["value"] / shares["parent_total"]
-                        shares.loc[
-                            ~shares["detail_share"].replace([float("inf"), float("-inf")], pd.NA).notna(),
-                            "detail_share",
-                        ] = pd.NA
+                    shares = _leap_sibling_allocation_shares(
+                        fallback_rows, group_cols
+                    )
+                    if not shares.empty:
                         share_rows = shares[
                             ["sheet"] + group_cols + ["esto_flow_norm", "flow_source", "min_sector_depth", "economy", "detail_share"]
                         ].copy()
