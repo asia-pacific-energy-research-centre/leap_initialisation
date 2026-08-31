@@ -1,8 +1,8 @@
 {
   "contract_version": "initialisation-canonical-mapping-v1",
-  "source_repository_commit": "309234dbb4d61db9a9b497fe0b65c7b2d59a6e37",
+  "source_repository_commit": "976a7cb6ffd59cd5aa7c86f67192ffc048f65a53",
   "source_repository": "leap_mappings",
   "source_path": "config/outlook_mappings_master.xlsx",
-  "workbook_sha256": "e2890f16e03290863f0e1ef3a9bb7d6ef3a7b1a1900df1301bf0e16e3c8565e3",
-  "copied_at_utc": "2026-08-16T05:49:59+00:00"
+  "workbook_sha256": "d7c11281ace13e8bfa6717f4f8bdc6933361e2801be9d85e4b91e7cb05a99b14",
+  "copied_at_utc": "2026-08-31T02:43:51+00:00"
 }
