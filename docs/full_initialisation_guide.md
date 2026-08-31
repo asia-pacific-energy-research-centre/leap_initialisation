@@ -296,10 +296,19 @@ in [`initialisation_flow_estimation_methods.md`](initialisation_flow_estimation_
 
 The modeller-facing procedure should name the requested economy, source and
 template versions, run label, and intended scenarios, then use the reviewed
-workbook it receives. Maintainers running the generation workflow must follow
-the technical environment, locking, concurrency, and long-run rules in the root
-`AGENTS.md` and the specialist workflow guide. Those implementation details do
-not belong in the main operator steps.
+workbook it receives. Maintainers who need to understand or change the
+generation logic should use these two technical continuations:
+
+- [`process_map_agent.md`](process_map_agent.md) explains the current code
+  structure, stage-by-stage pipeline, and what each stage reads and writes.
+- [`initialisation_flow_estimation_methods.md`](initialisation_flow_estimation_methods.md)
+  explains, by balance-flow family, where values come from and how the code
+  estimates, allocates, constrains, or deliberately zeroes them.
+
+Maintainers running the generation workflow must also follow the technical
+environment, locking, concurrency, and long-run rules in the root `AGENTS.md`
+and the specialist workflow guide. Those implementation details do not belong
+in the main operator steps.
 
 ### Treat validation as part of generation
 
@@ -672,6 +681,9 @@ the maintained technical or issue reference.
 
 - [`process_map_human.md`](process_map_human.md) - plain-language Python-side
   process and acceptance concept.
+- [`process_map_agent.md`](process_map_agent.md) - current technical code map,
+  stage sequence, and read/write ownership; re-verify it against the code after
+  major workflow changes, as its status note advises.
 - [`handover/supply_reconciliation_guide.md`](handover/supply_reconciliation_guide.md) -
   current reader-facing operating guide for seed generation.
 - [`supply_reconciliation_workflow_guide.md`](supply_reconciliation_workflow_guide.md) -
