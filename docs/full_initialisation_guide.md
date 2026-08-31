@@ -5,9 +5,16 @@ authority. Steps marked **Confirm before use** still need an owner or current
 operational record. Until this guide is reviewed, follow the maintained guides
 linked throughout it when carrying out real work.
 
-**Audience:** economy modellers who need to prepare a clean-slate LEAP area,
-load its initial data, review the resulting energy system, and hand it over for
-detailed sector modelling.
+**Audience:** a layered audience. The main procedure is for new economy
+modellers who need to prepare a clean-slate LEAP area, load its initial data,
+review the resulting energy system, and hand it over for detailed sector
+modelling. Maintainers should be able to use the same guide to identify the
+owning workflow or specialist reference, but code-level explanation is kept to
+a minimum.
+
+**Publication path:** Markdown is the working and review format. After the
+content has been accepted, publish an accessible Word version for the wider
+team. No special APERC branding or existing Word template is required.
 
 ## What this guide is for
 
@@ -29,6 +36,17 @@ prevents double counting.
 This guide deliberately does not reproduce every transformation formula,
 source-mapping rule, code setting, or issue template. Those details change at a
 different rate and remain in the specialist references listed at the end.
+Short maintainer notes should explain ownership and where to continue reading,
+not turn the main guide into a code manual.
+
+### How to use the two layers
+
+- **New economy modellers:** follow the numbered sections in order. They cover
+  the actions, decisions, evidence, and stop conditions needed for one economy.
+- **Workflow maintainers:** use the issue-routing table, short maintainer notes,
+  open-verification list, and maintained references to find the owning system.
+  Implementation commands and internal settings stay in those specialist
+  references.
 
 ## What successful initialisation looks like
 
@@ -248,17 +266,14 @@ Production, while non-power transformation output is generally limited through
 Exogenous Capacity. Exact estimation and ownership by flow family are recorded
 in [`initialisation_flow_estimation_methods.md`](initialisation_flow_estimation_methods.md).
 
-### Run safely
+### Maintainer note: generating the workbook
 
-For actual execution, follow the interpreter, run-label, lock, concurrency, and
-polling rules in the root `AGENTS.md` and the technical workflow guide. In
-particular:
-
-- use an explicit unique run label for retained output;
-- use the pinned Windows interpreter;
-- do not launch competing runs for the same economy;
-- use the bounded parallel runner for multi-economy process parallelism; and
-- do not interrupt the long-running workflow to inspect it.
+The modeller-facing procedure should name the requested economy, source and
+template versions, run label, and intended scenarios, then use the reviewed
+workbook it receives. Maintainers running the generation workflow must follow
+the technical environment, locking, concurrency, and long-run rules in the root
+`AGENTS.md` and the specialist workflow guide. Those implementation details do
+not belong in the main operator steps.
 
 ### Treat validation as part of generation
 
@@ -436,13 +451,14 @@ fully covered.
 ## Material intentionally kept outside this guide
 
 The reviewed Word documents contain useful material that should remain in
-specialist references rather than expanding this operator guide:
+specialist references rather than expanding the main guide:
 
 - detailed power, refining, other-transformation, transfer, and own-use
   methodology;
 - the complete list of transformation modules and process-specific formulas;
 - implementation flags and preset internals;
-- reusable contribution, issue, and resource-record templates;
+- reusable contribution, issue, and resource-record templates, maintained in
+  the rule-adjustment companion guide;
 - historical “missing branches and issues tracker” examples; and
 - exploratory explanations of LEAP's opaque internal ordering behaviour.
 
@@ -463,9 +479,12 @@ the maintained technical or issue reference.
   name, or keep both configuration-driven.
 - Reproduce the Shortfall, Surplus, and export-interaction examples with retained
   before/after balances and promote only confirmed findings.
-- Decide whether the rule-adjustment guide remains a living companion or its
-  stable content is absorbed here.
-- Name the human review and sign-off owner for each economy.
+- Name the reviewer(s), the human sign-off owner, and the economy record for the
+  walkthrough.
+- Add the planned Whimsical process diagrams when they are available, then
+  reconcile each diagram against the accepted written sequence.
+- After Markdown content approval, create and visually verify the accessible
+  Word publication using a simple unbranded document style.
 
 ## Maintained references
 
@@ -501,8 +520,9 @@ This draft was shaped by three working Word documents supplied on 31 August
 
 They were treated as source evidence, not as executable instructions. Their
 unique clean-slate and branch-import material was brought into the main flow;
-their rule-adjustment content was condensed into a review chapter; and their
-specialist methodology was routed to maintained references. Claims that
+their rule-adjustment content informed a concise review chapter while the
+version 8 document remains a maintained companion for researcher adjustments;
+and their specialist methodology was routed to maintained references. Claims that
 conflict with current repository status, contain unresolved reviewer comments,
 or describe optional results-update behaviour as routine were not promoted to
 authoritative instructions.

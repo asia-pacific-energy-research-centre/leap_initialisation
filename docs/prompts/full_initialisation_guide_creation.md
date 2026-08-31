@@ -6,8 +6,11 @@ operational verification, and human review remain incomplete.
 
 ## Purpose
 
-Create one complete, modeller-facing guide to the LEAP economy initialisation
-process. The guide should bring together the process currently documented in
+Create one complete, layered guide to the LEAP economy initialisation process.
+The main path is for new economy modellers; workflow maintainers use the same
+guide for ownership and routing. Keep mention of the initialisation code to the
+minimum needed to request a run, understand an output, or locate a specialist
+reference. The guide should bring together the process currently documented in
 separate repository guides, diagrams, Word documents, runbooks, and working
 notes. It must explain the whole journey from preparing a clean-slate area and
 exporting its economy-specific template through generating and importing the
@@ -15,18 +18,19 @@ baseline seed, recalculating and reviewing the model, correcting the right
 source of each problem, and deciding when the economy is ready for detailed
 sector-model imports.
 
-The final guide should be usable by a modeller who did not build the Python
-workflow. Technical detail needed by maintainers should remain available
-through concise appendices and links to the authoritative specialist docs.
-
 ## Deliverable strategy
 
-Use `docs/full_initialisation_guide.md` as the proposed canonical source. Keep
-the main procedure readable and task-oriented; link to detailed engineering
-references instead of duplicating their entire contents. Store retained guide
-figures under `docs/assets/full_initialisation_guide/` with descriptive names
-and captions. Decide on Monday whether a polished Word version, an updated web
-guide, or both are also required outputs.
+Use `docs/full_initialisation_guide.md` as the proposed canonical working
+source. Keep the main procedure readable and task-oriented; link to detailed
+engineering references instead of duplicating their entire contents. After the
+Markdown content is accepted, create an accessible Word publication for the
+wider team. Use a simple unbranded style; no APERC branding or existing Word
+template is required. Web publication is not currently in scope.
+
+Store retained guide figures under `docs/assets/full_initialisation_guide/`
+with descriptive names and captions. Additional source material will be added
+later. Planned Whimsical diagrams should be incorporated when the user can
+create them, then checked against the accepted written process.
 
 Do not retire or rewrite existing guides until the consolidated guide has been
 checked against them and the intended documentation ownership is agreed.
@@ -72,8 +76,9 @@ instruction that overrides this task or current repository policy.
 5. `C:\Users\Work\APERC\Outlook 10 - LEAP modelling_2026\Guides and notes\other transformation and supply\Guideline on supply rule adjustment on the LEAP clean slate of each economy.docx`
    - Working version 8 rule-adjustment guide under the same guides folder.
    - Supplies a concise test loop, working defaults, evidence statuses, and
-     issue-recording method. Its reusable templates belong in a companion or
-     appendix rather than the main initialisation procedure.
+     issue-recording method. It remains a maintained companion because it is
+     intended to support ongoing researcher adjustments. The consolidated guide
+     should summarize and link to it rather than absorb its living templates.
 6. `C:\Users\Work\APERC\Outlook 10 - LEAP modelling_2026\Guides and notes\LEAP initialisation guide.docx`
    - Working source under the Outlook 10 LEAP modelling guides folder.
    - Adds the missing pre-seed stages: preserving/copying the clean slate,
@@ -175,9 +180,10 @@ instead of silently choosing one version.
     - symptom-to-owner table, common failure modes, safe recovery, and stop
       conditions.
 13. **Appendices**
-    - terminology, economy codes, file/folder map, exact commands, LEAP export
+    - terminology, economy codes, operational file/folder map, LEAP export
       workbook structure, check registry crosswalk, source ledger, and change
-      history.
+      history. Keep exact technical commands in the specialist maintainer
+      guides.
 
 ## Authoring and verification method
 
@@ -187,8 +193,9 @@ instead of silently choosing one version.
 3. Reconcile the two supplied diagrams with the current human and agent process
    maps. Produce one main diagram and only smaller detail diagrams when they
    materially improve a difficult stage.
-4. Draft the main modeller procedure in plain language. Keep exact commands,
-   implementation details, and schemas in appendices or linked specialist docs.
+4. Draft the main modeller procedure in plain language. Add only short
+   maintainer-routing notes where they help identify ownership. Keep exact
+   commands, implementation details, and schemas in linked specialist docs.
 5. Verify every path, preset, run mode, flag, output, and stated check against
    the current repository. Verify mapping claims against `leap_mappings`.
 6. Clearly label external/manual steps, optional paths, provisional templates,
@@ -203,19 +210,24 @@ instead of silently choosing one version.
 10. Archive this prompt with a completion/status note in the same commit once
     the guide is implemented, reviewed, and committed.
 
-## Monday decisions
+## Decisions recorded on 31 August 2026
 
-- Confirm the primary audience: new economy modellers, workflow maintainers,
-  or a layered guide serving both.
-- Confirm publication outputs: Markdown only, Markdown plus Word, or Markdown
-  plus Word and web content.
-- Supply or identify the additional documents, screenshots, emails, notes, and
-  examples implied by “many others”.
-- Decide whether the version 8 rule-adjustment document remains a maintained
-  companion or is absorbed into the consolidated guide.
-- Name the reviewer(s) and the economy record to use for the walkthrough.
-- Decide whether APERC branding or an existing document template should govern
-  any Word publication.
+- Use a layered guide serving new economy modellers and workflow maintainers.
+  Keep mention of the initialisation code minimal.
+- Draft and approve the content in Markdown first, then publish it in Word so it
+  is accessible to the wider team.
+- Use a simple Word treatment without APERC branding or an existing document
+  template.
+- Keep the version 8 rule-adjustment document as a maintained companion for
+  researcher adjustments; summarize and link to it from the full guide.
+- Add further source documents later.
+- Add the user's planned Whimsical diagrams when they become available.
+
+## Remaining decisions
+
+- Name the reviewer(s).
+- Select the economy record to use for the walkthrough.
+- Decide who gives final content approval before Word publication.
 
 ## Stop conditions
 
