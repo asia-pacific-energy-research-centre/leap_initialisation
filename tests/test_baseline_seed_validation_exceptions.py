@@ -209,6 +209,24 @@ def test_normalises_transformation_grouping_nodes_to_canonical_process_path() ->
     assert candidates[0] == "CHP interim/CHP interim"
 
 
+def test_uses_transfers_workflow_source_boundary(monkeypatch) -> None:
+    path = r"Transformation\Transfers unallocated\Output Fuels\Natural gas liquids"
+    esto_axis = pd.DataFrame([
+        {"leap_sector_name_full_path": "Industry", "raw_leap_fuel_name": "Natural gas liquids", "esto_flow": "14 Industry sector", "esto_product": "06.02 Natural gas liquids"},
+    ])
+    ninth_axis = pd.DataFrame([
+        {"leap_sector_name_full_path": "Industry", "raw_leap_fuel_name": "Natural gas liquids", "ninth_sector": "14_industry_sector", "ninth_fuel": "06_02_natural_gas_liquids"},
+    ])
+    monkeypatch.setattr(materiality, "_canonical_axis_relationships", lambda: (esto_axis, ninth_axis))
+
+    keys = _registry_source_keys([{"branch_path": path}])
+
+    assert keys.loc[0, "esto_flow"] == "08 Transfers"
+    assert keys.loc[0, "ninth_sector"] == "08_transfers"
+    assert keys.loc[0, "esto_product"] == "06.02 Natural gas liquids"
+    assert keys.loc[0, "ninth_fuel"] == "06_02_natural_gas_liquids"
+
+
 def test_esto_materiality_uses_subtotal_only_when_no_detailed_match(tmp_path: Path) -> None:
     source = tmp_path / "esto.csv"
     pd.DataFrame([

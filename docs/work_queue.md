@@ -22,7 +22,9 @@ also malformed under the active sector-split demand workflow: use its
 contribution evidence to identify the missing sector or conclude that it was
 not needed.  Interim transformation paths remain review items until an
 explicit canonical process mapping establishes the intended 09/10 source and
-role.
+role.  `Transfers unallocated` is not an interim-process ambiguity: it uses
+the transfer workflow's explicit `08 Transfers` / `08_transfers` boundary,
+with the canonical mapped product/fuel leaf.
 
 **Complete when:** the audit covers all ledger paths per economy and leaves
 only proven material template decisions enabled; stale, zero-only, malformed,

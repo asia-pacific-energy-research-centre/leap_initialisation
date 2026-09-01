@@ -17,6 +17,7 @@ import pandas as pd
 from codebase.configuration import workflow_config as workflow_cfg
 from codebase.functions.ninth_projection_mapping import add_ninth_pair_columns
 from codebase.functions.unified_name_lookup import load_active_mapping_sheet
+from codebase.transfers_workflow import TRANSFER_FLOW_CODES
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -131,6 +132,44 @@ def _axis_target(
     return sector_targets[0], fuel_targets[0]
 
 
+def _fuel_axis_target(
+    mapping: pd.DataFrame,
+    *,
+    fuel: str,
+    target_column: str,
+    path: str,
+) -> str:
+    """Return one mapped source fuel/product, refusing ambiguous labels."""
+    matches = mapping[
+        mapping["raw_leap_fuel_name"].astype(str).str.strip().str.casefold().eq(fuel.casefold())
+    ]
+    targets = sorted({str(value).strip() for value in matches[target_column] if str(value).strip()})
+    if len(targets) != 1:
+        raise ValueError(
+            f"Cannot compose an unambiguous {target_column} mapping for {path}: "
+            f"fuel targets={targets!r}"
+        )
+    return targets[0]
+
+
+def _transfer_source_key(*, path: str, fuel: str) -> dict[str, str]:
+    """Resolve the explicit transfer-workflow source boundary for a LEAP leaf."""
+    esto, ninth = _canonical_axis_relationships()
+    return {
+        "branch_path": path,
+        "leap_sector_name_full_path": "Transfers unallocated",
+        "raw_leap_fuel_name": fuel,
+        "esto_flow": TRANSFER_FLOW_CODES[0],
+        "esto_product": _fuel_axis_target(
+            esto, fuel=fuel, target_column="esto_product", path=path,
+        ),
+        "ninth_sector": "08_transfers",
+        "ninth_fuel": _fuel_axis_target(
+            ninth, fuel=fuel, target_column="ninth_fuel", path=path,
+        ),
+    }
+
+
 def _composed_source_key(
     *,
     path: str,
@@ -209,6 +248,9 @@ def _registry_source_keys(registry_rows: list[dict[str, str]]) -> pd.DataFrame:
                 f"Aggregate-demand path needs a sector child before it can be mapped: {row['branch_path']}"
             )
         fuel = parts[-1]
+        if parts[0] == "Transformation" and parts[1] == "Transfers unallocated":
+            keys.append(_transfer_source_key(path=row["branch_path"], fuel=fuel))
+            continue
         sector_candidates = _source_sector_candidates(parts)
         matched = canonical[
             canonical["raw_leap_fuel_name"].eq(fuel)
