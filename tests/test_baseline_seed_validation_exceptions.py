@@ -227,6 +227,58 @@ def test_uses_transfers_workflow_source_boundary(monkeypatch) -> None:
     assert keys.loc[0, "ninth_fuel"] == "06_02_natural_gas_liquids"
 
 
+@pytest.mark.parametrize(
+    ("path", "expected_esto_flow", "expected_ninth_sector", "fuel", "esto_product", "ninth_fuel"),
+    [
+        (
+            r"Transformation\Coke ovens\Processes\Coke ovens\Feedstock Fuels\Coke oven coke",
+            "09.08.01 Coke ovens",
+            "09_08_01_coke_ovens",
+            "Coke oven coke",
+            "02.01 Coke oven coke",
+            "02_01_coke_oven_coke",
+        ),
+        (
+            r"Transformation\Gas to liquids plants\Output Fuels\Refinery gas not liquefied",
+            "09.06.04 Gas-to-liquids plants",
+            "09_06_04_gastoliquids_plants",
+            "Refinery gas not liquefied",
+            "07.10 Refinery gas not liquefied",
+            "07_10_refinery_gas_not_liquefied",
+        ),
+    ],
+)
+def test_uses_detailed_transformation_process_boundary(
+    monkeypatch,
+    path: str,
+    expected_esto_flow: str,
+    expected_ninth_sector: str,
+    fuel: str,
+    esto_product: str,
+    ninth_fuel: str,
+) -> None:
+    esto_axis = pd.DataFrame([{
+        "leap_sector_name_full_path": "Industry",
+        "raw_leap_fuel_name": fuel,
+        "esto_flow": "14 Industry sector",
+        "esto_product": esto_product,
+    }])
+    ninth_axis = pd.DataFrame([{
+        "leap_sector_name_full_path": "Industry",
+        "raw_leap_fuel_name": fuel,
+        "ninth_sector": "14_industry_sector",
+        "ninth_fuel": ninth_fuel,
+    }])
+    monkeypatch.setattr(materiality, "_canonical_axis_relationships", lambda: (esto_axis, ninth_axis))
+
+    keys = _registry_source_keys([{"branch_path": path}])
+
+    assert keys.loc[0, "esto_flow"] == expected_esto_flow
+    assert keys.loc[0, "ninth_sector"] == expected_ninth_sector
+    assert keys.loc[0, "esto_product"] == esto_product
+    assert keys.loc[0, "ninth_fuel"] == ninth_fuel
+
+
 def test_esto_materiality_uses_subtotal_only_when_no_detailed_match(tmp_path: Path) -> None:
     source = tmp_path / "esto.csv"
     pd.DataFrame([

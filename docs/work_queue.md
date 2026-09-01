@@ -22,7 +22,10 @@ also malformed under the active sector-split demand workflow: use its
 contribution evidence to identify the missing sector or conclude that it was
 not needed.  Interim transformation paths remain review items until an
 explicit canonical process mapping establishes the intended 09/10 source and
-role.  `Transfers unallocated` is not an interim-process ambiguity: it uses
+role.  `Coke ovens` feedstock/output leaves use the detailed `09.08.01 Coke
+ovens` / `09_08_01_coke_ovens` boundary, and `Gas to liquids plants` uses
+`09.06.04 Gas-to-liquids plants` / `09_06_04_gastoliquids_plants`.
+`Transfers unallocated` is not an interim-process ambiguity: it uses
 the transfer workflow's explicit `08 Transfers` / `08_transfers` boundary,
 with the canonical mapped product/fuel leaf.
 

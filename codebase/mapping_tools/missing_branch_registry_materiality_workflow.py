@@ -36,6 +36,23 @@ MATERIALITY_COLUMNS = [
     "target_projection_absolute_average_pj_per_year_all_economies",
 ]
 
+# These two processes are produced at an explicitly detailed 09 boundary in
+# the transformation workflow. The compatibility mapping deliberately rolls
+# them up for some comparison uses, so a missing LEAP leaf cannot obtain this
+# detail by composing the canonical axes alone. Keep the source boundaries
+# here, next to the materiality resolver, rather than infer them from a broad
+# transformation parent.
+PROCESS_SOURCE_BOUNDARIES = {
+    "Coke ovens": {
+        "esto_flow": "09.08.01 Coke ovens",
+        "ninth_sector": "09_08_01_coke_ovens",
+    },
+    "Gas to liquids plants": {
+        "esto_flow": "09.06.04 Gas-to-liquids plants",
+        "ninth_sector": "09_06_04_gastoliquids_plants",
+    },
+}
+
 
 def _normalise_path(value: object) -> str:
     return "\\".join(
@@ -170,6 +187,25 @@ def _transfer_source_key(*, path: str, fuel: str) -> dict[str, str]:
     }
 
 
+def _process_source_key(*, path: str, process: str, fuel: str) -> dict[str, str]:
+    """Resolve a detailed transformation process with a reviewed boundary."""
+    boundary = PROCESS_SOURCE_BOUNDARIES[process]
+    esto, ninth = _canonical_axis_relationships()
+    return {
+        "branch_path": path,
+        "leap_sector_name_full_path": process,
+        "raw_leap_fuel_name": fuel,
+        "esto_flow": boundary["esto_flow"],
+        "esto_product": _fuel_axis_target(
+            esto, fuel=fuel, target_column="esto_product", path=path,
+        ),
+        "ninth_sector": boundary["ninth_sector"],
+        "ninth_fuel": _fuel_axis_target(
+            ninth, fuel=fuel, target_column="ninth_fuel", path=path,
+        ),
+    }
+
+
 def _composed_source_key(
     *,
     path: str,
@@ -250,6 +286,11 @@ def _registry_source_keys(registry_rows: list[dict[str, str]]) -> pd.DataFrame:
         fuel = parts[-1]
         if parts[0] == "Transformation" and parts[1] == "Transfers unallocated":
             keys.append(_transfer_source_key(path=row["branch_path"], fuel=fuel))
+            continue
+        if parts[0] == "Transformation" and parts[1] in PROCESS_SOURCE_BOUNDARIES:
+            keys.append(_process_source_key(
+                path=row["branch_path"], process=parts[1], fuel=fuel,
+            ))
             continue
         sector_candidates = _source_sector_candidates(parts)
         matched = canonical[
