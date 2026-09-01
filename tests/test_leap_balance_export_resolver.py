@@ -13,6 +13,7 @@ from codebase.utilities.leap_balance_export_resolver import (
     inspect_balance_export_detail,
     infer_balance_export_identity,
     load_leap_balance_activity_table,
+    read_balance_export_area_name,
     require_level2_balance_export_detail,
     resolve_balance_export_workbook,
     select_balance_export_sheets,
@@ -167,6 +168,39 @@ def test_resolve_balance_export_workbook_validates_nonstandard_filename_from_hea
     )
 
     assert resolved == expected
+
+
+def test_area_name_reader_accepts_workbook_without_sheet_dimensions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LEAP exports remain readable when openpyxl reports max_row as None."""
+    path = tmp_path / "dimensionless.xlsx"
+    path.write_bytes(b"fixture marker")
+
+    class DimensionlessSheet:
+        max_row = None
+
+        def iter_rows(self, **_options):
+            return iter(
+                [
+                    ('Energy Balance for Area "PRC test model"', None, None, None),
+                    ("Scenario: Target, Year: 2022, Units: Petajoule", None, None, None),
+                ]
+            )
+
+    class DimensionlessWorkbook:
+        worksheets = [DimensionlessSheet()]
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        "openpyxl.load_workbook",
+        lambda *_args, **_options: DimensionlessWorkbook(),
+    )
+
+    assert read_balance_export_area_name(path) == "PRC test model"
 
 
 def test_resolve_balance_export_workbook_reports_missing_match(tmp_path: Path) -> None:

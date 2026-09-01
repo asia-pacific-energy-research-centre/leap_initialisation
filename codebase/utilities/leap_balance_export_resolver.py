@@ -665,8 +665,17 @@ def read_balance_export_area_name(workbook_path: Path | str) -> str:
     workbook = load_workbook(path, read_only=True, data_only=True)
     try:
         for sheet in workbook.worksheets:
-            for row_number in range(1, min(sheet.max_row, 3) + 1):
-                values = [sheet.cell(row_number, column).value for column in range(1, 5)]
+            # Some valid LEAP/openpyxl-generated workbooks omit worksheet
+            # dimensions, so ``ReadOnlyWorksheet.max_row`` is ``None`` even
+            # though rows are present. Iterating the bounded header range works
+            # for both dimensioned and dimensionless worksheets.
+            for values in sheet.iter_rows(
+                min_row=1,
+                max_row=3,
+                min_col=1,
+                max_col=4,
+                values_only=True,
+            ):
                 text = " ".join(
                     str(value).strip() for value in values if value is not None
                 )
