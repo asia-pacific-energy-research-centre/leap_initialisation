@@ -166,6 +166,30 @@ def _composed_source_key(
     }
 
 
+def _source_sector_candidates(parts: list[str]) -> list[str]:
+    """Return canonical source-sector candidates for one LEAP branch path.
+
+    LEAP transformation paths add presentation groups such as ``Processes``
+    and ``Feedstock Fuels``.  They do not change the source process.  The
+    canonical mapping records that process as ``module/process`` (including
+    an intentionally repeated name for interim single-process modules), so
+    add that semantic form before falling back to progressively shorter raw
+    paths.  This is structural normalization, not a process alias table.
+    """
+    source_parts = parts[1:-1]
+    candidates = ["/".join(source_parts[:length]) for length in range(len(source_parts), 0, -1)]
+    if parts[0] != "Transformation":
+        return candidates
+    grouping_nodes = {"Processes", "Feedstock Fuels", "Output Fuels", "Auxiliary Fuels"}
+    process_parts = [part for part in source_parts if part not in grouping_nodes]
+    if len(process_parts) == 1:
+        process_parts *= 2
+    semantic = "/".join(process_parts)
+    if semantic and semantic not in candidates:
+        candidates.insert(0, semantic)
+    return candidates
+
+
 def _registry_source_keys(registry_rows: list[dict[str, str]]) -> pd.DataFrame:
     """Resolve registered LEAP leaves through the canonical mapping interface.
 
@@ -185,11 +209,7 @@ def _registry_source_keys(registry_rows: list[dict[str, str]]) -> pd.DataFrame:
                 f"Aggregate-demand path needs a sector child before it can be mapped: {row['branch_path']}"
             )
         fuel = parts[-1]
-        # A demand branch has a direct sector path. Transformation leaves may
-        # contain local grouping nodes, so try its full path then successively
-        # shorter module paths until the canonical workbook resolves one.
-        source_parts = parts[1:-1]
-        sector_candidates = ["/".join(source_parts[:length]) for length in range(len(source_parts), 0, -1)]
+        sector_candidates = _source_sector_candidates(parts)
         matched = canonical[
             canonical["raw_leap_fuel_name"].eq(fuel)
             & canonical["leap_sector_name_full_path"].isin(sector_candidates)

@@ -18,6 +18,7 @@ from codebase.functions.baseline_seed_validation_exceptions import (
 from codebase.mapping_tools.missing_branch_registry_materiality_workflow import (
     _esto_base_materiality,
     _registry_source_keys,
+    _source_sector_candidates,
 )
 import codebase.mapping_tools.missing_branch_registry_materiality_workflow as materiality
 
@@ -198,6 +199,14 @@ def test_rejects_flat_aggregated_demand_path_before_mapping() -> None:
         _registry_source_keys([{
             "branch_path": r"Demand\All demand aggregated\Black liquor",
         }])
+
+
+def test_normalises_transformation_grouping_nodes_to_canonical_process_path() -> None:
+    parts = r"Transformation\CHP interim\Processes\CHP interim\Feedstock Fuels\Petroleum coke".split("\\")
+
+    candidates = _source_sector_candidates(parts)
+
+    assert candidates[0] == "CHP interim/CHP interim"
 
 
 def test_esto_materiality_uses_subtotal_only_when_no_detailed_match(tmp_path: Path) -> None:
