@@ -2,6 +2,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from openpyxl import Workbook, load_workbook
 
 from codebase.functions.baseline_seed_validation_exceptions import (
@@ -18,6 +19,7 @@ from codebase.mapping_tools.missing_branch_registry_materiality_workflow import 
     _esto_base_materiality,
     _registry_source_keys,
 )
+import codebase.mapping_tools.missing_branch_registry_materiality_workflow as materiality
 
 
 def _workbook(path: Path, branch_path: str = "") -> None:
@@ -164,6 +166,38 @@ def test_canonical_single_axis_mapping_resolves_nonenergy_hydrogen() -> None:
     assert keys.loc[0, "ninth_fuel"] == "16_x_hydrogen"
     assert keys.loc[0, "esto_flow"] == "17 Non-energy use"
     assert keys.loc[0, "esto_product"] == "16.12 Hydrogen"
+
+
+def test_composes_unique_sector_and_fuel_axes_for_missing_interim_leaf(monkeypatch) -> None:
+    path = r"Demand\Other loss and own use\Coal mines\Petroleum coke"
+    empty_direct = pd.DataFrame(columns=[
+        "leap_sector_name_full_path", "raw_leap_fuel_name", "esto_flow",
+        "esto_product", "ninth_sector", "ninth_fuel",
+    ])
+    esto_axis = pd.DataFrame([
+        {"leap_sector_name_full_path": "Other loss and own use/Coal mines", "raw_leap_fuel_name": "Anthracite", "esto_flow": "10.01.06 Coal mines", "esto_product": "01.04 Anthracite"},
+        {"leap_sector_name_full_path": "Industry", "raw_leap_fuel_name": "Petroleum coke", "esto_flow": "14 Industry sector", "esto_product": "07.16 Petroleum coke"},
+    ])
+    ninth_axis = pd.DataFrame([
+        {"leap_sector_name_full_path": "Other loss and own use/Coal mines", "raw_leap_fuel_name": "Anthracite", "ninth_sector": "10_01_06_coal_mines", "ninth_fuel": "01_x_thermal_coal"},
+        {"leap_sector_name_full_path": "Industry", "raw_leap_fuel_name": "Petroleum coke", "ninth_sector": "14_industry_sector", "ninth_fuel": "07_x_other_petroleum_products"},
+    ])
+    monkeypatch.setattr(materiality, "_canonical_leaf_relationships", lambda: empty_direct)
+    monkeypatch.setattr(materiality, "_canonical_axis_relationships", lambda: (esto_axis, ninth_axis))
+
+    keys = _registry_source_keys([{"branch_path": path}])
+
+    assert keys.loc[0, "esto_flow"] == "10.01.06 Coal mines"
+    assert keys.loc[0, "esto_product"] == "07.16 Petroleum coke"
+    assert keys.loc[0, "ninth_sector"] == "10_01_06_coal_mines"
+    assert keys.loc[0, "ninth_fuel"] == "07_x_other_petroleum_products"
+
+
+def test_rejects_flat_aggregated_demand_path_before_mapping() -> None:
+    with pytest.raises(ValueError, match="needs a sector child"):
+        _registry_source_keys([{
+            "branch_path": r"Demand\All demand aggregated\Black liquor",
+        }])
 
 
 def test_esto_materiality_uses_subtotal_only_when_no_detailed_match(tmp_path: Path) -> None:

@@ -76,6 +76,96 @@ def _canonical_leaf_relationships() -> pd.DataFrame:
     return ninth_mapping.merge(esto_mapping, on=key_columns, how="inner")
 
 
+@lru_cache(maxsize=1)
+def _canonical_axis_relationships() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load the two canonical LEAP axes without requiring an existing pair.
+
+    The combined mapping sheets remain the source of truth.  This view is used
+    only for a missing branch whose sector/process and fuel are each already
+    mapped, but whose *new combination* is absent because the LEAP branch is an
+    interim or proxy branch.  We never choose between multiple axis targets.
+    """
+    key_columns = ["leap_sector_name_full_path", "raw_leap_fuel_name"]
+    esto = load_active_mapping_sheet("leap_combined_esto").fillna("")
+    ninth = load_active_mapping_sheet("leap_combined_ninth").fillna("")
+    for mapping, target_columns in (
+        (esto, ["esto_flow", "esto_product"]),
+        (ninth, ["ninth_sector", "ninth_fuel"]),
+    ):
+        for column in [*key_columns, *target_columns]:
+            mapping[column] = mapping[column].astype(str).str.strip()
+    return (
+        esto[key_columns + ["esto_flow", "esto_product"]].drop_duplicates(),
+        ninth[key_columns + ["ninth_sector", "ninth_fuel"]].drop_duplicates(),
+    )
+
+
+def _axis_target(
+    mapping: pd.DataFrame,
+    *,
+    sector_candidates: list[str],
+    fuel: str,
+    sector_target_column: str,
+    fuel_target_column: str,
+    path: str,
+) -> tuple[str, str]:
+    """Return one explicit axis target or raise an auditable ambiguity error."""
+    normalised_candidates = {_normalise_path(candidate) for candidate in sector_candidates}
+    sector_matches = mapping[
+        mapping["leap_sector_name_full_path"].map(_normalise_path).isin(normalised_candidates)
+    ]
+    sector_targets = sorted({
+        str(value).strip() for value in sector_matches[sector_target_column] if str(value).strip()
+    })
+    fuel_matches = mapping[
+        mapping["raw_leap_fuel_name"].astype(str).str.strip().str.casefold().eq(fuel.casefold())
+    ]
+    fuel_targets = sorted({
+        str(value).strip() for value in fuel_matches[fuel_target_column] if str(value).strip()
+    })
+    if len(sector_targets) != 1 or len(fuel_targets) != 1:
+        raise ValueError(
+            f"Cannot compose unambiguous {sector_target_column}/{fuel_target_column} mappings for {path}: "
+            f"sector targets={sector_targets!r}; fuel targets={fuel_targets!r}"
+        )
+    return sector_targets[0], fuel_targets[0]
+
+
+def _composed_source_key(
+    *,
+    path: str,
+    sector_candidates: list[str],
+    fuel: str,
+) -> dict[str, str]:
+    """Compose source keys from canonical sector and fuel axes when unique."""
+    esto, ninth = _canonical_axis_relationships()
+    esto_flow, esto_product = _axis_target(
+        esto,
+        sector_candidates=sector_candidates,
+        fuel=fuel,
+        sector_target_column="esto_flow",
+        fuel_target_column="esto_product",
+        path=path,
+    )
+    ninth_sector, ninth_fuel = _axis_target(
+        ninth,
+        sector_candidates=sector_candidates,
+        fuel=fuel,
+        sector_target_column="ninth_sector",
+        fuel_target_column="ninth_fuel",
+        path=path,
+    )
+    return {
+        "branch_path": path,
+        "leap_sector_name_full_path": sector_candidates[0],
+        "raw_leap_fuel_name": fuel,
+        "esto_flow": esto_flow,
+        "esto_product": esto_product,
+        "ninth_sector": ninth_sector,
+        "ninth_fuel": ninth_fuel,
+    }
+
+
 def _registry_source_keys(registry_rows: list[dict[str, str]]) -> pd.DataFrame:
     """Resolve registered LEAP leaves through the canonical mapping interface.
 
@@ -90,6 +180,10 @@ def _registry_source_keys(registry_rows: list[dict[str, str]]) -> pd.DataFrame:
         parts = [part.strip() for part in row["branch_path"].split("\\") if part.strip()]
         if len(parts) < 3 or parts[0] not in {"Demand", "Transformation"}:
             raise ValueError(f"Cannot derive source mapping for registry path: {row['branch_path']}")
+        if parts[0] == "Demand" and parts[1] == "All demand aggregated" and len(parts) == 3:
+            raise ValueError(
+                f"Aggregate-demand path needs a sector child before it can be mapped: {row['branch_path']}"
+            )
         fuel = parts[-1]
         # A demand branch has a direct sector path. Transformation leaves may
         # contain local grouping nodes, so try its full path then successively
@@ -101,10 +195,10 @@ def _registry_source_keys(registry_rows: list[dict[str, str]]) -> pd.DataFrame:
             & canonical["leap_sector_name_full_path"].isin(sector_candidates)
         ]
         if matched.empty:
-            raise ValueError(
-                f"Registry path needs an explicit source mapping before materiality can be refreshed: "
-                f"{row['branch_path']} (canonical LEAP sector candidates={sector_candidates!r}; fuel={fuel!r})"
-            )
+            keys.append(_composed_source_key(
+                path=row["branch_path"], sector_candidates=sector_candidates, fuel=fuel,
+            ))
+            continue
         matched = matched.copy()
         matched["branch_path"] = row["branch_path"]
         keys.extend(matched[[

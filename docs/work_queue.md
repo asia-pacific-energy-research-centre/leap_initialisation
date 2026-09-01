@@ -1,5 +1,33 @@
 # Remaining work queue
 
+## [62] Evidence-based baseline-seed missing-branch audit
+
+**Status: in progress — canonical sector/fuel composition implemented 2026-09-01.**
+
+The review ledger at `config/baseline_seed_validation_exception_sets.xlsx`
+must not treat every unknown template path as one generic exception.  Its
+materiality resolver now composes an ESTO flow/product and Ninth sector/fuel
+from the canonical `leap_mappings` sheets when the requested LEAP
+sector/process and fuel each resolve unambiguously.  It deliberately refuses
+to choose among ambiguous candidates.
+
+Next, add a read-only, per-economy audit before changing the ledger.  It must
+classify each missing path as Resources, sector-split aggregated demand,
+loss/own-use, transformation output, feedstock, auxiliary fuel, or malformed;
+record the source rule and resolved source keys; and report source/seed values
+for every audited vintage.  `Resources\\Primary\\Unknown` is malformed and
+must be traced to a producer/old artifact, never mapped or retained as a
+template exception.  A flat `Demand\\All demand aggregated\\{fuel}` path is
+also malformed under the active sector-split demand workflow: use its
+contribution evidence to identify the missing sector or conclude that it was
+not needed.  Interim transformation paths remain review items until an
+explicit canonical process mapping establishes the intended 09/10 source and
+role.
+
+**Complete when:** the audit covers all ledger paths per economy and leaves
+only proven material template decisions enabled; stale, zero-only, malformed,
+or producer-defect rows are disabled/removed with evidence.
+
 ## [61] Guarded CSV handoff for export-to-dashboard runs
 
 **Status: implemented and end-to-end verified 2026-08-31.**
