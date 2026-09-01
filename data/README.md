@@ -199,6 +199,13 @@ without the suffix. **A final template automatically supersedes the provisional
 file**, so you can drop real exports in one at a time and delete the
 `_COMP_GEN` copy whenever convenient.
 
+For the interim case where an economy has no template at all, run
+`python scripts/generate_comp_gen_templates.py`. It copies the currently
+resolved USA export, changes only the `Export` sheet's readable `Region` cells,
+and names the result `leap_export_template <economy>_COMP_GEN.xlsx`. The IDs
+remain USA-derived by design, so outputs remain provisional and must not be
+treated as import-ready for the target LEAP area.
+
 `find_shared_template_areas()` reports two *final* templates claiming the same
 LEAP area name, which means one was copied rather than exported. Provisional
 templates are exempt — sharing the source area is what being provisional means.
